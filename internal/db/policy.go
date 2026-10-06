@@ -270,7 +270,7 @@ const policySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   key_points extracted slug)
+   key_points extracted slug hidden)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -306,6 +306,8 @@ const policySource = `
 (delete DOCUMENT (and (= @old.relation "side") (!= @viewer.source "guest")))
 ; a wiki page's author gives it a slug, changes it or takes it away
 (set DOCUMENT.slug (and (= @old.kind "wiki") (not (blank @old.author)) (= @old.author @viewer)))
+; a wiki page's author hides it from the wiki's lists of pages, or shows it again
+(set DOCUMENT.hidden (and (= @old.kind "wiki") (not (blank @old.author)) (= @old.author @viewer)))
 ; a wiki page's author deletes it once it has no sub-pages
 (delete DOCUMENT (and (= @old.kind "wiki") (= @old.author @viewer) (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 ; the viewer's own inbox
@@ -569,6 +571,8 @@ const policySource = `
 
 ; give any wiki page a slug, change it or take it away
 (set DOCUMENT.slug (and (admin_of "wiki") (= @old.kind "wiki")))
+; hide any wiki page from the wiki's lists of pages, or show it again
+(set DOCUMENT.hidden (and (admin_of "wiki") (= @old.kind "wiki")))
 ; any wiki page with no sub-pages
 (delete DOCUMENT (and (admin_of "wiki") (= @old.kind "wiki") (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 

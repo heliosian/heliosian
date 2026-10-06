@@ -1,4 +1,4 @@
-import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence} from './state.js';
+import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
 import {card} from '/cardgrid.js';
 import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -37,17 +37,23 @@ function pageCard(p) {
   return card;
 }
 
-function wikiCard(p, md, withPath) {
+function wikiCard(p, md, imageUrl, withPath) {
   const count = childrenOf(p.id).length;
   const open = link(pagePath(p), 'button button-secondary button-small', 'Open');
+  const yours = el('span', 'card-chip card-chip-mine');
+  yours.append(svg('star'), el('span', '', 'Yours'));
+  const chips = [el('span', p.hidden ? 'card-chip card-chip-hidden' : 'card-chip', p.hidden ? 'Hidden' : 'Public')];
+  if (count) {
+    chips.push(`${count} ${count === 1 ? 'page' : 'pages'}`);
+  }
   return card({
     href: pagePath(p),
-    imageUrl: splitHeader(md).header,
+    imageUrl,
     title: p.name,
     subtitle: withPath ? pathWords(p) : '',
-    text: firstSentence(md),
-    media: mine(p) ? [el('span', 'card-chip card-chip-mine', 'Yours')] : [],
-    chips: count ? [`${count} ${count === 1 ? 'page' : 'pages'}`] : [],
+    text: firstSentence(md) || childrenOf(p.id).map(c => c.name).join(' · '),
+    media: mine(p) ? [yours] : [],
+    chips,
     foot: [open],
   });
 }
@@ -74,18 +80,18 @@ export function listPage() {
   let asked = 0;
   const show = async q => {
     const ask = ++asked;
-    const shown = q ? state.pages.filter(p => p.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : childrenOf('');
+    const shown = q ? state.pages.filter(p => listed(p) && p.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : childrenOf('');
     if (!shown.length) {
       list.replaceChildren(el('p', 'panel-empty', state.pages.length ? 'No page has that in its title.' : 'No pages yet. Start the first one.'));
       return;
     }
     try {
-      const texts = await Promise.all(shown.map(p => body(p)));
+      const [texts, images] = await Promise.all([Promise.all(shown.map(p => body(p))), Promise.all(shown.map(headerFor))]);
       if (ask !== asked) {
         return;
       }
       const grid = el('div', 'card-grid');
-      grid.append(...shown.map((p, i) => wikiCard(p, texts[i], Boolean(q))));
+      grid.append(...shown.map((p, i) => wikiCard(p, texts[i], images[i], Boolean(q))));
       list.replaceChildren(grid);
     } catch (err) {
       list.replaceChildren(el('p', 'panel-empty', err.message));
@@ -172,6 +178,20 @@ export function viewPage(id) {
   add.append(svg('plus'), el('span', '', 'Add Sub-Page'));
   top.append(crumbs(p), actions);
   const children = childrenOf(p.id);
+  if (mine(p) || state.admin) {
+    const visibility = button(p.hidden ? 'Hidden' : 'Public', p.hidden ? 'eye-off' : 'eye', 'button button-small button-secondary', async () => {
+      const hide = !p.hidden;
+      try {
+        await setHidden(p.id, hide);
+        await load();
+        toast(hide ? 'Hidden: kept out of the lists of pages' : 'Public: in the lists of pages');
+      } catch (err) {
+        toast(err.message);
+      }
+    });
+    visibility.title = p.hidden ? 'Hidden: click to make it public' : 'Public: click to hide it from the lists';
+    actions.append(visibility);
+  }
   actions.append(add, edit);
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
@@ -191,14 +211,10 @@ export function viewPage(id) {
   content.append(el('p', 'panel-empty', 'Loading…'));
   main.append(content);
   const hero = el('div');
-  body(p).then(md => {
+  body(p).then(async md => {
     const {header, text} = splitHeader(md);
     const edit = {image: header, tools, save: headerSaver(p)};
-    if (header) {
-      hero.replaceChildren(detailHero({imageUrl: header, title: p.name, path: pagePath(p), edit}));
-    } else {
-      actions.prepend(heroImageBar({image: '', imageUrl: '', query: p.name, tools, save: edit.save}));
-    }
+    hero.replaceChildren(detailHero({imageUrl: await headerFor(p), title: p.name, path: pagePath(p), edit}));
     content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', children.length ? 'This page holds the pages below.' : 'This page is empty. Edit it to add something.'));
     outline(content, contents);
   }).catch(err => {

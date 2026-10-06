@@ -158,6 +158,36 @@ func TestWikiSlugs(t *testing.T) {
 	}
 }
 
+func TestWikiHiddenPages(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	ctx := context.Background()
+	id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: student, Now: testNow}, wikiPage{Name: "Pickup", Body: "At the gate."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hide := func(viewer string, hidden bool) error {
+		_, err := Write(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"hidden": hidden}}}})
+		return err
+	}
+	hiddenOf := func() string {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		return row["hidden"]
+	}
+	if err := hide(student, true); err != nil || hiddenOf() != "Yes" {
+		t.Fatalf("the author hiding their page: %v %q", err, hiddenOf())
+	}
+	if err := hide(guest, false); err == nil {
+		t.Fatal("someone else showed the author's page again")
+	}
+	if err := hide(parent, false); err != nil || hiddenOf() != "No" {
+		t.Fatalf("a wiki admin showing the page again: %v %q", err, hiddenOf())
+	}
+	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000094", "kind": "newsletter", "name": "News", "hidden": "Yes"})); err == nil {
+		t.Fatal("a hidden newsletter loaded")
+	}
+}
+
 func TestWikiPicturesAreServed(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

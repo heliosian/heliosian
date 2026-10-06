@@ -250,13 +250,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-header-edit { margin-bottom: 0; }
 
-.detail-tools .hero-image-bar { position: static; height: auto; padding: 0; border-radius: 0; background: none; pointer-events: auto; }
+.card-chip-mine { display: inline-flex; align-items: center; gap: 5px; }
 
-.detail-tools .hero-image-action { height: 34px; box-sizing: border-box; border: 1px solid var(--line); background: var(--card); }
+.card-chip-mine svg { width: 12px; height: 12px; fill: currentColor; stroke: currentColor; }
 
-.detail-tools .hero-image-menu { top: calc(100% + 6px); bottom: auto; }
-
-.detail-tools .hero-image-status { color: var(--muted); }
+.card-chip-hidden { background: #5b6b6c; }
 
 .image-search-bar { display: flex; gap: 8px; margin: 10px 0; }
 

@@ -338,6 +338,9 @@ func checkDocuments(documents Sheet) error {
 			return fmt.Errorf("DOCUMENT %s: %s already has the slug %q", row["id"], other, row["slug"])
 		}
 		slugs[row["slug"]] = row["id"]
+		if row["hidden"] == "Yes" && row["kind"] != "wiki" {
+			return fmt.Errorf("DOCUMENT %s: only a wiki page is hidden", row["id"])
+		}
 		root := row["kind"] != "" && row["relation"] == "" && row["parent"] == ""
 		child := row["kind"] == "" && row["relation"] != "" && row["parent"] != ""
 		subpage := row["kind"] == "wiki" && row["relation"] == "" && kinds[row["parent"]] == "wiki"

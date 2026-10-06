@@ -7,7 +7,7 @@ export function card({href, imageUrl, title, subtitle, text, media = [], chips =
   top.append(imageThumb(imageUrl, title, 'card-image'), ...media);
   if (chips.length) {
     const row = el('div', 'card-chips');
-    row.append(...chips.map(words => el('span', 'card-chip', words)));
+    row.append(...chips.map(chip => (typeof chip === 'string' ? el('span', 'card-chip', chip) : chip)));
     top.append(row);
   }
   const body = el('div', 'card-body');

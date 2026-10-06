@@ -39,7 +39,7 @@ export async function loadModel() {
   state.admin = admin.result.length > 0;
   state.pages = pages.result.map(id => {
     const row = pages.resources.DOCUMENT[id];
-    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || ''};
+    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || '', hidden: row.hidden === 'Yes'};
   });
   state.viewer = person.result[0] || '';
   const self = state.viewer ? person.resources.PERSON[state.viewer] : null;
@@ -91,8 +91,12 @@ export function mine(p) {
   return Boolean(state.viewer) && p.author === state.viewer;
 }
 
+export function listed(p) {
+  return !p.hidden || mine(p) || state.admin;
+}
+
 export function childrenOf(id) {
-  return state.pages.filter(p => p.parent === id).sort(bySiblingOrder);
+  return state.pages.filter(p => p.parent === id && listed(p)).sort(bySiblingOrder);
 }
 
 export function hasChildren(p) {
@@ -109,6 +113,10 @@ export function trail(p) {
 
 export function under(p, ancestor) {
   return trail(p).some(a => a.id === ancestor.id);
+}
+
+export function setHidden(id, hidden) {
+  return api('POST', '/api/q', {batch: [{set: id, cells: {hidden}}]});
 }
 
 export function setOrder(id, key) {
@@ -139,6 +147,27 @@ export function splitHeader(md) {
   const line = front[1].split('\n').find(l => l.startsWith('header_image:'));
   const value = line ? line.slice('header_image:'.length).trim() : '';
   return {header: value.startsWith(picturePath) ? value : '', text: md.slice(front[0].length)};
+}
+
+const backgrounds = ['backpacking', 'building', 'camping', 'library', 'math', 'music', 'nature', 'science', 'writing'];
+
+export function defaultHeader(p) {
+  const top = trail(p)[0] || p;
+  let sum = 0;
+  for (const c of top.id) {
+    sum = (sum * 31 + c.charCodeAt(0)) >>> 0;
+  }
+  return `/backgrounds/${backgrounds[sum % backgrounds.length]}.jpg`;
+}
+
+export async function headerFor(p) {
+  for (let at = p; at; at = page(at.parent)) {
+    const {header} = splitHeader(await body(at));
+    if (header) {
+      return header;
+    }
+  }
+  return defaultHeader(p);
 }
 
 export function firstSentence(md) {
