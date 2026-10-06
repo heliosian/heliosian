@@ -230,18 +230,16 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	made(t, s, "DOCUMENT", htmlPart["id"], "extracted")
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		mu.Lock()
-		broken := asked["/broken.png"]
-		mu.Unlock()
 		settled := !slices.ContainsFunc(children(s, htmlPart["id"]), func(child store.Row) bool {
-			return child["content"] == "" && child["fetch"] == "" && !strings.HasSuffix(child["url"], "/broken.png")
+			return child["content"] == "" && child["fetch"] == "" && child["relation"] == "image"
 		})
-		if settled && broken > 0 {
+		if settled {
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("the images were not all fetched: %v", children(s, htmlPart["id"]))
 		}
+		queue.Refresh()
 		time.Sleep(10 * time.Millisecond)
 	}
 	got := []string{}
@@ -259,7 +257,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		"image||/page|refused",
 		"image||/private.png|sign_in",
 		"image|image/png|/busy.png|",
-		"image||/broken.png|",
+		"image||/broken.png|sign_in",
 		"image||/blocked.png|gone",
 	})
 	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[3]) != string(inline) || bytesOf(t, s, bucket, under[7]) != string(later) {
@@ -269,6 +267,9 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	defer mu.Unlock()
 	if asked["/open.gif"] > 0 {
 		t.Fatal("an image sized as a pixel was fetched")
+	}
+	if asked["/broken.png"] != fetchTries {
+		t.Fatalf("a failing image was asked for %d times, want %d", asked["/broken.png"], fetchTries)
 	}
 }
 

@@ -143,11 +143,19 @@ func (f *Fetcher) fetch(docs []store.Row) {
 	}
 	if err != nil {
 		f.mu.Lock()
+		tries := 0
 		for _, id := range ids {
 			f.tries[id]++
+			tries = max(tries, f.tries[id])
 		}
 		f.mu.Unlock()
-		slog.Warn("fetch: failed", "documents", ids, "url", ShortSource(doc["url"]), "error", err)
+		slog.Warn("fetch: failed", "documents", ids, "url", ShortSource(doc["url"]), "tries", tries, "error", err)
+		if tries < fetchTries {
+			return
+		}
+		if err := f.stop(ctx, ids, "sign_in"); err != nil {
+			slog.Error("fetch: write", "documents", ids, "error", err)
+		}
 		return
 	}
 	if got.stop != "" {
