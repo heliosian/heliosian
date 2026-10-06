@@ -1,31 +1,77 @@
 package db
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
 
-func TestOnlyAMissingHostIsGone(t *testing.T) {
+func TestOnlyALastingFailureIsUnreachable(t *testing.T) {
 	for _, c := range []struct {
 		name string
 		err  error
 		gone bool
 	}{
 		{"no such host", &url.Error{Op: "Get", URL: "http://r560896.example.org/c", Err: &net.OpError{Op: "dial", Err: &net.DNSError{Err: "no such host", Name: "r560896.example.org", IsNotFound: true}}}, true},
+		{"a lame referral", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.OpError{Op: "dial", Err: &net.DNSError{Err: "lame referral", Name: "example.org"}}}, true},
 		{"a dns server that timed out", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.DNSError{Err: "i/o timeout", Name: "example.org", IsTimeout: true}}, false},
+		{"a dns server that failed", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.DNSError{Err: "server misbehaving", Name: "example.org", IsTemporary: true}}, false},
+		{"an untrusted certificate", &url.Error{Op: "Get", URL: "https://example.org/", Err: &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}}, true},
 		{"a refused connection", &url.Error{Op: "Get", URL: "http://example.org/", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}, false},
 		{"no error", nil, false},
 	} {
-		if got := HostGone(c.err); got != c.gone {
+		if got := Unreachable(c.err); got != c.gone {
 			t.Errorf("%s: gone %v, want %v", c.name, got, c.gone)
 		}
+	}
+}
+
+func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
+	logo := pngOf(t, 3)
+	asked := atomic.Int32{}
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		w.Write(logo)
+	}))
+	defer site.Close()
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "kind": "newsletter", "name": "Clubs next week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000010", "url": site.URL + "/logo.png"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": site.URL + "/logo.png"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	StartFetcher(s, queue, blob.NewMemoryBucket())
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		a, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		b, _ := s.Model().Table("DOCUMENT").Get("doc00000000013")
+		if a["content"] != "" && b["content"] != "" {
+			if a["content"] != b["content"] {
+				t.Fatalf("the two documents hold different content: %v %v", a, b)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the documents were not filled: %v %v", a, b)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := asked.Load(); n != 1 {
+		t.Fatalf("the address was fetched %d times", n)
 	}
 }
 

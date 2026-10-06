@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	fetchTimeout = time.Minute
-	bodyLimit    = 25 << 20
+	fetchTimeout = 5 * time.Minute
+	bodyLimit    = 100 << 20
 	googleSignIn = "accounts.google.com"
 	signedInPage = "https://myaccount.google.com/"
 	stillToFetch = `(from DOCUMENT (where (and (in relation "image" "linked") (= fetch "sign_in") (blank content))))`
@@ -178,7 +178,7 @@ func main() {
 		body, status, final, err := s.get(address, accept)
 		stop := ""
 		switch {
-		case db.HostGone(err):
+		case db.Unreachable(err):
 			stop = "gone"
 		case err != nil:
 			slog.Warn("failed", "document", id, "url", address, "error", err)

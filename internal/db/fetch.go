@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -23,18 +24,19 @@ import (
 )
 
 const (
-	fetchActor   = "fetch"
-	fetchTimeout = 30 * time.Second
-	fetchLimit   = 25 << 20
-	fetchHosts   = 8
-	fetchWaits   = 4
-	fetchTries   = 3
-	fetchWait    = time.Minute
-	fetchLongest = 15 * time.Minute
-	googleSignIn = "accounts.google.com"
+	fetchActor    = "fetch"
+	fetchTimeout  = 30 * time.Second
+	exportTimeout = 5 * time.Minute
+	fetchLimit    = 100 << 20
+	fetchHosts    = 8
+	fetchWaits    = 4
+	fetchTries    = 3
+	fetchWait     = time.Minute
+	fetchLongest  = 15 * time.Minute
+	googleSignIn  = "accounts.google.com"
 )
 
-var fetchClient = &http.Client{Timeout: fetchTimeout}
+var fetchClient = &http.Client{}
 
 var keptPages = []string{"application/pdf", "text/html"}
 
@@ -78,23 +80,30 @@ func StartFetcher(s *Store, queue *store.Queue, bucket *blob.Bucket) {
 
 func (f *Fetcher) run() {
 	for range f.poke {
-		byHost := map[string][]store.Row{}
+		byHost := map[string][][]store.Row{}
+		same := map[[2]string]int{}
 		for _, doc := range f.pending() {
 			u, err := url.Parse(doc["url"])
 			if err != nil {
 				slog.Error("fetch: address", "document", doc["id"], "error", err)
 				continue
 			}
-			byHost[u.Host] = append(byHost[u.Host], doc)
+			key := [2]string{doc["relation"], doc["url"]}
+			if i, ok := same[key]; ok {
+				byHost[u.Host][i] = append(byHost[u.Host][i], doc)
+				continue
+			}
+			same[key] = len(byHost[u.Host])
+			byHost[u.Host] = append(byHost[u.Host], []store.Row{doc})
 		}
 		slots := make(chan struct{}, fetchHosts)
 		wg := sync.WaitGroup{}
-		for _, docs := range byHost {
+		for _, groups := range byHost {
 			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()
-				for _, doc := range docs {
-					f.fetch(doc)
+				for _, docs := range groups {
+					f.fetch(docs)
 				}
 			})
 		}
@@ -114,47 +123,61 @@ func (f *Fetcher) pending() []store.Row {
 	return out
 }
 
-func (f *Fetcher) fetch(doc store.Row) {
+func (f *Fetcher) fetch(docs []store.Row) {
 	ctx := context.Background()
 	start := time.Now()
+	doc := docs[0]
+	ids := []string{}
+	for _, d := range docs {
+		ids = append(ids, d["id"])
+	}
 	got, err := fetchURL(ctx, doc)
 	for waits := 0; err != nil && waits < fetchWaits; waits++ {
 		var b busy
 		if !errors.As(err, &b) {
 			break
 		}
-		slog.Info("fetch: waiting", "document", doc["id"], "url", ShortSource(doc["url"]), "for", b.wait)
+		slog.Info("fetch: waiting", "documents", ids, "url", ShortSource(doc["url"]), "for", b.wait)
 		time.Sleep(b.wait)
 		got, err = fetchURL(ctx, doc)
 	}
 	if err != nil {
 		f.mu.Lock()
-		f.tries[doc["id"]]++
+		for _, id := range ids {
+			f.tries[id]++
+		}
 		f.mu.Unlock()
-		slog.Warn("fetch: failed", "document", doc["id"], "url", ShortSource(doc["url"]), "error", err)
+		slog.Warn("fetch: failed", "documents", ids, "url", ShortSource(doc["url"]), "error", err)
 		return
 	}
 	if got.stop != "" {
-		slog.Info("fetch: stopped", "document", doc["id"], "url", ShortSource(doc["url"]), "fetch", got.stop, "why", got.why)
-		if err := f.stop(ctx, doc["id"], got.stop); err != nil {
-			slog.Error("fetch: write", "document", doc["id"], "error", err)
+		slog.Info("fetch: stopped", "documents", ids, "url", ShortSource(doc["url"]), "fetch", got.stop, "why", got.why)
+		if err := f.stop(ctx, ids, got.stop); err != nil {
+			slog.Error("fetch: write", "documents", ids, "error", err)
 		}
 		return
 	}
-	if err := f.keep(ctx, doc["id"], got); err != nil {
-		slog.Error("fetch: write", "document", doc["id"], "error", err)
+	if err := f.keep(ctx, ids, got); err != nil {
+		slog.Error("fetch: write", "documents", ids, "error", err)
 		return
 	}
-	slog.Info("fetch: done", "document", doc["id"], "url", ShortSource(doc["url"]), "mime", got.mime, "bytes", len(got.body), "took", time.Since(start).Round(time.Millisecond))
+	slog.Info("fetch: done", "documents", ids, "url", ShortSource(doc["url"]), "mime", got.mime, "bytes", len(got.body), "took", time.Since(start).Round(time.Millisecond))
 }
 
 func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ExportURL(doc["url"]), nil)
+	address := ExportURL(doc["url"])
+	timeout := fetchTimeout
+	if address != doc["url"] {
+		timeout = exportTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
 	resp, err := fetchClient.Do(req)
-	if HostGone(err) {
+	if Unreachable(err) {
 		return fetched{stop: "gone", why: err.Error()}, nil
 	}
 	if err != nil {
@@ -171,10 +194,10 @@ func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
 		return fetched{stop: "sign_in", why: resp.Status}, nil
 	case code == http.StatusRequestTimeout:
 		return fetched{}, fmt.Errorf("answered %s", resp.Status)
-	case code >= 400 && code < 500:
-		return fetched{stop: "gone", why: resp.Status}, nil
-	case code != http.StatusOK:
+	case code >= 500 && code < 600:
 		return fetched{}, fmt.Errorf("answered %s", resp.Status)
+	case code != http.StatusOK:
+		return fetched{stop: "gone", why: resp.Status}, nil
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, fetchLimit+1))
 	if err != nil {
@@ -220,9 +243,13 @@ func ExportURL(address string) string {
 	return address
 }
 
-func HostGone(err error) bool {
+func Unreachable(err error) bool {
 	var dns *net.DNSError
-	return errors.As(err, &dns) && dns.IsNotFound
+	if errors.As(err, &dns) {
+		return dns.IsNotFound || !dns.IsTemporary && !dns.IsTimeout
+	}
+	var cert *tls.CertificateVerificationError
+	return errors.As(err, &cert)
 }
 
 func retryAfter(header string) time.Duration {
@@ -235,23 +262,30 @@ func retryAfter(header string) time.Duration {
 	return min(max(wait, time.Second), fetchLongest)
 }
 
-func (f *Fetcher) still(tx *store.Tx, id string) bool {
-	now, ok := f.s.In(tx).Table("DOCUMENT").Get(id)
-	return ok && now["content"] == "" && now["fetch"] == ""
+func (f *Fetcher) still(tx *store.Tx, ids []string) []string {
+	out := []string{}
+	for _, id := range ids {
+		if now, ok := f.s.In(tx).Table("DOCUMENT").Get(id); ok && now["content"] == "" && now["fetch"] == "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
-func (f *Fetcher) stop(ctx context.Context, id, why string) error {
+func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
 	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
-		if !f.still(tx, id) {
-			return nil
+		stage := stager(f.s, tx, fetchActor)
+		for _, id := range f.still(tx, ids) {
+			if _, err := stage(Edit{Set: id, Cells: map[string]any{"fetch": why}}); err != nil {
+				return err
+			}
 		}
-		_, err := stager(f.s, tx, fetchActor)(Edit{Set: id, Cells: map[string]any{"fetch": why}})
-		return err
+		return nil
 	})
 	return err
 }
 
-func (f *Fetcher) keep(ctx context.Context, id string, got fetched) error {
+func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 	sum := sha256.Sum256(got.body)
 	hash := hex.EncodeToString(sum[:])
 	name := contentFolder + "/" + hash
@@ -264,7 +298,8 @@ func (f *Fetcher) keep(ctx context.Context, id string, got fetched) error {
 	}
 	committed := false
 	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
-		if !f.still(tx, id) {
+		open := f.still(tx, ids)
+		if len(open) == 0 {
 			return nil
 		}
 		stage := stager(f.s, tx, fetchActor)
@@ -272,9 +307,13 @@ func (f *Fetcher) keep(ctx context.Context, id string, got fetched) error {
 		if err != nil {
 			return err
 		}
-		_, err = stage(Edit{Set: id, Cells: map[string]any{"content": content}})
-		committed = err == nil
-		return err
+		for _, id := range open {
+			if _, err := stage(Edit{Set: id, Cells: map[string]any{"content": content}}); err != nil {
+				return err
+			}
+		}
+		committed = true
+		return nil
 	})
 	if stored && (err != nil || !committed) {
 		dropUnheld(f.s, f.bucket, []string{name})

@@ -162,6 +162,8 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 		case "/broken.png":
 			w.WriteHeader(http.StatusBadGateway)
+		case "/blocked.png":
+			w.WriteHeader(999)
 		case "/busy.png":
 			if times == 1 {
 				w.Header().Set("Retry-After", "1")
@@ -192,6 +194,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		`<img src="` + site.URL + `/private.png">`,
 		`<img src="` + site.URL + `/busy.png">`,
 		`<img src="` + site.URL + `/broken.png">`,
+		`<img src="` + site.URL + `/blocked.png">`,
 		`<img src="/relative.png">`,
 		`</body></html>`,
 	}, "")
@@ -257,6 +260,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		"image||/private.png|sign_in",
 		"image|image/png|/busy.png|",
 		"image||/broken.png|",
+		"image||/blocked.png|gone",
 	})
 	if bytesOf(t, s, bucket, under[1]) != string(logo) || bytesOf(t, s, bucket, under[3]) != string(inline) || bytesOf(t, s, bucket, under[7]) != string(later) {
 		t.Fatal("the images' bytes in the bucket differ")
