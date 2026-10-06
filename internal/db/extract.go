@@ -29,7 +29,11 @@ import (
 	"heliosian/internal/tomarkdown"
 )
 
-const extractActor = "extract"
+const (
+	extractActor   = "extract"
+	pdfType        = "application/pdf"
+	extractTimeout = 30 * time.Minute
+)
 
 type Extractor struct {
 	s      *Store
@@ -54,7 +58,7 @@ var extractors = map[string]func([]byte) ([]extracted, error){
 }
 
 func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
-	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), failed: map[string]bool{}, poke: make(chan struct{}, 1)}
+	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, poke: make(chan struct{}, 1)}
 	go x.run()
 	queue.OnSwap(func() {
 		select {
@@ -114,8 +118,7 @@ func (x *Extractor) pending() []string {
 		if !ok {
 			continue
 		}
-		kind := baseType(c["mime"])
-		if _, ok := extractors[kind]; ok || isImage(kind) {
+		if m.readable(row, baseType(c["mime"])) {
 			out = append(out, row["id"])
 		}
 	}
@@ -124,6 +127,14 @@ func (x *Extractor) pending() []string {
 
 func isImage(kind string) bool {
 	return strings.HasPrefix(kind, "image/")
+}
+
+func (m *Model) readable(doc store.Row, kind string) bool {
+	if _, ok := extractors[kind]; ok || isImage(kind) {
+		return true
+	}
+	_, mail := m.mailRootOf(doc)
+	return kind == pdfType && mail
 }
 
 func mailParts(raw []byte) ([]extracted, error) {
@@ -226,8 +237,8 @@ func (x *Extractor) extract(id string) (int, error) {
 		return 0, fmt.Errorf("its content %s is missing", doc["content"])
 	}
 	kind := baseType(content["mime"])
-	read, ok := extractors[kind]
-	if !ok && !isImage(kind) {
+	read := extractors[kind]
+	if !m.readable(doc, kind) {
 		return 0, nil
 	}
 	children := []extracted{}
@@ -237,9 +248,12 @@ func (x *Extractor) extract(id string) (int, error) {
 		if raw, _, err = x.bucket.Get(ctx, content["blob"]); err != nil {
 			return 0, err
 		}
-		if isImage(kind) {
+		switch {
+		case isImage(kind):
 			children, err = x.readImage(ctx, m, id, content, raw)
-		} else {
+		case kind == pdfType:
+			children, err = x.readPDF(ctx, m, id, content, raw)
+		default:
 			children, err = read(raw)
 		}
 		if err != nil {

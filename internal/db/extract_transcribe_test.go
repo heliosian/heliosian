@@ -11,6 +11,49 @@ import (
 	"heliosian/internal/store"
 )
 
+func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
+	var mu sync.Mutex
+	asked := 0
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		if !strings.Contains(request, "application/pdf") {
+			t.Errorf("claude was asked something other than a pdf: %.200s", request)
+		}
+		asked++
+		return "# Supply list\n\n- Pencils\n- Glue"
+	}))
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	if err := bucket.Put(t.Context(), "content/p1", pdfType, []byte("%PDF-1.4\n% a supply list\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "26"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Supplies", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "supplies.pdf"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "calendar", "content": "cnt00000000002"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	NewExtractor(s, queue, bucket, "test")
+	queue.Refresh()
+	made(t, s, "DOCUMENT", "doc00000000011", "extracted")
+	under := children(s, "doc00000000011")
+	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "# Supply list\n\n- Pencils\n- Glue" {
+		t.Fatalf("the pdf's children: %v", under)
+	}
+	if calendar, _ := s.Model().Table("DOCUMENT").Get("doc00000000020"); calendar["extracted"] != "" || s.Model().readable(calendar, pdfType) {
+		t.Fatalf("the year calendar's pdf is read: %v", calendar)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("claude was asked %d times, want once", asked)
+	}
+}
+
 func TestImagesAreTranscribed(t *testing.T) {
 	schedule, logo, icon := pngOf(t, 200), pngOf(t, 150), pngOf(t, 50)
 	var mu sync.Mutex

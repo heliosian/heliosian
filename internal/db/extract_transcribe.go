@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"log/slog"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -26,8 +27,14 @@ const (
 	imageLargest   = 8000
 	imageMostBytes = 3_750_000
 	imageMaxReply  = 8000
+	pdfMostBytes   = 24 << 20
+	pdfMaxReply    = 128000
 	decoration     = "(decoration)"
 )
+
+const pdfSystem = `You are given one PDF from an email a school sent to its families - a flyer, a letter, a schedule, a form, a handbook. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything.
+
+Transcribe only text you can read with certainty, letter by letter. Where something cannot be read - a blurred scan, a table too small to make out - leave it out and write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". Never reconstruct it from context. Leave out logos, wordmarks and decoration, even when they have words in them; words that only brand the document carry no information.`
 
 var claudeImageTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
 
@@ -37,7 +44,7 @@ Transcribe only text you can read with certainty, letter by letter. Images often
 
 If the image is only a logo, wordmark, banner or decoration, answer with exactly: (decoration) - even when it has words in it, such as the school's name or a program's name. Words that only brand the email carry no information.`
 
-func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content store.Row, raw []byte) ([]extracted, error) {
+func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content store.Row) ([]extracted, bool, error) {
 	docs := m.Table("DOCUMENT")
 	for _, other := range docs.Referencing("content", content["id"]) {
 		if other["id"] == id || other["extracted"] == "" {
@@ -50,11 +57,35 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content 
 			c, _ := m.Table("CONTENT").Get(child["content"])
 			text, _, err := x.bucket.Get(ctx, c["blob"])
 			if err != nil {
-				return nil, err
+				return nil, true, err
 			}
-			return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, nil
+			return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, true, nil
 		}
+		return nil, true, nil
+	}
+	return nil, false, nil
+}
+
+func transcribed(text string, err error) ([]extracted, error) {
+	var refused *anthropic.Error
+	switch {
+	case errors.Is(err, claude.ErrFinal):
+		return nil, err
+	case errors.As(err, &refused) && refused.StatusCode >= 400 && refused.StatusCode < 500 && refused.StatusCode != http.StatusTooManyRequests:
+		return nil, err
+	case err != nil:
+		return nil, fmt.Errorf("%w: %w", errAskAgain, err)
+	}
+	text = strings.TrimSpace(text)
+	if text == decoration {
 		return nil, nil
+	}
+	return markdownExtract(text), nil
+}
+
+func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content store.Row, raw []byte) ([]extracted, error) {
+	if before, read, err := x.readBefore(ctx, m, id, content); read || err != nil {
+		return before, err
 	}
 	config, _, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil {
@@ -69,24 +100,32 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content 
 		slog.Warn("extract: unreadable image", "document", id, "mime", content["mime"], "error", err)
 		return nil, nil
 	}
-	text, err := claude.Text(ctx, x.client, anthropic.MessageNewParams{
+	return transcribed(claude.Text(ctx, x.client, anthropic.MessageNewParams{
 		Model:        claude.ExtractImageModel,
 		MaxTokens:    imageMaxReply,
 		System:       []anthropic.TextBlockParam{{Text: imageSystem}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewImageBlockBase64(mimeType, base64.StdEncoding.EncodeToString(body)))},
 		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ExtractImageEffort},
-	})
-	if err != nil {
-		if errors.Is(err, claude.ErrFinal) {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w: %w", errAskAgain, err)
+	}))
+}
+
+func (x *Extractor) readPDF(ctx context.Context, m *Model, id string, content store.Row, raw []byte) ([]extracted, error) {
+	if before, read, err := x.readBefore(ctx, m, id, content); read || err != nil {
+		return before, err
 	}
-	text = strings.TrimSpace(text)
-	if text == decoration {
-		return nil, nil
+	if len(raw) > pdfMostBytes {
+		return nil, fmt.Errorf("a pdf of %d bytes is larger than claude reads, %d", len(raw), pdfMostBytes)
 	}
-	return markdownExtract(text), nil
+	return transcribed(claude.Text(ctx, x.client, anthropic.MessageNewParams{
+		Model:     claude.ExtractPDFModel,
+		MaxTokens: pdfMaxReply,
+		System:    []anthropic.TextBlockParam{{Text: pdfSystem}},
+		Messages: []anthropic.MessageParam{anthropic.NewUserMessage(
+			anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(raw)}),
+			anthropic.NewTextBlock("Transcribe this document."),
+		)},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ExtractPDFEffort},
+	}))
 }
 
 func claudeImage(raw []byte, mimeType string, config image.Config) ([]byte, string, error) {
