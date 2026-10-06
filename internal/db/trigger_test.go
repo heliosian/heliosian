@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -105,6 +106,67 @@ func TestFamilyNameFollowsItsMembers(t *testing.T) {
 
 	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)
 	name("Chang-Ashdown Family", "with Kai withheld")
+}
+
+func TestAReceivedPostIsFiledAsMail(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	write := func(raw string) []string {
+		t.Helper()
+		b, err := ParseBatch([]byte(raw))
+		if err != nil {
+			t.Fatal(err)
+		}
+		written, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return written
+	}
+	filed := func(message string) []map[string]string {
+		t.Helper()
+		out := []map[string]string{}
+		for _, d := range s.Model().Table("DOCUMENT").Referencing("message", message) {
+			out = append(out, d)
+		}
+		return out
+	}
+	content := write(`{"batch": [{"insert": "CONTENT", "row": {"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}}]}`)[0]
+
+	post := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "from_person": "per00000000002", "subject": "Tide pools", "created": "2026-09-18 19:51", "content": "` + content + `"}}]}`)[0]
+	docs := filed(post)
+	if len(docs) != 1 {
+		t.Fatalf("the post was filed %d times", len(docs))
+	}
+	d := docs[0]
+	if d["kind"] != "mail" || d["content"] != content || d["name"] != "Tide pools" || d["published"] != "2026-09-18 19:51" || d["author"] != "per00000000002" {
+		t.Fatalf("the post's document reads %v", d)
+	}
+	if _, ok := s.Model().Table("DOCUMENT_GROUP").Find(d["id"], "grp00000000030", "sent_to"); !ok {
+		t.Fatal("the post's document was not sent to its list")
+	}
+
+	bare := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "subject": "Raw message to come", "created": "2026-09-19 08:00"}}]}`)[0]
+	if n := len(filed(bare)); n != 0 {
+		t.Fatalf("a post with no raw message was filed %d times", n)
+	}
+	before, _ := s.Model().Table("MESSAGE").Get(bare)
+	after := maps.Clone(before)
+	after["content"] = content
+	if edits, err := postDocument(s.Model(), Change{Table: "MESSAGE", Old: before, New: after}); err != nil || len(edits) != 1 || edits[0].Insert != "DOCUMENT" {
+		t.Fatalf("a post whose raw message came later is filed by %v, %v", edits, err)
+	}
+	if edits, err := postDocument(s.Model(), Change{Table: "MESSAGE", Old: after, New: after}); err != nil || len(edits) != 0 {
+		t.Fatalf("a post already holding its raw message is filed again by %v, %v", edits, err)
+	}
+	held, _ := s.Model().Table("MESSAGE").Get(post)
+	if edits, err := postDocument(s.Model(), Change{Table: "MESSAGE", New: held}); err != nil || len(edits) != 0 {
+		t.Fatalf("a post already filed is filed again by %v, %v", edits, err)
+	}
+
+	out := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "out", "kind": "post", "group": "grp00000000030", "parent": "` + post + `", "subject": "Tide pools", "created": "2026-09-18 19:51", "content": "` + content + `"}}]}`)[0]
+	if n := len(filed(out)); n != 0 {
+		t.Fatalf("an outbound copy was filed %d times", n)
+	}
 }
 
 func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {

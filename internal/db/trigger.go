@@ -24,6 +24,42 @@ var triggers = []trigger{
 	{table: "GROUP", fire: servingNames},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "DOCUMENT", fire: wikiSlugMoved},
+	{table: "MESSAGE", fire: postDocument},
+	{table: "DOCUMENT", fire: postSentTo},
+}
+
+func receivedPost(row store.Row) bool {
+	return row != nil && row["direction"] == "in" && row["kind"] == "post"
+}
+
+func postDocument(m *Model, c Change) ([]Edit, error) {
+	if !receivedPost(c.New) || c.New["content"] == "" || (c.Old != nil && c.Old["content"] != "") {
+		return nil, nil
+	}
+	if len(m.Table("DOCUMENT").Referencing("message", c.New["id"])) > 0 {
+		return nil, nil
+	}
+	row := map[string]any{"kind": "mail", "content": c.New["content"], "message": c.New["id"]}
+	for column, from := range map[string]string{"name": "subject", "published": "created", "author": "from_person"} {
+		if v := c.New[from]; v != "" {
+			row[column] = v
+		}
+	}
+	return []Edit{{Insert: "DOCUMENT", Row: row}}, nil
+}
+
+func postSentTo(m *Model, c Change) ([]Edit, error) {
+	if c.Old != nil || c.New == nil || c.New["message"] == "" {
+		return nil, nil
+	}
+	post, ok := m.Table("MESSAGE").Get(c.New["message"])
+	if !ok || !receivedPost(post) || post["group"] == "" {
+		return nil, nil
+	}
+	if _, held := m.Table("DOCUMENT_GROUP").Find(c.New["id"], post["group"], "sent_to"); held {
+		return nil, nil
+	}
+	return []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": c.New["id"], "group": post["group"], "relation": "sent_to"}}}, nil
 }
 
 func wikiSlugMoved(m *Model, c Change) ([]Edit, error) {
