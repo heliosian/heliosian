@@ -42,4 +42,14 @@
   --no-school: #c2442d;
   --no-aftercare: #6f4fa0;
   --other: #4c6a70;
+  --callout-note: #2f6fb0;
+  --callout-note-wash: #eaf2fb;
+  --callout-tip: #2e8a45;
+  --callout-tip-wash: #e8f5ec;
+  --callout-important: #6f4fa0;
+  --callout-important-wash: #f0eaf8;
+  --callout-warning: #b07a08;
+  --callout-warning-wash: #fdf4dc;
+  --callout-caution: #c2442d;
+  --callout-caution-wash: #fbeae6;
 }

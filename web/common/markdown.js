@@ -1,5 +1,5 @@
 import {appOrigin} from '/appswitch.js';
-import {el} from '/elements.js';
+import {el, svg} from '/elements.js';
 
 const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|wiki|home|www)\.heliosian\.com(\/.*)?$/;
 const apex = /^https?:\/\/heliosian\.com(\/.*)?$/;
@@ -174,6 +174,32 @@ function table(lines, i, cards) {
   return [wrap, i];
 }
 
+const calloutKinds = {
+  note: {label: 'Note', icon: 'info'},
+  tip: {label: 'Tip', icon: 'bulb'},
+  important: {label: 'Important', icon: 'megaphone'},
+  warning: {label: 'Warning', icon: 'warn'},
+  caution: {label: 'Caution', icon: 'ban'},
+};
+
+const calloutMarker = /^> \[!(note|tip|important|warning|caution)\]\s*$/i;
+
+function callout(lines, i, cards) {
+  const kind = lines[i].match(calloutMarker)[1].toLowerCase();
+  const {label, icon} = calloutKinds[kind];
+  const body = [];
+  i++;
+  while (i < lines.length && /^>( |$)/.test(lines[i])) {
+    body.push(lines[i].replace(/^> ?/, ''));
+    i++;
+  }
+  const box = el('div', 'callout callout-' + kind);
+  const title = el('p', 'callout-title');
+  title.append(svg(icon), label);
+  box.append(title, render(body.join('\n'), cards));
+  return [box, i];
+}
+
 export function render(text, cards = {}) {
   const out = document.createDocumentFragment();
   const lines = text.replace(/\r/g, '').split('\n');
@@ -225,6 +251,12 @@ export function render(text, cards = {}) {
         list.append(item);
       }
       out.append(list);
+      continue;
+    }
+    if (calloutMarker.test(line)) {
+      const [node, next] = callout(lines, i, cards);
+      out.append(node);
+      i = next;
       continue;
     }
     if (line.startsWith('> ')) {

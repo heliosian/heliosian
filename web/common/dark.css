@@ -157,6 +157,16 @@ html[data-theme="dark"] {
   --today-ring: inset 0 0 0 1px rgba(197, 224, 74, 0.55);
   --today-num: #c5e04a;
   --other-day: rgba(230, 238, 238, 0.55);
+  --callout-note: #8ab8ee;
+  --callout-note-wash: #13283a;
+  --callout-tip: #7bd28f;
+  --callout-tip-wash: #16321f;
+  --callout-important: #b9a4ec;
+  --callout-important-wash: #2c2340;
+  --callout-warning: #f1b940;
+  --callout-warning-wash: #3a2c14;
+  --callout-caution: #f37766;
+  --callout-caution-wash: #3a1f1a;
   color-scheme: dark;
 }
 

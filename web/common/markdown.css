@@ -1,0 +1,17 @@
+.callout { margin: 12px 0; padding: 10px 16px; border-left: 4px solid var(--callout); border-radius: 0 8px 8px 0; background: var(--callout-wash); }
+
+.callout > :last-child { margin-bottom: 0; }
+
+.callout-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: var(--callout); font-weight: 700; }
+
+.callout-title svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+.callout-note { --callout: var(--callout-note); --callout-wash: var(--callout-note-wash); }
+
+.callout-tip { --callout: var(--callout-tip); --callout-wash: var(--callout-tip-wash); }
+
+.callout-important { --callout: var(--callout-important); --callout-wash: var(--callout-important-wash); }
+
+.callout-warning { --callout: var(--callout-warning); --callout-wash: var(--callout-warning-wash); }
+
+.callout-caution { --callout: var(--callout-caution); --callout-wash: var(--callout-caution-wash); }

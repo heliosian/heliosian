@@ -18,6 +18,16 @@ A page may have side cards, shown down its right: each a `DOCUMENT` under the pa
 
 A page's or a card's Markdown may show pictures, `![words](/api/wiki/picture/<sha256>.<ext>)`: a picture goes up, and comes in from the picture libraries, through the same image routes HCA-Team, Celebrate and When use (`imagesearch.Search.Register`, under `/api/wiki`, the folder `wiki-images` from `imageFolders` in `internal/blob/images.go`), into `wiki-images/` in the media bucket, named by its SHA-256, and `GET /api/wiki/picture/{name}` (`registerWiki` in `internal/db/wiki.go`) answers it from the bucket to anyone the directory signs in, for a name the `wiki-images/` pattern allows and nothing else, under a `Content-Security-Policy: sandbox` of its own. The shared `markdown.js` draws an image only from that path, so Markdown anywhere, a wiki page or an Ask answer, never loads a picture from elsewhere; any other image is drawn as its words.
 
+Markdown may hold callouts, GitHub's alert syntax: a blockquote whose first line is `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` or `> [!CAUTION]` alone, its following `>` lines the callout's own Markdown, drawn by `markdown.js` as a box with the kind's icon and name, in the kind's colour (`web/common/markdown.css`, its colours `--callout-<kind>` in the palette and `dark.css`). A wiki page and an Ask answer both draw them.
+
+```markdown
+> [!WARNING]
+> The trail closes at dusk.
+>
+> - Bring a headlamp
+> - Bring a warm layer
+```
+
 A page may have a header image, a banner across its top, held in YAML front matter at the very start of its Markdown, so it is the page's data and needs nothing in the data model of its own:
 
 ```markdown
