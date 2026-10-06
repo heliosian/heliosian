@@ -12,6 +12,7 @@ import (
 )
 
 func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
+	t.Skip("PDF extraction is off")
 	var mu sync.Mutex
 	asked := 0
 	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
@@ -55,6 +56,7 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 }
 
 func TestImagesAreTranscribed(t *testing.T) {
+	t.Skip("image extraction is off")
 	schedule, logo, icon := pngOf(t, 200), pngOf(t, 150), pngOf(t, 50)
 	var mu sync.Mutex
 	asked := map[string]int{}

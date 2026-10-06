@@ -130,11 +130,8 @@ func isImage(kind string) bool {
 }
 
 func (m *Model) readable(doc store.Row, kind string) bool {
-	if _, ok := extractors[kind]; ok || isImage(kind) {
-		return true
-	}
-	_, mail := m.mailRootOf(doc)
-	return kind == pdfType && mail
+	_, ok := extractors[kind]
+	return ok
 }
 
 func mailParts(raw []byte) ([]extracted, error) {
