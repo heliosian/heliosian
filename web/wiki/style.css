@@ -135,8 +135,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-bottom: 14px; }
 
-.page-lead { color: var(--muted); font-size: 16px; margin: 0 0 18px; }
-
 .panel-empty { padding: 28px 16px; color: var(--muted); font-size: 15px; text-align: center; }
 
 /* Every page, one row each. */

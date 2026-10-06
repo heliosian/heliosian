@@ -74,7 +74,7 @@ export function listPage() {
   make.append(svg('plus'), el('span', '', 'New Page'));
   const actions = el('div');
   actions.append(make);
-  out.append(head('Helios Wiki', actions), el('p', 'page-lead', 'Parent-to-parent info: what families have learned, written down for the next ones.'));
+  out.append(head('Wiki', actions));
   const list = el('div');
   out.append(list);
   let asked = 0;
@@ -104,8 +104,9 @@ export function listPage() {
 
 const tools = imageTools('/api/wiki', {state: {model: {imageSearch: true}}});
 
-function headerSaver(p) {
+function headerSaver(p, hero) {
   return async name => {
+    hero.querySelector('.hero-image-bar').replaceChildren(el('span', 'hero-image-status', 'Saving…'));
     try {
       await setHeader(p.id, name ? picturePath + name.split('/').pop() : '');
       await load();
@@ -213,7 +214,7 @@ export function viewPage(id) {
   const hero = el('div');
   body(p).then(async md => {
     const {header, text} = splitHeader(md);
-    const edit = {image: header, tools, save: headerSaver(p)};
+    const edit = {image: header, tools, save: headerSaver(p, hero)};
     hero.replaceChildren(detailHero({imageUrl: await headerFor(p), title: p.name, path: pagePath(p), edit}));
     content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', children.length ? 'This page holds the pages below.' : 'This page is empty. Edit it to add something.'));
     outline(content, contents);
