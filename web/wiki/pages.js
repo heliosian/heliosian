@@ -1,9 +1,10 @@
-import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove} from './state.js';
-import {el, svg, link, button, toast} from '/elements.js';
+import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader} from './state.js';
+import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {navigate, load, notFound} from '/router.js';
 import {render} from '/markdown.js';
 import {imageTools} from '/images.js';
+import {detailHero, heroImageBar} from '/heroimage.js';
 
 function head(title, actions) {
   const top = el('div', 'page-head');
@@ -70,7 +71,20 @@ export function listPage() {
   return out;
 }
 
-const tools = imageTools('/api/wiki', {state: {}});
+const tools = imageTools('/api/wiki', {state: {model: {imageSearch: true}}});
+
+function headerSaver(p) {
+  return async name => {
+    try {
+      await setHeader(p.id, name ? picturePath + name.split('/').pop() : '');
+      await load();
+      toast(name ? 'Header image saved' : 'Header image removed');
+    } catch (err) {
+      toast(err.message);
+      await load();
+    }
+  };
+}
 
 function anchorFor(text, taken) {
   const base = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
@@ -151,7 +165,15 @@ export function viewPage(id) {
   const content = el('article', 'wiki-body');
   content.append(el('p', 'panel-empty', 'Loading…'));
   main.append(content);
-  body(p).then(text => {
+  const hero = el('div');
+  body(p).then(md => {
+    const {header, text} = splitHeader(md);
+    const edit = {image: header, tools, save: headerSaver(p)};
+    if (header) {
+      hero.replaceChildren(detailHero({imageUrl: header, title: p.name, path: pagePath(p), edit}));
+    } else {
+      actions.prepend(heroImageBar({image: '', imageUrl: '', query: p.name, tools, save: edit.save}));
+    }
     content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', children.length ? 'This page holds the pages below.' : 'This page is empty. Edit it to add something.'));
     outline(content, contents);
   }).catch(err => {
@@ -163,7 +185,7 @@ export function viewPage(id) {
     main.append(el('h2', 'wiki-section', 'Pages in this section'), list);
   }
   cols.append(main, side);
-  out.append(top, cols);
+  out.append(top, hero, cols);
   return out;
 }
 
@@ -221,6 +243,28 @@ function imageInserter(textarea, label) {
   const wrap = el('span', 'wiki-insert');
   wrap.append(insert, file);
   return wrap;
+}
+
+function headerEditor(query) {
+  let header = '';
+  const wrap = el('div', 'detail-hero wiki-header-edit');
+  const draw = () => {
+    const picture = header ? imageThumb(header, '', 'detail-hero-image') : el('div', 'wiki-header-empty', 'No header image');
+    const save = async name => {
+      header = name ? picturePath + name.split('/').pop() : '';
+      draw();
+    };
+    wrap.replaceChildren(picture, heroImageBar({image: header, imageUrl: header, query: query(), tools, save}));
+  };
+  draw();
+  return {
+    wrap,
+    set: value => {
+      header = value;
+      draw();
+    },
+    value: () => header,
+  };
 }
 
 function cardsEditor(p) {
@@ -322,10 +366,11 @@ export function editPage(id) {
     bar.append(button('Delete', 'trash', 'button button-secondary wiki-delete', () => deletePage(p)));
   }
   const cards = cardsEditor(p);
+  const header = headerEditor(() => title.value);
   const main = el('div', 'wiki-editor-main');
   const textTools = el('div', 'wiki-text-tools');
   textTools.append(hint, imageInserter(text, 'Insert Image'));
-  main.append(title, where);
+  main.append(header.wrap, title, where);
   if (!p || mine(p) || state.admin) {
     main.append(address);
   }
@@ -335,8 +380,10 @@ export function editPage(id) {
   form.append(main, side);
   out.append(form);
   if (p) {
-    body(p).then(t => {
-      text.value = t;
+    body(p).then(md => {
+      const split = splitHeader(md);
+      header.set(split.header);
+      text.value = split.text;
       text.disabled = false;
     }).catch(err => toast(err.message));
   }
@@ -345,7 +392,7 @@ export function editPage(id) {
     saveButton.disabled = true;
     try {
       await cards.ready;
-      const saved = await save(p ? p.id : '', parent.value, slug.value.trim(), title.value, text.value, cards.value());
+      const saved = await save(p ? p.id : '', parent.value, slug.value.trim(), title.value, joinHeader(header.value(), text.value), cards.value());
       await load();
       navigate(pagePath(page(saved.result[0])));
       toast('Saved');

@@ -47,13 +47,14 @@ func TestWikiShare(t *testing.T) {
 
 func TestFirstSentence(t *testing.T) {
 	for markdown, want := range map[string]string{
-		"# Title\n\nOne. Two.":                 "One.",
-		"```\nNot this.\n```\nThis one!":       "This one!",
-		"> Quoted line with no end":            "Quoted line with no end",
-		"1. *First* step? Then more.":          "First step?",
-		"# Only headings\n## And more":         "",
-		"Version 2.5 is out. Upgrade.":         "Version 2.5 is out.",
-		"![pic](/api/wiki/picture/a.png)\nHi.": "Hi.",
+		"# Title\n\nOne. Two.":                                 "One.",
+		"```\nNot this.\n```\nThis one!":                       "This one!",
+		"> Quoted line with no end":                            "Quoted line with no end",
+		"1. *First* step? Then more.":                          "First step?",
+		"# Only headings\n## And more":                         "",
+		"Version 2.5 is out. Upgrade.":                         "Version 2.5 is out.",
+		"![pic](/api/wiki/picture/a.png)\nHi.":                 "Hi.",
+		"---\nheader_image: /api/wiki/picture/a.png\n---\nHi.": "Hi.",
 	} {
 		if got := firstSentence(markdown); got != want {
 			t.Errorf("firstSentence(%q) = %q, want %q", markdown, got, want)

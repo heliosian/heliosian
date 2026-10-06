@@ -169,9 +169,20 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 	return page, true, nil
 }
 
+func withoutFrontMatter(markdown string) string {
+	rest, ok := strings.CutPrefix(markdown, "---\n")
+	if !ok {
+		return markdown
+	}
+	if _, body, ok := strings.Cut(rest, "\n---\n"); ok {
+		return body
+	}
+	return markdown
+}
+
 func firstSentence(markdown string) string {
 	fenced := false
-	for _, line := range strings.Split(markdown, "\n") {
+	for _, line := range strings.Split(withoutFrontMatter(markdown), "\n") {
 		if strings.HasPrefix(line, "```") {
 			fenced = !fenced
 			continue

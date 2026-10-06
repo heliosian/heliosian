@@ -129,6 +129,32 @@ export async function body(p) {
   return bodies.get(p.content);
 }
 
+export const picturePath = '/api/wiki/picture/';
+
+export function splitHeader(md) {
+  const front = md.match(/^---\n([\s\S]*?)\n---\n/);
+  if (!front) {
+    return {header: '', text: md};
+  }
+  const line = front[1].split('\n').find(l => l.startsWith('header_image:'));
+  const value = line ? line.slice('header_image:'.length).trim() : '';
+  return {header: value.startsWith(picturePath) ? value : '', text: md.slice(front[0].length)};
+}
+
+export function joinHeader(header, text) {
+  if (!header) {
+    return text;
+  }
+  return `---\nheader_image: ${header}\n---\n${text}`;
+}
+
+export async function setHeader(id, header) {
+  await loadModel();
+  const p = page(id);
+  const {text} = splitHeader(await body(p));
+  return save(p.id, p.parent, p.slug, p.name, joinHeader(header, text));
+}
+
 export function save(document, parent, slug, name, text, sides) {
   return api('POST', '/api/do/wiki', {document, parent, slug, name, body: text, sides});
 }
