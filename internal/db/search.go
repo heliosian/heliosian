@@ -645,6 +645,7 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 		return strings.Compare(a.id, b.id)
 	})
 	out := []SearchHit{}
+	shown := map[string]bool{}
 	for _, h := range hits {
 		if len(out) == searchResults {
 			break
@@ -653,6 +654,12 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 		row, ok := r.table(t.Name).Get(h.id)
 		if !ok || !r.readable(t, row) {
 			continue
+		}
+		if t.Name == "DOCUMENT" {
+			if shown[row["content"]] {
+				continue
+			}
+			shown[row["content"]] = true
 		}
 		out = append(out, SearchHit{ID: h.id, Summary: h.summary})
 	}

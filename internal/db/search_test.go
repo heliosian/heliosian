@@ -175,6 +175,37 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 	}
 }
 
+func TestTheSameTextIsFoundOnce(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	extracts := []string{}
+	for _, subject := range []string{"Tide pools", "Tide pools again"} {
+		root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: "+subject+"\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
+		made(t, s, "DOCUMENT", root, "extracted")
+		part := children(s, root)[0]
+		made(t, s, "DOCUMENT", part["id"], "extracted")
+		extracts = append(extracts, children(s, part["id"])[0]["id"])
+	}
+	m := s.Model()
+	first, _ := m.Table("DOCUMENT").Get(extracts[0])
+	second, _ := m.Table("DOCUMENT").Get(extracts[1])
+	if first["content"] != second["content"] {
+		t.Fatalf("the two extracts hold different content: %v %v", first, second)
+	}
+	madeAll(t, s, x)
+	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots"))
+	found := 0
+	for _, id := range extracts {
+		if slices.Contains(got, id) {
+			found++
+		}
+	}
+	if found != 1 {
+		t.Fatalf("the search for boots found %d of the two copies: %v", found, got)
+	}
+}
+
 func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)

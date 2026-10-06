@@ -70,6 +70,16 @@ func TestInlineMarkupAroundBlocksKeepsItsWords(t *testing.T) {
 	}
 }
 
+func TestAPageIsItsMainAlone(t *testing.T) {
+	markdown, err := HTML(`<html><body><nav><a href="/about">About</a></nav><main><h1>Aftercare</h1><p>Aftercare runs until six.</p></main><footer><p>Copyright Helios School</p></footer></body></html>`, (&LinkResolver{}).Resolve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if markdown != "# Aftercare\n\nAftercare runs until six." {
+		t.Fatalf("markdown: %q", markdown)
+	}
+}
+
 func TestNonBreakingSpacesAreSpaces(t *testing.T) {
 	markdown, err := HTML("<p>Pick\u00a0up\u00a0at 3</p>", (&LinkResolver{}).Resolve)
 	if err != nil {

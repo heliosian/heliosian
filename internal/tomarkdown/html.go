@@ -31,7 +31,7 @@ func HTML(source string, resolve func(string) string) (string, error) {
 		return "", err
 	}
 	r := &renderer{resolve: resolve}
-	r.walk(doc)
+	r.walk(mainOf(doc))
 	r.flush()
 	out := &strings.Builder{}
 	for i, block := range r.blocks {
@@ -45,6 +45,25 @@ func HTML(source string, resolve func(string) string) (string, error) {
 		out.WriteString(block)
 	}
 	return out.String(), nil
+}
+
+func mainOf(doc *html.Node) *html.Node {
+	if found := find(doc, "main"); found != nil {
+		return found
+	}
+	return doc
+}
+
+func find(n *html.Node, tag string) *html.Node {
+	if n.Type == html.ElementNode && n.Data == tag {
+		return n
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if found := find(c, tag); found != nil {
+			return found
+		}
+	}
+	return nil
 }
 
 func (r *renderer) walk(n *html.Node) {
