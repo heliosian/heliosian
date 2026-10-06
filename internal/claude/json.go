@@ -11,7 +11,10 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
-var ErrFinal = errors.New("asking again would answer the same")
+var (
+	ErrFinal    = errors.New("asking again would answer the same")
+	ErrCutShort = errors.New("the answer reached its token limit")
+)
 
 func JSON(ctx context.Context, client anthropic.Client, params anthropic.MessageNewParams, out any) (string, error) {
 	text, err := Text(ctx, client, params)
@@ -37,6 +40,9 @@ func Text(ctx context.Context, client anthropic.Client, params anthropic.Message
 	}
 	if resp.StopReason == anthropic.StopReasonRefusal {
 		return "", fmt.Errorf("claude refused: %s: %s: %w", resp.StopDetails.Category, resp.StopDetails.Explanation, ErrFinal)
+	}
+	if resp.StopReason == anthropic.StopReasonMaxTokens {
+		return "", fmt.Errorf("claude stopped early: %s: %w: %w", resp.StopReason, ErrCutShort, ErrFinal)
 	}
 	if resp.StopReason != anthropic.StopReasonEndTurn {
 		return "", fmt.Errorf("claude stopped early: %s: %w", resp.StopReason, ErrFinal)

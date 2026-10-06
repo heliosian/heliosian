@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/serve"
 )
 
@@ -254,31 +255,23 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The new PHOTO and the original's hash.", "Stored"), "400": failure("Not an image, or a bad crop box.")}),
 			},
 		},
-		doPrefix + "calendar-pdf": schema{
+		doPrefix + "file": schema{
 			"post": schema{
-				"tags":    []string{"do"},
-				"summary": "Add a version of the year calendar",
+				"tags":        []string{"do"},
+				"summary":     "Add a file the community received or shared",
+				"description": "The file's type is its part's Content-Type, or read from its bytes when that is absent or application/octet-stream. Mail (message/rfc822) is read from its headers alone and takes no other field; anything else needs url and published and becomes a root of kind file, or calendar with kind=calendar.",
 				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
 					"type":     "object",
-					"required": []string{"pdf"},
+					"required": []string{"file"},
 					"properties": schema{
-						"pdf": schema{"type": "string", "contentMediaType": "application/pdf"},
-						"url": schema{"type": "string", "format": "uri"},
+						"file":      schema{"type": "string", "contentMediaType": "application/octet-stream"},
+						"kind":      schema{"type": "string", "enum": []string{"calendar"}},
+						"name":      schema{"type": "string"},
+						"url":       schema{"type": "string", "format": "uri"},
+						"published": schema{"type": "string", "description": "When the file last changed, in school time, as " + cells.StampFormat},
 					},
 				}}}},
-				"responses": refusals(schema{"200": answers("The DOCUMENT holding the PDF and its hash.", "Stored"), "400": failure("Not a PDF.")}),
-			},
-		},
-		doPrefix + "mail": schema{
-			"post": schema{
-				"tags":    []string{"do"},
-				"summary": "Add a mail message the community received",
-				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
-					"type":       "object",
-					"required":   []string{"eml"},
-					"properties": schema{"eml": schema{"type": "string", "contentMediaType": "message/rfc822"}},
-				}}}},
-				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the message and its hash.", "Stored"), "400": failure("Not a mail message, or no readable Date.")}),
+				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the file and its hash.", "Stored"), "400": failure("Mail that does not parse or has no readable Date, or another file with no url or published moment.")}),
 			},
 		},
 		doPrefix + "fetched": schema{

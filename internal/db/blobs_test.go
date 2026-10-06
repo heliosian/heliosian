@@ -40,7 +40,7 @@ func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
 	}
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "25"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "page", "content": "cnt00000000001"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001"}),
 	); err != nil {
 		t.Fatal(err)
 	}

@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,6 +73,44 @@ func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, ve
 	}
 	auth.Fixed(as, mux).ServeHTTP(rec, r)
 	return rec
+}
+
+func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as string, fields map[string]string, mimeType string, content []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	for k, v := range fields {
+		if err := form.WriteField(k, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	header := textproto.MIMEHeader{"Content-Disposition": {`form-data; name="file"; filename="upload"`}}
+	if mimeType != "" {
+		header.Set("Content-Type", mimeType)
+	}
+	part, err := form.CreatePart(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(content)
+	form.Close()
+	mux := http.NewServeMux()
+	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
+	r := httptest.NewRequest(http.MethodPost, doPrefix+"file", body)
+	r.Header.Set("Content-Type", form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
+		r.Header.Set("Authorization", "Bearer "+key)
+		mux.ServeHTTP(rec, r)
+		return rec
+	}
+	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	return rec
+}
+
+func postMail(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as string, eml []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	return postUpload(t, s, queue, pics, as, nil, "message/rfc822", eml)
 }
 
 func made(t *testing.T, s *Store, table, id, column string) store.Row {
@@ -276,10 +315,10 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
 	pdf := []byte("%PDF-1.4\n% a year calendar\n")
-	fields := map[string]string{"url": "https://www.heliosschool.org/calendar.pdf"}
+	fields := map[string]string{"kind": "calendar", "url": "https://www.heliosschool.org/calendar.pdf", "published": "2026-09-14 10:22:05"}
 	ids := []string{}
 	for i := range 2 {
-		rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "calendar-pdf", fields, "pdf", pdf)
+		rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", pdf)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -306,11 +345,47 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	if n := len(as(t, s, staff, `(from CONTENT (where (= mime "application/pdf")))`)); n != 1 {
 		t.Fatalf("the same pdf stored %d times", n)
 	}
-	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "calendar-pdf", fields, "pdf", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+	if rec := postUpload(t, s, queue, pics, "maya.lindqvist@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "calendar-pdf", fields, "pdf", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
+	if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not a pdf: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	pdf := []byte("%PDF-1.4\n% a slide deck\n")
+	fields := map[string]string{"name": "Camping - HELP - Condors", "url": "https://docs.google.com/presentation/d/1BvW", "published": "2026-09-14 10:22:05"}
+	ids := []string{}
+	for i := range 2 {
+		rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", pdf)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
+		}
+		var out stored
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, out.Result[0])
+		row, ok := s.Model().Table("DOCUMENT").Get(out.Result[0])
+		if !ok || row["kind"] != "file" || row["name"] != fields["name"] || row["url"] != fields["url"] || row["published"] != fields["published"] {
+			t.Fatalf("post %d answered %+v and reads %v", i, out, row)
+		}
+	}
+	if ids[0] != ids[1] {
+		t.Fatalf("the same pdf made two documents: %v", ids)
+	}
+	for field, value := range map[string]string{"published": "last tuesday", "url": "", "kind": "deck"} {
+		bad := maps.Clone(fields)
+		bad[field] = value
+		if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, bad, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusBadRequest {
+			t.Fatalf("%s %q: %d %s", field, value, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := postUpload(t, s, queue, pics, "maya.lindqvist@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -326,7 +401,7 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 		"Bring a sleeping bag.\r\n")
 	ids := []string{}
 	for i := range 2 {
-		rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", eml)
+		rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, eml)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -336,7 +411,7 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 		}
 		ids = append(ids, out.Result[0])
 		row, ok := s.Model().Table("DOCUMENT").Get(out.Result[0])
-		if !ok || row["kind"] != "list" || row["name"] != "Spring Camping Trip — Follow Up" || row["published"] != "2026-02-11 17:48:03" || row["author"] != s.Model().PersonOf("maya.lindqvist@example.org") || row["author"] == "" {
+		if !ok || row["kind"] != "mail" || row["name"] != "Spring Camping Trip — Follow Up" || row["published"] != "2026-02-11 17:48:03" || row["author"] != s.Model().PersonOf("maya.lindqvist@example.org") || row["author"] == "" {
 			t.Fatalf("post %d answered %+v and reads %v", i, out, row)
 		}
 		content, ok := s.Model().Table("CONTENT").Get(row["content"])
@@ -354,10 +429,10 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	if len(links) != 1 || links[0]["group"] != "grp00000000030" || links[0]["relation"] != "sent_to" {
 		t.Fatalf("the message's groups: %v", links)
 	}
-	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
+	if rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("no date: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "mail", nil, "eml", eml); rec.Code != http.StatusForbidden {
+	if rec := postMail(t, s, queue, pics, "maya.lindqvist@example.org", eml); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -369,17 +444,17 @@ func TestMailIsSentToItsListsGroups(t *testing.T) {
 	}
 	m := s.Model()
 	for listID, want := range map[string]string{
-		"":                                   "newsletter",
-		"<parentsandstaff.heliosschool.org>": "list grp00000000002 grp00000000003",
-		"<parentsonly.heliosschool.org>":     "list grp00000000002",
-		"<community.heliosns.org>":           "list grp00000000004",
-		"Hummingbirds Parents <Hummingbirds.Parents.heliosns.org>": "list grp00000000030",
-		"<2020-21.hummingbirds.parents.heliosns.org>":              "list grp00000000030",
-		"<hummingbirds.students.heliosns.org>":                     "list grp00000000010",
-		"<jaysandravens.heliosns.org>":                             "list grp00000000031",
-		"<chat.heliosschool.org>":                                  "list grp00000000004",
-		"<michelle-level3math.parents.heliosschool.org>":           "list grp00000000004",
-		"<3064358178.560896@benchmarkemail.com>":                   "newsletter grp00000000004",
+		"":                                   "mail",
+		"<parentsandstaff.heliosschool.org>": "mail grp00000000002 grp00000000003",
+		"<parentsonly.heliosschool.org>":     "mail grp00000000002",
+		"<community.heliosns.org>":           "mail grp00000000004",
+		"Hummingbirds Parents <Hummingbirds.Parents.heliosns.org>": "mail grp00000000030",
+		"<2020-21.hummingbirds.parents.heliosns.org>":              "mail grp00000000030",
+		"<hummingbirds.students.heliosns.org>":                     "mail grp00000000010",
+		"<jaysandravens.heliosns.org>":                             "mail grp00000000031",
+		"<chat.heliosschool.org>":                                  "mail grp00000000004",
+		"<michelle-level3math.parents.heliosschool.org>":           "mail grp00000000004",
+		"<3064358178.560896@benchmarkemail.com>":                   "mail grp00000000004",
 	} {
 		root, sentTo, err := m.mailRoot([]byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: " + listID + "\r\n\r\nhello\r\n"))
 		if err != nil {

@@ -20,6 +20,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"golang.org/x/net/html"
 
+	"heliosian/internal/cells"
 	"heliosian/internal/db"
 )
 
@@ -44,10 +45,12 @@ func (c client) calendarRows() (db.CalendarRows, error) {
 func (c client) addCalendarPDF(pdf []byte, address string) (string, error) {
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
-	if err := form.WriteField("url", address); err != nil {
-		return "", err
+	for field, value := range map[string]string{"kind": "calendar", "url": address, "published": time.Now().In(db.School).Format(cells.StampFormat)} {
+		if err := form.WriteField(field, value); err != nil {
+			return "", err
+		}
 	}
-	part, err := form.CreateFormFile("pdf", "calendar.pdf")
+	part, err := form.CreateFormFile("file", "calendar.pdf")
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +63,7 @@ func (c client) addCalendarPDF(pdf []byte, address string) (string, error) {
 	var out struct {
 		Result []string `json:"result"`
 	}
-	if err := c.Send(http.MethodPost, "/api/do/calendar-pdf", form.FormDataContentType(), body, &out); err != nil {
+	if err := c.Send(http.MethodPost, "/api/do/file", form.FormDataContentType(), body, &out); err != nil {
 		return "", err
 	}
 	return out.Result[0], nil

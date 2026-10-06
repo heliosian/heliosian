@@ -21,7 +21,7 @@ func TestUnreferencedContentIsSwept(t *testing.T) {
 	}
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "9"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "page", "content": "cnt00000000001"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "h1", "blob": "content/h1", "mime": "text/plain", "size": "9"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "h2", "blob": "content/h2", "mime": "text/html", "size": "9"}),
 	); err != nil {

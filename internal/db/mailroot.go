@@ -54,12 +54,8 @@ func (m *Model) mailRoot(raw []byte) (map[string]any, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	kind := "newsletter"
-	if schoolList(list) != "" {
-		kind = "list"
-	}
 	row := map[string]any{
-		"kind":      kind,
+		"kind":      "mail",
 		"name":      strings.TrimSpace(subject),
 		"published": sent.In(School).Format(cells.StampFormat),
 	}

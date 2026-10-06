@@ -49,7 +49,7 @@ func served(t *testing.T) specDoc {
 
 func TestTheSpecDescribesTheQueryAPI(t *testing.T) {
 	spec := served(t)
-	for path, method := range map[string]string{"/api/q": "query", "/api/do/photo": "post", "/api/do/calendar-pdf": "post", "/api/do/mail": "post", "/api/do/fetched": "post"} {
+	for path, method := range map[string]string{"/api/q": "query", "/api/do/photo": "post", "/api/do/file": "post", "/api/do/fetched": "post"} {
 		if _, ok := spec.Paths[path][method]; !ok {
 			t.Errorf("no %s %s", method, path)
 		}

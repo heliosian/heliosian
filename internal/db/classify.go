@@ -107,7 +107,7 @@ func (c *Classifier) pending() []string {
 	links := m.Table("DOCUMENT_GROUP")
 	out := []string{}
 	for _, row := range m.Table("DOCUMENT").All() {
-		if row["parent"] != "" || !slices.Contains([]string{"newsletter", "list"}, row["kind"]) || c.skipped[row["id"]] {
+		if row["parent"] != "" || row["kind"] != "mail" || c.skipped[row["id"]] {
 			continue
 		}
 		if !slices.ContainsFunc(links.Referencing("document", row["id"]), func(l store.Row) bool { return l["relation"] == "sent_to" }) {

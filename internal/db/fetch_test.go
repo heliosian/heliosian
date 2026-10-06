@@ -47,8 +47,8 @@ func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
 	defer site.Close()
 	s, queue := sampleWithQueue(t)
 	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "name": "Clubs this week"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "kind": "newsletter", "name": "Clubs next week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "kind": "mail", "name": "Clubs next week"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000010", "url": site.URL + "/logo.png"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": site.URL + "/logo.png"}),
 	); err != nil {
@@ -82,7 +82,7 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}),

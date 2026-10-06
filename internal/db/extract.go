@@ -134,6 +134,10 @@ func (m *Model) readable(doc store.Row, kind string) bool {
 	return ok
 }
 
+func transcribable(kind string) bool {
+	return isImage(kind) || kind == pdfType
+}
+
 func mailParts(raw []byte) ([]extracted, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
 	if err != nil {
@@ -249,7 +253,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		case isImage(kind):
 			children, err = x.readImage(ctx, m, id, content, raw)
 		case kind == pdfType:
-			children, err = x.readPDF(ctx, m, id, content, raw)
+			children, err = x.readPDF(ctx, m, doc, content, raw)
 		default:
 			children, err = read(raw)
 		}

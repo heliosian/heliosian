@@ -1,5 +1,5 @@
 id,parent,kind,relation,order,name,published,author,url,fetch,link,filename,content_id,content,message,key_points,extracted,slug
-doc00000000001,,newsletter,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,,
+doc00000000001,,mail,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,,
 doc00000000101,,wiki,,a,Welcome,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000101,,,,
 doc00000000102,,wiki,,b,Getting Started,2026-09-01 09:00:00,per00000000002,,,,,,,,,,getting-started
 doc00000000103,doc00000000102,wiki,,a,First Week,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000102,,,,

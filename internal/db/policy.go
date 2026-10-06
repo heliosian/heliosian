@@ -126,7 +126,7 @@ const policySource = `
 ; @d or a document it sits under was sent to a group whose mail the viewer sees, or it is no mail and was sent to no group
 (define (document_visible @d)
   (or (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") (sees_mail group))
-      (and (not (exists DOCUMENT (in id (ancestors @d)) (in kind "newsletter" "list" "post")))
+      (and (not (exists DOCUMENT (in id (ancestors @d)) (= kind "mail")))
            (not (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to"))))))
 
 ; @c is Markdown that no document but a wiki page or one of its side cards holds
@@ -760,18 +760,18 @@ const policySource = `
 (delete ALIAS (and (system "import") (exists GROUP (= id @old.target) (in kind "event" "day" "day_part"))))
 ; add a version of the school's year calendar
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
-; store the bytes of a version of the school's year calendar
+; add a file the school or HCA shared, such as a slide deck
+(insert DOCUMENT (and (system "import") (= @new.kind "file")))
+; store the bytes of a PDF: a version of the year calendar or a file the school or HCA shared
 (insert CONTENT (and (system "import") (= @new.mime "application/pdf")))
 ; add a mail message the community received
-(insert DOCUMENT (and (system "import") (in @new.kind "newsletter" "list")))
+(insert DOCUMENT (and (system "import") (= @new.kind "mail")))
 ; say which groups a mail message was sent to
-(insert DOCUMENT_GROUP (and (system "import") (= @new.relation "sent_to") (in @new.document.kind "newsletter" "list")))
+(insert DOCUMENT_GROUP (and (system "import") (= @new.relation "sent_to") (= @new.document.kind "mail")))
 ; every document, to find the mail already uploaded
 (read DOCUMENT (system "import"))
 ; every document's groups, to find the mail whose groups are not yet said
 (read DOCUMENT_GROUP (system "import"))
-; a Loop post uploaded as mail, and everything under it: Loop files the mail it sends itself
-(delete DOCUMENT (and (system "import") (exists DOCUMENT (in id (ancestors @old)) (= kind "post"))))
 ; an image or a link of an email's HTML part, still to fetch or judged not worth it, for HTML extracted before extraction placed them
 (insert DOCUMENT (and (system "import") (in @new.relation "image" "linked") (= @new.parent.relation "part") (blank @new.content)))
 ; fill an image or a link still to fetch with what a fetch run with someone's own credentials got

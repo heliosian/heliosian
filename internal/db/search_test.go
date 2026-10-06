@@ -161,7 +161,7 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 	x.mu.RLock()
 	input := x.rows[extract].Input
 	x.mu.RUnlock()
-	for _, want := range []string{"Email: Tide pools", "Kind: list", "From: Maya Lindqvist", "Part: text/html", "Bring **boots** for the tide pools."} {
+	for _, want := range []string{"Email: Tide pools", "Kind: mail", "From: Maya Lindqvist", "Part: text/html", "Bring **boots** for the tide pools."} {
 		if !strings.Contains(input, want) {
 			t.Errorf("the extract's input lacks %q:\n%s", want, input)
 		}

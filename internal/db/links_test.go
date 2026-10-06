@@ -19,7 +19,7 @@ func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "p1", "blob": "content/p1", "mime": "text/html; charset=utf-8", "size": "90"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Hot lunch", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Hot lunch", "extracted": "2026-02-12 01:48:03"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000003", "extracted": "2026-02-12 01:48:03"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/lunch", "content": "cnt00000000003"}),
 	); err != nil {

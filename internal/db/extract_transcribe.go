@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -27,14 +28,17 @@ const (
 	imageLargest   = 8000
 	imageMostBytes = 3_750_000
 	imageMaxReply  = 8000
-	pdfMostBytes   = 24 << 20
 	pdfMaxReply    = 128000
 	decoration     = "(decoration)"
 )
 
-const pdfSystem = `You are given one PDF from an email a school sent to its families - a flyer, a letter, a schedule, a form, a handbook. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything.
+const pdfSystem = `You are given one PDF a school shared with its families - a flyer, a letter, a schedule, a form, a handbook, a slide deck. A slide deck's slides each become a section headed by the slide's title. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything.
 
-Transcribe only text you can read with certainty, letter by letter. Where something cannot be read - a blurred scan, a table too small to make out - leave it out and write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". Never reconstruct it from context. Leave out logos, wordmarks and decoration, even when they have words in them; words that only brand the document carry no information.`
+Transcribe only text you can read with certainty, letter by letter. Where something cannot be read - a blurred scan, a table too small to make out - leave it out and write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". Never reconstruct it from context. Leave out logos, wordmarks and decoration, even when they have words in them; words that only brand the document carry no information.
+
+` + peopleRule
+
+const peopleRule = `Photos of people are never described. Do not say who is in a photo, what anyone looks like, wears or is doing, and never describe a child. A photo gets at most a short generic caption in brackets saying what kind of photo it is, e.g. "(class photo)" or "(photo of a field trip)". Words in the photo - a sign, a banner, a caption - are still written out.`
 
 var claudeImageTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
 
@@ -42,7 +46,9 @@ const imageSystem = `You are given one image from an email a school sent to its 
 
 Transcribe only text you can read with certainty, letter by letter. Images often hold a small inset - a thumbnail of a table, a screenshot shrunk into a corner - whose text is too small to read. Never transcribe such text, and never reconstruct it from context, from nearby text, or from what it probably says: a table you cannot read cell by cell is left out entirely. Where you leave something out, write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". If you are unsure whether you can read something, you cannot.
 
-If the image is only a logo, wordmark, banner or decoration, answer with exactly: (decoration) - even when it has words in it, such as the school's name or a program's name. Words that only brand the email carry no information.`
+If the image is only a logo, wordmark, banner or decoration, answer with exactly: (decoration) - even when it has words in it, such as the school's name or a program's name. Words that only brand the email carry no information.
+
+` + peopleRule
 
 func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content store.Row) ([]extracted, bool, error) {
 	docs := m.Table("DOCUMENT")
@@ -109,23 +115,65 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, id string, content 
 	}))
 }
 
-func (x *Extractor) readPDF(ctx context.Context, m *Model, id string, content store.Row, raw []byte) ([]extracted, error) {
-	if before, read, err := x.readBefore(ctx, m, id, content); read || err != nil {
+func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error) {
+	if before, read, err := x.readBefore(ctx, m, doc["id"], content); read || err != nil {
 		return before, err
 	}
-	if len(raw) > pdfMostBytes {
-		return nil, fmt.Errorf("a pdf of %d bytes is larger than claude reads, %d", len(raw), pdfMostBytes)
+	pages, err := readPDFPages(ctx, raw)
+	if err != nil {
+		return nil, err
 	}
-	return transcribed(claude.Text(ctx, x.client, anthropic.MessageNewParams{
+	if len(raw) > pdfRangeBytes || pages.total > pdfRangePages {
+		if pages.total == 1 {
+			return nil, fmt.Errorf("a one-page pdf of %d bytes is larger than claude reads, %d", len(raw), pdfRangeBytes)
+		}
+		return x.splitPDF(ctx, doc, pages, pdfRangePages)
+	}
+	ask := "Transcribe this document."
+	if doc["relation"] == "pages" {
+		ask = "This PDF is " + doc["name"] + " of " + pdfTitle(m, doc) + ". Transcribe these pages."
+	}
+	text, err := claude.Text(ctx, x.client, anthropic.MessageNewParams{
 		Model:     claude.ExtractPDFModel,
 		MaxTokens: pdfMaxReply,
 		System:    []anthropic.TextBlockParam{{Text: pdfSystem}},
 		Messages: []anthropic.MessageParam{anthropic.NewUserMessage(
 			anthropic.NewDocumentBlock(anthropic.Base64PDFSourceParam{Data: base64.StdEncoding.EncodeToString(raw)}),
-			anthropic.NewTextBlock("Transcribe this document."),
+			anthropic.NewTextBlock(ask),
 		)},
 		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ExtractPDFEffort},
-	}))
+	})
+	if errors.Is(err, claude.ErrCutShort) && pages.total > 1 {
+		slog.Info("extract: pdf answer cut short, reading it in halves", "document", doc["id"], "pages", pages.total)
+		return x.splitPDF(ctx, doc, pages, (pages.total+1)/2)
+	}
+	return transcribed(text, err)
+}
+
+func (x *Extractor) splitPDF(ctx context.Context, doc store.Row, pages pdfPages, most int) ([]extracted, error) {
+	ranges, err := pages.ranges(ctx, most)
+	if err != nil {
+		return nil, err
+	}
+	return pageChildren(doc, pages, ranges), nil
+}
+
+func pdfTitle(m *Model, doc store.Row) string {
+	docs := m.Table("DOCUMENT")
+	for doc["relation"] == "pages" {
+		parent, ok := docs.Get(doc["parent"])
+		if !ok {
+			break
+		}
+		doc = parent
+	}
+	if doc["name"] != "" {
+		return "the document titled " + strconv.Quote(doc["name"])
+	}
+	if doc["filename"] != "" {
+		return "the file " + strconv.Quote(doc["filename"])
+	}
+	return "a longer document"
 }
 
 func claudeImage(raw []byte, mimeType string, config image.Config) ([]byte, string, error) {

@@ -107,8 +107,8 @@ func TestSuperAdminsReadEveryReport(t *testing.T) {
 func TestMailShowsToWhomItWasSentAndToSuperAdmins(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "list", "name": "Not yet placed"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000021", "kind": "list", "name": "To Hummingbirds parents"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "mail", "name": "Not yet placed"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000021", "kind": "mail", "name": "To Hummingbirds parents"}),
 		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000021", "document": "doc00000000021", "group": "grp00000000030", "relation": "sent_to"}),
 	); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "application/pdf", "size": "200"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "c3", "blob": "content/c3", "mime": "text/markdown", "size": "30"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "post", "content": "cnt00000000001", "name": "Field trip"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Field trip"}),
 		store.Insert("DOCUMENT_GROUP", store.Row{"id": "dgr00000000010", "document": "doc00000000010", "group": "grp00000000030", "relation": "sent_to"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "permission.pdf"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "extract", "parent": "doc00000000011", "content": "cnt00000000003"}),
@@ -154,7 +154,7 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "newsletter", "content": "cnt00000000001", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/clubs.png", "fetch": "sign_in"}),
 	); err != nil {

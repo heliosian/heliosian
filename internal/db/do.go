@@ -23,8 +23,8 @@ import (
 const (
 	doPrefix      = "/api/do/"
 	photoLimit    = 30 << 20
-	pdfLimit      = 30 << 20
-	mailLimit     = 64 << 20
+	fileLimit     = 200 << 20
+	formMemory    = 32 << 20
 	contentFolder = "content"
 )
 
@@ -85,72 +85,48 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "original", row["original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
 	})
-	mux.HandleFunc("POST "+doPrefix+"calendar-pdf", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST "+doPrefix+"file", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, pdfLimit)
-		if err := r.ParseMultipartForm(pdfLimit); err != nil {
-			serve.Error(w, r, access.Invalid("send the pdf as multipart form data: %v", err))
+		r.Body = http.MaxBytesReader(w, r.Body, fileLimit)
+		if err := r.ParseMultipartForm(formMemory); err != nil {
+			serve.Error(w, r, access.Invalid("send the file as multipart form data: %v", err))
 			return
 		}
-		file, _, err := r.FormFile("pdf")
+		file, header, err := r.FormFile("file")
 		if err != nil {
-			serve.Error(w, r, access.Invalid("the pdf is required"))
+			serve.Error(w, r, access.Invalid("the file is required"))
 			return
 		}
 		defer file.Close()
 		content, err := io.ReadAll(file)
 		if err != nil {
-			serve.Error(w, r, access.Invalid("could not read the pdf"))
+			serve.Error(w, r, access.Invalid("could not read the file"))
 			return
 		}
-		if mimeType := http.DetectContentType(content); mimeType != "application/pdf" {
-			serve.Error(w, r, access.Invalid("%s is not a pdf", mimeType))
-			return
+		mimeType := baseType(header.Header.Get("Content-Type"))
+		if mimeType == "" || mimeType == "application/octet-stream" {
+			mimeType = baseType(http.DetectContentType(content))
 		}
-		root := map[string]any{"kind": "calendar", "url": r.FormValue("url"), "published": now().In(School).Format(cells.StampFormat)}
-		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "application/pdf", root, nil)
-		if err != nil {
-			serve.Error(w, r, err)
-			return
+		var root map[string]any
+		var sentTo []string
+		if mimeType == "message/rfc822" {
+			root, sentTo, err = s.Model().mailRoot(content)
+		} else {
+			root, err = fileRoot(r, mimeType)
 		}
-		slog.InfoContext(r.Context(), "added a version of the year calendar", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash)
-		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
-	})
-	mux.HandleFunc("POST "+doPrefix+"mail", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
-		if !ok {
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, mailLimit)
-		if err := r.ParseMultipartForm(mailLimit); err != nil {
-			serve.Error(w, r, access.Invalid("send the message as multipart form data: %v", err))
-			return
-		}
-		file, _, err := r.FormFile("eml")
-		if err != nil {
-			serve.Error(w, r, access.Invalid("the eml is required"))
-			return
-		}
-		defer file.Close()
-		content, err := io.ReadAll(file)
-		if err != nil {
-			serve.Error(w, r, access.Invalid("could not read the eml"))
-			return
-		}
-		root, sentTo, err := s.Model().mailRoot(content)
 		if err != nil {
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, "message/rfc822", root, sentTo)
+		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, mimeType, root, sentTo)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a mail message", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"])
+		slog.InfoContext(r.Context(), "added a file", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"], "mime", mimeType)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
 	mux.HandleFunc("POST "+doPrefix+"fetched", func(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +214,32 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 		return fetchedAnswer{}, err
 	}
 	return fetchedAnswer{Result: []string{id}, Hash: hash}, nil
+}
+
+func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
+	kind := strings.TrimSpace(r.FormValue("kind"))
+	switch kind {
+	case "":
+		kind = "file"
+	case "calendar":
+		if mimeType != pdfType {
+			return nil, fmt.Errorf("the year calendar is a pdf, not %s", mimeType)
+		}
+	default:
+		return nil, fmt.Errorf("kind %q is not calendar", kind)
+	}
+	address, published := strings.TrimSpace(r.FormValue("url")), strings.TrimSpace(r.FormValue("published"))
+	if address == "" {
+		return nil, fmt.Errorf("a file needs the url it came from")
+	}
+	if _, err := time.ParseInLocation(cells.StampFormat, published, School); err != nil {
+		return nil, fmt.Errorf("published %q is not a moment like %s", published, cells.StampFormat)
+	}
+	root := map[string]any{"kind": kind, "url": address, "published": published}
+	if name := strings.TrimSpace(r.FormValue("name")); name != "" {
+		root["name"] = name
+	}
+	return root, nil
 }
 
 func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {

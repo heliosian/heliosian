@@ -85,7 +85,7 @@ func TestMailIsReadIntoATree(t *testing.T) {
 		"--outer--",
 		"",
 	}, "\r\n")
-	rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte(eml))
+	rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
@@ -216,7 +216,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		"--alt--",
 		"",
 	}, "\r\n")
-	rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "mail", nil, "eml", []byte(eml))
+	rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}

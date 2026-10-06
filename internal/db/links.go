@@ -29,8 +29,6 @@ const (
 	fetchLink    = "fetch"
 )
 
-var mailKinds = []string{"newsletter", "list", "post"}
-
 var skipReasons = []string{"form", "signup", "social", "homepage", "per_recipient", "tracking", "media", "other"}
 
 var unwantedLinkWords = []string{"unsubscribe", "update your preferences", "manage preferences", "manage your preferences", "view this email in your browser", "view it in your browser", "view in browser", "forward to a friend"}
@@ -192,5 +190,5 @@ func (m *Model) mailRootOf(doc store.Row) (store.Row, bool) {
 		}
 		doc = parent
 	}
-	return doc, slices.Contains(mailKinds, doc["kind"])
+	return doc, doc["kind"] == "mail"
 }
