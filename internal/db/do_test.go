@@ -389,6 +389,28 @@ func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
 	}
 }
 
+func TestAPageIsStoredAsAFileAndPlainTextIsNot(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	fields := map[string]string{"name": "Aftercare", "url": "https://portals.example.org/parent/pages/Aftercare", "published": "2026-10-06 13:19:38"}
+	rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "text/html", []byte("<!doctype html><html><body><p>Aftercare runs until six.</p></body></html>"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a page: %d %s", rec.Code, rec.Body.String())
+	}
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	row, _ := s.Model().Table("DOCUMENT").Get(out.Result[0])
+	content, _ := s.Model().Table("CONTENT").Get(row["content"])
+	if row["kind"] != "file" || content["mime"] != "text/html" {
+		t.Fatalf("the page reads %v, its content %v", row, content)
+	}
+	if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "text/plain", []byte("Aftercare runs until six.")); rec.Code != http.StatusForbidden {
+		t.Fatalf("plain text: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

@@ -762,8 +762,8 @@ const policySource = `
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
 ; add a file the school or HCA shared, such as a slide deck
 (insert DOCUMENT (and (system "import") (= @new.kind "file")))
-; store the bytes of a PDF: a version of the year calendar or a file the school or HCA shared
-(insert CONTENT (and (system "import") (= @new.mime "application/pdf")))
+; store the bytes of a shared file: a PDF, such as a version of the year calendar or a slide deck, or a page
+(insert CONTENT (and (system "import") (in @new.mime "application/pdf" "text/html")))
 ; add a mail message the community received
 (insert DOCUMENT (and (system "import") (= @new.kind "mail")))
 ; say which groups a mail message was sent to
