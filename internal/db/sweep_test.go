@@ -52,6 +52,7 @@ func TestUnreferencedContentIsSwept(t *testing.T) {
 
 func TestContentIsSweptInBatches(t *testing.T) {
 	s, queue := sampleWithQueue(t)
+	held := s.Model().Table("CONTENT").Len()
 	ops := []store.Op{}
 	for i := range sweepBatch*2 + 3 {
 		hash := fmt.Sprintf("h%d", i)
@@ -62,9 +63,9 @@ func TestContentIsSweptInBatches(t *testing.T) {
 	}
 	StartSweeper(s, queue, blob.NewMemoryBucket())
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if s.Model().Table("CONTENT").Len() == 0 {
+		if s.Model().Table("CONTENT").Len() == held {
 			return
 		}
 	}
-	t.Fatalf("%d content rows are left", s.Model().Table("CONTENT").Len())
+	t.Fatalf("%d content rows are left, want the %d the sample's documents hold", s.Model().Table("CONTENT").Len(), held)
 }

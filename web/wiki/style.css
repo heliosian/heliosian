@@ -1,0 +1,371 @@
+:root {
+  --tabbar: 64px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+
+html { background: var(--page); }
+
+body {
+  margin: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--page);
+  color: var(--ink);
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; }
+
+button { font: inherit; }
+
+.app-shell { display: flex; flex: 1; min-height: 0; }
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
+  background-repeat: no-repeat, no-repeat;
+  border-right: 1px solid var(--line);
+  z-index: 1;
+}
+
+.brand { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 16px 8px; flex-shrink: 0; }
+
+.brand a { display: block; line-height: 0; }
+
+.brand img { height: 170px; width: auto; max-width: 100%; display: block; }
+
+.app-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; padding: 14px 10px; overflow-y: auto; }
+
+.button.nav-action { margin: 14px 4px 0; justify-content: center; width: calc(100% - 8px); }
+
+.app-nav a.button.nav-action { color: var(--brand-deep); }
+
+.app-nav a.button.nav-action:hover { background: var(--green-3); border-color: var(--green-3); color: var(--brand-deep); }
+
+.nav-heading { margin: 22px 14px 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }
+
+.app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
+
+.app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+.app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
+
+.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
+
+.app-nav a.is-active svg { color: var(--lime); }
+
+.app-nav a.is-active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
+
+.content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+
+#page { max-width: 1180px; }
+
+/* A page, laid out as Celebrate lays out a party: Back and the page's tools,
+   the picture across the top, then the page beside its headings. */
+.detail-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+
+.detail-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.detail-tools > .button { height: 34px; box-sizing: border-box; }
+
+.detail-tools > .button { padding-top: 0; padding-bottom: 0; }
+
+
+.wiki-page .detail-hero { margin-bottom: 20px; }
+
+.wiki-page .wiki-crumbs { margin: 0; }
+
+.detail-cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
+
+.detail-main { min-width: 0; }
+
+.detail-title { font-size: 34px; font-weight: 700; margin: 0 0 14px; color: var(--title, var(--brand)); line-height: 1.15; }
+
+.detail-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; }
+
+.side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+
+.side-card[hidden] { display: none; }
+
+.side-card-title { font-size: 15px; font-weight: 700; color: var(--brand); margin-bottom: 8px; }
+
+.wiki-outline { display: flex; flex-direction: column; }
+
+.wiki-outline-item { padding: 6px 10px; border-left: 2px solid var(--line); color: var(--ink); font-size: 14px; text-decoration: none; }
+
+.wiki-outline-item:hover { border-left-color: var(--accent); color: var(--brand); }
+
+.wiki-body h3 { scroll-margin-top: 16px; }
+
+.mobile-top { display: none; }
+
+.tabbar { display: none; }
+
+.drawer-head { display: flex; align-items: center; gap: 10px; padding: 0 16px 16px; font-weight: 700; font-size: 17px; }
+
+.drawer-head img { height: 32px; width: auto; }
+
+.drawer-head .icon-button { margin-left: auto; }
+
+.drawer-nav { padding: 0; }
+
+.drawer-user { margin-top: auto; padding: 16px 20px 0; border-top: 1px solid var(--line); }
+
+.drawer-user .name { font-weight: 700; }
+
+.drawer-user .email { font-size: 12px; color: var(--muted); }
+
+.drawer-user form { margin-top: 10px; }
+
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin: 4px 0 18px; }
+
+.page-head-main { min-width: 0; }
+
+.page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-bottom: 14px; }
+
+.page-lead { color: var(--muted); font-size: 16px; margin: 0 0 18px; }
+
+.panel-empty { padding: 28px 16px; color: var(--muted); font-size: 15px; text-align: center; }
+
+/* Every page, one row each. */
+.wiki-list { display: flex; flex-direction: column; gap: 10px; }
+
+.wiki-card { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-decoration: none; }
+
+.wiki-card:hover { border-color: var(--accent); }
+
+.wiki-card-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px; background: var(--input); color: var(--brand); }
+
+.wiki-card-icon svg { width: 20px; height: 20px; }
+
+.wiki-card-words { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+
+.wiki-card-title { font-weight: 700; font-size: 16px; }
+
+.wiki-card-path { font-size: 13px; color: var(--muted); }
+
+.wiki-card-count { flex-shrink: 0; font-size: 13px; color: var(--muted); }
+
+/* Where a page sits: Wiki, then each page above it. */
+.wiki-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; font-size: 13px; color: var(--muted); }
+
+.wiki-crumbs a { color: var(--brand); text-decoration: none; font-weight: 600; }
+
+.wiki-crumbs a:hover { text-decoration: underline; }
+
+.wiki-section { margin: 28px 0 12px; font-size: 18px; color: var(--brand); }
+
+.wiki-hidden-note { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--input); font-size: 14px; color: var(--muted); }
+
+.wiki-hidden-note svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* The open page's top-level page and All Pages are main items, as HCA-Team's
+   sections are; the active one carries the lime chevron at its end. */
+.nav-main-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.app-nav a.is-active::after { content: ''; width: 8px; height: 8px; margin-left: 4px; border-right: 2.5px solid var(--lime); border-bottom: 2.5px solid var(--lime); transform: rotate(-45deg); flex-shrink: 0; }
+
+/* The pages under a main item, behind a rule, as HCA-Team lists its sections' rows. */
+.nav-sub { display: flex; flex-direction: column; margin: 2px 0 6px 22px; padding-left: 10px; border-left: 1.5px solid rgba(255, 255, 255, 0.14); }
+
+.app-nav a.nav-sub-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 3px 10px; border-radius: 7px; font-size: 14px; font-weight: 500; }
+
+.app-nav a.nav-sub-item.is-on { background: var(--nav-active); position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
+
+.app-nav a.nav-sub-item.is-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
+
+.nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nav-sub-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }
+
+/* A row in the open section: its own chevron (or a blank of the same width) beside the link. */
+.nav-tree-row { display: flex; align-items: center; gap: 2px; }
+
+.nav-tree-row .nav-tree-item { flex: 1; min-width: 0; }
+
+.nav-tree-row.drop-before { box-shadow: inset 0 2px 0 var(--lime); }
+
+.nav-tree-row.drop-after { box-shadow: inset 0 -2px 0 var(--lime); }
+
+.nav-tree-toggle { flex-shrink: 0; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 6px; background: none; color: rgba(255, 255, 255, 0.7); cursor: pointer; }
+
+.nav-tree-toggle:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+.nav-tree-toggle:disabled { cursor: default; }
+
+.nav-tree-toggle svg { width: 14px; height: 14px; transition: transform 0.15s; }
+
+.nav-tree-toggle.is-open svg { transform: rotate(90deg); }
+
+.nav-tree-toggle.is-leaf { visibility: hidden; }
+
+.app-nav a svg.nav-mine { width: 14px; height: 14px; stroke: var(--lime); }
+
+.app-nav a svg.nav-hidden { width: 14px; height: 14px; color: rgba(255, 255, 255, 0.55); }
+
+.app-nav a.is-active svg.nav-hidden { color: rgba(255, 255, 255, 0.55); }
+
+/* New Page at the rail's foot, smaller than the other rails' actions. */
+.app-nav a.button.nav-action.button-small { align-self: flex-start; width: auto; min-height: 0; margin: 18px 0 0 12px; padding: 7px 14px; font-size: 13px; gap: 6px; }
+
+.app-nav a.button.nav-action.button-small svg { width: 15px; height: 15px; }
+
+
+.wiki-parent-field { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+
+.wiki-parent-field[hidden] { display: none; }
+
+.wiki-slug-host { flex-shrink: 0; font-weight: 400; color: var(--muted); margin-right: -6px; }
+
+.wiki-slug { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
+
+.wiki-parent { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
+
+/* A page as it reads. */
+.wiki-body { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.wiki-body > :first-child { margin-top: 0; }
+
+.wiki-body h3 { margin: 24px 0 6px; font-size: 19px; color: var(--brand); }
+
+.wiki-body a { color: var(--brand); font-weight: 600; }
+
+.wiki-body pre { padding: 12px 14px; border-radius: 8px; background: var(--input); overflow-x: auto; font-size: 14px; }
+
+.wiki-body code { padding: 1px 5px; border-radius: 5px; background: var(--input); font-size: 0.92em; }
+
+.wiki-body blockquote { margin: 12px 0; padding: 4px 16px; border-left: 4px solid var(--line); color: var(--muted); }
+
+.wiki-body .table-wrap { overflow-x: auto; }
+
+.wiki-body table { border-collapse: collapse; margin: 12px 0; }
+
+.wiki-body th, .wiki-body td { padding: 6px 12px; border: 1px solid var(--line); text-align: left; }
+
+/* The editor: the title, the text, and Save. */
+/* The editor, laid out as the page is: what goes in the page on the left, its side cards on the right. */
+.wiki-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
+
+.wiki-editor-main { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.wiki-editor-side .wiki-cards { margin-top: 0; }
+
+.wiki-editor-side .wiki-card-edit { padding: 10px; }
+
+.wiki-editor-side .wiki-card-edit-tools .icon-button { width: 28px; height: 28px; }
+
+.wiki-editor-side .wiki-card-edit-tools .icon-button svg { width: 16px; height: 16px; }
+
+.wiki-title-input, .wiki-text { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; }
+
+.wiki-title-input { font-size: 20px; font-weight: 600; }
+
+.wiki-text { min-height: 420px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.5; }
+
+.wiki-title-input:focus, .wiki-text:focus { outline: none; border-color: var(--accent); }
+
+.wiki-hint { margin: 0; font-size: 13px; color: var(--muted); }
+
+.wiki-text-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+
+.wiki-insert { display: inline-flex; }
+
+.wiki-card-edit-tools .wiki-insert .icon-button { width: 28px; height: 28px; }
+
+.wiki-card-edit-tools .wiki-insert .icon-button svg { width: 16px; height: 16px; }
+
+/* A picture in a page or card: as wide as the text, never wider. */
+.wiki-body .md-image { display: block; max-width: 100%; height: auto; margin: 8px 0; border-radius: 10px; }
+
+/* The editor's side cards: each a title and its Markdown, with buttons to move or remove it. */
+.wiki-cards { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
+
+.wiki-cards-head { font-size: 16px; font-weight: 700; color: var(--brand); }
+
+.wiki-cards-list { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+
+.wiki-card-edit { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+
+.wiki-card-edit-top { display: flex; align-items: center; gap: 8px; }
+
+.wiki-card-edit-tools { display: flex; gap: 2px; flex-shrink: 0; }
+
+.wiki-card-title-input, .wiki-card-text { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; }
+
+.wiki-card-title-input { flex: 1; min-width: 0; font-weight: 600; }
+
+.wiki-card-text { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.5; }
+
+.side-card-body { font-size: 14px; line-height: 1.5; }
+
+.side-card-body ul, .side-card-body ol { padding-left: 20px; margin: 4px 0; }
+
+.side-card-body p { margin: 4px 0; }
+
+.wiki-actions { display: flex; gap: 10px; }
+
+.wiki-actions .wiki-delete { margin-left: auto; color: var(--alert); }
+
+@media (max-width: 900px) {
+  body { display: block; height: auto; }
+  .sidebar { display: none; }
+  .app-shell { display: block; min-height: 0; }
+  .content-col { display: block; }
+  main {
+    display: block;
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+    padding-top: calc(88px + var(--safe-top));
+    padding-bottom: calc(var(--tabbar) + var(--safe-bottom));
+  }
+  .mobile-top {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: calc(48px + var(--safe-top));
+    left: 0;
+    right: 0;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--brand-fill);
+    color: #fff;
+    z-index: 29;
+  }
+  .mobile-title { flex: 1; min-width: 0; text-align: center; font-weight: 600; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--tabbar) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: var(--card);
+    border-top: 1px solid var(--line);
+    z-index: 20;
+  }
+  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: var(--muted); text-decoration: none; font-size: 11px; }
+  .tabbar a.is-active { color: var(--brand); }
+  .tabbar svg { width: 22px; height: 22px; }
+  .page-title { font-size: 28px; }
+  .page-head { gap: 12px; }
+  .detail-cols, .wiki-editor { grid-template-columns: minmax(0, 1fr); }
+  .detail-side { position: static; }
+  .detail-title { font-size: 28px; }
+  .wiki-text { min-height: 300px; }
+}

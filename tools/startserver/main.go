@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -88,6 +89,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 	}
 	dir := &data.Dir{Root: "sampledata"}
 	bucket := blob.NewMemoryBucket()
+	fillSampleBucket(bucket)
 	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
 		Source:        dir,
@@ -134,6 +136,27 @@ func sampleServer() (*http.Server, *store.Queue) {
 	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
 		return signIn.Fixed(sampleUser, next)
 	}), core.Aliased()), core.Queue)
+}
+
+func fillSampleBucket(bucket *blob.Bucket) {
+	root := "sampledata/bucket"
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		name, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		return bucket.Put(context.Background(), filepath.ToSlash(name), http.DetectContentType(content), content)
+	})
+	if err != nil {
+		logging.Fatal("fill the sample bucket", "error", err)
+	}
 }
 
 func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Queue) {

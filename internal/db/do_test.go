@@ -303,7 +303,7 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	if ids[0] != ids[1] {
 		t.Fatalf("the same pdf made two documents: %v", ids)
 	}
-	if n := s.Model().Table("CONTENT").Len(); n != 1 {
+	if n := len(as(t, s, staff, `(from CONTENT (where (= mime "application/pdf")))`)); n != 1 {
 		t.Fatalf("the same pdf stored %d times", n)
 	}
 	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "calendar-pdf", fields, "pdf", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {

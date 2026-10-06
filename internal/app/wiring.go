@@ -214,6 +214,17 @@ func NewCore(cfg Config) *Core {
 			serve.File(w, r, "web/admin/"+page+"/index.html")
 		})
 	}
+	wikiMux := http.NewServeMux()
+	for _, page := range []string{"/{$}", "/new", "/p/{id}", "/p/{id}/edit", "/{slug}"} {
+		wikiMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/wiki/index.html")
+		})
+	}
+	wikiImages, _ := blob.ImageFolder("wiki")
+	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
+	wikiMux.HandleFunc("GET /api/wiki/images", serve.JSON(func(*http.Request, serve.None) (map[string]bool, error) {
+		return map[string]bool{"search": cfg.ImageSearch.On()}, nil
+	}))
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -226,6 +237,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
+		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
 	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)

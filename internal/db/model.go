@@ -321,11 +321,38 @@ func checkPhotos(people Sheet) error {
 }
 
 func checkDocuments(documents Sheet) error {
+	parents := map[string]string{}
+	kinds := map[string]string{}
+	slugs := map[string]string{}
 	for _, row := range documents["DOCUMENT"].rows {
+		parents[row["id"]], kinds[row["id"]] = row["parent"], row["kind"]
+	}
+	for _, row := range documents["DOCUMENT"].rows {
+		if err := checkWikiSlug(row["slug"], row["kind"], row["parent"]); err != nil {
+			return fmt.Errorf("DOCUMENT %s: %v", row["id"], err)
+		}
+		if err := checkWikiImage(row["image"], row["kind"]); err != nil {
+			return fmt.Errorf("DOCUMENT %s: %v", row["id"], err)
+		}
+		if row["relation"] == "side" && kinds[row["parent"]] != "wiki" {
+			return fmt.Errorf("DOCUMENT %s: a side card sits under a wiki page", row["id"])
+		}
+		if other, taken := slugs[row["slug"]]; taken && row["slug"] != "" {
+			return fmt.Errorf("DOCUMENT %s: %s already has the slug %q", row["id"], other, row["slug"])
+		}
+		slugs[row["slug"]] = row["id"]
 		root := row["kind"] != "" && row["relation"] == "" && row["parent"] == ""
 		child := row["kind"] == "" && row["relation"] != "" && row["parent"] != ""
-		if !root && !child {
-			return fmt.Errorf("DOCUMENT %s: a document has a kind and no parent, or a relation and a parent", row["id"])
+		subpage := row["kind"] == "wiki" && row["relation"] == "" && kinds[row["parent"]] == "wiki"
+		if !root && !child && !subpage {
+			return fmt.Errorf("DOCUMENT %s: a document has a kind and no parent, a relation and a parent, or is a wiki page under another", row["id"])
+		}
+		seen := map[string]bool{}
+		for at := row["id"]; at != ""; at = parents[at] {
+			if seen[at] {
+				return fmt.Errorf("DOCUMENT %s: its parents lead back round to %s", row["id"], at)
+			}
+			seen[at] = true
 		}
 	}
 	return nil

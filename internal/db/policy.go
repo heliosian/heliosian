@@ -129,6 +129,11 @@ const policySource = `
       (and (not (exists DOCUMENT (in id (ancestors @d)) (in kind "newsletter" "list" "post")))
            (not (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to"))))))
 
+; @c is Markdown that no document but a wiki page or one of its side cards holds
+(define (wiki_content @c)
+  (and (= @c.mime "text/markdown")
+       (not (exists DOCUMENT (= content @c) (!= kind "wiki") (!= relation "side")))))
+
 ; the viewer sent or received @m, or manages the group it went to
 (define (message_visible @m)
   (or (= @m.from_person @viewer)
@@ -265,7 +270,7 @@ const policySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   key_points extracted)
+   key_points extracted hidden slug image)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -277,6 +282,36 @@ const policySource = `
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
 (read DOCUMENT_GROUP (id document group relation) true)
+; anyone but a guest starts a wiki page as its author, and may give it a slug
+(insert DOCUMENT
+  (and (= @new.kind "wiki") (= @new.author @viewer) (!= @viewer.source "guest") (wiki_content @new.content)))
+; anyone but a guest renames a wiki page
+(set DOCUMENT.name (and (= @old.kind "wiki") (!= @viewer.source "guest")))
+; anyone but a guest rewrites a wiki page
+(set DOCUMENT.content (and (= @old.kind "wiki") (!= @viewer.source "guest") (wiki_content @new.content)))
+; anyone but a guest moves a wiki page under another, or to the top
+(set DOCUMENT.parent (and (= @old.kind "wiki") (!= @viewer.source "guest")))
+; anyone but a guest sets or takes away a wiki page's picture
+(set DOCUMENT.image (and (= @old.kind "wiki") (!= @viewer.source "guest")))
+; anyone but a guest reorders a wiki page among its siblings
+(set DOCUMENT.order (and (= @old.kind "wiki") (!= @viewer.source "guest")))
+; anyone but a guest adds a side card to a wiki page
+(insert DOCUMENT
+  (and (= @new.relation "side") (= @new.parent.kind "wiki") (!= @viewer.source "guest") (wiki_content @new.content)))
+; anyone but a guest retitles a wiki page's side card
+(set DOCUMENT.name (and (= @old.relation "side") (!= @viewer.source "guest")))
+; anyone but a guest rewrites a wiki page's side card
+(set DOCUMENT.content (and (= @old.relation "side") (!= @viewer.source "guest") (wiki_content @new.content)))
+; anyone but a guest reorders a wiki page's side cards
+(set DOCUMENT.order (and (= @old.relation "side") (!= @viewer.source "guest")))
+; anyone but a guest removes a wiki page's side card
+(delete DOCUMENT (and (= @old.relation "side") (!= @viewer.source "guest")))
+; a wiki page's author gives it a slug, changes it or takes it away
+(set DOCUMENT.slug (and (= @old.kind "wiki") (= @old.author @viewer)))
+; a wiki page's author hides it from the wiki's lists of pages, or shows it again
+(set DOCUMENT.hidden (and (= @old.kind "wiki") (= @old.author @viewer)))
+; a wiki page's author deletes it once it has no sub-pages
+(delete DOCUMENT (and (= @old.kind "wiki") (= @old.author @viewer) (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 ; the viewer's own inbox
 (read INBOX (= person @viewer))
 ; every column of an inbox entry
@@ -533,6 +568,15 @@ const policySource = `
 (read APP (admin_of "home"))
 ; every front-page widget, whoever it is open to
 (read WIDGET (admin_of "home"))
+
+;; Wiki admins
+
+; hide any wiki page from the wiki's lists of pages, or show it again
+(set DOCUMENT.hidden (and (admin_of "wiki") (= @old.kind "wiki")))
+; give a wiki page a slug, change it or take it away
+(set DOCUMENT.slug (and (admin_of "wiki") (= @old.kind "wiki")))
+; any wiki page with no sub-pages
+(delete DOCUMENT (and (admin_of "wiki") (= @old.kind "wiki") (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 
 ;; Super admins
 

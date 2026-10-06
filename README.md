@@ -105,6 +105,10 @@ Helios Admin, in `docs/admin/`:
 
 - [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the query runner, the schema diagram, and the OpenAPI spec of the query API
 
+Helios Wiki, in `docs/wiki/`:
+
+- [wiki.md](docs/wiki/wiki.md) — parent-to-parent info: wiki pages as data model documents, who may write them, and the app
+
 Audits, in `docs/audits/`:
 
 - [README.md](docs/audits/README.md) — how every audit is run: reading the existing issues first, and how findings are filed and closed

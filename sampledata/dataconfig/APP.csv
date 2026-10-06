@@ -1,2 +1,3 @@
 id,key,name,subtitle,admins,visible_to,order
 app00000000001,who,Helios Who?,,grp00000000006,grp00000000004,i
+app00000000009,wiki,Helios Wiki,,grp00000000007,grp00000000004,j

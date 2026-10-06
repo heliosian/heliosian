@@ -265,7 +265,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "member": "excluded"})); err != nil {

@@ -24,6 +24,7 @@ var imageFolders = map[string]string{
 	"team":      "activity-images",
 	"celebrate": "party-images",
 	"when":      "category-images",
+	"wiki":      "wiki-images",
 }
 
 var folders = append([]string{"photos", "pronunciation"}, slices.Collect(maps.Values(imageFolders))...)

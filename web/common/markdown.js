@@ -1,7 +1,7 @@
 import {appOrigin} from '/appswitch.js';
 import {el} from '/elements.js';
 
-const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|home|www)\.heliosian\.com(\/.*)?$/;
+const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|wiki|home|www)\.heliosian\.com(\/.*)?$/;
 const apex = /^https?:\/\/heliosian\.com(\/.*)?$/;
 
 export function localizeLink(href) {
@@ -40,7 +40,9 @@ export function stable(text) {
   return text.slice(0, cut);
 }
 
-const inlinePattern = /(\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
+const inlinePattern = /(!\[[^\]]*\]\([^)\s]+\)|\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
+
+const picturePath = '/api/wiki/picture/';
 
 function inline(node, text, cards) {
   let last = 0;
@@ -49,7 +51,20 @@ function inline(node, text, cards) {
       node.append(text.slice(last, m.index));
     }
     const token = m[0];
-    if (token.startsWith('**')) {
+    if (token.startsWith('![')) {
+      const close = token.indexOf('](');
+      const src = token.slice(close + 2, -1);
+      const alt = token.slice(2, close);
+      if (src.startsWith(picturePath)) {
+        const img = el('img', 'md-image');
+        img.src = src;
+        img.alt = alt;
+        img.loading = 'lazy';
+        node.append(img);
+      } else {
+        node.append(alt);
+      }
+    } else if (token.startsWith('**')) {
       const strong = el('strong');
       inline(strong, token.slice(2, -2), cards);
       node.append(strong);

@@ -50,23 +50,23 @@ func TestWhoSeesWhichRows(t *testing.T) {
 	viewers := []string{nobody, student, parent, staff, guest}
 	for table, want := range map[string][]int{
 		"PERSON":           {3, 4, 4, 4, 4},
-		"PERSON_EMAIL":     {4, 4, 4, 4, 4},
+		"PERSON_EMAIL":     {5, 5, 5, 5, 5},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
 		"COLLECTION":       {0, 0, 1, 0, 0},
 		"COLLECTION_GROUP": {0, 0, 2, 0, 0},
-		"GROUP":            {0, 14, 14, 16, 0},
-		"MEMBER":           {0, 12, 12, 13, 1},
-		"EFFECTIVE_MEMBER": {0, 17, 17, 19, 1},
+		"GROUP":            {0, 14, 15, 17, 0},
+		"MEMBER":           {0, 13, 13, 14, 1},
+		"EFFECTIVE_MEMBER": {0, 18, 18, 20, 1},
 		"RULE":             {0, 0, 0, 4, 0},
-		"DOCUMENT":         {0, 0, 1, 1, 0},
+		"DOCUMENT":         {9, 9, 10, 10, 9},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
-		"CONTENT":          {0, 0, 0, 0, 0},
+		"CONTENT":          {7, 7, 7, 7, 7},
 		"INBOX":            {0, 0, 0, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CHARITY":          {0, 0, 0, 1, 0},
-		"APP":              {0, 1, 1, 1, 0},
+		"APP":              {0, 2, 2, 2, 0},
 		"ALIAS":            {0, 0, 0, 1, 0},
 	} {
 		for i, viewer := range viewers {
@@ -143,7 +143,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 		if got := len(as(t, s, viewer, `(from DOCUMENT (where (in id "doc00000000010" "doc00000000011" "doc00000000012")))`)); got != want {
 			t.Errorf("the post and what sits under it as %q: %d documents, want %d", viewer, got, want)
 		}
-		if got := len(as(t, s, viewer, `(from CONTENT)`)); got != want {
+		if got := len(as(t, s, viewer, `(from CONTENT (where (in id "cnt00000000001" "cnt00000000002" "cnt00000000003")))`)); got != want {
 			t.Errorf("the post's bytes and what sits under it as %q: %d, want %d", viewer, got, want)
 		}
 	}
@@ -205,7 +205,7 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	}
 	for i, viewer := range []string{nobody, student, parent, staff, guest} {
 		want := []int{0, 1, 0, 1, 0}[i]
-		if got := len(as(t, s, viewer, `(from CONTENT)`)); got != want {
+		if got := len(as(t, s, viewer, `(from CONTENT (where (= id "cnt00000000005")))`)); got != want {
 			t.Errorf("a reply about the picnic's bytes as %q: %d, want %d", viewer, got, want)
 		}
 	}
