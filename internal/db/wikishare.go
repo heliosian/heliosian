@@ -1,21 +1,37 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"image"
+	"image/draw"
+	"image/png"
 	"log/slog"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
 
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
+)
+
+const (
+	wikiShareSubPages = 4
+	wikiShareLogo     = "web/public/wiki/brand/logo-lockup.png"
+	wikiShareLogoRoom = 170
 )
 
 var (
-	markdownHeading = regexp.MustCompile(`^#{1,6}\s+(.*)$`)
-	markdownLink    = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-	markdownMarks   = strings.NewReplacer("**", "", "*", "", "`", "")
+	markdownImage    = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	markdownLink     = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	markdownLead     = regexp.MustCompile(`^\s*(#{1,6}\s|>\s?|[-*]\s+|\d+[.)]\s+)`)
+	markdownMarks    = strings.NewReplacer("**", "", "*", "", "`", "")
+	sentenceEnd      = regexp.MustCompile(`[.!?](\s|$)`)
+	markdownHeadLine = regexp.MustCompile(`^\s*#{1,6}\s`)
 )
 
 type WikiShare struct {
@@ -24,8 +40,13 @@ type WikiShare struct {
 	style *sharecard.Style
 }
 
-func NewWikiShare(s *Store, pics *Pictures, name, tagline func() string) *WikiShare {
-	return &WikiShare{s: s, pics: pics, style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: tagline, Lockup: "web/public/wiki/brand/logo-lockup-horizontal.png"}}
+type wikiShared struct {
+	name, sentence string
+	subPages       []string
+}
+
+func NewWikiShare(s *Store, pics *Pictures, name func() string) *WikiShare {
+	return &WikiShare{s: s, pics: pics, style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: func() string { return "" }}}
 }
 
 func (w *WikiShare) Register(mux *http.ServeMux) {
@@ -38,7 +59,7 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 		return ""
 	}
 	id, _, _ := strings.Cut(rest, "/")
-	name, headings, found, err := w.page(r.Context(), id)
+	page, found, err := w.page(r.Context(), id)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "document", id, "error", err)
 		return ""
@@ -46,8 +67,12 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if !found {
 		return ""
 	}
+	desc := page.sentence
+	if len(page.subPages) > 0 {
+		desc = strings.TrimSpace(desc + " In this section: " + strings.Join(page.subPages, " · "))
+	}
 	origin := "https://" + r.Host
-	return w.style.PreviewTags(name, strings.Join(headings, " · "), origin+"/p/"+id, origin+"/open/share/"+id+".png")
+	return w.style.PreviewTags(page.name, desc, origin+"/p/"+id, origin+"/open/share/"+id+".png")
 }
 
 func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
@@ -56,7 +81,7 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	name, headings, found, err := w.page(r.Context(), id)
+	page, found, err := w.page(r.Context(), id)
 	if err != nil {
 		serve.Error(rw, r, err)
 		return
@@ -65,37 +90,100 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	w.style.Serve(rw, r, sharecard.Card{Title: name, Subtitle: strings.Join(headings, " · ")}, slices.Concat([]string{name}, headings)...)
+	logo, err := wikiShareLogoWithRoom()
+	if err != nil {
+		serve.Error(rw, r, err)
+		return
+	}
+	card := sharecard.Card{Title: page.name, Subtitle: page.sentence, Picture: logo, Whole: true}
+	shown := page.subPages
+	if len(shown) > wikiShareSubPages {
+		shown = append(shown[:wikiShareSubPages-1:wikiShareSubPages-1], fmt.Sprintf("and %d more", len(page.subPages)-wikiShareSubPages+1))
+	}
+	for _, name := range shown {
+		card.Lines = append(card.Lines, sharecard.Line{Icon: "dot", Text: name})
+	}
+	w.style.Serve(rw, r, card, slices.Concat([]string{page.name, page.sentence}, page.subPages)...)
 }
 
-func (w *WikiShare) page(ctx context.Context, id string) (string, []string, bool, error) {
-	m := w.s.Model()
-	row, ok := m.Table("DOCUMENT").Get(id)
-	if !ok || row["kind"] != "wiki" {
-		return "", nil, false, nil
+func wikiShareLogoWithRoom() ([]byte, error) {
+	raw, err := os.ReadFile(wikiShareLogo)
+	if err != nil {
+		return nil, err
 	}
-	headings := []string{}
+	logo, err := png.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
+	}
+	b := logo.Bounds()
+	canvas := image.NewNRGBA(image.Rect(0, 0, b.Dx()*wikiShareLogoRoom/100, b.Dy()*wikiShareLogoRoom/100))
+	at := image.Pt((canvas.Bounds().Dx()-b.Dx())/2, (canvas.Bounds().Dy()-b.Dy())/2)
+	draw.Draw(canvas, image.Rectangle{Min: at, Max: at.Add(b.Size())}, logo, b.Min, draw.Src)
+	var out bytes.Buffer
+	if err := png.Encode(&out, canvas); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+func (w *WikiShare) page(ctx context.Context, id string) (wikiShared, bool, error) {
+	m := w.s.Model()
+	docs := m.Table("DOCUMENT")
+	row, ok := docs.Get(id)
+	if !ok || row["kind"] != "wiki" {
+		return wikiShared{}, false, nil
+	}
+	page := wikiShared{name: row["name"], subPages: []string{}}
+	children := []store.Row{}
+	for _, child := range docs.Referencing("parent", id) {
+		if child["kind"] == "wiki" {
+			children = append(children, child)
+		}
+	}
+	slices.SortFunc(children, func(a, b store.Row) int {
+		if a["order"] != b["order"] {
+			if a["order"] == "" || b["order"] == "" {
+				return strings.Compare(b["order"], a["order"])
+			}
+			return store.CompareKeys(a["order"], b["order"])
+		}
+		return strings.Compare(a["name"], b["name"])
+	})
+	for _, child := range children {
+		page.subPages = append(page.subPages, child["name"])
+	}
 	if row["content"] == "" {
-		return row["name"], headings, true, nil
+		return page, true, nil
 	}
 	content, _ := m.Table("CONTENT").Get(row["content"])
 	raw, _, err := w.pics.bucket.Get(ctx, content["blob"])
 	if err != nil {
-		return "", nil, false, err
+		return wikiShared{}, false, err
 	}
+	page.sentence = firstSentence(string(raw))
+	return page, true, nil
+}
+
+func firstSentence(markdown string) string {
 	fenced := false
-	for _, line := range strings.Split(string(raw), "\n") {
+	for _, line := range strings.Split(markdown, "\n") {
 		if strings.HasPrefix(line, "```") {
 			fenced = !fenced
 			continue
 		}
-		heading := markdownHeading.FindStringSubmatch(line)
-		if fenced || heading == nil {
+		if fenced || markdownHeadLine.MatchString(line) {
 			continue
 		}
-		if text := strings.TrimSpace(markdownMarks.Replace(markdownLink.ReplaceAllString(heading[1], "$1"))); text != "" {
-			headings = append(headings, text)
+		text := markdownImage.ReplaceAllString(line, "")
+		text = markdownLink.ReplaceAllString(markdownLead.ReplaceAllString(text, ""), "$1")
+		text = strings.TrimSpace(markdownMarks.Replace(text))
+		if text == "" {
+			continue
 		}
+		if end := sentenceEnd.FindStringIndex(text); end != nil {
+			return strings.TrimSpace(text[:end[0]+1])
+		}
+		return text
 	}
-	return row["name"], headings, true, nil
+	return ""
 }

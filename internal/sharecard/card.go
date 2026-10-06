@@ -311,6 +311,10 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 			DrawClockIcon(img, icon, s.Ink)
 		case "pin":
 			DrawPinIcon(img, icon, s.Ink)
+		case "dot":
+			size := icon.Dx() * 2 / 5
+			at := icon.Min.Add(image.Pt((icon.Dx()-size)/2, (icon.Dy()-size)/2))
+			DrawDot(img, image.Rect(at.X, at.Y, at.X+size, at.Y+size), s.Accent)
 		default:
 			DrawCalendarIcon(img, icon, s.Ink)
 		}

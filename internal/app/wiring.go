@@ -222,7 +222,7 @@ func NewCore(cfg Config) *Core {
 	}
 	wikiImages, _ := blob.ImageFolder("wiki")
 	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
-	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"), taglineOf("wiki"))
+	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
