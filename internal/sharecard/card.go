@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"image/png"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -177,7 +178,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 			draw.CatmullRom.Scale(fitted, dst, pic, b, draw.Src, nil)
 			draw.Draw(img, panel, fitted, panel.Min, draw.Src)
 		}
-		textRight = panel.Min.X - 48
+		textRight = panel.Min.X - 80
 	}
 
 	mark, corner := s.art()
@@ -248,7 +249,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		}
 		d.Face = titleFace
 		lines = Wrap(d, c.Title, width)
-		if len(lines) <= 3 {
+		if len(lines) <= 3 && !slices.ContainsFunc(lines, func(l string) bool { return d.MeasureString(l) > width }) {
 			break
 		}
 	}
