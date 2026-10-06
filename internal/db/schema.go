@@ -530,7 +530,8 @@ var Tables = []Table{
 			ref("content", "CONTENT").about("Its bytes."),
 			ref("message", "MESSAGE").about("The mail it was filed from."),
 			col("key_points", Text).about("Its key points, as the inbox shows them."),
-			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do.")},
+			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do."),
+			col("slug", Text).about("For a wiki page, its friendly address, /p/ and the slug on the wiki's host, no two pages the same: lowercase letters, digits and single hyphens, at most 40, never shaped like an id.")},
 	},
 	{
 		Name:        "CONTENT",

@@ -217,6 +217,10 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-parent-field { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
 
+.wiki-slug-host { flex-shrink: 0; font-weight: 400; color: var(--muted); margin-right: -6px; }
+
+.wiki-slug { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
+
 .wiki-parent { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
 
 /* A page as it reads. */

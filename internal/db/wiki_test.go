@@ -98,6 +98,66 @@ func TestTheImportStartsWikiPages(t *testing.T) {
 	}
 }
 
+func TestWikiSlugs(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	ctx := context.Background()
+	save := func(viewer string, page wikiPage) (string, error) {
+		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
+		return id, err
+	}
+	slugOf := func(id string) string {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		return row["slug"]
+	}
+	id, err := save(student, wikiPage{Name: "Pickup", Slug: "pickup", Body: "At the gate."})
+	if err != nil || slugOf(id) != "pickup" {
+		t.Fatalf("the author's new page with a slug: %v %q", err, slugOf(id))
+	}
+	if _, err := save(staff, wikiPage{Document: id, Name: "Pickup", Slug: "pickup", Body: "At the side gate."}); err != nil {
+		t.Fatalf("someone else's edit keeping the slug: %v", err)
+	}
+	for _, bad := range []string{"Pickup", "pick--up", "-pickup", "pick up", "doc00000000101", strings.Repeat("a", 41)} {
+		if _, err := save(student, wikiPage{Document: id, Name: "Pickup", Slug: bad, Body: "At the side gate."}); err == nil {
+			t.Errorf("the slug %q was taken", bad)
+		}
+	}
+	if _, err := save(student, wikiPage{Name: "Another", Slug: "getting-started", Body: "x"}); err == nil {
+		t.Fatal("a second page took a slug another page has")
+	}
+	if _, err := save(student, wikiPage{Document: id, Name: "Pickup", Slug: "pickup-times", Body: "At the side gate."}); err != nil {
+		t.Fatalf("the author's change of slug: %v", err)
+	}
+	m := s.Model()
+	if redirect, ok := m.Table("REDIRECT").Find("wiki", "/p/pickup"); !ok || redirect["new"] != "/p/"+id {
+		t.Fatalf("the old slug's redirect reads %v", redirect)
+	}
+	if seen := as(t, s, student, `(from REDIRECT (where (= app "wiki")))`); len(seen) != 1 {
+		t.Fatalf("a student reads %d of the wiki's redirects", len(seen))
+	}
+	for _, key := range []string{id, "pickup-times", "pickup"} {
+		if got := m.wikiPageAt(key); got != id {
+			t.Errorf("%s finds %q", key, got)
+		}
+	}
+	if got := m.wikiPageAt("doc00000000001"); got != "" {
+		t.Errorf("a newsletter's id finds %q", got)
+	}
+	if _, err := save(parent, wikiPage{Document: id, Name: "Pickup", Slug: "", Body: "At the side gate."}); err != nil || slugOf(id) != "" {
+		t.Fatalf("a wiki admin's removal of the slug: %v %q", err, slugOf(id))
+	}
+	imported, _, err := saveWiki(ctx, s, queue, pics, access.System(importReader), Env{System: importReader, Now: testNow}, wikiPage{Name: "Imported", Body: "From the doc."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := save(student, wikiPage{Document: imported, Name: "Imported", Slug: "imported", Body: "From the doc."}); err == nil {
+		t.Fatal("someone gave a page with no author a slug")
+	}
+	if _, err := save(parent, wikiPage{Document: imported, Name: "Imported", Slug: "imported", Body: "From the doc."}); err != nil {
+		t.Fatalf("a wiki admin's slug on a page with no author: %v", err)
+	}
+}
+
 func TestWikiPicturesAreServed(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

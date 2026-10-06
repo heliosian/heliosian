@@ -300,13 +300,21 @@ export function editPage(id) {
   const parent = parentPicker(p, parentId);
   const where = el('label', 'wiki-parent-field');
   where.append(el('span', '', 'Under'), parent);
+  const slug = el('input', 'wiki-slug');
+  slug.value = p ? p.slug : '';
+  slug.placeholder = 'its-address';
+  slug.pattern = '[a-z0-9]+(-[a-z0-9]+)*';
+  slug.maxLength = 40;
+  slug.title = 'Lowercase letters, digits and single hyphens';
+  const address = el('label', 'wiki-parent-field');
+  address.append(el('span', '', 'Address'), el('span', 'wiki-slug-host', `${location.host}/p/`), slug);
   const text = el('textarea', 'wiki-text');
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);
   const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list, [words](https://a.link); Insert Image puts a picture at the cursor.');
   const saveButton = el('button', 'button', 'Save');
   saveButton.type = 'submit';
-  const back = p ? pagePath(p) : (parentId ? `/p/${parentId}` : '/');
+  const back = p ? pagePath(p) : (parentId ? pagePath(page(parentId)) : '/');
   const cancel = link(back, 'button button-secondary', 'Cancel');
   const bar = el('div', 'wiki-actions');
   bar.append(saveButton, cancel);
@@ -317,7 +325,11 @@ export function editPage(id) {
   const main = el('div', 'wiki-editor-main');
   const textTools = el('div', 'wiki-text-tools');
   textTools.append(hint, imageInserter(text, 'Insert Image'));
-  main.append(title, where, text, textTools, bar);
+  main.append(title, where);
+  if (!p || mine(p) || state.admin) {
+    main.append(address);
+  }
+  main.append(text, textTools, bar);
   const side = el('div', 'detail-side wiki-editor-side');
   side.append(cards.wrap);
   form.append(main, side);
@@ -333,7 +345,7 @@ export function editPage(id) {
     saveButton.disabled = true;
     try {
       await cards.ready;
-      const saved = await save(p ? p.id : '', parent.value, title.value, text.value, cards.value());
+      const saved = await save(p ? p.id : '', parent.value, slug.value.trim(), title.value, text.value, cards.value());
       await load();
       navigate(pagePath(page(saved.result[0])));
       toast('Saved');

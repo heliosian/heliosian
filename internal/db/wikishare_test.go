@@ -35,6 +35,8 @@ func TestWikiShare(t *testing.T) {
 		},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/" + id + "/edit", Want: []string{`og:title" content="Field Trips"`}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/" + empty, Want: []string{`og:title" content="Empty"`, `og:description" content=""`}},
+		testkit.Preview{URL: "https://wiki.heliosian.com/p/getting-started", Want: []string{`og:title" content="Getting Started"`, `og:url" content="https://wiki.heliosian.com/p/getting-started"`, `og:image" content="https://wiki.heliosian.com/open/share/doc00000000102.png"`}},
+		testkit.Preview{URL: "https://wiki.heliosian.com/p/doc00000000102", Want: []string{`og:url" content="https://wiki.heliosian.com/p/getting-started"`}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/", Never: []string{"og:"}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/doc00000000001", Never: []string{"og:"}},
 	)

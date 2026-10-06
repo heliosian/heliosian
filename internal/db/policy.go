@@ -270,7 +270,7 @@ const policySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   key_points extracted)
+   key_points extracted slug)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -282,7 +282,7 @@ const policySource = `
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
 (read DOCUMENT_GROUP (id document group relation) true)
-; anyone but a guest starts a wiki page as its author
+; anyone but a guest starts a wiki page as its author, and may give it a slug
 (insert DOCUMENT
   (and (= @new.kind "wiki") (= @new.author @viewer) (!= @viewer.source "guest") (wiki_content @new.content)))
 ; anyone but a guest renames a wiki page
@@ -304,6 +304,8 @@ const policySource = `
 (set DOCUMENT.order (and (= @old.relation "side") (!= @viewer.source "guest")))
 ; anyone but a guest removes a wiki page's side card
 (delete DOCUMENT (and (= @old.relation "side") (!= @viewer.source "guest")))
+; a wiki page's author gives it a slug, changes it or takes it away
+(set DOCUMENT.slug (and (= @old.kind "wiki") (not (blank @old.author)) (= @old.author @viewer)))
 ; a wiki page's author deletes it once it has no sub-pages
 (delete DOCUMENT (and (= @old.kind "wiki") (= @old.author @viewer) (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 ; the viewer's own inbox
@@ -565,6 +567,8 @@ const policySource = `
 
 ;; Wiki admins
 
+; give any wiki page a slug, change it or take it away
+(set DOCUMENT.slug (and (admin_of "wiki") (= @old.kind "wiki")))
 ; any wiki page with no sub-pages
 (delete DOCUMENT (and (admin_of "wiki") (= @old.kind "wiki") (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 
@@ -576,6 +580,8 @@ const policySource = `
 (read ALIAS (id alias target) true)
 ; old paths and where they now go
 (read REDIRECT (super_admin))
+; the wiki's old page addresses, so an old link still finds its page
+(read REDIRECT (= app "wiki"))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
 ; every group's and person's search entry

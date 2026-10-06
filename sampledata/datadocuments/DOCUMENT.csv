@@ -1,10 +1,10 @@
-id,parent,kind,relation,order,name,published,author,url,fetch,link,filename,content_id,content,message,key_points,extracted
-doc00000000001,,newsletter,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,
-doc00000000101,,wiki,,a,Welcome,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000101,,,
-doc00000000102,,wiki,,b,Getting Started,2026-09-01 09:00:00,per00000000002,,,,,,,,,
-doc00000000103,doc00000000102,wiki,,a,First Week,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000102,,,
-doc00000000104,doc00000000102,wiki,,b,Drop-off and Pickup,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000103,,,
-doc00000000105,,wiki,,c,Activities,2026-09-01 09:00:00,per00000000002,,,,,,,,,
-doc00000000106,doc00000000105,wiki,,a,Camping Trips,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000104,,,
-doc00000000107,doc00000000105,wiki,,b,Clubs,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000105,,,
-doc00000000109,doc00000000106,,side,a,What to Bring,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000107,,,
+id,parent,kind,relation,order,name,published,author,url,fetch,link,filename,content_id,content,message,key_points,extracted,slug
+doc00000000001,,newsletter,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,,
+doc00000000101,,wiki,,a,Welcome,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000101,,,,
+doc00000000102,,wiki,,b,Getting Started,2026-09-01 09:00:00,per00000000002,,,,,,,,,,getting-started
+doc00000000103,doc00000000102,wiki,,a,First Week,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000102,,,,
+doc00000000104,doc00000000102,wiki,,b,Drop-off and Pickup,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000103,,,,
+doc00000000105,,wiki,,c,Activities,2026-09-01 09:00:00,per00000000002,,,,,,,,,,
+doc00000000106,doc00000000105,wiki,,a,Camping Trips,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000104,,,,
+doc00000000107,doc00000000105,wiki,,b,Clubs,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000105,,,,
+doc00000000109,doc00000000106,,side,a,What to Bring,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000107,,,,

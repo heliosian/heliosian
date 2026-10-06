@@ -23,6 +23,21 @@ var triggers = []trigger{
 	{table: "PHOTO", fire: photoNotReady},
 	{table: "GROUP", fire: servingNames},
 	{table: "MEMBER", fire: oneAnswer},
+	{table: "DOCUMENT", fire: wikiSlugMoved},
+}
+
+func wikiSlugMoved(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["kind"] != "wiki" || c.Old["slug"] == "" || c.Old["slug"] == c.New["slug"] {
+		return nil, nil
+	}
+	old, now := wikiPathPrefix+c.Old["slug"], wikiPathPrefix+c.New["id"]
+	if row, ok := m.Table("REDIRECT").Find("wiki", old); ok {
+		if row["new"] == now {
+			return nil, nil
+		}
+		return []Edit{{Set: row["id"], Cells: map[string]any{"new": now}}}, nil
+	}
+	return []Edit{{Insert: "REDIRECT", Row: map[string]any{"app": "wiki", "old": old, "new": now}}}, nil
 }
 
 func oneAnswer(m *Model, c Change) ([]Edit, error) {

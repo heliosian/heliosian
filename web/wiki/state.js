@@ -1,7 +1,7 @@
 import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 
-export const state = {pages: [], sides: new Map(), user: null, viewer: '', admin: false};
+export const state = {pages: [], sides: new Map(), moved: new Map(), user: null, viewer: '', admin: false};
 
 export function sidesOf(p) {
   return state.sides.get(p.id) || [];
@@ -16,14 +16,19 @@ function query(tree) {
 const viewerIs = column => ({'=': [{path: column}, {path: '@viewer'}]});
 
 export async function loadModel() {
-  const [viewer, pages, person, photo, admin, cards] = await Promise.all([
+  const [viewer, pages, person, photo, admin, cards, redirects] = await Promise.all([
     whoAmI(),
     query({from: 'DOCUMENT', where: [{'=': [{path: 'kind'}, 'wiki']}], order: [{path: 'name', dir: 'asc'}]}),
     query({from: 'PERSON', where: [viewerIs('id')]}),
     query({from: 'PHOTO', where: [viewerIs('person'), {path: 'ready'}], order: [{path: 'order', dir: 'asc'}], limit: 1}),
     query({from: 'PERSON', where: [viewerIs('id'), {admin_of: ['wiki']}]}),
     query({from: 'DOCUMENT', where: [{'=': [{path: 'relation'}, 'side']}], order: [{path: 'order', dir: 'asc'}]}),
+    query({from: 'REDIRECT', where: [{'=': [{path: 'app'}, 'wiki']}]}),
   ]);
+  state.moved = new Map(redirects.result.map(id => {
+    const row = redirects.resources.REDIRECT[id];
+    return [row.old, row.new];
+  }));
   state.sides = new Map();
   for (const id of cards.result) {
     const row = cards.resources.DOCUMENT[id];
@@ -34,7 +39,7 @@ export async function loadModel() {
   state.admin = admin.result.length > 0;
   state.pages = pages.result.map(id => {
     const row = pages.resources.DOCUMENT[id];
-    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || ''};
+    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || ''};
   });
   state.viewer = person.result[0] || '';
   const self = state.viewer ? person.resources.PERSON[state.viewer] : null;
@@ -55,12 +60,21 @@ export function page(id) {
   return state.pages.find(p => p.id === id) || null;
 }
 
+export function pageAt(key) {
+  const found = page(key) || state.pages.find(p => p.slug === key);
+  if (found) {
+    return found;
+  }
+  const moved = state.moved.get(`/p/${key}`);
+  return moved ? page(moved.slice('/p/'.length)) : null;
+}
+
 export function pagePath(p) {
-  return `/p/${p.id}`;
+  return `/p/${p.slug || p.id}`;
 }
 
 export function editPath(p) {
-  return `/p/${p.id}/edit`;
+  return `${pagePath(p)}/edit`;
 }
 
 function bySiblingOrder(a, b) {
@@ -115,8 +129,8 @@ export async function body(p) {
   return bodies.get(p.content);
 }
 
-export function save(document, parent, name, text, sides) {
-  return api('POST', '/api/do/wiki', {document, parent, name, body: text, sides});
+export function save(document, parent, slug, name, text, sides) {
+  return api('POST', '/api/do/wiki', {document, parent, slug, name, body: text, sides});
 }
 
 export function remove(p) {

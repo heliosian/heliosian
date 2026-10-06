@@ -1,4 +1,4 @@
-import {me, page, pagePath, childrenOf, trail, mine, setOrder} from './state.js';
+import {me, pageAt, pagePath, childrenOf, trail, mine, setOrder} from './state.js';
 import {el, svg, link, toast} from '/elements.js';
 import {initShell} from '/shell.js';
 import {navigate, load} from '/router.js';
@@ -9,7 +9,7 @@ let dragged = null;
 
 function currentPage() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  return parts[0] === 'p' ? page(parts[1] || '') : null;
+  return parts[0] === 'p' ? pageAt(parts[1] || '') : null;
 }
 
 function opened() {

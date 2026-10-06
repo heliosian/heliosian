@@ -326,10 +326,18 @@ func checkDocuments(documents Sheet) error {
 	for _, row := range documents["DOCUMENT"].rows {
 		parents[row["id"]], kinds[row["id"]] = row["parent"], row["kind"]
 	}
+	slugs := map[string]string{}
 	for _, row := range documents["DOCUMENT"].rows {
 		if row["relation"] == "side" && kinds[row["parent"]] != "wiki" {
 			return fmt.Errorf("DOCUMENT %s: a side card sits under a wiki page", row["id"])
 		}
+		if err := checkWikiSlug(row["slug"], row["kind"]); err != nil {
+			return fmt.Errorf("DOCUMENT %s: %v", row["id"], err)
+		}
+		if other, taken := slugs[row["slug"]]; taken && row["slug"] != "" {
+			return fmt.Errorf("DOCUMENT %s: %s already has the slug %q", row["id"], other, row["slug"])
+		}
+		slugs[row["slug"]] = row["id"]
 		root := row["kind"] != "" && row["relation"] == "" && row["parent"] == ""
 		child := row["kind"] == "" && row["relation"] != "" && row["parent"] != ""
 		subpage := row["kind"] == "wiki" && row["relation"] == "" && kinds[row["parent"]] == "wiki"

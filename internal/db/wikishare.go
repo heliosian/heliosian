@@ -41,8 +41,8 @@ type WikiShare struct {
 }
 
 type wikiShared struct {
-	name, sentence string
-	subPages       []string
+	id, slug, name, sentence string
+	subPages                 []string
 }
 
 func NewWikiShare(s *Store, pics *Pictures, name func() string) *WikiShare {
@@ -58,10 +58,10 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if !ok {
 		return ""
 	}
-	id, _, _ := strings.Cut(rest, "/")
-	page, found, err := w.page(r.Context(), id)
+	key, _, _ := strings.Cut(rest, "/")
+	page, found, err := w.page(r.Context(), key)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "document", id, "error", err)
+		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "page", key, "error", err)
 		return ""
 	}
 	if !found {
@@ -71,8 +71,12 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if len(page.subPages) > 0 {
 		desc = strings.TrimSpace(desc + " In this section: " + strings.Join(page.subPages, " · "))
 	}
+	address := page.slug
+	if address == "" {
+		address = page.id
+	}
 	origin := "https://" + r.Host
-	return w.style.PreviewTags(page.name, desc, origin+"/p/"+id, origin+"/open/share/"+id+".png")
+	return w.style.PreviewTags(page.name, desc, origin+wikiPathPrefix+address, origin+"/open/share/"+page.id+".png")
 }
 
 func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
@@ -126,14 +130,15 @@ func wikiShareLogoWithRoom() ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func (w *WikiShare) page(ctx context.Context, id string) (wikiShared, bool, error) {
+func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, error) {
 	m := w.s.Model()
 	docs := m.Table("DOCUMENT")
-	row, ok := docs.Get(id)
-	if !ok || row["kind"] != "wiki" {
+	id := m.wikiPageAt(key)
+	if id == "" {
 		return wikiShared{}, false, nil
 	}
-	page := wikiShared{name: row["name"], subPages: []string{}}
+	row, _ := docs.Get(id)
+	page := wikiShared{id: id, slug: row["slug"], name: row["name"], subPages: []string{}}
 	children := []store.Row{}
 	for _, child := range docs.Referencing("parent", id) {
 		if child["kind"] == "wiki" {
