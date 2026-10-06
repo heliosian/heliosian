@@ -16,6 +16,7 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/a.png"}),
 		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/page", "fetch": "gone"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "linked", "parent": "doc00000000011", "url": "https://docs.example.org/locked", "fetch": "sign_in"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +36,7 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 			counted[q.Name+" "+p.Name] = p.Pending
 		}
 	}
-	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "classifying": 1, "content sweep": 1, "content sweep image/png": 1} {
+	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "fetching signed in": 1, "fetching signed in image": 0, "fetching signed in linked": 1, "classifying": 1, "content sweep": 1, "content sweep image/png": 1} {
 		if counted[name] != want {
 			t.Errorf("%s pending %d, want %d", name, counted[name], want)
 		}

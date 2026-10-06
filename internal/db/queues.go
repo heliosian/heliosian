@@ -123,6 +123,11 @@ func (m *Model) queueCounts() []queueCount {
 	}
 	extraction := queueCount{Name: "extraction", About: "documents whose content the extractor reads, not yet read", Query: extractionQuery(allMimes)}
 	fetching := queueCount{Name: "fetching", About: "images and links an email shows, not yet fetched", Query: fetchingQuery("image", "linked")}
+	signInQuery := func(relations ...string) string {
+		return `(from DOCUMENT (where (in relation ` + quoted(relations) + `) (blank content) (= fetch "sign_in")))`
+	}
+	signIn := queueCount{Name: "fetching signed in", About: "images and links that need someone signed in to Google: go run ./tools/fetchsignin", Query: signInQuery("image", "linked")}
+	signInBy := map[string]int{}
 	classifying := queueCount{Name: "classifying", About: "mail sent to no group yet, waiting for Claude to say whom it was written to", Query: `(from DOCUMENT @d (where (= kind "mail") (blank parent) (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to")))))`}
 	byType, byRelation := &tally{}, &tally{}
 	links := m.Table("DOCUMENT_GROUP")
@@ -132,6 +137,10 @@ func (m *Model) queueCounts() []queueCount {
 		}
 		if d["relation"] == "image" || d["relation"] == "linked" {
 			byRelation.add(&fetching, d["relation"], d["content"] == "" && d["fetch"] == "")
+			if d["content"] == "" && d["fetch"] == "sign_in" {
+				signIn.Pending++
+				signInBy[d["relation"]]++
+			}
 		}
 		if d["kind"] == "mail" && d["parent"] == "" && !slices.ContainsFunc(links.Referencing("document", d["id"]), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
 			classifying.Pending++
@@ -139,7 +148,10 @@ func (m *Model) queueCounts() []queueCount {
 	}
 	byType.finish(&extraction, func(kind string) string { return extractionQuery(mimesOf[kind]) })
 	byRelation.finish(&fetching, func(relation string) string { return fetchingQuery(relation) })
-	out := []queueCount{extraction, fetching, classifying}
+	for _, relation := range []string{"image", "linked"} {
+		signIn.Parts = append(signIn.Parts, queueCount{Name: relation, Pending: signInBy[relation], Query: signInQuery(relation)})
+	}
+	out := []queueCount{extraction, fetching, signIn, classifying}
 
 	search := queueCount{Name: "search indexing", About: "groups, people and extracts whose search entry Claude and Vertex have not made yet", Query: `(from SEARCH (where (not made)))`}
 	byTable := &tally{}
