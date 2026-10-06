@@ -77,6 +77,27 @@ func TestWikiSideCards(t *testing.T) {
 	}
 }
 
+func TestTheImportStartsWikiPages(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	ctx := context.Background()
+	save := func(page wikiPage) (string, error) {
+		id, _, err := saveWiki(ctx, s, queue, pics, access.System(importReader), Env{System: importReader, Now: testNow}, page)
+		return id, err
+	}
+	top, err := save(wikiPage{Name: "Academics", Body: "How the school teaches."})
+	if err != nil {
+		t.Fatalf("the import's page: %v", err)
+	}
+	sub, err := save(wikiPage{Parent: top, Name: "Reading", Body: "Every day.", Sides: []wikiSide{{Name: "Common Questions", Body: "- When does it start?"}}})
+	if err != nil {
+		t.Fatalf("the import's sub-page with a card: %v", err)
+	}
+	if row, _ := s.Model().Table("DOCUMENT").Get(sub); row["parent"] != top || row["author"] != "" || len(s.Model().Table("DOCUMENT").Referencing("parent", sub)) != 1 {
+		t.Fatalf("the imported sub-page reads %v", row)
+	}
+}
+
 func TestWikiPicturesAreServed(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

@@ -18,10 +18,11 @@ A page's or a card's Markdown may show pictures, `![words](/api/wiki/picture/<sh
 
 ## Who may do what
 
-The clauses are in `policySource` (`internal/db/policy.go`), under Everyone and Wiki admins:
+The clauses are in `policySource` (`internal/db/policy.go`), under Everyone, Wiki admins and System: import:
 
 - Anyone signed in reads every page, as for any document sent to no group.
 - Anyone but a guest starts a page, as its author, and renames, rewrites, moves or reorders any page, and adds, changes, reorders or removes its side cards. Its content must be Markdown that no document but a wiki page holds.
+- The import key (`docs/datamodel.md`, The query API) starts pages with no author, and their side cards, for loading a document into the wiki; since it is no guest, the clauses above let it rename, rewrite and move pages too.
 - A page with no sub-pages is deleted by its author, and by a wiki admin, its side cards deleted with it in the same batch. A page with sub-pages can't be deleted until they are moved or deleted. A wiki admin is an effective member of the `admins` group the `wiki` `APP` row names, or a super admin.
 
 ## The app

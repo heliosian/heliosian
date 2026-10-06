@@ -776,6 +776,10 @@ const policySource = `
 (set DOCUMENT.relation (and (system "import") (= @old.relation "linked") (= @new.relation "image")))
 ; store the bytes of an image, a pdf or a page such a fetch got
 (insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon" "application/pdf" "text/html; charset=utf-8")))
+; start a wiki page with no author, for the wiki's own import
+(insert DOCUMENT (and (system "import") (= @new.kind "wiki") (blank @new.author) (wiki_content @new.content)))
+; add a side card to a wiki page
+(insert DOCUMENT (and (system "import") (= @new.relation "side") (= @new.parent.kind "wiki") (wiki_content @new.content)))
 
 ;; System: import, the sync from the old sheets, until the cutover
 
