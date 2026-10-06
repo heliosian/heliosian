@@ -1,7 +1,7 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {batch, query, me as whoAmI} from '/data.js';
 
-export const state = {model: null, celebration: '', tab: 'available', hostingTab: 'mine', category: '', showPast: true};
+export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
 export function familyShown(p) {
   return state.showPast || p.availability !== 'past';

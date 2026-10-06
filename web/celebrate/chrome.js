@@ -89,9 +89,9 @@ function hostButton() {
 }
 
 export const listTabs = [
+  {key: 'upcoming', label: 'Upcoming'},
   {key: 'available', label: 'Available'},
   {key: 'waitlist', label: 'Waitlist'},
-  {key: 'upcoming', label: 'All Upcoming'},
   {key: 'past', label: 'Past Parties'},
 ];
 
