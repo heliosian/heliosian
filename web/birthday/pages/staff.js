@@ -144,9 +144,7 @@ function askBand(sv) {
   band.append(body);
   const actions = el('div', 'row-actions');
   actions.append(filled('Add Donation', null, () => openDonation(sv)));
-  const useDefaultButton = outlined('Use Default Donation', null, () => useDefault(sv));
-  useDefaultButton.disabled = Boolean(sv.donation);
-  actions.append(useDefaultButton);
+  actions.append(outlined('Use Default Donation', null, () => useDefault(sv)));
   band.append(actions);
   return band;
 }
@@ -257,6 +255,10 @@ export function staffPage(sv) {
     page.append(band);
     return page;
   }
-  page.append(steps(sv), askBand(sv), donationBand(sv), notes(sv));
+  page.append(steps(sv));
+  if (!sv.donation) {
+    page.append(askBand(sv));
+  }
+  page.append(donationBand(sv), notes(sv));
   return page;
 }
