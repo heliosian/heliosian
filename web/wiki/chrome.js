@@ -1,4 +1,4 @@
-import {state, me, page, pageAt, pagePath, childrenOf, trail, mine, setOrder} from './state.js';
+import {me, page, pagePath, childrenOf, trail, mine, setOrder} from './state.js';
 import {el, svg, link, toast} from '/elements.js';
 import {initShell} from '/shell.js';
 import {navigate, load} from '/router.js';
@@ -9,10 +9,7 @@ let dragged = null;
 
 function currentPage() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === 'p') {
-    return page(parts[1] || '');
-  }
-  return parts.length === 1 ? pageAt(parts[0]) : null;
+  return parts[0] === 'p' ? page(parts[1] || '') : null;
 }
 
 function opened() {
@@ -37,12 +34,6 @@ function marks(p, row) {
     star.classList.add('nav-mine');
     star.setAttribute('aria-label', 'You started this page');
     row.append(star);
-  }
-  if (p.hidden) {
-    const mark = svg('eye-off');
-    mark.classList.add('nav-hidden');
-    mark.setAttribute('aria-label', 'Hidden from the list of pages');
-    row.append(mark);
   }
 }
 

@@ -85,8 +85,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .detail-tools > .button { padding-top: 0; padding-bottom: 0; }
 
 
-.wiki-page .detail-hero { margin-bottom: 20px; }
-
 .wiki-page .wiki-crumbs { margin: 0; }
 
 .detail-cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
@@ -169,10 +167,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-section { margin: 28px 0 12px; font-size: 18px; color: var(--brand); }
 
-.wiki-hidden-note { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; padding: 10px 14px; border-radius: 10px; background: var(--input); font-size: 14px; color: var(--muted); }
-
-.wiki-hidden-note svg { width: 18px; height: 18px; flex-shrink: 0; }
-
 /* The open page's top-level page and All Pages are main items, as HCA-Team's
    sections are; the active one carries the lime chevron at its end. */
 .nav-main-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -215,10 +209,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .app-nav a svg.nav-mine { width: 14px; height: 14px; stroke: var(--lime); }
 
-.app-nav a svg.nav-hidden { width: 14px; height: 14px; color: rgba(255, 255, 255, 0.55); }
-
-.app-nav a.is-active svg.nav-hidden { color: rgba(255, 255, 255, 0.55); }
-
 /* New Page at the rail's foot, smaller than the other rails' actions. */
 .app-nav a.button.nav-action.button-small { align-self: flex-start; width: auto; min-height: 0; margin: 18px 0 0 12px; padding: 7px 14px; font-size: 13px; gap: 6px; }
 
@@ -226,12 +216,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 
 .wiki-parent-field { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
-
-.wiki-parent-field[hidden] { display: none; }
-
-.wiki-slug-host { flex-shrink: 0; font-weight: 400; color: var(--muted); margin-right: -6px; }
-
-.wiki-slug { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
 
 .wiki-parent { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
 

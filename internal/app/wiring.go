@@ -215,16 +215,13 @@ func NewCore(cfg Config) *Core {
 		})
 	}
 	wikiMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/new", "/p/{id}", "/p/{id}/edit", "/{slug}"} {
+	for _, page := range []string{"/{$}", "/new", "/p/{id}", "/p/{id}/edit"} {
 		wikiMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/wiki/index.html")
 		})
 	}
 	wikiImages, _ := blob.ImageFolder("wiki")
 	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
-	wikiMux.HandleFunc("GET /api/wiki/images", serve.JSON(func(*http.Request, serve.None) (map[string]bool, error) {
-		return map[string]bool{"search": cfg.ImageSearch.On()}, nil
-	}))
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},

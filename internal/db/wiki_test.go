@@ -33,48 +33,6 @@ func TestTheLoadRefusesWikiPagesInALoopOrUnderOtherDocuments(t *testing.T) {
 	}
 }
 
-func TestWikiSlugs(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
-	save := func(viewer string, page wikiPage) (string, error) {
-		id, _, err := saveWiki(context.Background(), s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
-		return id, err
-	}
-	id, err := save(staff, wikiPage{Name: "Pickup", Slug: " pickup ", Body: "At the gate."})
-	if err != nil {
-		t.Fatalf("an admin's slug: %v", err)
-	}
-	if row, _ := s.Model().Table("DOCUMENT").Get(id); row["slug"] != "pickup" {
-		t.Fatalf("the page reads %v", row)
-	}
-	if _, err := save(parent, wikiPage{Document: id, Name: "Pickup and drop-off", Slug: "pickup", Body: "At the gate."}); err != nil {
-		t.Fatalf("someone else's edit keeping the slug: %v", err)
-	}
-	mine, err := save(parent, wikiPage{Name: "Mine", Slug: "mine", Body: "Mine."})
-	if err != nil {
-		t.Fatalf("an author's slug on a new page: %v", err)
-	}
-	if _, err := save(parent, wikiPage{Document: mine, Name: "Mine", Slug: "my-page", Body: "Mine."}); err != nil {
-		t.Fatalf("an author's change of slug: %v", err)
-	}
-	for name, c := range map[string]struct {
-		viewer string
-		page   wikiPage
-	}{
-		"a slug changed by someone else":     {student, wikiPage{Document: id, Name: "Pickup", Slug: "gate"}},
-		"a slug another page has":            {staff, wikiPage{Name: "Again", Slug: "pickup"}},
-		"a slug the sample's welcome has":    {staff, wikiPage{Name: "Hello", Slug: "welcome"}},
-		"a slug that is one of the routes":   {staff, wikiPage{Name: "New", Slug: "new"}},
-		"a slug with capitals":               {staff, wikiPage{Name: "Shout", Slug: "Shout"}},
-		"a slug on a sub-page":               {staff, wikiPage{Parent: id, Name: "Under", Slug: "under"}},
-		"a slugged page moved under another": {staff, wikiPage{Document: id, Parent: "doc00000000105", Name: "Pickup", Slug: "pickup"}},
-	} {
-		if _, err := save(c.viewer, c.page); err == nil {
-			t.Errorf("%s was saved", name)
-		}
-	}
-}
-
 func TestWikiSideCards(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
@@ -204,25 +162,6 @@ func TestWikiPages(t *testing.T) {
 	}
 	if err := written(student, Edit{Delete: id}); err == nil {
 		t.Fatal("someone else deleted the page")
-	}
-	if err := written(student, Edit{Set: id, Cells: map[string]any{"hidden": true}}); err == nil {
-		t.Fatal("someone else hid the page")
-	}
-	if err := written(parent, Edit{Set: id, Cells: map[string]any{"hidden": true}}); err != nil {
-		t.Fatalf("the author's hide: %v", err)
-	}
-	if err := written(staff, Edit{Set: id, Cells: map[string]any{"hidden": false}}); err != nil {
-		t.Fatalf("an admin's show: %v", err)
-	}
-	picture := "wiki-images/" + strings.Repeat("a", 64) + ".jpg"
-	if err := written(student, Edit{Set: id, Cells: map[string]any{"image": picture}}); err != nil {
-		t.Fatalf("a picture for the page: %v", err)
-	}
-	if err := written(student, Edit{Set: id, Cells: map[string]any{"image": "photos/" + strings.Repeat("a", 64) + ".jpg"}}); err == nil {
-		t.Fatal("a page took a picture from outside wiki-images")
-	}
-	if err := written(guest, Edit{Set: id, Cells: map[string]any{"image": ""}}); err == nil {
-		t.Fatal("a guest took the page's picture away")
 	}
 
 	first, err := save(parent, wikiPage{Parent: id, Name: "Pickup", Body: "At the gate."})

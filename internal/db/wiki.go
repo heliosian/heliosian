@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -27,42 +26,11 @@ const (
 	wikiWhere = "wiki"
 )
 
-var (
-	wikiImage         = regexp.MustCompile(`^wiki-images/[0-9a-f]{64}\.(jpg|png|gif|webp)$`)
-	wikiSlug          = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
-	reservedWikiPaths = map[string]bool{"new": true, "p": true, "api": true, "auth": true, "hooks": true, "open": true, "optin": true, "admin": true}
-)
-
-func checkWikiImage(image, kind string) error {
-	switch {
-	case image == "":
-		return nil
-	case kind != "wiki":
-		return fmt.Errorf("only a wiki page has an image")
-	case !wikiImage.MatchString(image):
-		return fmt.Errorf("a wiki page's image is a picture under wiki-images/, not %q", image)
-	}
-	return nil
-}
-
-func checkWikiSlug(slug, kind, parent string) error {
-	switch {
-	case slug == "":
-		return nil
-	case kind != "wiki" || parent != "":
-		return fmt.Errorf("only a wiki page at the top level has a slug")
-	case !wikiSlug.MatchString(slug):
-		return fmt.Errorf("a slug is lowercase letters, digits and single hyphens, not %q", slug)
-	case reservedWikiPaths[slug]:
-		return fmt.Errorf("%q is one of the wiki's own addresses", slug)
-	}
-	return nil
-}
+var wikiImage = regexp.MustCompile(`^wiki-images/[0-9a-f]{64}\.(jpg|png|gif|webp)$`)
 
 type wikiPage struct {
 	Document string     `json:"document"`
 	Parent   string     `json:"parent"`
-	Slug     string     `json:"slug"`
 	Name     string     `json:"name"`
 	Body     string     `json:"body"`
 	Sides    []wikiSide `json:"sides"`
@@ -132,10 +100,6 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 	if len(page.Body) > wikiLimit {
 		return "", "", access.Invalid("a wiki page is at most %d bytes", wikiLimit)
 	}
-	slug := strings.TrimSpace(page.Slug)
-	if err := checkWikiSlug(slug, "wiki", page.Parent); err != nil {
-		return "", "", access.Invalid("%v", err)
-	}
 	for _, side := range page.Sides {
 		if strings.TrimSpace(side.Name) == "" {
 			return "", "", access.Invalid("a side card needs a title")
@@ -190,20 +154,11 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		if err != nil {
 			return err
 		}
-		if other := m.wikiPageAt(slug); other != "" && other != page.Document {
-			return access.Invalid("another page is already at %q", slug)
-		}
 		edit := Edit{Set: page.Document, Cells: map[string]any{"name": name, "content": contentID}}
 		if page.Document == "" {
-			edit = Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "wiki", "name": name, "content": contentID, "parent": page.Parent, "slug": slug, "order": m.lastWikiOrder(page.Parent), "author": env.Viewer, "published": env.Now.In(School).Format(cells.StampFormat)}}
-		} else {
-			old, _ := m.Table("DOCUMENT").Get(page.Document)
-			if old["parent"] != page.Parent {
-				edit.Cells["parent"], edit.Cells["order"] = page.Parent, m.lastWikiOrder(page.Parent)
-			}
-			if old["slug"] != slug {
-				edit.Cells["slug"] = slug
-			}
+			edit = Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "wiki", "name": name, "content": contentID, "parent": page.Parent, "order": m.lastWikiOrder(page.Parent), "author": env.Viewer, "published": env.Now.In(School).Format(cells.StampFormat)}}
+		} else if old, _ := m.Table("DOCUMENT").Get(page.Document); old["parent"] != page.Parent {
+			edit.Cells["parent"], edit.Cells["order"] = page.Parent, m.lastWikiOrder(page.Parent)
 		}
 		if id, err = apply(edit); err != nil {
 			return err
@@ -278,18 +233,6 @@ func (m *Model) wikiParentFits(document, parent string) error {
 		at = row["parent"]
 	}
 	return nil
-}
-
-func (m *Model) wikiPageAt(slug string) string {
-	if slug == "" {
-		return ""
-	}
-	for _, row := range m.Table("DOCUMENT").All() {
-		if row["slug"] == slug {
-			return row["id"]
-		}
-	}
-	return ""
 }
 
 func (m *Model) lastWikiOrder(parent string) string {

@@ -530,10 +530,7 @@ var Tables = []Table{
 			ref("content", "CONTENT").about("Its bytes."),
 			ref("message", "MESSAGE").about("The mail it was filed from."),
 			col("key_points", Text).about("Its key points, as the inbox shows them."),
-			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do."),
-			col("hidden", Bool).about("For a wiki page, kept out of the wiki's lists of pages for all but its author and the wiki's admins; its link still opens it."),
-			col("slug", Text).about("For a top-level wiki page, the address it answers at on the wiki's host, no two pages the same: lowercase letters, digits and hyphens."),
-			col("image", Blob).about("For a wiki page, the picture across its top, wiki-images/ and its SHA-256; a page with none shows the nearest page above it that has one.")},
+			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do.")},
 	},
 	{
 		Name:        "CONTENT",

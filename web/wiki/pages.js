@@ -1,9 +1,8 @@
-import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, listed, setHidden, imageOf, setImage, sidesOf, body, save, remove} from './state.js';
+import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove} from './state.js';
 import {el, svg, link, button, toast} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {navigate, load, notFound} from '/router.js';
 import {render} from '/markdown.js';
-import {detailHero} from '/heroimage.js';
 import {imageTools} from '/images.js';
 
 function head(title, actions) {
@@ -60,7 +59,7 @@ export function listPage() {
   const list = el('div', 'wiki-list');
   out.append(list);
   const show = q => {
-    const shown = q ? state.pages.filter(p => listed(p) && p.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : childrenOf('');
+    const shown = q ? state.pages.filter(p => p.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name)) : childrenOf('');
     list.replaceChildren(...shown.map(p => pageCard(p, Boolean(q))));
     if (!shown.length) {
       list.append(el('p', 'panel-empty', state.pages.length ? 'No page has that in its title.' : 'No pages yet. Start the first one.'));
@@ -71,9 +70,7 @@ export function listPage() {
   return out;
 }
 
-const tools = imageTools('/api/wiki', {state: {get model() {
-  return {imageSearch: state.imageSearch};
-}}});
+const tools = imageTools('/api/wiki', {state: {}});
 
 function anchorFor(text, taken) {
   const base = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'section';
@@ -136,38 +133,7 @@ export function viewPage(id) {
   add.append(svg('plus'), el('span', '', 'Add Sub-Page'));
   top.append(crumbs(p), actions);
   const children = childrenOf(p.id);
-  if (mine(p) || state.admin) {
-    const visibility = button(p.hidden ? 'Private' : 'Public', p.hidden ? 'eye-off' : 'eye', 'button button-small button-secondary', async () => {
-      const hide = !p.hidden;
-      try {
-        await setHidden(p.id, hide);
-        await load();
-        toast(hide ? 'Private: kept out of the list of pages' : 'Public: in the list of pages');
-      } catch (err) {
-        toast(err.message);
-      }
-    });
-    visibility.title = p.hidden ? 'Private: click to make it public' : 'Public: click to make it private';
-    actions.append(visibility);
-  }
   actions.append(add, edit);
-  const hero = detailHero({
-    imageUrl: imageOf(p),
-    title: p.name,
-    path: pagePath(p),
-    edit: {
-      image: p.image,
-      tools,
-      save: async name => {
-        try {
-          await setImage(p.id, name);
-          await load();
-        } catch (err) {
-          toast(err.message);
-        }
-      },
-    },
-  });
   const cols = el('div', 'detail-cols');
   const main = el('div', 'detail-main');
   const side = el('div', 'detail-side');
@@ -182,11 +148,6 @@ export function viewPage(id) {
     body(card).then(md => text.replaceChildren(render(md))).catch(err => text.replaceChildren(el('p', 'panel-empty', err.message)));
   }
   main.append(el('h1', 'detail-title', p.name));
-  if (p.hidden) {
-    const note = el('p', 'wiki-hidden-note');
-    note.append(svg('eye-off'), el('span', '', 'Private: kept out of the list of pages. Anyone with its link can still open it.'));
-    main.append(note);
-  }
   const content = el('article', 'wiki-body');
   content.append(el('p', 'panel-empty', 'Loading…'));
   main.append(content);
@@ -202,7 +163,7 @@ export function viewPage(id) {
     main.append(el('h2', 'wiki-section', 'Pages in this section'), list);
   }
   cols.append(main, side);
-  out.append(top, hero, cols);
+  out.append(top, cols);
   return out;
 }
 
@@ -339,18 +300,6 @@ export function editPage(id) {
   const parent = parentPicker(p, parentId);
   const where = el('label', 'wiki-parent-field');
   where.append(el('span', '', 'Under'), parent);
-  const slug = el('input', 'wiki-slug');
-  slug.value = p ? p.slug : '';
-  slug.placeholder = 'its-address';
-  slug.pattern = '[a-z0-9]+(-[a-z0-9]+)*';
-  slug.title = 'Lowercase letters, digits and single hyphens';
-  const address = el('label', 'wiki-parent-field');
-  address.append(el('span', '', 'Address'), el('span', 'wiki-slug-host', `${location.host}/`), slug);
-  const showAddress = () => {
-    address.hidden = !(state.admin || !p || mine(p)) || parent.value !== '';
-  };
-  parent.addEventListener('change', showAddress);
-  showAddress();
   const text = el('textarea', 'wiki-text');
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);
@@ -368,7 +317,7 @@ export function editPage(id) {
   const main = el('div', 'wiki-editor-main');
   const textTools = el('div', 'wiki-text-tools');
   textTools.append(hint, imageInserter(text, 'Insert Image'));
-  main.append(title, where, address, text, textTools, bar);
+  main.append(title, where, text, textTools, bar);
   const side = el('div', 'detail-side wiki-editor-side');
   side.append(cards.wrap);
   form.append(main, side);
@@ -384,8 +333,7 @@ export function editPage(id) {
     saveButton.disabled = true;
     try {
       await cards.ready;
-      const keptSlug = parent.value === '' ? slug.value.trim() : '';
-      const saved = await save(p ? p.id : '', parent.value, keptSlug, title.value, text.value, cards.value());
+      const saved = await save(p ? p.id : '', parent.value, title.value, text.value, cards.value());
       await load();
       navigate(pagePath(page(saved.result[0])));
       toast('Saved');
