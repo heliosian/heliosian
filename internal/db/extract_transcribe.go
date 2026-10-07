@@ -32,7 +32,7 @@ const (
 	decoration     = "(decoration)"
 )
 
-const pdfSystem = `You are given one PDF a school shared with its families - a flyer, a letter, a schedule, a form, a handbook, a slide deck. A slide deck's slides each become a section headed by the slide's title. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything.
+const pdfSystem = `You are given one PDF a school shared with its families - a flyer, a letter, a schedule, a form, a handbook, a slide deck. A slide deck's slides each become a section headed by the slide's title. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything. Your answer is the transcription and nothing else: never a word about what kind of document it is or what you are doing and why.
 
 Transcribe only text you can read with certainty, letter by letter. Where something cannot be read - a blurred scan, a table too small to make out - leave it out and write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". Never reconstruct it from context. Leave out logos, wordmarks and decoration, even when they have words in them; words that only brand the document carry no information.
 

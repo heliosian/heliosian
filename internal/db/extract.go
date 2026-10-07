@@ -61,7 +61,7 @@ var extractors = map[string]extractFunc{
 	// "image/png":       (*Extractor).readImage,
 	"image/gif": (*Extractor).readImage,
 	"image/bmp": (*Extractor).readImage,
-	// "image/webp":      (*Extractor).readImage,
+	"image/webp": (*Extractor).readImage,
 }
 
 func bytesOnly(read func([]byte) ([]extracted, error)) extractFunc {
