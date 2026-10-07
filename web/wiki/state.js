@@ -161,8 +161,10 @@ export function defaultHeader(p) {
 }
 
 export async function headerFor(p) {
-  for (let at = p; at; at = page(at.parent)) {
-    const {header} = splitHeader(await body(at));
+  const chain = [p, ...trail(p).reverse()];
+  const texts = await Promise.all(chain.map(body));
+  for (const md of texts) {
+    const {header} = splitHeader(md);
     if (header) {
       return header;
     }

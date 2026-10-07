@@ -214,15 +214,18 @@ export function viewPage(id) {
   content.append(el('p', 'panel-empty', 'Loading…'));
   main.append(content);
   const hero = el('div');
-  body(p).then(async md => {
-    const {header, text} = splitHeader(md);
-    const edit = {image: header, tools, save: headerSaver(p, hero)};
-    hero.replaceChildren(detailHero({imageUrl: await headerFor(p), title: p.name, path: pagePath(p), edit}));
+  const md = body(p);
+  md.then(md => {
+    const {text} = splitHeader(md);
     content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', children.length ? 'This page holds the pages below.' : 'This page is empty. Edit it to add something.'));
     outline(content, contents);
   }).catch(err => {
     content.replaceChildren(el('p', 'panel-empty', err.message));
   });
+  Promise.all([md, headerFor(p)]).then(([md, imageUrl]) => {
+    const edit = {image: splitHeader(md).header, tools, save: headerSaver(p, hero)};
+    hero.replaceChildren(detailHero({imageUrl, title: p.name, path: pagePath(p), edit}));
+  }).catch(err => toast(err.message));
   if (children.length) {
     const list = el('div', 'wiki-list');
     list.append(...children.map(c => pageCard(c)));
