@@ -23,7 +23,11 @@ const composeTimeout = 3 * time.Minute
 
 const composeIntro = `You write queries for Helios Admin's Query page from a plain description. The page runs the query as the person asking, so they see only the rows the read policies let them see.
 
-A query is one fully bracketed prefix expression, the operator first in every bracket:
+` + Language + `
+
+Read the description, then say back in a sentence or two what you understood it to ask for, in terms of the data: which table, which rows, in what order. Write the query that answers it. When the description can't be answered from these tables, or is too unclear to pick one reading, say why in understanding and leave query empty. Use only the tables, columns and enum values below. Prefer the plainest query that answers the description; add include for references the reader will want to see named. Don't add a limit unless the description asks for one.`
+
+const Language = `A query is one fully bracketed prefix expression, the operator first in every bracket:
 
 (from TABLE [@name] (where cond…) (order path asc|desc …) (limit N) (include path…))
 
@@ -33,9 +37,7 @@ A query is one fully bracketed prefix expression, the operator first in every br
 - (ancestors @row) is the row and every row above it through parent, for a table whose parent names its own table.
 - Text and enums compare ignoring case; references and IDs exactly. A date compares against a moment as that day's midnight. A blank cell equals nothing, and != holds when exactly one side is blank.
 - include brings the rows a reference path names (include parent, include person group) so their titles show beside the answer.
-- The policy definitions below are part of the language: (visible @g), (manages @g), (super_admin), (household @p) and the rest can be called inside a query that names its row, (from GROUP @g (where (visible @g))).
-
-Read the description, then say back in a sentence or two what you understood it to ask for, in terms of the data: which table, which rows, in what order. Write the query that answers it. When the description can't be answered from these tables, or is too unclear to pick one reading, say why in understanding and leave query empty. Use only the tables, columns and enum values below. Prefer the plainest query that answers the description; add include for references the reader will want to see named. Don't add a limit unless the description asks for one.`
+- The policy definitions are part of the language: (visible @g), (manages @g), (super_admin), (household @p) and the rest can be called inside a query that names its row, (from GROUP @g (where (visible @g))).`
 
 const composeExamples = `Examples:
 
@@ -58,35 +60,41 @@ var composeSchema = map[string]any{
 	"additionalProperties": false,
 }
 
-var composeSystem = composeIntro + "\n\n" + describeTables() + "\nPolicy definitions and clauses:\n" + policySource + "\n" + composeExamples
+var composeSystem = composeIntro + "\n\n" + describeTables() + "\nPolicy definitions and clauses:\n" + PolicySource + "\n" + composeExamples
 
 func describeTables() string {
 	out := &strings.Builder{}
 	out.WriteString("Tables:\n")
 	for _, t := range Tables {
-		fmt.Fprintf(out, "\n%s: %s", t.Name, t.Description)
-		if t.Generated {
-			out.WriteString(" Worked out from other tables.")
+		out.WriteString("\n" + DescribeTable(t))
+	}
+	return out.String()
+}
+
+func DescribeTable(t Table) string {
+	out := &strings.Builder{}
+	fmt.Fprintf(out, "%s: %s", t.Name, t.Description)
+	if t.Generated {
+		out.WriteString(" Worked out from other tables.")
+	}
+	out.WriteString("\n")
+	for _, c := range t.Columns {
+		if c.Private {
+			continue
+		}
+		kind := kindNames[c.Kind]
+		if c.Kind == Ref && c.Target != "" {
+			kind += " → " + c.Target
+		}
+		fmt.Fprintf(out, "- %s (%s) %s", c.Name, kind, c.Description)
+		if len(c.Values) > 0 {
+			values := []string{}
+			for _, value := range c.Values {
+				values = append(values, fmt.Sprintf("%q %s", value.Name, value.Description))
+			}
+			fmt.Fprintf(out, " Values: %s.", strings.Join(values, "; "))
 		}
 		out.WriteString("\n")
-		for _, c := range t.Columns {
-			if c.Private {
-				continue
-			}
-			kind := kindNames[c.Kind]
-			if c.Kind == Ref && c.Target != "" {
-				kind += " → " + c.Target
-			}
-			fmt.Fprintf(out, "- %s (%s) %s", c.Name, kind, c.Description)
-			if len(c.Values) > 0 {
-				values := []string{}
-				for _, value := range c.Values {
-					values = append(values, fmt.Sprintf("%q %s", value.Name, value.Description))
-				}
-				fmt.Fprintf(out, " Values: %s.", strings.Join(values, "; "))
-			}
-			out.WriteString("\n")
-		}
 	}
 	return out.String()
 }

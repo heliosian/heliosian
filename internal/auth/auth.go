@@ -105,7 +105,8 @@ func (a *Auth) deny(w http.ResponseWriter, r *http.Request) {
 }
 
 func Public(path string) bool {
-	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/")
+	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/") ||
+		strings.HasPrefix(path, "/.well-known/oauth-") || path == "/oauth/register" || path == "/oauth/token" || path == "/mcp"
 }
 
 func Bearer(r *http.Request) (string, bool) {

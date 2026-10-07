@@ -92,6 +92,7 @@ var Apps = []App{
 	{Key: "ask", Name: "Helios Ask", Tagline: "Ask about the school, your family and what's on", Hosts: []string{"ask"}},
 	{Key: "admin", Name: "Helios Admin", Tagline: "The data behind the apps", Hosts: []string{"admin"}},
 	{Key: "wiki", Name: "Helios Wiki", Tagline: "Parent-to-parent info", Hosts: []string{"wiki"}},
+	{Key: "mcp", Name: "Helios MCP", Tagline: "Helios's data for Claude and other AI tools", Hosts: []string{"mcp"}},
 }
 
 func Qualify(label, domain string) string {

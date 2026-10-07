@@ -104,7 +104,7 @@ func TestAppsAsResources(t *testing.T) {
 		return out
 	}
 	parent := apps("jordan.whitfield@heliosschool.org")
-	if got := keys(parent); !slices.Equal(got, []string{"home", "who", "team", "celebrate", "birthday", "when", "loop", "ask", "admin", "wiki"}) {
+	if got := keys(parent); !slices.Equal(got, []string{"home", "who", "team", "celebrate", "birthday", "when", "loop", "ask", "admin", "wiki", "mcp"}) {
 		t.Errorf("apps in order = %v", got)
 	}
 	if l := listed(parent); !l["home"] || !l["who"] || !l["celebrate"] || !l["birthday"] {

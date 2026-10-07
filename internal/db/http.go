@@ -63,7 +63,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 	key, bearer := auth.Bearer(r)
 	if !bearer {
 		email := auth.Email(r)
-		viewer := m.signedIn(email)
+		viewer := m.SignedIn(email)
 		if viewer == "" {
 			http.Error(w, "not in the directory", http.StatusForbidden)
 			return Env{}, access.Actor{}, false
@@ -173,7 +173,7 @@ func (m *Model) PersonOf(email string) string {
 	return row["person"]
 }
 
-func (m *Model) signedIn(email string) string {
+func (m *Model) SignedIn(email string) string {
 	address := strings.ToLower(strings.TrimSpace(email))
 	row, ok := m.Table("PERSON_EMAIL").Find(address, "No")
 	if !ok {

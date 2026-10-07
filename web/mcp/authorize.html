@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect to Helios</title>
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/palette.css">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/authorize.js"></script>
+</head>
+<body>
+<div class="panel">
+<h1>Connect to Helios</h1>
+<div id="ask" hidden>
+<p><strong id="client"></strong> wants to read Helios as <strong id="email"></strong>.</p>
+<p>It will see what you see in the apps, and can change nothing. Signing out of Helios disconnects it.</p>
+<p>Allowing sends you back to <strong id="redirect"></strong>.</p>
+<div class="buttons"><button id="deny" type="button">Deny</button><button id="allow" type="button">Allow</button></div>
+</div>
+<p id="error" hidden></p>
+</div>
+</body>
+</html>

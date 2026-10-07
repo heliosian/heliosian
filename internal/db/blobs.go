@@ -12,7 +12,7 @@ import (
 
 const blobPath = "/api/blob/"
 
-func (m *Model) blobCell(env Env, id, column string) (name, mimeType string, ok bool) {
+func (m *Model) BlobCell(env Env, id, column string) (name, mimeType string, ok bool) {
 	tableName, ok := TableOf(id)
 	if !ok {
 		return "", "", false
@@ -41,7 +41,7 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byt
 		if !ok {
 			return
 		}
-		name, mimeType, ok := m.blobCell(env, r.PathValue("id"), r.PathValue("column"))
+		name, mimeType, ok := m.BlobCell(env, r.PathValue("id"), r.PathValue("column"))
 		if !ok {
 			http.NotFound(w, r)
 			return

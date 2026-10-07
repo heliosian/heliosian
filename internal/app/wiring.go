@@ -29,6 +29,7 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
+	"heliosian/internal/mcp"
 	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/spreadsheets"
@@ -52,6 +53,7 @@ type Config struct {
 	IDKey         []byte
 	ImportKey     []byte
 	ChatKey       []byte
+	MCPKey        []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
 	Mail          *mail.Mailgun
@@ -224,6 +226,17 @@ func NewCore(cfg Config) *Core {
 	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
+	schoolNow := func() time.Time { return time.Now().In(model.Location) }
+	mcpMux := http.NewServeMux()
+	mcp.Register(mcpMux, mcp.Deps{
+		Data:     dataStore,
+		Search:   search,
+		Bucket:   cfg.Bucket,
+		Key:      cfg.MCPKey,
+		Sessions: models,
+		Member:   models.Member,
+		Now:      schoolNow,
+	})
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
@@ -237,6 +250,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
+		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
 	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
@@ -253,7 +267,6 @@ func NewCore(cfg Config) *Core {
 	feedbackIntake := model.NewFeedbackIntake(models, cfg.Bucket, notifier.Notify)
 	optIn := who.OptInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
-	schoolNow := func() time.Time { return time.Now().In(model.Location) }
 	for _, a := range apps {
 		registry.Register(a.Mux)
 		db.Register(a.Mux, dataStore, queue, pictures, cfg.ImportKey, schoolNow)
@@ -333,6 +346,8 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	}
 	chatKey := hmac.New(sha256.New, []byte(sessionKey))
 	chatKey.Write([]byte("ask chats"))
+	mcpKey := hmac.New(sha256.New, []byte(sessionKey))
+	mcpKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	core := NewCore(Config{
 		Source:        sheet,
@@ -343,6 +358,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		IDKey:         []byte(env.Required("ID_KEY")),
 		ImportKey:     []byte(env.Required("IMPORT_KEY")),
 		ChatKey:       chatKey.Sum(nil),
+		MCPKey:        mcpKey.Sum(nil),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     describe.New(anthropicKey, spend),

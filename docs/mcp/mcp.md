@@ -1,0 +1,45 @@
+# Helios MCP
+
+Helios MCP, at `mcp.heliosian.com`, serves the data model (`docs/datamodel.md`) to Claude and any other client that speaks the Model Context Protocol, read as the person who connected it. The package is `internal/mcp`. It is an app in `model.Apps` like any other, so its place in the app switch follows its row on the Apps sheet's `Visibility` tab. That row only decides who is shown the app: anyone the directory admits can sign in on any host and use the query API, which is everything the tools read, so the row is no gate on the data.
+
+## Connecting
+
+The host's front page (`web/mcp/index.html`) gives the address to add, the host's own `/mcp`, as a custom connector in Claude or with `claude mcp add --transport http` in Claude Code. The client finds everything else itself.
+
+`/mcp` is the MCP endpoint: the Go SDK's streamable HTTP handler, stateless, answering in JSON. Each request carries an `Authorization: Bearer` token and is refused with a 401 without a good one. The 401's `WWW-Authenticate` names the protected-resource metadata, which is how a client learns where to sign in.
+
+## Signing in
+
+The host is its own OAuth 2.1 authorization server, built on the apps' Google sign-in rather than beside it. It keeps nothing: every client id, code and token is a JSON payload signed with an HMAC under a key derived from `SESSION_KEY` (`MCPKey` in `internal/app/wiring.go`), separate from the session cookie's key, so a token can never be used as a cookie or a cookie as a token.
+
+- `/.well-known/oauth-protected-resource` (and the same under `/mcp`) names `/mcp` as the resource and the host as its authorization server. `/.well-known/oauth-authorization-server` names the endpoints below.
+- `POST /oauth/register` is dynamic client registration. It accepts redirect addresses that are https, or plain http on a loopback address, and answers a client id that holds the client's name, its redirect addresses and a random value, so two registrations are two clients. Clients are public: there is no secret, only PKCE.
+- `GET /oauth/authorize` sits behind the normal sign-in, so someone already signed in to any app goes straight to it and anyone else signs in with Google first. The page (`web/mcp/authorize.html`) shows the client's name, the account it will read as and where approving sends the browser, from `POST /api/mcp/request`. Allow posts to `/api/mcp/approve`, Deny to `/api/mcp/deny`, and each answers the client's redirect address with a code or `access_denied` and the request's `state`. All three check the authorization request again: the client id is one this server signed, the redirect address is one the client registered, the response type is `code` and there is an S256 code challenge. They also refuse anything the browser does not mark `Sec-Fetch-Site: same-origin`. Approving binds the code to the signed-in person, never a Spoof Mode view, and is refused for anyone the data model does not sign in.
+- `POST /oauth/token` exchanges a code for an access token. The code must still be within `codeLength`, be presented by the client it was issued to with the same redirect address, and come with the verifier that hashes to its challenge. Because nothing is stored, a code is not single-use; its short life and PKCE are what bind it. There are no refresh tokens: a token lasts `tokenLength`, and the client signs in again after it.
+
+`/mcp` refuses a token once it has expired, once the person signs out of any app after it was issued (the same `Signed Out` record that ends their sessions, `docs/dev.md`), and once the directory or the data model stops admitting them. Those paths, and the OAuth paths a client reaches without a cookie, are named in `auth.Public` (`docs/dev.md`, Hosts and files).
+
+## Tools
+
+Every tool is read-only and runs as the person the token names, resolved for each call through the data model's own sign-in (`Model.SignedIn`). Every read goes through `Model.Run`, so the read policies and the consent step decide what each tool answers, exactly as they do for `/api/q`. The server's instructions, sent when a client connects, carry the query language from `db.Language`, the same text the Admin Query page's composer gives Claude. An answer longer than `maxOutput` is refused with a word on narrowing it.
+
+| Tool | What it answers |
+| --- | --- |
+| `describe_schema` | every table with its description and column names, from `db.Tables` |
+| `describe_table` | one table's columns in full, from `db.DescribeTable` (the composer's description, private columns left out), and the columns elsewhere that point at it |
+| `policies` | `db.PolicySource`: the definitions a query may call and every clause |
+| `query` | a query in the language, run as `/api/q` runs it: the canonical form, the count, the rows with their filled columns and the rows the includes brought |
+| `whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
+| `search` | the Admin search's word and meaning results (`Searcher.Words` and `Meaning`), each with its table and name |
+| `get` | one row with the names of what it references, and the first few rows of each table and column that point at it |
+| `group` | a group with its managers (the effective members of each `managed_by` up its parents), its effective members and their reasons, its rules and the groups under it |
+| `read_document` | a document's tree of parts, links, images and extracts, and the Markdown of each extract, read from the bucket through `Model.BlobCell` |
+| `history` | a row's `CHANGES`, newest first, which only super admins read |
+| `find_people` | people by search words, role group, grade and classroom name |
+| `events` | events starting in a range of days, two weeks from today by default |
+
+Each call logs an `mcp: tool` line with the tool, the viewer's person ID, how long it took and any error.
+
+## Tests
+
+`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling each tool. It also covers the refusals: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.

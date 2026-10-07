@@ -11,7 +11,7 @@ import (
 	"heliosian/internal/trace"
 )
 
-const policySource = `
+const PolicySource = `
 ;; Definitions
 
 ; the viewer is an effective member of the group that manages @g or a group above it
@@ -1335,7 +1335,7 @@ var (
 )
 
 func init() {
-	p, d, err := compilePolicies(policySource)
+	p, d, err := compilePolicies(PolicySource)
 	if err != nil {
 		panic("db: policies: " + err.Error())
 	}

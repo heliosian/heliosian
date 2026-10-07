@@ -34,10 +34,10 @@ func TestEveryTableHasAReadPolicy(t *testing.T) {
 
 func TestPoliciesRefuse(t *testing.T) {
 	for src, want := range map[string]string{
-		strings.Replace(policySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
-		policySource + `(read PERSON (vc_phone) (system "import"))`:                                                    "PERSON.vc_phone is private",
-		policySource + `(read MEMBER.price true)`:                                                                      "policies are define",
-		policySource + `(define (nobody) false)`:                                                                       "nobody is never used",
+		strings.Replace(PolicySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
+		PolicySource + `(read PERSON (vc_phone) (system "import"))`:                                                    "PERSON.vc_phone is private",
+		PolicySource + `(read MEMBER.price true)`:                                                                      "policies are define",
+		PolicySource + `(define (nobody) false)`:                                                                       "nobody is never used",
 	} {
 		if _, _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("compilePolicies = %v, want %q", err, want)
@@ -421,7 +421,7 @@ func TestWithheldPersonSignsInAsNobody(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := s.Model()
-	if got := m.signedIn("rowan@example.com"); got != "" {
+	if got := m.SignedIn("rowan@example.com"); got != "" {
 		t.Errorf("a withheld parent signs in as %q", got)
 	}
 	if got := m.PersonOf("rowan@example.com"); got != parent {
@@ -439,7 +439,7 @@ func TestAGuestSharesAnAddressButNeverSignsInWithIt(t *testing.T) {
 		t.Errorf("two people who aren't guests share an address: %v", err)
 	}
 	m := s.Model()
-	if got := m.signedIn("rowan@example.com"); got != parent {
+	if got := m.SignedIn("rowan@example.com"); got != parent {
 		t.Errorf("the shared address signs in as %q, not the parent", got)
 	}
 	if got := m.PersonOf("rowan@example.com"); got != parent {
@@ -448,7 +448,7 @@ func TestAGuestSharesAnAddressButNeverSignsInWithIt(t *testing.T) {
 	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{"consent": "withheld"})); err != nil {
 		t.Fatal(err)
 	}
-	if got := s.Model().signedIn("rowan@example.com"); got != "" {
+	if got := s.Model().SignedIn("rowan@example.com"); got != "" {
 		t.Errorf("a withheld parent signs in as %q through their guest", got)
 	}
 }

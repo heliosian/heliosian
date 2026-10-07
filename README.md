@@ -26,6 +26,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/model` — the shared data layer: the one `model.Model` every app reads, a field per sheet, with the parts that fill it and the store the server runs (`model.go`), the per-request scope the resource API reads it through (`scope.go`) and the registry of every resource type (`resources.go`); the Config sheet (super admins and the platform settings), every app's admin list, the audience rules every filter reads, the directory's model load, handlers, admin tools and self-service edits; Helios When: the Calendar sheet's model, audience resolution, the day plan, handlers, guest lists and invitations, and personal feeds; HCA-Team, the volunteer portal: the Events sheet's activities, handlers, sign-ups, admin edits, pages and share cards; Helios Celebrate: the Celebrate sheet's parties, tickets and the waitlist, handlers, admin edits, pages and share cards; Staff Birthdays: the Birthdays sheet's model, the derived dates and stages, handlers, and admin edits; Helios Loop: the Groups sheet's email lists, the rule evaluator, the mail received and forwarded, handlers, and admin edits; Heliosian, the link portal: the Apps sheet's model load, handlers, widgets and admin edits; Helios Ask's documents: which mail, website pages and parent portal resources belong, each to markdown, the chunks, and the model that scans them; the toolbar's reports: the Reports sheet they land in, the word of them to the super admins, and the triage queue that edits one into a GitHub issue; and the Magic Tags each app reads from the others
 - `internal/who` — the directory app's page host: its page routes, the opt-in form and its share card
 - `internal/ask` — Helios Ask: the chat with Claude over every app's data - the prompt, the conversation, the streaming turn and the read-only tools
+- `internal/mcp` — Helios MCP: the OAuth server MCP clients sign in through, and the read-only tools over the data model
 - `internal/artifacts` — the embeddings of Helios Ask's documents through Vertex AI, and the mail hook's settings
 - `internal/digest` — what Claude reads out of each school email and Loop email list post in one call: the key points and audience for Heliosian's Inbox widget and the to-dos for its Reminders widget, kept in the artifacts sheet's Reads and To Dos tabs
 - `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
@@ -108,6 +109,10 @@ Helios Admin, in `docs/admin/`:
 Helios Wiki, in `docs/wiki/`:
 
 - [wiki.md](docs/wiki/wiki.md) — parent-to-parent info: wiki pages as data model documents, who may write them, and the app
+
+Helios MCP, in `docs/mcp/`:
+
+- [mcp.md](docs/mcp/mcp.md) — the data model for Claude and other MCP clients: connecting, signing in through OAuth, and the tools
 
 Audits, in `docs/audits/`:
 

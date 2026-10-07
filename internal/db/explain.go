@@ -94,7 +94,7 @@ func registerExplain(mux *http.ServeMux, s *Store, importKey []byte, now func() 
 		}
 		self := env
 		if env.System == "" {
-			self = Env{Viewer: m.signedIn(auth.RealEmail(r)), Now: env.Now}
+			self = Env{Viewer: m.SignedIn(auth.RealEmail(r)), Now: env.Now}
 		}
 		out, ok := m.explain(env, self, r.PathValue("id"))
 		if !ok {
