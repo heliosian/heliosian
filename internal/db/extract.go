@@ -262,6 +262,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		if raw, _, err = x.bucket.Get(ctx, content["blob"]); err != nil {
 			return 0, err
 		}
+		slog.Info("extract: reading", "document", id, "mime", kind, "bytes", len(raw))
 		if children, err = read(x, ctx, m, doc, content, raw); err != nil {
 			return 0, err
 		}

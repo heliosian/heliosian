@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	gcal "google.golang.org/api/calendar/v3"
@@ -394,6 +395,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	if os.Getenv("K_SERVICE") != "" {
+		debug.SetMemoryLimit(memoryLimit)
 		go logMemory()
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
@@ -411,6 +413,8 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	}
 	return server, core.Queue
 }
+
+const memoryLimit = 3 << 30
 
 func logMemory() {
 	for range time.Tick(5 * time.Second) {

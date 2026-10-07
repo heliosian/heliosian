@@ -19,6 +19,7 @@ import (
 	_ "golang.org/x/image/bmp"
 	"golang.org/x/image/draw"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/store"
 )
@@ -97,6 +98,11 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, doc, content store.
 	config, _, err := image.DecodeConfig(bytes.NewReader(raw))
 	if err != nil {
 		slog.Warn("extract: unreadable image", "document", id, "mime", content["mime"], "error", err)
+		return nil, nil
+	}
+	slog.Info("extract: reading image", "document", id, "mime", content["mime"], "bytes", len(raw), "width", config.Width, "height", config.Height)
+	if err := blob.Check(raw); err != nil {
+		slog.Warn("extract: image too large to read", "document", id, "mime", content["mime"], "error", err)
 		return nil, nil
 	}
 	if config.Width < imageSmallest && config.Height < imageSmallest {
@@ -210,6 +216,6 @@ func claudeImage(raw []byte, mimeType string, config image.Config) ([]byte, stri
 func scaled(img image.Image, by float64) image.Image {
 	b := img.Bounds()
 	dst := image.NewRGBA(image.Rect(0, 0, max(1, int(float64(b.Dx())*by)), max(1, int(float64(b.Dy())*by))))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, b, draw.Over, nil)
+	draw.ApproxBiLinear.Scale(dst, dst.Bounds(), img, b, draw.Over, nil)
 	return dst
 }

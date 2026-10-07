@@ -210,9 +210,7 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 		out[id] = ""
 		missing = append(missing, c)
 	}
-	texts, errs := FanOut(len(missing), func(i int) (string, error) {
-		searchLoads <- struct{}{}
-		defer func() { <-searchLoads }()
+	texts, errs := loadAll(len(missing), func(i int) (string, error) {
 		raw, _, err := bucket.Get(ctx, missing[i]["blob"])
 		return string(raw), err
 	})
@@ -370,7 +368,7 @@ func (x *Searcher) follow() {
 				slog.Error("search: remove", "object", hash, "error", err)
 			}
 		}
-		loaded, errs := FanOut(len(unknown), func(i int) (*SearchEntry, error) { return x.load(unknown[i]) })
+		loaded, errs := loadAll(len(unknown), func(i int) (*SearchEntry, error) { return x.load(unknown[i]) })
 		x.mu.Lock()
 		for i, hash := range unknown {
 			if errs[i] != nil {
@@ -395,11 +393,27 @@ func (x *Searcher) follow() {
 	}
 }
 
-var searchLoads = make(chan struct{}, searchLoaders)
+func loadAll[T any](n int, f func(i int) (T, error)) ([]T, []error) {
+	results := make([]T, n)
+	errs := make([]error, n)
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for range searchLoaders {
+		wg.Go(func() {
+			for i := range next {
+				results[i], errs[i] = f(i)
+			}
+		})
+	}
+	for i := range n {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
+	return results, errs
+}
 
 func (x *Searcher) load(hash string) (*SearchEntry, error) {
-	searchLoads <- struct{}{}
-	defer func() { <-searchLoads }()
 	raw, _, err := x.bucket.Get(context.Background(), hash)
 	if errors.Is(err, blob.ErrNotFound) {
 		return nil, nil
