@@ -223,7 +223,7 @@ func (a calendarApp) mailMessages(ctx context.Context) {
 		sent := slices.Clone(m.SentTo)
 		ops := []store.Op{}
 		if e == nil {
-			slog.WarnContext(ctx, "calendar: message for an event that is gone", "message", m.ID, "event", m.EventID)
+			slog.WarnContext(ctx, "calendar: message for an event that is gone", "message_id", m.ID, "event", m.EventID)
 			sent = append(sent, pending...)
 		} else {
 			for _, to := range a.deliverMessage(ctx, m, e, pending) {

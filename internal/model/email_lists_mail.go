@@ -148,7 +148,7 @@ func (m *mailer) recover() {
 		if msg.State == stateReceived {
 			j := job{id: msg.ID, group: msg.Group, object: msg.Object}
 			if m.take(j) {
-				slog.Info("loop:resuming a message", "message", j.id, "group", j.group)
+				slog.Info("loop:resuming a message", "message_id", j.id, "group", j.group)
 				m.work <- j
 			}
 		}
@@ -157,14 +157,14 @@ func (m *mailer) recover() {
 
 func (m *mailer) mark(j job, state string, cells store.Row) {
 	if err := m.commit(context.Background(), markMessage(mailerActor, j.id, j.group, state, cells)); err != nil {
-		slog.Error("loop:mail record", "message", j.id, "group", j.group, "error", err)
+		slog.Error("loop:mail record", "message_id", j.id, "group", j.group, "error", err)
 	}
 }
 
 func (m *mailer) recordSent(ctx context.Context, j job, g EmailList, raw []byte, cells map[string]string) {
 	m.mark(j, stateSent, cells)
 	if err := m.mail.Documents.Post(ctx, mailerActor, g.Name, raw); err != nil {
-		slog.Error("loop:not filed for ask", "message", j.id, "group", g.Name, "error", err)
+		slog.Error("loop:not filed for ask", "message_id", j.id, "group", g.Name, "error", err)
 	}
 }
 
@@ -214,7 +214,7 @@ func (m *mailer) received(ctx context.Context, raw []byte, from, subject string,
 			m.release(j)
 			return fmt.Errorf("record %s for %s: %w", id, g.Name, err)
 		}
-		slog.Info("loop:mail received", "message", id, "group", g.Name, "from", from, "subject", subject)
+		slog.Info("loop:mail received", "message_id", id, "group", g.Name, "from", from, "subject", subject)
 		m.work <- j
 	}
 	return nil
@@ -284,7 +284,7 @@ func (m *mailer) delivery(event, from, messageID, detail string, when time.Time,
 }
 
 func (m *mailer) forward(ctx context.Context, j job) string {
-	log := slog.With("message", j.id, "group", j.group)
+	log := slog.With("message_id", j.id, "group", j.group)
 	fail := func(what string, err error) string {
 		log.Error("loop:forward failed", "step", what, "error", err)
 		m.mark(j, stateFailed, map[string]string{"Detail": what + ": " + err.Error()})
