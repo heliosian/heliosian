@@ -30,7 +30,7 @@ function wikiCard(p, md, imageUrl, withPath) {
   const open = link(pagePath(p), 'button button-secondary button-small', 'Open');
   const yours = el('span', 'card-chip card-chip-mine');
   yours.append(svg('star'), el('span', '', 'Yours'));
-  const chips = [el('span', p.hidden ? 'card-chip card-chip-hidden' : 'card-chip', p.hidden ? 'Hidden' : 'Public')];
+  const chips = p.hidden ? [el('span', 'card-chip card-chip-hidden', 'Hidden')] : [];
   if (count) {
     chips.push(`${count} ${count === 1 ? 'page' : 'pages'}`);
   }
