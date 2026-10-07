@@ -99,11 +99,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .side-card[hidden] { display: none; }
 
-.side-card-title { font-size: 15px; font-weight: 700; color: var(--brand); margin-bottom: 8px; }
+.side-card-title { font-size: 19px; font-weight: 700; color: var(--brand); margin-bottom: 8px; }
 
 .wiki-outline { display: flex; flex-direction: column; }
 
-.wiki-outline-item { padding: 6px 10px; border-left: 2px solid var(--line); color: var(--ink); font-size: 14px; text-decoration: none; }
+.wiki-outline-item { padding: 6px 10px; border-left: 2px solid var(--line); color: var(--ink); font-size: 16px; line-height: 1.6; text-decoration: none; }
 
 .wiki-outline-item:hover { border-left-color: var(--accent); color: var(--brand); }
 
@@ -331,7 +331,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-card-text { min-height: 110px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.5; }
 
-.side-card-body { font-size: 14px; line-height: 1.5; }
+.side-card-body { font-size: 16px; line-height: 1.6; }
 
 .side-card-body ul, .side-card-body ol { padding-left: 20px; margin: 4px 0; }
 

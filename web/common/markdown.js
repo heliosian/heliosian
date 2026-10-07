@@ -177,9 +177,9 @@ function table(lines, i, cards) {
 const calloutKinds = {
   note: {label: 'Note', icon: 'info'},
   tip: {label: 'Tip', icon: 'bulb'},
-  important: {label: 'Important', icon: 'megaphone'},
+  important: {label: 'Important', icon: 'report'},
   warning: {label: 'Warning', icon: 'warn'},
-  caution: {label: 'Caution', icon: 'ban'},
+  caution: {label: 'Caution', icon: 'stop'},
 };
 
 const calloutMarker = /^> \[!(note|tip|important|warning|caution)\]\s*$/i;
