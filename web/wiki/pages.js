@@ -6,6 +6,8 @@ import {navigate, load, notFound} from '/router.js';
 import {render} from '/markdown.js';
 import {imageTools} from '/images.js';
 import {detailHero, heroImageBar} from '/heroimage.js';
+import {openModal, closeModal} from '/modal.js';
+import {field, text as textInput} from '/form.js';
 
 function head(title, actions) {
   const top = el('div', 'page-head');
@@ -287,6 +289,84 @@ function imageInserter(textarea, label) {
   return wrap;
 }
 
+function replaceRange(textarea, start, end, text, selectStart, selectEnd) {
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  document.execCommand('insertText', false, text);
+  textarea.setSelectionRange(start + selectStart, start + selectEnd);
+}
+
+function wrapSelection(textarea, mark) {
+  const {selectionStart: start, selectionEnd: end, value} = textarea;
+  const words = value.slice(start, end);
+  replaceRange(textarea, start, end, mark + words + mark, mark.length, mark.length + words.length);
+}
+
+function selectedLines(textarea) {
+  const {selectionStart, selectionEnd, value} = textarea;
+  const start = value.lastIndexOf('\n', selectionStart - 1) + 1;
+  const last = selectionEnd > selectionStart && value[selectionEnd - 1] === '\n' ? selectionEnd - 1 : selectionEnd;
+  const newline = value.indexOf('\n', last);
+  const end = newline === -1 ? value.length : newline;
+  return {start, end, lines: value.slice(start, end).split('\n')};
+}
+
+function prefixLines(textarea, first, prefix, blank) {
+  const {start, end, lines} = selectedLines(textarea);
+  const text = first + (lines.length === 1 && !lines[0] ? prefix : lines.map(line => line ? prefix + line : blank).join('\n'));
+  replaceRange(textarea, start, end, text, text.length, text.length);
+}
+
+function linkPopup(textarea) {
+  const {selectionStart: start, selectionEnd: end, value} = textarea;
+  const words = textInput(value.slice(start, end), {placeholder: 'What the link says', required: true});
+  const address = textInput('', {type: 'url', placeholder: 'https://', required: true});
+  openModal('Add Link', [field('Words', words), field('Address', address)], {
+    saveLabel: 'Add Link',
+    stay: true,
+    submit: async () => {
+      const markdown = `[${words.value.trim()}](${address.value.trim()})`;
+      closeModal();
+      replaceRange(textarea, start, end, markdown, markdown.length, markdown.length);
+    },
+  });
+  if (words.value) {
+    address.focus();
+  }
+}
+
+function textToolbar(textarea) {
+  const tool = (icon, label, onClick) => {
+    const node = button('', icon, 'icon-button', onClick);
+    node.setAttribute('aria-label', label);
+    node.title = label;
+    return node;
+  };
+  const callout = el('select', 'wiki-callout-pick');
+  callout.setAttribute('aria-label', 'Callout');
+  callout.append(el('option', '', 'Callout'));
+  for (const kind of ['Quote', 'Tip', 'Important', 'Warning', 'Caution']) {
+    const option = el('option', '', kind);
+    option.value = kind.toUpperCase();
+    callout.append(option);
+  }
+  callout.addEventListener('change', () => {
+    const kind = callout.value;
+    callout.selectedIndex = 0;
+    prefixLines(textarea, kind === 'QUOTE' ? '' : `> [!${kind}]\n`, '> ', '>');
+  });
+  const bar = el('div', 'wiki-text-tools');
+  bar.append(
+    tool('bold', 'Bold', () => wrapSelection(textarea, '**')),
+    tool('italic', 'Italic', () => wrapSelection(textarea, '*')),
+    tool('list', 'List', () => prefixLines(textarea, '', '- ', '')),
+    tool('link', 'Link', () => linkPopup(textarea)),
+    callout,
+    imageInserter(textarea, 'Insert Image'),
+  );
+  return bar;
+}
+
 function headerEditor(query) {
   let header = '';
   const wrap = el('div', 'detail-hero wiki-header-edit');
@@ -410,13 +490,11 @@ export function editPage(id) {
   const cards = cardsEditor(p);
   const header = headerEditor(() => title.value);
   const main = el('div', 'wiki-editor-main');
-  const textTools = el('div', 'wiki-text-tools');
-  textTools.append(hint, imageInserter(text, 'Insert Image'));
   main.append(header.wrap, title, where);
   if (!p || mine(p) || state.admin) {
     main.append(address);
   }
-  main.append(text, textTools, bar);
+  main.append(textToolbar(text), text, hint, bar);
   const side = el('div', 'detail-side wiki-editor-side');
   side.append(cards.wrap);
   form.append(main, side);

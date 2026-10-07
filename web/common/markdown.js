@@ -262,11 +262,11 @@ export function render(text, cards = {}) {
     if (line.startsWith('> ')) {
       const quote = el('blockquote');
       const body = [];
-      while (i < lines.length && lines[i].startsWith('> ')) {
-        body.push(lines[i].slice(2));
+      while (i < lines.length && /^>( |$)/.test(lines[i])) {
+        body.push(lines[i].replace(/^> ?/, ''));
         i++;
       }
-      inline(quote, body.join(' '), cards);
+      quote.append(render(body.join('\n'), cards));
       out.append(quote);
       continue;
     }

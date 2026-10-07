@@ -1,6 +1,8 @@
 .callout { margin: 12px 0; padding: 10px 16px; border-left: 4px solid var(--callout); border-radius: 0 8px 8px 0; background: var(--callout-wash); }
 
-.callout > :last-child { margin-bottom: 0; }
+.callout > :last-child, blockquote > :last-child { margin-bottom: 0; }
+
+blockquote > :first-child { margin-top: 0; }
 
 .callout-title { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; color: var(--callout); font-weight: 700; }
 

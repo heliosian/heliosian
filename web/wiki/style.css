@@ -292,7 +292,19 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-hint { margin: 0; font-size: 13px; color: var(--muted); }
 
-.wiki-text-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wiki-text-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: -4px; }
+
+.wiki-text-tools .wiki-insert { margin-left: auto; }
+
+.field { display: block; margin: 14px 0; }
+
+.field > span { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+
+.field input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); color: var(--ink); }
+
+.field input:focus { outline: none; border-color: var(--accent); }
+
+.wiki-callout-pick { padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 
 .wiki-insert { display: inline-flex; }
 
