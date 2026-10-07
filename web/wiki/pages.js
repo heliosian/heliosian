@@ -1,4 +1,4 @@
-import {state, page, pagePath, editPath, childrenOf, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
+import {state, page, pagePath, editPath, childrenOf, pageCount, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
 import {card} from '/cardgrid.js';
 import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -25,22 +25,8 @@ function pathWords(p) {
   return trail(p).map(a => a.name).join(' › ');
 }
 
-function pageCard(p) {
-  const card = link(pagePath(p), 'wiki-card');
-  const icon = el('span', 'wiki-card-icon');
-  icon.append(svg(childrenOf(p.id).length ? 'book' : 'doc'));
-  const words = el('span', 'wiki-card-words');
-  words.append(el('span', 'wiki-card-title', p.name));
-  card.append(icon, words);
-  const count = childrenOf(p.id).length;
-  if (count) {
-    card.append(el('span', 'wiki-card-count', `${count} ${count === 1 ? 'page' : 'pages'}`));
-  }
-  return card;
-}
-
 function wikiCard(p, md, imageUrl, withPath) {
-  const count = childrenOf(p.id).length;
+  const count = pageCount(p.id);
   const open = link(pagePath(p), 'button button-secondary button-small', 'Open');
   const yours = el('span', 'card-chip card-chip-mine');
   yours.append(svg('star'), el('span', '', 'Yours'));
@@ -148,6 +134,28 @@ function outline(content, card) {
   card.replaceChildren(el('div', 'side-card-title', 'On this page'), list);
 }
 
+function sectionList(children) {
+  const list = el('nav', 'wiki-outline');
+  list.append(...children.map(c => link(pagePath(c), 'wiki-outline-item', c.name)));
+  return list;
+}
+
+function sectionCards(children) {
+  const list = el('nav', 'wiki-list');
+  for (const c of children) {
+    const row = link(pagePath(c), 'wiki-card');
+    const icon = el('span', 'wiki-card-icon');
+    const count = pageCount(c.id);
+    icon.append(svg(count ? 'book' : 'doc'));
+    row.append(icon, el('span', 'wiki-card-title', c.name));
+    if (count) {
+      row.append(el('span', 'wiki-card-count', `${count} ${count === 1 ? 'page' : 'pages'}`));
+    }
+    list.append(row);
+  }
+  return list;
+}
+
 async function deletePage(p) {
   if (hasChildren(p)) {
     toast('Move or delete its sub-pages first.');
@@ -202,6 +210,10 @@ export function viewPage(id) {
   const contents = el('div', 'side-card');
   contents.hidden = true;
   side.append(contents);
+  const section = el('div', 'side-card');
+  section.hidden = !children.length;
+  section.append(el('div', 'side-card-title', 'Pages in this section'), sectionList(children));
+  side.append(section);
   for (const card of sidesOf(p)) {
     const box = el('div', 'side-card');
     const text = el('div', 'wiki-body side-card-body');
@@ -217,7 +229,11 @@ export function viewPage(id) {
   const md = body(p);
   md.then(md => {
     const {text} = splitHeader(md);
-    content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', children.length ? 'This page holds the pages below.' : 'This page is empty. Edit it to add something.'));
+    if (!text.trim() && children.length) {
+      content.replaceChildren(el('h2', 'wiki-section', 'Pages in this section'), sectionCards(children));
+      return;
+    }
+    content.replaceChildren(text.trim() ? render(text) : el('p', 'panel-empty', 'This page is empty. Edit it to add something.'));
     outline(content, contents);
   }).catch(err => {
     content.replaceChildren(el('p', 'panel-empty', err.message));
@@ -226,11 +242,6 @@ export function viewPage(id) {
     const edit = {image: splitHeader(md).header, tools, save: headerSaver(p, hero)};
     hero.replaceChildren(detailHero({imageUrl, title: p.name, path: pagePath(p), edit}));
   }).catch(err => toast(err.message));
-  if (children.length) {
-    const list = el('div', 'wiki-list');
-    list.append(...children.map(c => pageCard(c)));
-    main.append(el('h2', 'wiki-section', 'Pages in this section'), list);
-  }
   cols.append(main, side);
   out.append(top, hero, cols);
   return out;

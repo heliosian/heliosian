@@ -99,6 +99,10 @@ export function childrenOf(id) {
   return state.pages.filter(p => p.parent === id && listed(p)).sort(bySiblingOrder);
 }
 
+export function pageCount(id) {
+  return childrenOf(id).reduce((n, c) => n + 1 + pageCount(c.id), 0);
+}
+
 export function hasChildren(p) {
   return state.pages.some(c => c.parent === p.id);
 }
