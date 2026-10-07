@@ -137,8 +137,9 @@ func TestMailIsReadIntoATree(t *testing.T) {
 			t.Fatalf("an extract was read again: %v", children(s, row["id"]))
 		}
 	}
-	if logoPart, _ := s.Model().Table("DOCUMENT").Get(parts[2]["id"]); logoPart["extracted"] != "" || len(children(s, parts[2]["id"])) != 0 {
-		t.Fatalf("an image part was read while image extraction is off: %v", logoPart)
+	logoPart := made(t, s, "DOCUMENT", parts[2]["id"], "extracted")
+	if under := children(s, parts[2]["id"]); len(under) != 0 {
+		t.Fatalf("an image under 100 pixels was transcribed: %v, %v", logoPart, under)
 	}
 }
 
