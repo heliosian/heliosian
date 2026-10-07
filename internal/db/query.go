@@ -72,6 +72,7 @@ type run struct {
 type operand struct {
 	t      typ
 	local  bool
+	cheap  bool
 	direct string
 	lit    *sexp
 	eval   func(f *frame) value
@@ -79,6 +80,7 @@ type operand struct {
 
 type cond struct {
 	eval     func(f *frame) bool
+	cheap    bool
 	probeCol string
 	probe    *operand
 	probeSet func(f *frame) *valueSet
@@ -319,19 +321,22 @@ func (s *scan) lookup(f *frame, v string) []store.Row {
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
 	for _, row := range s.candidates(f) {
+		inner := &frame{table: s.table, row: row, name: s.name, outer: f, run: f.run}
+		if !s.matches(inner, true) {
+			continue
+		}
 		if s.guarded && !f.run.readable(s.table, row) {
 			continue
 		}
-		inner := &frame{table: s.table, row: row, name: s.name, outer: f, run: f.run}
-		if s.matches(inner) && !fn(inner) {
+		if s.matches(inner, false) && !fn(inner) {
 			return
 		}
 	}
 }
 
-func (s *scan) matches(f *frame) bool {
+func (s *scan) matches(f *frame, cheap bool) bool {
 	for _, c := range s.conds {
-		if !c.eval(f) {
+		if c.cheap == cheap && !c.eval(f) {
 			return false
 		}
 	}
@@ -354,7 +359,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 	if !s.isList {
 		if s.kind == atomName && (s.text == "true" || s.text == "false") {
 			holds := s.text == "true"
-			return cond{eval: func(*frame) bool { return holds }}, nil
+			return cond{eval: func(*frame) bool { return holds }, cheap: true}, nil
 		}
 		p, err := cx.path(s, sc)
 		if err != nil {
@@ -363,7 +368,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if p.t.class != classBool {
 			return cond{}, s.errorf("%s is %s, not true or false", s.flat(), p.t)
 		}
-		return cond{eval: func(f *frame) bool { v := p.eval(f); return !v.blank && v.b }}, nil
+		return cond{eval: func(f *frame) bool { v := p.eval(f); return !v.blank && v.b }, cheap: p.cheap}, nil
 	}
 	args := s.list[1:]
 	switch op := s.head(); op {
@@ -375,6 +380,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if len(conds) == 0 {
 			return cond{}, s.errorf("%s needs conditions", op)
 		}
+		cheap := !slices.ContainsFunc(conds, func(c cond) bool { return !c.cheap })
 		if op == "and" {
 			return cond{eval: func(f *frame) bool {
 				for _, c := range conds {
@@ -383,7 +389,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 					}
 				}
 				return true
-			}}, nil
+			}, cheap: cheap}, nil
 		}
 		return cond{eval: func(f *frame) bool {
 			for _, c := range conds {
@@ -392,7 +398,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 				}
 			}
 			return false
-		}}, nil
+		}, cheap: cheap}, nil
 	case "not":
 		if len(args) != 1 {
 			return cond{}, s.errorf("not takes one condition")
@@ -401,7 +407,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if err != nil {
 			return cond{}, err
 		}
-		return cond{eval: func(f *frame) bool { return !c.eval(f) }}, nil
+		return cond{eval: func(f *frame) bool { return !c.eval(f) }, cheap: c.cheap}, nil
 	case "=", "!=", "<", "<=", ">", ">=":
 		return cx.compare(s, op, sc)
 	case "in":
@@ -414,7 +420,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if err != nil {
 			return cond{}, err
 		}
-		return cond{eval: func(f *frame) bool { return p.eval(f).blank }}, nil
+		return cond{eval: func(f *frame) bool { return p.eval(f).blank }, cheap: p.cheap}, nil
 	case "exists":
 		inner, err := cx.scan(s, 1, sc)
 		if err != nil {
@@ -436,7 +442,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			return cond{}, s.errorf("system takes one quoted name")
 		}
 		name := args[0].text
-		return cond{eval: func(f *frame) bool { return f.run.system == name }}, nil
+		return cond{eval: func(f *frame) bool { return f.run.system == name }, cheap: true}, nil
 	case "":
 		return cond{}, s.errorf("a condition starts with its operator")
 	default:
@@ -551,7 +557,7 @@ func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 	if ordered && (a.t.class == classRow || a.t.class == classBool) {
 		return cond{}, s.errorf("%s orders numbers, dates and text, not %s", op, a.t)
 	}
-	out := cond{}
+	out := cond{cheap: a.cheap && b.cheap}
 	switch op {
 	case "=":
 		out.eval = func(f *frame) bool { return equalValues(a.eval(f), b.eval(f)) }
@@ -642,7 +648,7 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 			}
 		}
 		return false
-	}}, nil
+	}, cheap: x.cheap}, nil
 }
 
 func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {
@@ -750,12 +756,12 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			case "true", "false":
 				return operand{lit: s}, nil
 			case "today":
-				return operand{t: typ{class: classTime, kind: Date}, eval: func(f *frame) value {
+				return operand{t: typ{class: classTime, kind: Date}, cheap: true, eval: func(f *frame) value {
 					y, mo, d := f.run.now.Date()
 					return value{kind: Date, s: "today", t: time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)}
 				}}, nil
 			case "now":
-				return operand{t: typ{class: classTime, kind: Moment}, eval: func(f *frame) value {
+				return operand{t: typ{class: classTime, kind: Moment}, cheap: true, eval: func(f *frame) value {
 					return value{kind: Moment, s: "now", t: f.run.now}
 				}}, nil
 			}
@@ -848,7 +854,7 @@ func coerce(lit *sexp, t typ) (operand, error) {
 	default:
 		return operand{}, lit.errorf("%s is not a literal", lit.flat())
 	}
-	return operand{t: t, eval: func(*frame) value { return v }}, nil
+	return operand{t: t, cheap: true, eval: func(*frame) value { return v }}, nil
 }
 
 func columnNamed(t *Table, name string, at *sexp) (Column, error) {
@@ -931,6 +937,7 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 	if local && len(steps) == 1 {
 		out.direct = steps[0].Name
 	}
+	out.cheap = local && (len(steps) == 0 || (len(steps) == 1 && steps[0].Kind != Ref))
 	at := s.kind == atomAt
 	guarded := !cx.policy
 	out.eval = func(f *frame) value {

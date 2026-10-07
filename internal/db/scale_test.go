@@ -13,6 +13,7 @@ import (
 
 const (
 	scaleFamilies = 400
+	scaleMails    = 2000
 	scaleViewer   = "per00000000101"
 )
 
@@ -78,6 +79,20 @@ func scaleStore(tb testing.TB) *Store {
 	appendRows(tb, filepath.Join(root, "datapeople", "PERSON_EMAIL.csv"), emails)
 	appendRows(tb, filepath.Join(root, "datagroups", "GROUP.csv"), groups)
 	appendRows(tb, filepath.Join(root, "datagroups", "MEMBER.csv"), members)
+	documents, sentTo := []map[string]string{}, []map[string]string{}
+	d := 100000
+	for i := range scaleMails {
+		d++
+		mail := fmt.Sprintf("doc%011d", d)
+		documents = append(documents, map[string]string{"id": mail, "kind": "mail", "name": fmt.Sprintf("Mail %d", i), "published": "2026-09-01 09:00:00"})
+		sentTo = append(sentTo, map[string]string{"id": fmt.Sprintf("dgr%011d", d), "document": mail, "group": "grp00000001001", "relation": "sent_to"})
+		for range 4 {
+			d++
+			documents = append(documents, map[string]string{"id": fmt.Sprintf("doc%011d", d), "parent": mail, "relation": "part"})
+		}
+	}
+	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT.csv"), documents)
+	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT_GROUP.csv"), sentTo)
 	dir := &data.Dir{Root: root}
 	s, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex())
 	if err != nil {
@@ -112,6 +127,14 @@ func BenchmarkOneFamily(b *testing.B) {
 
 func BenchmarkOnePerson(b *testing.B) {
 	benchQuery(b, `(from PERSON (where (= id "per00000000150")))`)
+}
+
+func BenchmarkWikiPages(b *testing.B) {
+	benchQuery(b, `(from DOCUMENT (where (= kind "wiki")))`)
+}
+
+func BenchmarkWikiSides(b *testing.B) {
+	benchQuery(b, `(from DOCUMENT (where (= relation "side")))`)
 }
 
 func BenchmarkRebuild(b *testing.B) {
