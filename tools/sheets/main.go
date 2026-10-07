@@ -363,31 +363,48 @@ func set(args []string) {
 	log.Printf("set %s[%s=%s].%s = %q", *tab, *keyCol, *key, *col, *value)
 }
 
+type keyList []string
+
+func (k *keyList) String() string {
+	return strings.Join(*k, ",")
+}
+
+func (k *keyList) Set(v string) error {
+	*k = append(*k, v)
+	return nil
+}
+
 func deleteRows(args []string) {
-	var tab, keyCol, key *string
+	var tab, keyCol *string
 	var apply *bool
+	keys := keyList{}
 	source := parse("delete", args, func(fs *flag.FlagSet) {
 		tab = fs.String("tab", "", "tab title")
 		keyCol = fs.String("keycol", "", "column whose value picks the rows")
-		key = fs.String("key", "", "value of --keycol in the rows to delete")
+		fs.Var(&keys, "key", "value of --keycol in the rows to delete; repeat for several")
 		apply = fs.Bool("apply", false, "delete the rows; without it the run only reports them")
 	}, "tab", "keycol", "key")
 	all := raw(source, *tab)
-	found := matching(all, column(all, *tab, *keyCol), *keyCol, *key)
-	if len(found) == 0 {
-		log.Fatalf("tab %q has no row with %s = %q", *tab, *keyCol, *key)
-	}
-	for _, i := range found {
-		log.Printf("  row %d: %q", i+1, all[i])
+	index := column(all, *tab, *keyCol)
+	found := 0
+	for _, key := range keys {
+		rows := matching(all, index, *keyCol, key)
+		if len(rows) == 0 {
+			log.Fatalf("tab %q has no row with %s = %q", *tab, *keyCol, key)
+		}
+		for _, i := range rows {
+			log.Printf("  row %d: %q", i+1, all[i])
+		}
+		found += len(rows)
 	}
 	if !*apply {
-		log.Printf("reporting only, pass --apply to delete %d rows", len(found))
+		log.Printf("reporting only, pass --apply to delete %d rows", found)
 		return
 	}
-	if err := source.Delete("sheet", *tab, map[string]string{*keyCol: *key}); err != nil {
-		log.Fatalf("delete from %s where %s=%s: %v", *tab, *keyCol, *key, err)
+	if err := source.DeleteMany("sheet", *tab, *keyCol, keys); err != nil {
+		log.Fatalf("delete from %s where %s in %q: %v", *tab, *keyCol, keys, err)
 	}
-	log.Printf("deleted %d rows from %s where %s = %q", len(found), *tab, *keyCol, *key)
+	log.Printf("deleted %d rows from %s where %s in %q", found, *tab, *keyCol, keys)
 }
 
 func rename(args []string) {

@@ -52,6 +52,8 @@ type extracted struct {
 	title, skip                string
 }
 
+var errNotYet = errors.New("another copy of the same bytes is still being read")
+
 type extractFunc func(x *Extractor, ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error)
 
 var extractors = map[string]extractFunc{
@@ -95,6 +97,10 @@ func (x *Extractor) run() {
 		for _, id := range x.pending() {
 			start := time.Now()
 			n, err := x.extract(id)
+			if errors.Is(err, errNotYet) {
+				slog.Debug("extract: waiting for another copy's pages", "document", id)
+				continue
+			}
 			if errors.Is(err, errAskAgain) {
 				x.asked[id]++
 				if x.asked[id] >= extractAsks {

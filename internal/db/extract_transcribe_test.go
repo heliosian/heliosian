@@ -87,6 +87,45 @@ func jpegOf(t *testing.T, size int) []byte {
 	return buf.Bytes()
 }
 
+func TestACopyOfASplitPDFTakesItsPagesText(t *testing.T) {
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+		t.Errorf("claude was asked about a pdf already read: %.200s", request)
+		return ""
+	}))
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	for name, body := range map[string]string{"content/m1": "# Slides 1–20", "content/m2": "# Slides 21–25"} {
+		if err := bucket.Put(t.Context(), name, "text/markdown", []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25)); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "60"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000004", "hash": "m1", "blob": "content/m1", "mime": "text/markdown", "size": "13"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000005", "hash": "m2", "blob": "content/m2", "mime": "text/markdown", "size": "14"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001", "name": "Updates", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "pages", "parent": "doc00000000010", "content": "cnt00000000003", "name": "pages 21–25 of 25", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "pages", "parent": "doc00000000010", "content": "cnt00000000002", "name": "pages 1–20 of 25", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "extract", "parent": "doc00000000011", "content": "cnt00000000004"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "extract", "parent": "doc00000000012", "content": "cnt00000000005"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "file", "content": "cnt00000000001", "name": "Updates again"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	NewExtractor(s, queue, bucket, "test")
+	queue.Refresh()
+	made(t, s, "DOCUMENT", "doc00000000020", "extracted")
+	under := children(s, "doc00000000020")
+	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "# Slides 1–20\n\n# Slides 21–25" {
+		t.Fatalf("the copy's children: %v", under)
+	}
+}
+
 func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 	var mu sync.Mutex
 	asked := 0

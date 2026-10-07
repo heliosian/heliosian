@@ -55,25 +55,52 @@ If the image is only a logo, wordmark, banner or decoration, answer with exactly
 ` + peopleRule
 
 func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content store.Row) ([]extracted, bool, error) {
-	docs := m.Table("DOCUMENT")
-	for _, other := range docs.Referencing("content", content["id"]) {
+	for _, other := range m.Table("DOCUMENT").Referencing("content", content["id"]) {
 		if other["id"] == id || other["extracted"] == "" {
 			continue
 		}
-		for _, child := range docs.Referencing("parent", other["id"]) {
-			if child["relation"] != "extract" {
-				continue
-			}
-			c, _ := m.Table("CONTENT").Get(child["content"])
-			text, _, err := x.bucket.Get(ctx, c["blob"])
-			if err != nil {
-				return nil, true, err
-			}
-			return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, true, nil
+		text, err := x.textOf(ctx, m, other)
+		if err != nil {
+			return nil, true, err
 		}
-		return nil, true, nil
+		if len(text) == 0 {
+			return nil, true, nil
+		}
+		return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, true, nil
 	}
 	return nil, false, nil
+}
+
+func (x *Extractor) textOf(ctx context.Context, m *Model, doc store.Row) ([]byte, error) {
+	if doc["extracted"] == "" {
+		return nil, errNotYet
+	}
+	children := m.Table("DOCUMENT").Referencing("parent", doc["id"])
+	for _, child := range children {
+		if child["relation"] != "extract" {
+			continue
+		}
+		c, _ := m.Table("CONTENT").Get(child["content"])
+		text, _, err := x.bucket.Get(ctx, c["blob"])
+		return text, err
+	}
+	pages := slices.DeleteFunc(slices.Clone(children), func(child store.Row) bool { return child["relation"] != "pages" })
+	slices.SortFunc(pages, func(a, b store.Row) int {
+		first, _ := pageSpan(a["name"])
+		other, _ := pageSpan(b["name"])
+		return first - other
+	})
+	parts := [][]byte{}
+	for _, page := range pages {
+		text, err := x.textOf(ctx, m, page)
+		if err != nil {
+			return nil, err
+		}
+		if len(text) > 0 {
+			parts = append(parts, text)
+		}
+	}
+	return bytes.Join(parts, []byte("\n\n")), nil
 }
 
 func transcribed(id, text string, err error) ([]extracted, error) {
