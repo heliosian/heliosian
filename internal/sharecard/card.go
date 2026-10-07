@@ -50,6 +50,7 @@ type Line struct {
 
 type Card struct {
 	Kicker   string
+	Section  string
 	Title    string
 	Subtitle string
 	Lines    []Line
@@ -221,25 +222,29 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 
 	width := fixed.I(textRight - 72)
 	top := 226
-	if c.Kicker != "" {
-		kicker, err := face(medium, 22)
+	above, aboveFont, aboveSize, aboveY := strings.ToUpper(c.Kicker), medium, 22.0, 176
+	if c.Section != "" {
+		above, aboveFont, aboveSize, aboveY = c.Section, bold, 40, 204
+	}
+	if above != "" {
+		kicker, err := face(aboveFont, aboveSize)
 		if err != nil {
 			return nil, err
 		}
 		d.Face, d.Src = kicker, image.NewUniform(s.Accent)
-		kickerLines := Wrap(d, strings.ToUpper(c.Kicker), width)
+		kickerLines := Wrap(d, above, width)
 		if len(kickerLines) > 1 {
 			kickerLines = kickerLines[:1]
 			kickerLines[0] += "…"
 		}
-		d.Dot = fixed.P(72, 176)
+		d.Dot = fixed.P(72, aboveY)
 		d.DrawString(kickerLines[0])
-		top = 238
+		top = aboveY + 62
 	}
 
 	var lines []string
 	size := 66.0
-	if c.Kicker != "" {
+	if above != "" {
 		size = 58
 	}
 	for ; size >= 34; size -= 4 {

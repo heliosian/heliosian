@@ -1,12 +1,8 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image"
-	"image/draw"
-	"image/png"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -20,10 +16,13 @@ import (
 )
 
 const (
-	wikiShareSubPages = 4
-	wikiShareLogo     = "web/public/wiki/brand/logo-lockup.png"
-	wikiShareLogoRoom = 170
+	wikiShareSubPages  = 4
+	wikiBackgrounds    = "web/wiki/backgrounds/"
+	wikiPicturePrefix  = "/api/wiki/picture/"
+	wikiHeaderImageKey = "header_image:"
 )
+
+var wikiBackgroundNames = []string{"backpacking", "building", "camping", "library", "math", "music", "nature", "science", "writing"}
 
 var (
 	markdownImage    = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
@@ -41,12 +40,12 @@ type WikiShare struct {
 }
 
 type wikiShared struct {
-	id, path, name, sentence string
-	subPages                 []string
+	id, path, name, top, sentence string
+	subPages                      []string
 }
 
 func NewWikiShare(s *Store, pics *Pictures, name func() string) *WikiShare {
-	return &WikiShare{s: s, pics: pics, style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: func() string { return "" }}}
+	return &WikiShare{s: s, pics: pics, style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: func() string { return "" }, Lockup: "web/public/wiki/brand/logo-lockup-horizontal.png"}}
 }
 
 func (w *WikiShare) Register(mux *http.ServeMux) {
@@ -93,12 +92,12 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 		http.NotFound(rw, r)
 		return
 	}
-	logo, err := wikiShareLogoWithRoom()
+	header, picture, err := w.header(r.Context(), page.id)
 	if err != nil {
 		serve.Error(rw, r, err)
 		return
 	}
-	card := sharecard.Card{Title: page.name, Subtitle: page.sentence, Picture: logo, Whole: true}
+	card := sharecard.Card{Section: page.top, Title: page.name, Subtitle: page.sentence, Picture: picture}
 	shown := page.subPages
 	if len(shown) > wikiShareSubPages {
 		shown = append(shown[:wikiShareSubPages-1:wikiShareSubPages-1], fmt.Sprintf("and %d more", len(page.subPages)-wikiShareSubPages+1))
@@ -106,27 +105,67 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 	for _, name := range shown {
 		card.Lines = append(card.Lines, sharecard.Line{Icon: "dot", Text: name})
 	}
-	w.style.Serve(rw, r, card, slices.Concat([]string{page.name, page.sentence}, page.subPages)...)
+	w.style.Serve(rw, r, card, slices.Concat([]string{page.top, page.name, page.sentence, header}, page.subPages)...)
 }
 
-func wikiShareLogoWithRoom() ([]byte, error) {
-	raw, err := os.ReadFile(wikiShareLogo)
-	if err != nil {
-		return nil, err
+func (w *WikiShare) header(ctx context.Context, id string) (string, []byte, error) {
+	m := w.s.Model()
+	docs := m.Table("DOCUMENT")
+	top := id
+	for at := id; at != ""; {
+		row, _ := docs.Get(at)
+		markdown, err := w.markdown(ctx, row)
+		if err != nil {
+			return "", nil, err
+		}
+		if object := headerImage(markdown); object != "" {
+			picture, _, err := w.pics.bucket.Get(ctx, object)
+			return object, picture, err
+		}
+		top, at = at, row["parent"]
 	}
-	logo, err := png.Decode(bytes.NewReader(raw))
-	if err != nil {
-		return nil, err
+	file := wikiBackgrounds + wikiBackgroundNames[backgroundHash(top)%uint32(len(wikiBackgroundNames))] + ".jpg"
+	picture, err := os.ReadFile(file)
+	return file, picture, err
+}
+
+func (w *WikiShare) markdown(ctx context.Context, row map[string]string) (string, error) {
+	if row["content"] == "" {
+		return "", nil
 	}
-	b := logo.Bounds()
-	canvas := image.NewNRGBA(image.Rect(0, 0, b.Dx()*wikiShareLogoRoom/100, b.Dy()*wikiShareLogoRoom/100))
-	at := image.Pt((canvas.Bounds().Dx()-b.Dx())/2, (canvas.Bounds().Dy()-b.Dy())/2)
-	draw.Draw(canvas, image.Rectangle{Min: at, Max: at.Add(b.Size())}, logo, b.Min, draw.Src)
-	var out bytes.Buffer
-	if err := png.Encode(&out, canvas); err != nil {
-		return nil, err
+	content, _ := w.s.Model().Table("CONTENT").Get(row["content"])
+	raw, _, err := w.pics.bucket.Get(ctx, content["blob"])
+	return string(raw), err
+}
+
+func backgroundHash(id string) uint32 {
+	sum := uint32(0)
+	for _, c := range id {
+		sum = sum*31 + uint32(c)
 	}
-	return out.Bytes(), nil
+	return sum
+}
+
+func headerImage(markdown string) string {
+	rest, ok := strings.CutPrefix(markdown, "---\n")
+	if !ok {
+		return ""
+	}
+	front, _, ok := strings.Cut(rest, "\n---\n")
+	if !ok {
+		return ""
+	}
+	for _, line := range strings.Split(front, "\n") {
+		value, ok := strings.CutPrefix(line, wikiHeaderImageKey)
+		if !ok {
+			continue
+		}
+		name, ok := strings.CutPrefix(strings.TrimSpace(value), wikiPicturePrefix)
+		if ok && wikiImage.MatchString("wiki-images/"+name) {
+			return "wiki-images/" + name
+		}
+	}
+	return ""
 }
 
 func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, error) {
@@ -138,18 +177,18 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 	}
 	row, _ := docs.Get(id)
 	page := wikiShared{id: id, path: m.WikiPath(row), name: row["name"], subPages: []string{}}
+	for at := row["parent"]; at != ""; {
+		above, _ := docs.Get(at)
+		page.top, at = above["name"], above["parent"]
+	}
 	for _, child := range m.wikiChildren(id) {
 		page.subPages = append(page.subPages, child["name"])
 	}
-	if row["content"] == "" {
-		return page, true, nil
-	}
-	content, _ := m.Table("CONTENT").Get(row["content"])
-	raw, _, err := w.pics.bucket.Get(ctx, content["blob"])
+	markdown, err := w.markdown(ctx, row)
 	if err != nil {
 		return wikiShared{}, false, err
 	}
-	page.sentence = firstSentence(string(raw))
+	page.sentence = firstSentence(markdown)
 	return page, true, nil
 }
 
