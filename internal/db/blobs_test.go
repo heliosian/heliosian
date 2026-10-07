@@ -48,6 +48,9 @@ func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
 	if got.Code != http.StatusOK || got.Header().Get("Content-Type") != "text/html" || !slices.Contains(got.Header().Values("Content-Security-Policy"), "sandbox") {
 		t.Fatalf("a stored page: %d %v", got.Code, got.Header())
 	}
+	if cache := got.Header().Get("Cache-Control"); cache != "private, max-age=31536000, immutable" {
+		t.Fatalf("content, whose bytes never change, is cached as %q", cache)
+	}
 }
 
 func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
@@ -68,6 +71,9 @@ func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
 	got := fetchBlob(t, s, pics, reader, id+"/thumbnail", "")
 	if got.Code != http.StatusOK || got.Header().Get("Content-Type") != "image/jpeg" || got.Header().Get("ETag") != `"`+row["thumbnail"]+`"` || got.Body.Len() == 0 {
 		t.Fatalf("the thumbnail: %d %v", got.Code, got.Header())
+	}
+	if cache := got.Header().Get("Cache-Control"); cache != "private, no-cache" {
+		t.Fatalf("a thumbnail, remade under the same address, is cached as %q", cache)
 	}
 	if again := fetchBlob(t, s, pics, reader, id+"/thumbnail", got.Header().Get("ETag")); again.Code != http.StatusNotModified || again.Body.Len() != 0 {
 		t.Fatalf("the thumbnail again with its etag: %d", again.Code)

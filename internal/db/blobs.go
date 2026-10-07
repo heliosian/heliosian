@@ -62,7 +62,11 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byt
 			return
 		}
 		etag := strconv.Quote(name)
-		w.Header().Set("Cache-Control", "private, no-cache")
+		cache := "private, no-cache"
+		if table, _ := TableOf(r.PathValue("id")); table == "CONTENT" {
+			cache = "private, max-age=31536000, immutable"
+		}
+		w.Header().Set("Cache-Control", cache)
 		w.Header().Set("ETag", etag)
 		w.Header().Add("Content-Security-Policy", "sandbox")
 		if r.Header.Get("If-None-Match") == etag {
