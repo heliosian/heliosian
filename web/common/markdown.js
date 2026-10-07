@@ -200,6 +200,24 @@ function callout(lines, i, cards) {
   return [box, i];
 }
 
+const questionMarker = /^> \[!question\]\s*(.*)$/i;
+
+function question(lines, i, cards) {
+  const asked = lines[i].match(questionMarker)[1];
+  const body = [];
+  i++;
+  while (i < lines.length && /^>( |$)/.test(lines[i]) && !questionMarker.test(lines[i])) {
+    body.push(lines[i].replace(/^> ?/, ''));
+    i++;
+  }
+  const box = el('div', 'callout callout-question');
+  const title = el('p', 'callout-title');
+  title.append(svg('help'));
+  inline(title, asked, cards);
+  box.append(title, render(body.join('\n'), cards));
+  return [box, i];
+}
+
 const listItem = /^(\s*)([-*]|\d+[.)])\s+(.*)$/;
 
 function list(lines, i, cards) {
@@ -269,6 +287,12 @@ export function render(text, cards = {}) {
     }
     if (listItem.test(line)) {
       const [node, next] = list(lines, i, cards);
+      out.append(node);
+      i = next;
+      continue;
+    }
+    if (questionMarker.test(line)) {
+      const [node, next] = question(lines, i, cards);
       out.append(node);
       i = next;
       continue;

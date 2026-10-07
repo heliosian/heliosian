@@ -18,4 +18,6 @@ li > ul, li > ol { margin: 4px 0 0; }
 
 .callout-warning { --callout: var(--callout-warning); --callout-wash: var(--callout-warning-wash); }
 
+.callout-question { --callout: var(--callout-question); --callout-wash: var(--callout-question-wash); }
+
 .callout-caution { --callout: var(--callout-caution); --callout-wash: var(--callout-caution-wash); }

@@ -387,15 +387,16 @@ function textToolbar(textarea) {
   const callout = el('select', 'wiki-callout-pick');
   callout.setAttribute('aria-label', 'Callout');
   callout.append(el('option', '', 'Callout'));
-  for (const kind of ['Quote', 'Tip', 'Important', 'Warning', 'Caution']) {
+  for (const kind of ['Quote', 'Tip', 'Important', 'Warning', 'Caution', 'Question']) {
     const option = el('option', '', kind);
     option.value = kind.toUpperCase();
     callout.append(option);
   }
+  const firsts = {QUOTE: '', QUESTION: '> [!QUESTION] Question?\n'};
   callout.addEventListener('change', () => {
     const kind = callout.value;
     callout.selectedIndex = 0;
-    prefixLines(textarea, kind === 'QUOTE' ? '' : `> [!${kind}]\n`, '> ', '>');
+    prefixLines(textarea, kind in firsts ? firsts[kind] : `> [!${kind}]\n`, '> ', '>');
   });
   const bar = el('div', 'wiki-text-tools');
   bar.append(
@@ -520,7 +521,7 @@ export function editPage(id) {
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);
   indentLists(text);
-  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list (Tab and Shift+Tab indent and outdent its lines for sub-bullets), [words](https://a.link), > [!NOTE] (or TIP, IMPORTANT, WARNING, CAUTION) for a callout; Insert Image puts a picture at the cursor.');
+  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list (Tab and Shift+Tab indent and outdent its lines for sub-bullets), [words](https://a.link), > [!NOTE] (or TIP, IMPORTANT, WARNING, CAUTION) for a callout, > [!QUESTION] and the question, then > lines of answer, for a question and its answer; Insert Image puts a picture at the cursor.');
   const saveButton = el('button', 'button', 'Save');
   saveButton.type = 'submit';
   const back = p ? pagePath(p) : (parentId ? pagePath(page(parentId)) : '/');

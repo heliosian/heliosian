@@ -167,6 +167,8 @@ html[data-theme="dark"] {
   --callout-warning-wash: #3a2c14;
   --callout-caution: #f37766;
   --callout-caution-wash: #3a1f1a;
+  --callout-question: #6fd0cc;
+  --callout-question-wash: #12302f;
   color-scheme: dark;
 }
 
