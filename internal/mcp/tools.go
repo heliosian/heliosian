@@ -605,7 +605,7 @@ func readDocument(c call, in idIn) (any, error) {
 		if mime != "text/markdown" {
 			continue
 		}
-		name, _, ok := c.m.BlobCell(c.env, r["content"], "blob")
+		name, _, ok := c.m.BlobCell(nil, c.env, r["content"], "blob")
 		if !ok {
 			continue
 		}

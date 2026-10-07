@@ -2,17 +2,20 @@ package db
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/serve"
+	"heliosian/internal/trace"
 )
 
 const blobPath = "/api/blob/"
 
-func (m *Model) BlobCell(env Env, id, column string) (name, mimeType string, ok bool) {
+func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mimeType string, ok bool) {
+	defer span.End()
 	tableName, ok := TableOf(id)
 	if !ok {
 		return "", "", false
@@ -23,6 +26,7 @@ func (m *Model) BlobCell(env Env, id, column string) (name, mimeType string, ok 
 		return "", "", false
 	}
 	r := m.newRun(env)
+	r.policy = span.Tally("policy")
 	row, ok := r.table(t.Name).Get(id)
 	if !ok || !r.readable(t, row) {
 		return "", "", false
@@ -36,12 +40,23 @@ func (m *Model) BlobCell(env Env, id, column string) (name, mimeType string, ok 
 
 func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byte, now func() time.Time) {
 	mux.HandleFunc("GET "+blobPath+"{id}/{column}", func(w http.ResponseWriter, r *http.Request) {
+		root := trace.New("request")
+		defer func() {
+			root.End()
+			if root.Dur > 250 {
+				slog.WarnContext(r.Context(), "slow blob", "path", r.URL.Path, "ms", root.Dur, "trace", root.Header())
+			}
+		}()
+		waiting := root.Start("model")
 		m := s.Model()
+		waiting.End()
+		signing := root.Start("caller")
 		env, _, ok := caller(w, r, m, importKey, now())
+		signing.End()
 		if !ok {
 			return
 		}
-		name, mimeType, ok := m.BlobCell(env, r.PathValue("id"), r.PathValue("column"))
+		name, mimeType, ok := m.BlobCell(root.Start("cell"), env, r.PathValue("id"), r.PathValue("column"))
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -51,10 +66,14 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byt
 		w.Header().Set("ETag", etag)
 		w.Header().Add("Content-Security-Policy", "sandbox")
 		if r.Header.Get("If-None-Match") == etag {
+			root.End()
+			w.Header().Set("Trace", root.Header())
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
+		fetching := root.Start("bucket")
 		content, stored, err := pics.bucket.Get(r.Context(), name)
+		fetching.End()
 		if errors.Is(err, blob.ErrNotFound) {
 			http.NotFound(w, r)
 			return
@@ -66,6 +85,8 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byt
 		if mimeType == "" {
 			mimeType = stored
 		}
+		root.End()
+		w.Header().Set("Trace", root.Header())
 		w.Header().Set("Content-Type", mimeType)
 		w.Write(content)
 	})
