@@ -58,12 +58,12 @@ var extractors = map[string]extractFunc{
 	"message/rfc822": bytesOnly(mailParts),
 	"text/html":      bytesOnly(htmlMarkdown),
 	"text/plain":     bytesOnly(textMarkdown),
-	// "application/pdf": (*Extractor).readPDF,
-	"image/jpeg": (*Extractor).readImage,
-	"image/png":  (*Extractor).readImage,
-	"image/gif":  (*Extractor).readImage,
-	"image/bmp":  (*Extractor).readImage,
-	"image/webp": (*Extractor).readImage,
+	pdfType:          (*Extractor).readPDF,
+	"image/jpeg":     (*Extractor).readImage,
+	"image/png":      (*Extractor).readImage,
+	"image/gif":      (*Extractor).readImage,
+	"image/bmp":      (*Extractor).readImage,
+	"image/webp":     (*Extractor).readImage,
 }
 
 func bytesOnly(read func([]byte) ([]extracted, error)) extractFunc {
