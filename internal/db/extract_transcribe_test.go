@@ -3,9 +3,11 @@ package db
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"image"
 	"image/gif"
 	"image/jpeg"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -83,6 +85,46 @@ func jpegOf(t *testing.T, size int) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
+	var mu sync.Mutex
+	asked := 0
+	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprintf(w, "event: message_start\ndata: %s\n\n", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`)
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", `{"type":"error","error":{"type":"invalid_request_error","message":"Output blocked by content filtering policy"}}`)
+	}))
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	photo := jpegOf(t, 300)
+	if err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo); err != nil {
+		t.Fatal(err)
+	}
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "b1", "blob": "content/b1", "mime": "image/jpeg", "size": "1"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/photo.jpg", "content": "cnt00000000003"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	NewExtractor(s, queue, bucket, "test")
+	queue.Refresh()
+	made(t, s, "DOCUMENT", "doc00000000020", "extracted")
+	if under := children(s, "doc00000000020"); len(under) != 0 {
+		t.Fatalf("a blocked answer was written: %v", under)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("claude was asked %d times, want once", asked)
+	}
 }
 
 func TestAnOversizeJPEGIsSentAsASmallerJPEG(t *testing.T) {

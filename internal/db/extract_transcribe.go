@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/shared"
 	_ "golang.org/x/image/bmp"
 	"golang.org/x/image/draw"
 
@@ -32,6 +33,7 @@ const (
 	imageMaxReply    = 8000
 	pdfMaxReply      = 128000
 	decoration       = "(decoration)"
+	outputBlocked    = "Output blocked by content filtering policy"
 )
 
 const pdfSystem = `You are given one PDF a school shared with its families - a flyer, a letter, a schedule, a form, a handbook, a slide deck. A slide deck's slides each become a section headed by the slide's title. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything. Your answer is the transcription and nothing else: never a word about what kind of document it is or what you are doing and why.
@@ -74,12 +76,15 @@ func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content
 	return nil, false, nil
 }
 
-func transcribed(text string, err error) ([]extracted, error) {
+func transcribed(id, text string, err error) ([]extracted, error) {
 	var refused *anthropic.Error
 	switch {
 	case errors.Is(err, claude.ErrFinal):
 		return nil, err
-	case errors.As(err, &refused) && refused.StatusCode >= 400 && refused.StatusCode < 500 && refused.StatusCode != http.StatusTooManyRequests:
+	case errors.As(err, &refused) && strings.Contains(refused.RawJSON(), outputBlocked):
+		slog.Warn("extract: answer blocked by the content filter", "document", id, "error", err)
+		return nil, nil
+	case errors.As(err, &refused) && (refused.Type() == shared.ErrorTypeInvalidRequestError || refused.StatusCode >= 400 && refused.StatusCode < 500 && refused.StatusCode != http.StatusTooManyRequests):
 		return nil, err
 	case err != nil:
 		return nil, fmt.Errorf("%w: %w", errAskAgain, err)
@@ -114,13 +119,14 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, doc, content store.
 		slog.Warn("extract: unreadable image", "document", id, "mime", content["mime"], "error", err)
 		return nil, nil
 	}
-	return transcribed(claude.Text(ctx, x.client, anthropic.MessageNewParams{
+	text, err := claude.Text(ctx, x.client, anthropic.MessageNewParams{
 		Model:        claude.ExtractImageModel,
 		MaxTokens:    imageMaxReply,
 		System:       []anthropic.TextBlockParam{{Text: imageSystem}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewImageBlockBase64(mimeType, base64.StdEncoding.EncodeToString(body)))},
 		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ExtractImageEffort},
-	}))
+	})
+	return transcribed(id, text, err)
 }
 
 func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error) {
@@ -155,7 +161,7 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 		slog.Info("extract: pdf answer cut short, reading it in halves", "document", doc["id"], "pages", pages.total)
 		return x.splitPDF(ctx, doc, pages, (pages.total+1)/2)
 	}
-	return transcribed(text, err)
+	return transcribed(doc["id"], text, err)
 }
 
 func (x *Extractor) splitPDF(ctx context.Context, doc store.Row, pages pdfPages, most int) ([]extracted, error) {
