@@ -111,11 +111,7 @@ func (x *sweeper) sweep() (int, int, <-chan struct{}, error) {
 				delete(blobs, row["blob"])
 			}
 		}
-		ops := []store.Op{}
-		for _, row := range gone {
-			ops = append(ops, store.Delete("CONTENT", store.Row{"id": row["id"]}))
-		}
-		if err := x.s.Stage(tx, DocumentsSheet, ops...); err != nil {
+		if err := stageContentSweep(x.s, tx, gone); err != nil {
 			return err
 		}
 		tx.After(func() {

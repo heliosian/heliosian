@@ -13,13 +13,22 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"heliosian/internal/logging"
 )
 
+var (
+	setup  sync.Once
+	caKey  *ecdsa.PrivateKey
+	caCert *x509.Certificate
+	mu     sync.Mutex
+	routes = map[string]*url.URL{}
+)
+
 func Install(host string, h http.Handler) {
-	caKey, caCert := mintCA(host)
+	setup.Do(route)
 	server, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{mintLeaf(host, caKey, caCert)}, NextProtos: []string{"http/1.1"}})
 	if err != nil {
 		logging.Fatal("intercept: listen", "host", host, "error", err)
@@ -34,6 +43,14 @@ func Install(host string, h http.Handler) {
 	go func() {
 		logging.Fatal("intercept: proxy", "host", host, "error", http.Serve(listener, tunnel{host: host, to: server.Addr().String()}))
 	}()
+	mu.Lock()
+	routes[host] = &url.URL{Scheme: "http", Host: listener.Addr().String()}
+	mu.Unlock()
+	slog.Info("intercept: answering locally", "host", host)
+}
+
+func route() {
+	caKey, caCert = mintCA()
 	transport := http.DefaultTransport.(*http.Transport)
 	if transport.TLSClientConfig == nil {
 		transport.TLSClientConfig = &tls.Config{}
@@ -46,15 +63,16 @@ func Install(host string, h http.Handler) {
 		transport.TLSClientConfig.RootCAs = roots
 	}
 	transport.TLSClientConfig.RootCAs.AddCert(caCert)
-	through := &url.URL{Scheme: "http", Host: listener.Addr().String()}
 	next := transport.Proxy
 	transport.Proxy = func(r *http.Request) (*url.URL, error) {
-		if r.URL.Hostname() == host {
+		mu.Lock()
+		through, ok := routes[r.URL.Hostname()]
+		mu.Unlock()
+		if ok {
 			return through, nil
 		}
 		return next(r)
 	}
-	slog.Info("intercept: answering locally", "host", host)
 }
 
 type tunnel struct {
@@ -91,11 +109,11 @@ func (t tunnel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	<-done
 }
 
-func mintCA(host string) (*ecdsa.PrivateKey, *x509.Certificate) {
+func mintCA() (*ecdsa.PrivateKey, *x509.Certificate) {
 	key := newKey()
 	template := &x509.Certificate{
 		SerialNumber:          serial(),
-		Subject:               pkix.Name{CommonName: "heliosian intercept " + host},
+		Subject:               pkix.Name{CommonName: "heliosian intercept"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().AddDate(0, 0, 30),
 		KeyUsage:              x509.KeyUsageCertSign,

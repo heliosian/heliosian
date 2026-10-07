@@ -85,7 +85,9 @@ func build(sheet string, index *SearchIndex) func(context.Context, store.Tables,
 		}
 		checked()
 		*m.slot(sheet) = built
-		m.derived = &derived{byGroup: map[string][]store.Row{}, sets: map[string]*generatedSet{}}
+		if m.derived == nil || sheet == PeopleSheet || sheet == GroupsSheet {
+			m.derived = &derived{byGroup: map[string][]store.Row{}, sets: map[string]*generatedSet{}}
+		}
 		if sheet == MailSheet {
 			referenced := tallied(ctx, "check references")
 			defer referenced()

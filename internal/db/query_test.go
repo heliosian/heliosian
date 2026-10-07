@@ -3,6 +3,7 @@ package db
 import (
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -289,6 +290,27 @@ func TestEffectiveMembers(t *testing.T) {
 	}
 	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
 		t.Fatalf("an excluded parent stays on the list: %v", got)
+	}
+}
+
+func TestConcurrentReadsAfterAWriteAgree(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000030"}, store.Row{"subtitle": "changed"})); err != nil {
+		t.Fatal(err)
+	}
+	m := s.Model()
+	src := `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= person @viewer) (= group @g))))`
+	want := ids(runAs(t, sample(t).Model(), "per00000000002", src).Rows(), "id")
+	got := make([][]string, 16)
+	var wg sync.WaitGroup
+	for i := range got {
+		wg.Go(func() { got[i] = ids(runAs(t, m, "per00000000002", src).Rows(), "id") })
+	}
+	wg.Wait()
+	for _, g := range got {
+		if len(want) == 0 || !slices.Equal(g, want) {
+			t.Fatalf("concurrent reads answered %v, want %v", g, want)
+		}
 	}
 }
 

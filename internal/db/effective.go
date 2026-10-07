@@ -11,15 +11,16 @@ import (
 )
 
 type derived struct {
-	mu            sync.Mutex
-	byGroup       map[string][]store.Row
-	sets          map[string]*generatedSet
-	searchVersion int
+	mu      sync.Mutex
+	byGroup map[string][]store.Row
+	sets    map[string]*generatedSet
 }
 
 type generatedSet struct {
-	rows []store.Row
-	by   map[string]map[string][]store.Row
+	once    sync.Once
+	version int
+	rows    []store.Row
+	by      map[string]map[string][]store.Row
 }
 
 func memberAs(row store.Row) string {
@@ -44,41 +45,38 @@ func (m *Model) generated(t *Table) *generatedSet {
 	version := m.index.current()
 	m.derived.mu.Lock()
 	set := m.derived.sets[t.Name]
-	stale := t.Name == "SEARCH" && m.derived.searchVersion != version
-	m.derived.mu.Unlock()
-	if set != nil && !stale {
-		return set
+	if set == nil || (t.Name == "SEARCH" && set.version != version) {
+		set = &generatedSet{version: version}
+		m.derived.sets[t.Name] = set
 	}
-	var rows []store.Row
+	m.derived.mu.Unlock()
+	set.once.Do(func() { set.build(m, t) })
+	return set
+}
+
+func (set *generatedSet) build(m *Model, t *Table) {
 	switch t.Name {
 	case "EFFECTIVE_MEMBER":
-		rows = m.effectiveAll()
+		set.rows = m.effectiveAll()
 	case "INBOX":
-		rows = []store.Row{}
+		set.rows = []store.Row{}
 	case "SEARCH":
-		rows, version = m.index.generatedRows()
-		m.derived.mu.Lock()
-		m.derived.searchVersion = version
-		m.derived.mu.Unlock()
+		set.rows, _ = m.index.generatedRows()
 	default:
 		panic("db: no builder for " + t.Name)
 	}
-	set = &generatedSet{rows: rows, by: map[string]map[string][]store.Row{}}
+	set.by = map[string]map[string][]store.Row{}
 	for _, c := range t.Columns {
 		if c.Kind != ID && c.Kind != Ref && c.Kind != Enum {
 			continue
 		}
 		index := map[string][]store.Row{}
-		for _, row := range rows {
+		for _, row := range set.rows {
 			key := indexKey(c, row[c.Name])
 			index[key] = append(index[key], row)
 		}
 		set.by[c.Name] = index
 	}
-	m.derived.mu.Lock()
-	m.derived.sets[t.Name] = set
-	m.derived.mu.Unlock()
-	return set
 }
 
 func (m *Model) effectiveAll() []store.Row {
