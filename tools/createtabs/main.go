@@ -210,16 +210,17 @@ var dataLayouts = map[string]bool{}
 
 func addDataLayouts() {
 	for _, s := range spreadsheets.All {
+		if !slices.Contains(db.Sheets, s.Source) {
+			continue
+		}
 		tabs := []tab{}
 		for _, t := range db.Tables {
-			if t.Sheet == s.Source || (t.Sheet == db.EverySheet && slices.Contains(db.Sheets, s.Source)) {
+			if t.Sheet == s.Source {
 				tabs = append(tabs, tab{t.Name, t.Stored()})
 			}
 		}
-		if len(tabs) > 0 {
-			layouts[s.Title] = tabs
-			dataLayouts[s.Title] = true
-		}
+		layouts[s.Title] = append(tabs, tab{db.ChangesTab, db.ChangesColumns})
+		dataLayouts[s.Title] = true
 	}
 }
 

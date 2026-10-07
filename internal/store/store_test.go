@@ -23,7 +23,7 @@ type counts struct {
 	consents, reportAtConsent                   int
 }
 
-func consent(m *counts) error {
+func consent(_ context.Context, m *counts) error {
 	m.consents++
 	m.reportAtConsent = m.report
 	return nil
@@ -418,7 +418,7 @@ func TestConsentRunsAfterEveryPart(t *testing.T) {
 
 func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 	f := newFixture(t)
-	refusing := func(m *counts) error {
+	refusing := func(_ context.Context, m *counts) error {
 		if m.things > 2 {
 			return errors.New("three things")
 		}

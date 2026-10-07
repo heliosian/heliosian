@@ -59,8 +59,8 @@ var extractors = map[string]extractFunc{
 	// "application/pdf": (*Extractor).readPDF,
 	// "image/jpeg":      (*Extractor).readImage,
 	// "image/png":       (*Extractor).readImage,
-	"image/gif": (*Extractor).readImage,
-	"image/bmp": (*Extractor).readImage,
+	"image/gif":  (*Extractor).readImage,
+	"image/bmp":  (*Extractor).readImage,
 	"image/webp": (*Extractor).readImage,
 }
 

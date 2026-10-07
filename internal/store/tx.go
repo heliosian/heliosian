@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/trace"
 )
 
 type Tx struct {
@@ -64,7 +66,9 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	for _, st := range tx.staged {
 		st.swap()
 	}
+	start := time.Now()
 	q.afterSwap()
+	trace.From(ctx).Tally("swap hooks").Add(time.Since(start))
 	var done <-chan struct{}
 	for _, st := range tx.staged {
 		done = st.write()

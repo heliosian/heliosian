@@ -38,7 +38,6 @@ A client decides whether to use a connector mostly from its tools' names and des
 | `helios_describe_schema` | every table with its description and column names, from `db.Tables` |
 | `helios_describe_table` | one table's columns in full, from `db.DescribeTable` (the composer's description, private columns left out), and the columns elsewhere that point at it |
 | `helios_policies` | `db.PolicySource`: the definitions a query may call and every clause |
-| `helios_history` | a row's `CHANGES`, newest first, which only super admins read |
 
 ## Links
 

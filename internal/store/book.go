@@ -77,11 +77,12 @@ type Change struct {
 }
 
 type ChangeLog struct {
-	Tab string
-	Row func(Change) Row
+	Tab     string
+	Columns []string
+	Row     func(Change) Row
 }
 
-var oldChangeLog = &ChangeLog{Tab: ChangeLogTab, Row: func(c Change) Row {
+var oldChangeLog = &ChangeLog{Tab: ChangeLogTab, Columns: ChangeLogColumns, Row: func(c Change) Row {
 	key := []string{}
 	for _, column := range c.Key {
 		key = append(key, column+"="+c.Named[column])
@@ -147,8 +148,8 @@ func (b *Book) Read(ctx context.Context) (Tables, error) {
 	read := map[string]map[string]data.Tab{}
 	for app, tabs := range names {
 		headers := []string{}
-		if app == b.app && b.logged() && b.changes == oldChangeLog {
-			headers = []string{ChangeLogTab}
+		if app == b.app && b.logged() {
+			headers = []string{b.changes.Tab}
 		}
 		got, err := b.source.Tabs(ctx, app, tabs, headers)
 		if err != nil {
@@ -164,8 +165,8 @@ func (b *Book) Read(ctx context.Context) (Tables, error) {
 		}
 		tables[t.Name] = tab.Rows
 	}
-	if b.logged() && b.changes == oldChangeLog {
-		if err := data.CheckColumns(ChangeLogTab, read[b.app][ChangeLogTab].Header, ChangeLogColumns); err != nil {
+	if b.logged() {
+		if err := data.CheckColumns(b.changes.Tab, read[b.app][b.changes.Tab].Header, b.changes.Columns); err != nil {
 			return nil, err
 		}
 	}
@@ -222,9 +223,6 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 			}
 		}
 	}
-	if b.changes != oldChangeLog && len(log) > 0 {
-		tables[b.changes.Tab] = append(slices.Clone(tables[b.changes.Tab]), log...)
-	}
 	return Plan{Tables: tables, writes: writes, log: log}, nil
 }
 
@@ -255,9 +253,6 @@ func (b *Book) replay(tables Tables, plans []Plan) Tables {
 	for _, p := range plans {
 		for _, op := range p.writes {
 			tables[op.tab], _ = apply(tables[op.tab], op)
-		}
-		if b.changes != oldChangeLog && len(p.log) > 0 {
-			tables[b.changes.Tab] = append(slices.Clone(tables[b.changes.Tab]), p.log...)
 		}
 	}
 	return tables

@@ -62,7 +62,7 @@ func (m *Model) unreferencedContent() []store.Row {
 
 func (m *Model) contentReferenced(id string) bool {
 	for _, t := range Tables {
-		if t.Generated || t.Name == ChangesTable {
+		if t.Generated {
 			continue
 		}
 		for _, c := range t.Columns {

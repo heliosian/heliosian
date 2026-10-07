@@ -17,7 +17,11 @@ func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index 
 	return store.New(parts(index), consentStep, source, writer, queue)
 }
 
-var changeLog = &store.ChangeLog{Tab: ChangesTable, Row: func(c store.Change) store.Row {
+const ChangesTab = "CHANGES"
+
+var ChangesColumns = []string{"id", "at", "actor", "real_actor", "action", "table", "row", "column", "previous"}
+
+var changeLog = &store.ChangeLog{Tab: ChangesTab, Columns: ChangesColumns, Row: func(c store.Change) store.Row {
 	return store.Row{
 		"id": Mint(ChangePrefix, func(string) bool { return false }), "at": c.At.In(School).Format(cells.StampFormat),
 		"actor": c.Actor, "real_actor": c.Real, "action": c.Action, "table": c.Tab, "row": c.Named["id"],
@@ -46,7 +50,7 @@ func parts(index *SearchIndex) []store.Part[Model] {
 }
 
 func build(sheet string, index *SearchIndex) func(context.Context, store.Tables, *Model) error {
-	return func(_ context.Context, tables store.Tables, m *Model) error {
+	return func(ctx context.Context, tables store.Tables, m *Model) error {
 		m.index = index
 		built := Sheet{}
 		for i := range Tables {
@@ -54,12 +58,13 @@ func build(sheet string, index *SearchIndex) func(context.Context, store.Tables,
 			if !t.In(sheet) {
 				continue
 			}
-			rows, err := buildRows(t, tables[t.Name])
+			rows, err := buildRows(ctx, t, tables[t.Name])
 			if err != nil {
 				return err
 			}
 			built[t.Name] = rows
 		}
+		checked := tallied(ctx, "sheet checks")
 		if sheet == PeopleSheet {
 			if err := checkEmails(built); err != nil {
 				return err
@@ -78,30 +83,16 @@ func build(sheet string, index *SearchIndex) func(context.Context, store.Tables,
 				return err
 			}
 		}
+		checked()
 		*m.slot(sheet) = built
 		m.derived = &derived{byGroup: map[string][]store.Row{}, sets: map[string]*generatedSet{}}
 		if sheet == MailSheet {
-			if err := m.mergeChanges(); err != nil {
-				return err
-			}
+			referenced := tallied(ctx, "check references")
+			defer referenced()
 			return m.checkReferences()
 		}
 		return nil
 	}
-}
-
-func (m *Model) mergeChanges() error {
-	t, _ := Lookup(ChangesTable)
-	rows := []store.Row{}
-	for _, sheet := range Sheets {
-		rows = append(rows, (*m.slot(sheet))[ChangesTable].rows...)
-	}
-	merged, err := indexRows(t, rows)
-	if err != nil {
-		return err
-	}
-	m.changes = merged
-	return nil
 }
 
 func loaded(sheet string) func(*Model, time.Duration) {

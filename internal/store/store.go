@@ -10,6 +10,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/data"
+	"heliosian/internal/trace"
 )
 
 const refreshInterval = 30 * time.Minute
@@ -25,7 +26,7 @@ type Part[M any] struct {
 
 type Store[M any] struct {
 	parts   []Part[M]
-	consent func(m *M) error
+	consent func(ctx context.Context, m *M) error
 	books   map[string]*Book
 	queue   *Queue
 	mu      sync.RWMutex
@@ -33,7 +34,7 @@ type Store[M any] struct {
 	model   *M
 }
 
-func New[M any](parts []Part[M], consent func(m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
+func New[M any](parts []Part[M], consent func(ctx context.Context, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
 	ordered, err := order(parts)
 	if err != nil {
 		return nil, err
@@ -152,12 +153,16 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 
 func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M, changed map[string]bool, took map[string]time.Duration) (*M, error) {
 	next := *base
+	building := trace.From(ctx).Tally("build")
 	for _, p := range s.parts {
 		if changed != nil && !changed[p.App] && !slices.ContainsFunc(p.Reads, func(read string) bool { return changed[read] }) {
 			continue
 		}
 		start := time.Now()
-		if err := p.Build(ctx, tables[p.App], &next); err != nil {
+		part := building.Tally(p.App)
+		err := p.Build(trace.With(ctx, part), tables[p.App], &next)
+		part.Add(time.Since(start))
+		if err != nil {
 			if changed == nil {
 				return nil, fmt.Errorf("%s: %w", p.App, err)
 			}
@@ -170,7 +175,11 @@ func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M,
 			changed[p.App] = true
 		}
 	}
-	if err := s.consent(&next); err != nil {
+	start := time.Now()
+	consent := building.Tally("consent")
+	err := s.consent(trace.With(ctx, consent), &next)
+	consent.Add(time.Since(start))
+	if err != nil {
 		return nil, fmt.Errorf("consent: %w", err)
 	}
 	return &next, nil
@@ -230,7 +239,9 @@ func (s *Store[M]) Stage(tx *Tx, app string, ops ...Op) error {
 	} else {
 		tables, base = s.current()
 	}
+	start := time.Now()
 	plan, err := book.Plan(tx.ctx, tables[app], tx.actor.Email, ops)
+	trace.From(tx.ctx).Tally("plan").Add(time.Since(start))
 	if err != nil || plan.Empty() {
 		return err
 	}

@@ -37,7 +37,7 @@ const instructions = `This server is ` + about + ` Use it for any question about
 
 A record with a page on the Helios apps carries href, the address of that page: a person, family, classroom or grade on Helios Who?, an event on Helios When, a volunteer activity on HCA-Team, a party on Helios Celebrate, an email list on Helios Loop, a Helios Wiki page, or a document's own address on the web. Whenever you name such a record, link it to its href. Never write an address for a record that has none, and never build one from an ID.
 
-Start with helios_search or helios_whoami. For anything structured, helios_describe_schema and helios_describe_table give the tables, helios_policies the definitions a query may call, and helios_query runs the query language below. helios_get, helios_group, helios_read_document and helios_history look one row up in depth; helios_find_people and helios_events are shortcuts for common questions.
+Start with helios_search or helios_whoami. For anything structured, helios_describe_schema and helios_describe_table give the tables, helios_policies the definitions a query may call, and helios_query runs the query language below. helios_get, helios_group and helios_read_document look one row up in depth; helios_find_people and helios_events are shortcuts for common questions.
 
 ` + db.Language
 

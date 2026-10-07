@@ -177,7 +177,7 @@ func (m *Model) queueCounts() []queueCount {
 
 	refs := []string{}
 	for _, t := range Tables {
-		if t.Generated || t.Name == ChangesTable {
+		if t.Generated {
 			continue
 		}
 		for _, c := range t.Columns {

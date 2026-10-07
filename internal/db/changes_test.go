@@ -1,53 +1,31 @@
 package db
 
 import (
+	"strings"
 	"testing"
 
 	"heliosian/internal/cells"
+	"heliosian/internal/data"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
-func changesOf(rows []store.Row, id string) []store.Row {
-	out := []store.Row{}
-	for _, row := range rows {
-		if row["row"] == id {
-			out = append(out, row)
-		}
-	}
-	return out
-}
-
-func TestAChangeNamesARowOfACurrentTable(t *testing.T) {
-	changes, _ := Lookup(ChangesTable)
-	row := map[string]string{"id": "chgX7pQ2m9KdLr", "at": "2026-09-24 16:00:05", "actor": "import", "action": "delete", "table": "GROUP", "row": "grpyCb75KlEPU7"}
-	if err := changes.Check(row); err != nil {
-		t.Fatalf("a deleted group's change: %v", err)
-	}
-	row["row"] = "gctyCb75KlEPU7"
-	if err := changes.Check(row); err == nil {
-		t.Fatal("a change naming a row of no table loaded")
-	}
-}
-
-func TestAChangeToAHiddenRowIsHidden(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"pronouns": "she/her"})); err != nil {
+func TestEveryWriteAppendsAChangeToTheSheet(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	queue := store.NewQueue()
+	s, err := NewStore(dir, dir, queue, NewSearchIndex())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"consent": "withheld"})); err != nil {
-		t.Fatal(err)
-	}
-	if shown := changesOf(s.Model().Shown(ChangesTable).All(), staff); len(shown) != 0 {
-		t.Errorf("changes to a withheld person shown: %v", shown)
-	}
-}
-
-func TestEveryWriteIsAChange(t *testing.T) {
-	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"name": "Autumn Picnic"})); err != nil {
 		t.Fatal(err)
 	}
-	changes := changesOf(s.Model().Table(ChangesTable).All(), "grp00000000040")
+	changes := []store.Row{}
+	for _, row := range testkit.Rows(t, dir, queue, GroupsSheet, ChangesTab) {
+		if row["row"] == "grp00000000040" {
+			changes = append(changes, row)
+		}
+	}
 	if len(changes) != 3 {
 		t.Fatalf("the picnic's changes = %v", changes)
 	}
@@ -61,24 +39,13 @@ func TestEveryWriteIsAChange(t *testing.T) {
 	if prefix, ok := ParseID(last["id"]); !ok || prefix != ChangePrefix {
 		t.Errorf("the change's id %q", last["id"])
 	}
-	if got := as(t, s, staff, `(from CHANGES (where (= row "grp00000000040")) (order at desc))`); len(got) != 3 || got[0]["column"] != "name" || got[0]["previous"] != "Fall Picnic" {
-		t.Errorf("a super admin reads the picnic's history as %v", got)
-	}
-	if got := as(t, s, parent, `(from CHANGES)`); len(got) != 0 {
-		t.Errorf("a parent reads %d changes", len(got))
-	}
 }
 
-func TestAChangeToAPrivateColumnIsHidden(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": staff}, store.Row{"vc_phone": "650-555-0100", "pronouns": "she/her"})); err != nil {
-		t.Fatal(err)
+func TestHistoryIsNeverRead(t *testing.T) {
+	if _, ok := Lookup(ChangesTab); ok {
+		t.Fatal("CHANGES is a table of the model")
 	}
-	if all := changesOf(s.Model().Table(ChangesTable).All(), staff); len(all) != 2 {
-		t.Fatalf("the changes recorded = %v", all)
-	}
-	shown := changesOf(s.Model().Shown(ChangesTable).All(), staff)
-	if len(shown) != 1 || shown[0]["column"] != "pronouns" {
-		t.Errorf("the changes shown = %v", shown)
+	if _, err := Parse(`(from CHANGES)`); err == nil || !strings.Contains(err.Error(), "CHANGES") {
+		t.Fatalf("a query of CHANGES: %v", err)
 	}
 }

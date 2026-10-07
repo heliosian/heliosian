@@ -10,10 +10,7 @@ const sheetColors = {
   datamail: '#c77dff',
   dataconfig: '#ffd166',
   generated: '#3fd0b4',
-  '*': '#ef476f',
 };
-
-const sheetNames = {'*': 'every sheet'};
 
 function diagram(list) {
   const lines = ['classDiagram'];
@@ -50,7 +47,7 @@ function clickable(root, names) {
 const root = document.getElementById('erd');
 const legend = document.getElementById('legend');
 for (const [sheet, color] of Object.entries(sheetColors)) {
-  const item = el('span', 'item', sheetNames[sheet] ?? sheet.replace(/^data/, ''));
+  const item = el('span', 'item', sheet.replace(/^data/, ''));
   item.style.setProperty('--k', color);
   legend.append(item);
 }

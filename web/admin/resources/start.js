@@ -6,8 +6,7 @@ import {policyList, clauseQuery, queryHref, clauseHref, actorOf, actorLabel, def
 
 chrome('resources');
 
-const sheets = ['datapeople', 'datagroups', 'datadocuments', 'datamail', 'dataconfig', '*', 'generated'];
-const sheetNames = {'*': 'every sheet'};
+const sheets = ['datapeople', 'datagroups', 'datadocuments', 'datamail', 'dataconfig', 'generated'];
 
 const rail = document.getElementById('rail');
 const view = document.getElementById('view');
@@ -16,7 +15,7 @@ const filter = document.getElementById('filter');
 const summary = document.getElementById('summary');
 
 const referrers = new Map();
-for (const t of all.filter(t => t.name !== 'CHANGES')) {
+for (const t of all) {
   for (const c of t.columns) {
     if (c.kind !== 'ref') {
       continue;
@@ -129,7 +128,7 @@ function drawRail(current) {
     }
     const section = el('div', 'sheet');
     section.dataset.sheet = sheet;
-    section.append(el('div', 'sheet-name', sheetNames[sheet] ?? sheet.replace(/^data/, '')));
+    section.append(el('div', 'sheet-name', sheet.replace(/^data/, '')));
     for (const t of list) {
       section.append(link(`#${t.name}`, t.name === current ? 'here' : '', t.name));
     }
@@ -246,58 +245,6 @@ async function accessCard(table, id) {
   const fields = el('div', 'access-part');
   fields.append(partHead('columns', 'which cells the viewer reads once they see the row'), columns);
   box.append(rows, fields);
-  return box;
-}
-
-function changedColumn(change) {
-  const c = byName.get(change.table)?.columns.find(c => c.name === change.column);
-  if (!c || c.kind === 'blob') {
-    return {name: change.column, kind: 'text', relation: '', schema: {}};
-  }
-  return c;
-}
-
-function withValues(changes) {
-  const columns = [];
-  for (const c of changes.columns) {
-    if (c.name === 'previous') {
-      columns.push({...c, label: 'before', cellOf: changedColumn});
-      columns.push({name: 'after', kind: 'text', relation: '', schema: {description: 'what the column held after the change: the next change\'s previous, or the row as it is now'}, cellOf: changedColumn});
-      continue;
-    }
-    columns.push(c);
-  }
-  return {...changes, columns};
-}
-
-function fillValues(answer, current) {
-  const after = {...current};
-  for (const id of answer.result) {
-    const change = answer.resources.CHANGES[id];
-    if (!change.column) {
-      continue;
-    }
-    change.after = change.action === 'delete' ? '' : (after[change.column] ?? '');
-    after[change.column] = change.previous ?? '';
-  }
-}
-
-async function historyCard(id, current) {
-  const changes = withValues(byName.get('CHANGES'));
-  const box = el('details', 'card history');
-  box.dataset.sheet = changes.sheet;
-  try {
-    const answer = await query({from: 'CHANGES', where: [{'=': [{path: 'row'}, id]}], order: [{path: 'at', dir: 'desc'}]});
-    box.append(el('summary', '', answer.result.length ? `history · ${answer.result.length} changes, the last ${answer.resources.CHANGES[answer.result[0]].at}` : 'history · no changes the viewer can see'));
-    if (answer.result.length) {
-      fillValues(answer, current);
-      const g = grid(changes, answer, answer.result, changed, ['column', 'previous', 'after']);
-      grids.push(g);
-      box.append(g.wrap);
-    }
-  } catch (err) {
-    box.append(el('summary', '', 'history'), el('p', 'error', err.message));
-  }
   return box;
 }
 
@@ -458,7 +405,7 @@ async function detailView(table, id) {
   }
   const sections = [card];
   if (table.sheet !== 'generated') {
-    sections.push(await accessCard(table, id), await historyCard(id, row));
+    sections.push(await accessCard(table, id));
   }
   const found = [];
   const refs = [...(referrers.get(table.name) ?? []), ...(referrers.get('*') ?? [])];

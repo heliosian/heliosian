@@ -215,7 +215,6 @@ func (s *Server) tools() {
 	addTool(s, "helios_describe_schema", "Every table in Helios School's community data model with what it holds and its column names, for writing a helios_query. helios_describe_table gives a table's columns in full.", describeSchema)
 	addTool(s, "helios_describe_table", "One table of Helios School's community data model in full: each column with its kind, what it holds, the table a reference points at and every enum value with its meaning, and the columns elsewhere that point at this table.", describeTable)
 	addTool(s, "helios_policies", "The policies over Helios School's community data: the definitions a helios_query may call by name (visible, manages, household, admin_of and the rest) and every clause deciding who reads and writes what.", policies)
-	addTool(s, "helios_history", "A Helios record's change history by ID, newest first: who changed which field, when, and what it held before. Only super admins can read it.", history)
 }
 
 func describeSchema(c call, _ none) (any, error) {
@@ -632,17 +631,6 @@ func readDocument(c call, in idIn) (any, error) {
 		out += fmt.Sprintf("\n(%d more extracts left out for length; helios_read_document on an extract's ID reads it)\n", skipped)
 	}
 	return out, nil
-}
-
-func history(c call, in idIn) (any, error) {
-	if _, err := tableOf(in.ID, ""); err != nil {
-		return nil, err
-	}
-	res, q, err := c.run(tree{"from": "CHANGES", "where": []any{eq("row", strings.TrimSpace(in.ID))}, "order": []any{tree{"path": "at", "dir": "desc"}}, "limit": listRows})
-	if err != nil {
-		return nil, err
-	}
-	return c.shape(res, q, 0), nil
 }
 
 var roles = map[string]string{"student": "students", "parent": "parents", "staff": "staff"}

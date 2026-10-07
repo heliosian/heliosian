@@ -62,13 +62,8 @@ const (
 
 var Sheets = []string{PeopleSheet, GroupsSheet, DocumentsSheet, MailSheet, ConfigSheet}
 
-const (
-	EverySheet   = "*"
-	ChangesTable = "CHANGES"
-)
-
 func (t Table) In(sheet string) bool {
-	return t.Sheet == sheet || t.Sheet == EverySheet
+	return t.Sheet == sheet
 }
 
 var (
@@ -819,26 +814,6 @@ var Tables = []Table{
 			col("grouped", Bool).about("It can address a family as one."),
 			col("individual", Bool).about("It can address one person."),
 			ref("added_by", "PERSON").about("Who added it; blank for the site's own."),
-		},
-	},
-	{
-		Name:        ChangesTable,
-		Sheet:       EverySheet,
-		AppendOnly:  true,
-		Description: "The history of every row: one entry per row a commit inserts and per cell it sets or deletes. Written only by the store.",
-		Columns: []Column{
-			ident(ChangePrefix),
-			col("at", Moment).required().about("When, to the second."),
-			col("actor", Text).required().about("Who the change was made as, or the work that made it (import, pictures)."),
-			col("real_actor", Text).about("Who was signed in, when it differs from actor under Spoof Mode."),
-			enum("action",
-				v("insert", "a row added"),
-				v("set", "a cell changed"),
-				v("delete", "a row removed")).required().about("What happened."),
-			col("table", Text).required().about("The table changed."),
-			ref("row", "").required().about("The row changed, which may since be deleted."),
-			col("column", Text).about("The column, for a set or a delete."),
-			col("previous", Text).about("What the cell held before, for a set or a delete."),
 		},
 	},
 }

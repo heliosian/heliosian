@@ -150,15 +150,13 @@ button:disabled {
   cursor: default;
 }
 
-.access > summary,
-.history > summary {
+.access > summary {
   cursor: pointer;
   font-size: 13px;
   color: var(--k);
 }
 
-.access[open] > summary,
-.history[open] > summary {
+.access[open] > summary {
   margin-bottom: 8px;
 }
 

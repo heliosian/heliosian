@@ -18,7 +18,7 @@ func TestSchemaHangsTogether(t *testing.T) {
 		if table.Generated != (table.Sheet == "") {
 			t.Errorf("%s: a table is either generated or on a sheet", table.Name)
 		}
-		if table.Sheet != "" && table.Sheet != EverySheet && !slices.Contains(Sheets, table.Sheet) {
+		if table.Sheet != "" && !slices.Contains(Sheets, table.Sheet) {
 			t.Errorf("%s: no sheet %s", table.Name, table.Sheet)
 		}
 		names := map[string]bool{}
@@ -61,7 +61,7 @@ func TestSchemaHangsTogether(t *testing.T) {
 		}
 	}
 	for prefix := range prefixes {
-		if _, ok := owners[prefix]; !ok {
+		if _, ok := owners[prefix]; !ok && prefix != ChangePrefix {
 			t.Errorf("prefix %s names no id column", prefix)
 		}
 	}

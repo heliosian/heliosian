@@ -1,14 +1,22 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"slices"
 	"strings"
+	"time"
 
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
+
+func tallied(ctx context.Context, name string) func() {
+	start := time.Now()
+	return func() { trace.From(ctx).Tally(name).Add(time.Since(start)) }
+}
 
 type Rows struct {
 	table    *Table
@@ -26,7 +34,6 @@ type Model struct {
 	Documents Sheet
 	Mail      Sheet
 	Config    Sheet
-	changes   *Rows
 	derived   *derived
 	consented map[string]*View
 	index     *SearchIndex
@@ -115,9 +122,6 @@ func (m *Model) Table(name string) *Rows {
 	if !ok || t.Generated {
 		panic("db: no stored table " + name)
 	}
-	if t.Sheet == EverySheet {
-		return m.changes
-	}
 	return (*m.slot(t.Sheet))[name]
 }
 
@@ -176,7 +180,9 @@ func uniqueOf(t *Table, row store.Row) string {
 	return strings.Join(parts, "\x00")
 }
 
-func buildRows(t *Table, raw []store.Row) (*Rows, error) {
+func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
+	table := trace.From(ctx).Tally(t.Name)
+	start := time.Now()
 	rows := []store.Row{}
 	for _, row := range raw {
 		if err := t.Check(row); err != nil {
@@ -188,7 +194,12 @@ func buildRows(t *Table, raw []store.Row) (*Rows, error) {
 		}
 		rows = append(rows, row)
 	}
-	return indexRows(t, rows)
+	table.Tally("check").Add(time.Since(start))
+	start = time.Now()
+	out, err := indexRows(t, rows)
+	table.Tally("index").Add(time.Since(start))
+	table.Set("rows", len(rows))
+	return out, err
 }
 
 func indexRows(t *Table, rows []store.Row) (*Rows, error) {
@@ -378,8 +389,7 @@ func checkRuleProperties(groups Sheet) error {
 
 func (m *Model) checkReferences() error {
 	for _, t := range Tables {
-		// History names rows since deleted.
-		if t.Generated || t.Name == ChangesTable {
+		if t.Generated {
 			continue
 		}
 		for _, row := range m.Table(t.Name).rows {

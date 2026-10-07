@@ -92,7 +92,7 @@ Every spreadsheet has one `Change Log` tab, written by the store and by nothing 
 
 What a row holds now is the tab itself; the Change Log is how to get back to what it held before. Nothing reads it back.
 
-The data model's five sheets keep their history differently: a part may name a `store.ChangeLog`, the tab its entries go to and how each `store.Change` becomes a row, and the data model's parts name their own `CHANGES` tab (`docs/datamodel.md`, Changes). Its entries are rows like any other: they join the tab in memory in the same commit as the change they record, so the model holds every change the moment it is made, and are written after the commit's other writes, as the Change Log's are. A sheet with a part's own log has no `Change Log` tab of its own to check.
+A part may name a `store.ChangeLog` of its own in place of the `Change Log` tab: the tab its entries go to, its columns, and how each `store.Change` becomes a row. The data model's parts name their `CHANGES` tab (`docs/datamodel.md`, Changes). Either way the log is written and never read: the load checks its header, a commit appends its entries after its other writes, and no model holds them.
 
 ## The sheets
 

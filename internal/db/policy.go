@@ -600,10 +600,6 @@ const PolicySource = `
 (read CONTENT (super_admin))
 ; every bug report and idea, to triage
 (read REPORT (super_admin))
-; every change the store recorded, but those the consent step hides
-(read CHANGES (super_admin))
-; every column of a change
-(read CHANGES (id at actor real_actor action table row column previous) true)
 
 ;; System: import
 
