@@ -59,7 +59,7 @@ var extractors = map[string]extractFunc{
 	"text/html":      bytesOnly(htmlMarkdown),
 	"text/plain":     bytesOnly(textMarkdown),
 	// "application/pdf": (*Extractor).readPDF,
-	// "image/jpeg":      (*Extractor).readImage,
+	"image/jpeg": (*Extractor).readImage,
 	"image/png":  (*Extractor).readImage,
 	"image/gif":  (*Extractor).readImage,
 	"image/bmp":  (*Extractor).readImage,
