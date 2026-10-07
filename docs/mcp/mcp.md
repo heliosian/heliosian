@@ -23,20 +23,22 @@ The endpoint refuses a token once it has expired, once the person signs out of a
 
 Every tool is read-only and runs as the person the token names, resolved for each call through the data model's own sign-in (`Model.SignedIn`). Every read goes through `Model.Run`, so the read policies and the consent step decide what each tool answers, exactly as they do for `/api/q`. The server's instructions, sent when a client connects, carry the query language from `db.Language`, the same text the Admin Query page's composer gives Claude. An answer longer than `maxOutput` is refused with a word on narrowing it.
 
+A client decides whether to use a connector mostly from its tools' names and descriptions, and many never show the model the server's instructions. So every tool's name starts `helios_`, and every description says it is Helios School's, the ones a question starts from (`helios_search`, `helios_whoami`, `helios_events`) saying what questions they answer; `TestEveryToolSaysItIsHelios` holds every tool to that. The server names itself Helios School and describes the community in `about`, which the instructions open with.
+
 | Tool | What it answers |
 | --- | --- |
-| `describe_schema` | every table with its description and column names, from `db.Tables` |
-| `describe_table` | one table's columns in full, from `db.DescribeTable` (the composer's description, private columns left out), and the columns elsewhere that point at it |
-| `policies` | `db.PolicySource`: the definitions a query may call and every clause |
-| `query` | a query in the language, run as `/api/q` runs it: the canonical form, the count, the rows with their filled columns and the rows the includes brought |
-| `whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
-| `search` | the Admin search's word and meaning results (`Searcher.Words` and `Meaning`), each with its table and name |
-| `get` | one row with the names of what it references, and the first few rows of each table and column that point at it |
-| `group` | a group with its managers (the effective members of each `managed_by` up its parents), its effective members and their reasons, its rules and the groups under it |
-| `read_document` | a document's tree of parts, links, images and extracts, and the Markdown of each extract, read from the bucket through `Model.BlobCell` |
-| `history` | a row's `CHANGES`, newest first, which only super admins read |
-| `find_people` | people by search words, role group, grade and classroom name |
-| `events` | events starting in a range of days, two weeks from today by default |
+| `helios_search` | the Admin search's word and meaning results (`Searcher.Words` and `Meaning`), each with its table and name |
+| `helios_whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
+| `helios_events` | events starting in a range of days, two weeks from today by default |
+| `helios_find_people` | people by search words, role group, grade and classroom name |
+| `helios_read_document` | a document's tree of parts, links, images and extracts, and the Markdown of each extract, read from the bucket through `Model.BlobCell` |
+| `helios_get` | one row with the names of what it references, and the first few rows of each table and column that point at it |
+| `helios_group` | a group with its managers (the effective members of each `managed_by` up its parents), its effective members and their reasons, its rules and the groups under it |
+| `helios_query` | a query in the language, run as `/api/q` runs it: the canonical form, the count, the rows with their filled columns and the rows the includes brought |
+| `helios_describe_schema` | every table with its description and column names, from `db.Tables` |
+| `helios_describe_table` | one table's columns in full, from `db.DescribeTable` (the composer's description, private columns left out), and the columns elsewhere that point at it |
+| `helios_policies` | `db.PolicySource`: the definitions a query may call and every clause |
+| `helios_history` | a row's `CHANGES`, newest first, which only super admins read |
 
 Each call logs an `mcp: tool` line with the tool, the viewer's person ID, how long it took and any error.
 

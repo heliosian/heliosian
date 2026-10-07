@@ -228,7 +228,7 @@ func callTool(t *testing.T, session *sdk.ClientSession, name string, args map[st
 func TestConnectingReadsAsThePersonWhoApproved(t *testing.T) {
 	f := setup(t)
 	session := f.connect(t, f.token(t))
-	text, failed := callTool(t, session, "whoami", nil)
+	text, failed := callTool(t, session, "helios_whoami", nil)
 	if failed {
 		t.Fatalf("whoami failed: %s", text)
 	}
@@ -247,7 +247,7 @@ func TestConnectingReadsAsThePersonWhoApproved(t *testing.T) {
 
 func TestTheRootServesMCPToo(t *testing.T) {
 	f := setup(t)
-	text, failed := callTool(t, f.connectAt(t, f.token(t), "/"), "whoami", nil)
+	text, failed := callTool(t, f.connectAt(t, f.token(t), "/"), "helios_whoami", nil)
 	if failed || !strings.Contains(text, rowanID) {
 		t.Fatalf("whoami at the root: %s", text)
 	}
@@ -380,21 +380,21 @@ func TestTools(t *testing.T) {
 		wants []string
 		fails bool
 	}{
-		{"describe_schema", nil, []string{"PERSON:", "DOCUMENT:", "EFFECTIVE_MEMBER:"}, false},
-		{"describe_table", map[string]any{"table": "person"}, []string{"- name_show (text)", "Pointed at by:", "PERSON_EMAIL.person"}, false},
-		{"policies", nil, []string{"(define (visible @g)"}, false},
-		{"query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, rowanID}, false},
-		{"query", map[string]any{"query": "(from PERSON (where (= grde \"3\")))"}, []string{"did you mean grade"}, true},
-		{"get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`}, false},
-		{"get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
-		{"group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`}, false},
-		{"group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
-		{"read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
-		{"history", map[string]any{"id": picnic}, []string{`"count"`}, false},
-		{"find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
-		{"find_people", nil, []string{"name at least one"}, true},
-		{"events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"count"`}, false},
-		{"events", map[string]any{"from": "tomorrow"}, []string{"YYYY-MM-DD"}, true},
+		{"helios_describe_schema", nil, []string{"PERSON:", "DOCUMENT:", "EFFECTIVE_MEMBER:"}, false},
+		{"helios_describe_table", map[string]any{"table": "person"}, []string{"- name_show (text)", "Pointed at by:", "PERSON_EMAIL.person"}, false},
+		{"helios_policies", nil, []string{"(define (visible @g)"}, false},
+		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, rowanID}, false},
+		{"helios_query", map[string]any{"query": "(from PERSON (where (= grde \"3\")))"}, []string{"did you mean grade"}, true},
+		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`}, false},
+		{"helios_get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
+		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`}, false},
+		{"helios_group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
+		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
+		{"helios_history", map[string]any{"id": picnic}, []string{`"count"`}, false},
+		{"helios_find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
+		{"helios_find_people", nil, []string{"name at least one"}, true},
+		{"helios_events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"count"`}, false},
+		{"helios_events", map[string]any{"from": "tomorrow"}, []string{"YYYY-MM-DD"}, true},
 	} {
 		text, failed := callTool(t, session, c.tool, c.args)
 		if failed != c.fails {
@@ -415,7 +415,7 @@ func TestSearchNamesEachHit(t *testing.T) {
 	session := f.connect(t, f.token(t))
 	text := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		text, _ = callTool(t, session, "search", map[string]any{"words": "Rowan Ashdown"})
+		text, _ = callTool(t, session, "helios_search", map[string]any{"words": "Rowan Ashdown"})
 		if strings.Contains(text, `"meaning":[{`) {
 			break
 		}
@@ -435,9 +435,25 @@ func TestSearchNamesEachHit(t *testing.T) {
 	}
 }
 
+func TestEveryToolSaysItIsHelios(t *testing.T) {
+	f := setup(t)
+	listed, err := f.connect(t, f.token(t)).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Tools) == 0 {
+		t.Fatal("no tools listed")
+	}
+	for _, tool := range listed.Tools {
+		if !strings.HasPrefix(tool.Name, "helios_") || !strings.Contains(tool.Description, "Helios") {
+			t.Errorf("%s does not say it is Helios's: %s", tool.Name, tool.Description)
+		}
+	}
+}
+
 func TestDescribeTableLeavesOutPrivateColumns(t *testing.T) {
 	f := setup(t)
-	text, _ := callTool(t, f.connect(t, f.token(t)), "describe_table", map[string]any{"table": "PERSON"})
+	text, _ := callTool(t, f.connect(t, f.token(t)), "helios_describe_table", map[string]any{"table": "PERSON"})
 	if strings.Contains(text, "- vc_phone (") || strings.Contains(text, "- consent (") {
 		t.Fatalf("a private column is described: %s", text)
 	}

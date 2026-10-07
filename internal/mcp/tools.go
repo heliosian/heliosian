@@ -201,18 +201,18 @@ type eventsIn struct {
 }
 
 func (s *Server) tools() {
-	addTool(s, "describe_schema", "Every table in the data model with what it holds and its column names. Use describe_table for a table's columns in full.", describeSchema)
-	addTool(s, "describe_table", "One table in full: each column with its kind, what it holds, the table a reference points at and every enum value with its meaning, and the columns elsewhere that point at this table.", describeTable)
-	addTool(s, "policies", "The policy source: the definitions a query may call by name (visible, manages, household, admin_of and the rest) and every clause deciding who reads and writes what.", policies)
-	addTool(s, "query", "Run a query in the query language as the person connected. Answers the query's canonical form, how many rows matched, the rows with their filled columns, and every row the includes brought by table and ID.", query)
-	addTool(s, "whoami", "The person connected: their row, their addresses, the groups they are in by name (families, classrooms, sign-ups, tickets, lists), the groups they manage and the apps they are an admin of.", whoami)
-	addTool(s, "search", "Search people, groups and documents by words and by meaning, as the Admin search page does. Answers each hit's ID, table, name and summary, best first; get or read_document opens one.", search)
-	addTool(s, "get", "One row by ID: its filled columns, the names of the rows its references point at, and the rows elsewhere that point at it, by table and column, the first few of each.", get)
-	addTool(s, "group", "A group by ID in depth: the group, the people who manage it and through which group, its effective members with why each is in, its rules, and the groups under it.", group)
-	addTool(s, "read_document", "A document by ID: the tree of its parts, links, images and extracts, and the Markdown text of each extract under it, so an email, a fetched page, a PDF's reading or a wiki page can be read whole.", readDocument)
-	addTool(s, "history", "A row's change history by ID, newest first: who changed which column, when, and what it held before. Only super admins can read it.", history)
-	addTool(s, "find_people", "People by any of words (through the search index), role, grade and classroom, with their classroom, crew and department named.", findPeople)
-	addTool(s, "events", "Calendar events starting in a range of days, in order, with the category each sits under.", events)
+	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers each hit's ID, table, name and summary, best first; helios_get or helios_read_document opens one.", search)
+	addTool(s, "helios_whoami", "The person connected to Helios School's community data: their record, their addresses, their family and children, the classrooms, sign-ups, tickets and email lists they are in, the groups they manage and the Helios apps they are an admin of. Use it for questions about \"my family\", \"my kids\" or \"my classes\" at Helios.", whoami)
+	addTool(s, "helios_events", "Helios School's calendar: school and community events starting in a range of days, in order, with the category each sits under. Use it for what is coming up at Helios.", events)
+	addTool(s, "helios_find_people", "People in the Helios School directory by any of words (a name, job title or the like), role (student, parent or staff), grade and classroom, with their classroom, crew and department named.", findPeople)
+	addTool(s, "helios_read_document", "A Helios School document by ID - a newsletter or other school email, a page or file it linked, a PDF's reading, or a Helios Wiki page - read whole: the tree of its parts, links, images and extracts, and the text of each.", readDocument)
+	addTool(s, "helios_get", "One record of Helios School's community data by ID: its filled fields, the names of what it refers to, and the records elsewhere that point at it, the first few of each.", get)
+	addTool(s, "helios_group", "A Helios School group by ID in depth - a family, classroom, grade, event, volunteer activity, party, email list or any other group: who manages it and through which group, its members with why each is in, its rules, and the groups under it.", group)
+	addTool(s, "helios_query", "Run a query in Helios's query language over the school community's data, as the person connected. Answers the query's canonical form, how many rows matched, the rows with their filled columns, and every row the includes brought by table and ID. helios_describe_schema and helios_describe_table give the tables.", query)
+	addTool(s, "helios_describe_schema", "Every table in Helios School's community data model with what it holds and its column names, for writing a helios_query. helios_describe_table gives a table's columns in full.", describeSchema)
+	addTool(s, "helios_describe_table", "One table of Helios School's community data model in full: each column with its kind, what it holds, the table a reference points at and every enum value with its meaning, and the columns elsewhere that point at this table.", describeTable)
+	addTool(s, "helios_policies", "The policies over Helios School's community data: the definitions a helios_query may call by name (visible, manages, household, admin_of and the rest) and every clause deciding who reads and writes what.", policies)
+	addTool(s, "helios_history", "A Helios record's change history by ID, newest first: who changed which field, when, and what it held before. Only super admins can read it.", history)
 }
 
 func describeSchema(c call, _ none) (any, error) {
@@ -596,7 +596,7 @@ func readDocument(c call, in idIn) (any, error) {
 	}
 	out += texts.String()
 	if skipped > 0 {
-		out += fmt.Sprintf("\n(%d more extracts left out for length; read_document on an extract's ID reads it)\n", skipped)
+		out += fmt.Sprintf("\n(%d more extracts left out for length; helios_read_document on an extract's ID reads it)\n", skipped)
 	}
 	return out, nil
 }

@@ -90,7 +90,7 @@ func (s *Server) resource(path string) http.HandlerFunc {
 			Resource:               origin(r) + path,
 			AuthorizationServers:   []string{origin(r)},
 			BearerMethodsSupported: []string{"header"},
-			ResourceName:           "Helios",
+			ResourceName:           "Helios School",
 		}).ServeHTTP(w, r)
 	}
 }

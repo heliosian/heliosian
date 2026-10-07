@@ -29,15 +29,17 @@ type Server struct {
 	handler http.Handler
 }
 
-const instructions = `Helios's data model - its people, families, classrooms, groups, events, volunteer activities, parties, email lists and the documents and mail the community received - read as the person who connected. Every read is checked against the same policies the apps use, so it answers exactly what their own pages would show them, nothing more.
+const about = "Helios School, a small K-8 school on the San Francisco peninsula coast, and its parents' association, the HCA: the community's people, families, classrooms and teachers, calendar and events, volunteer activities, fundraiser parties, email lists, and the newsletters and school mail families received."
 
-Start with describe_schema, then describe_table for the tables you need, and policies for the definitions a query may call. query runs the query language below. search finds people, groups and documents by words and by meaning. whoami is the person connected. get, group, read_document and history look one row up in depth; find_people and events are shortcuts for common questions.
+const instructions = `This server is ` + about + ` Use it for any question about Helios, the school, a family, child, teacher or classroom there, what is coming up, or what the school has sent out. It reads as the person who connected, checked against the same policies the apps use, so it answers exactly what their own pages would show them, nothing more.
+
+Start with helios_search or helios_whoami. For anything structured, helios_describe_schema and helios_describe_table give the tables, helios_policies the definitions a query may call, and helios_query runs the query language below. helios_get, helios_group, helios_read_document and helios_history look one row up in depth; helios_find_people and helios_events are shortcuts for common questions.
 
 ` + db.Language
 
 func Register(mux *http.ServeMux, deps Deps) {
 	s := &Server{deps: deps}
-	s.server = sdk.NewServer(&sdk.Implementation{Name: "helios", Title: "Helios", Version: "1"}, &sdk.ServerOptions{Instructions: instructions})
+	s.server = sdk.NewServer(&sdk.Implementation{Name: "helios-school", Title: "Helios School", Description: about, Version: "1"}, &sdk.ServerOptions{Instructions: instructions})
 	s.tools()
 	s.handler = sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.server }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
