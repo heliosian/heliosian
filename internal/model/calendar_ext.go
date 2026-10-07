@@ -132,7 +132,7 @@ func (a calendarApp) extAnswer(r *http.Request, body extAnswerBody) (serve.None,
 		return serve.None{}, err
 	}
 	answer := strings.ToLower(strings.TrimSpace(body.Answer))
-	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, false, false); err != nil {
+	if err := a.recordBy(r.Context(), actor, subject, e.ID, answer, ViaPage, false); err != nil {
 		return serve.None{}, err
 	}
 	slog.InfoContext(r.Context(), "calendar: answered from outside", "actor", actor.Email, "for", subject, "event", e.ID, "answer", answer)

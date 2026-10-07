@@ -122,7 +122,7 @@ func (a calendarApp) takeReply(ctx context.Context, reply Reply, from, tag strin
 	if !hmac.Equal([]byte(tag), []byte(a.replyToken(uid, email))) {
 		return fmt.Errorf("sent to an address that is not this attendee's for this event")
 	}
-	if err := a.recordBy(ctx, access.System(email), email, id, answer, ViaCalendar, false, true); err != nil {
+	if err := a.recordBy(ctx, access.System(email), email, id, answer, ViaCalendar, false); err != nil {
 		return err
 	}
 	slog.InfoContext(ctx, "calendar: answered by reply", "actor", email, "event", id, "answer", answer)

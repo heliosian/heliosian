@@ -12,18 +12,14 @@ import (
 
 var errNotRecorded = errors.New("the answer was not recorded")
 
-func (a calendarApp) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite, wait bool) error {
+func (a calendarApp) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite bool) error {
 	email = mail.Normalize(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	ops, _, err := a.answerOps(actor, email, id, answer, via, invite)
 	if err != nil {
 		return err
 	}
-	commit := a.store.Commit
-	if wait {
-		commit = a.store.CommitAndWait
-	}
-	if err := commit(ctx, actor, CalendarApp, ops...); err != nil {
+	if err := a.store.Commit(ctx, actor, CalendarApp, ops...); err != nil {
 		return fmt.Errorf("%w: %w", errNotRecorded, err)
 	}
 	return nil

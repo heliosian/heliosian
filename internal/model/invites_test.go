@@ -1746,6 +1746,10 @@ func TestNotifyHost(t *testing.T) {
 	if len(notes) != before+1 || notes[len(notes)-1].Subject != "[Meetup] Robin Whitfield said Yes" || !strings.Contains(notes[len(notes)-1].Text, "1 yes, 0 maybe, 0 no, 0 still to answer") {
 		t.Errorf("the host's note: %+v", notes)
 	}
+	act(t, as(robin, mux), "meetup", "answer", `{"answer":"yes"}`)
+	if told := cache.Model().Calendar.Answered[robin][meetup].hostsTold; told == "" || told == owed {
+		t.Errorf("the same answer again owes the hosts a note: %q", told)
+	}
 	before = len(mailTo(kept, host))
 	act(t, jordan, "meetup", "answer-for", `{"email":"`+robin+`","answer":"maybe"}`)
 	act(t, jordan, "meetup", "settings", `{"notifyMe":false}`)

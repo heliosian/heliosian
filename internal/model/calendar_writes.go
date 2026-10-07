@@ -779,6 +779,9 @@ func (a calendarApp) answerOps(actor access.Actor, email, id, answer, via string
 	if inv := model.Invitations[e.ID]; inv != nil && answer != AnswerHidden && slices.ContainsFunc(inv.Notify, func(h string) bool { return h != actor.Email }) {
 		row["Hosts Told"] = owed
 	}
+	if was, ok := model.Answered[email][e.ID]; ok && was.Answer == answer {
+		delete(row, "Hosts Told")
+	}
 	if sent := model.InviteOf(e.ID, email); invite && answer == AnswerYes && !isGuestKey(email) && (sent == nil || sent.Sent == "") {
 		row["Invite Mail"] = owed
 	}
