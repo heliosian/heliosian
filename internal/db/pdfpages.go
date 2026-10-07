@@ -30,8 +30,14 @@ type pdfPages struct {
 func readPDFPages(c context.Context, raw []byte) (pdfPages, error) {
 	conf := model.NewDefaultConfiguration()
 	conf.Cmd = model.EXTRACTPAGES
-	ctx, err := api.ReadValidateAndOptimize(c, bytes.NewReader(raw), conf, nil)
+	ctx, err := api.ReadContext(c, bytes.NewReader(raw), conf)
 	if err != nil {
+		return pdfPages{}, fmt.Errorf("read the pdf's pages: %w", err)
+	}
+	if err := ctx.EnsurePageCount(); err != nil {
+		return pdfPages{}, fmt.Errorf("read the pdf's pages: %w", err)
+	}
+	if err := api.OptimizeContext(c, ctx); err != nil {
 		return pdfPages{}, fmt.Errorf("read the pdf's pages: %w", err)
 	}
 	return pdfPages{ctx: ctx, total: ctx.PageCount}, nil
