@@ -190,26 +190,43 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 	}
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
+	name := contentFolder + "/" + hash
 	m := s.Model()
-	cells := map[string]any{"fetch": ""}
-	edits := []Edit{}
-	existing, found := m.Table("CONTENT").Find(hash, mimeType)
-	cells["content"] = existing["id"]
+	_, found := m.Table("CONTENT").Find(hash, mimeType)
 	if !found {
-		name, size := contentFolder+"/"+hash, strconv.Itoa(len(content))
-		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
+		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": strconv.Itoa(len(content))}}); err != nil {
 			return fetchedAnswer{}, err
 		}
 		if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
 			return fetchedAnswer{}, err
 		}
-		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
-		cells["content"] = "@content"
 	}
-	edits = append(edits, Edit{Set: id, Cells: cells})
-	if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
+	whole := env.System == importReader
+	authorize := func(m *Model, c Change) error {
+		return m.Authorize(env, c)
+	}
+	_, err = queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
+		stage := func(e Edit) (string, error) {
+			written, c, err := stageWrite(s, tx, e, "fetched", nil, whole, authorize)
+			if err != nil {
+				return "", err
+			}
+			if err := fire(s, tx, c, "fetched"); err != nil {
+				return "", err
+			}
+			pics.watch(tx, c)
+			return written, nil
+		}
+		held, err := stageContent(s, tx, stage, map[string]string{}, hash, mimeType, len(content))
+		if err != nil {
+			return err
+		}
+		_, err = stage(Edit{Set: id, Cells: map[string]any{"fetch": "", "content": held}})
+		return err
+	})
+	if err != nil {
 		if !found {
-			dropUnheld(s, pics.bucket, []string{contentFolder + "/" + hash})
+			dropUnheld(s, pics.bucket, []string{name})
 		}
 		return fetchedAnswer{}, err
 	}

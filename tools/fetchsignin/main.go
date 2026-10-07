@@ -164,10 +164,22 @@ func main() {
 	if err != nil {
 		logging.Fatal("read the documents still to fetch", "error", err)
 	}
-	slog.Info("documents to fetch", "count", len(a.Result))
-	counts := map[string]int{}
-	for i, id := range a.Result {
+	groups := [][]string{}
+	same := map[[2]string]int{}
+	for _, id := range a.Result {
 		doc := a.Resources["DOCUMENT"][id]
+		key := [2]string{doc["relation"], doc["url"]}
+		if i, ok := same[key]; ok {
+			groups[i] = append(groups[i], id)
+			continue
+		}
+		same[key] = len(groups)
+		groups = append(groups, []string{id})
+	}
+	slog.Info("documents to fetch", "count", len(a.Result), "addresses", len(groups))
+	counts := map[string]int{}
+	for i, ids := range groups {
+		doc := a.Resources["DOCUMENT"][ids[0]]
 		address, accept := doc["url"], imageAccept
 		if doc["relation"] == "linked" {
 			address, accept = db.ExportURL(address), linkAccept
@@ -176,21 +188,23 @@ func main() {
 		stop := ""
 		switch {
 		case err != nil || status != http.StatusOK || host(final) == googleSignIn:
-			slog.Warn("gone", "document", id, "url", address, "status", status, "page", final, "error", err)
+			slog.Warn("gone", "documents", ids, "url", address, "status", status, "page", final, "error", err)
 			stop = "gone"
 		case len(body) > bodyLimit:
 			stop = "refused"
 		}
-		got, err := sendAgain(c, id, body, stop)
-		if err != nil {
-			logging.Fatal("send", "document", id, "error", err)
+		for _, id := range ids {
+			got, err := sendAgain(c, id, body, stop)
+			if err != nil {
+				logging.Fatal("send", "document", id, "error", err)
+			}
+			outcome := got.Fetch
+			if outcome == "" {
+				outcome = "filled"
+			}
+			counts[outcome]++
+			slog.Info("fetched", "n", i+1, "of", len(groups), "document", id, "outcome", outcome, "why", got.Why, "hash", got.Hash, "bytes", len(body), "type", http.DetectContentType(body))
 		}
-		outcome := got.Fetch
-		if outcome == "" {
-			outcome = "filled"
-		}
-		counts[outcome]++
-		slog.Info("fetched", "n", i+1, "of", len(a.Result), "document", id, "outcome", outcome, "why", got.Why, "hash", got.Hash, "bytes", len(body), "type", http.DetectContentType(body))
 	}
-	slog.Info("done", "documents", len(a.Result), "filled", counts["filled"], "gone", counts["gone"], "refused", counts["refused"])
+	slog.Info("done", "documents", len(a.Result), "addresses", len(groups), "filled", counts["filled"], "gone", counts["gone"], "refused", counts["refused"])
 }

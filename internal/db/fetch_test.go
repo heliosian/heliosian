@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -141,5 +142,41 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	}
 	if code, _ := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000011"}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a part was filled as a linked document: %d", code)
+	}
+}
+
+func TestSignedInFetchesOfTheSameBytesShareContent(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := NewPictures(s, queue, blob.NewMemoryBucket())
+	ids := []string{"doc00000000012", "doc00000000013", "doc00000000014", "doc00000000015"}
+	inserts := []store.Op{
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
+	}
+	for _, id := range ids {
+		inserts = append(inserts, store.Insert("DOCUMENT", store.Row{"id": id, "relation": "image", "parent": "doc00000000010", "url": "https://lh6.example.org/" + id, "fetch": "sign_in"}))
+	}
+	if err := commit(s, DocumentsSheet, inserts...); err != nil {
+		t.Fatal(err)
+	}
+	picture := pngOf(t, 5)
+	codes := make([]int, len(ids))
+	wg := sync.WaitGroup{}
+	for i, id := range ids {
+		wg.Go(func() {
+			codes[i] = postFile(t, s, queue, pics, "bearer:"+testImportKey, "fetched", map[string]string{"document": id}, "body", picture).Code
+		})
+	}
+	wg.Wait()
+	contents := map[string]bool{}
+	for i, id := range ids {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		if codes[i] != http.StatusOK || row["content"] == "" {
+			t.Fatalf("%s: %d %v", id, codes[i], row)
+		}
+		contents[row["content"]] = true
+	}
+	if len(contents) != 1 {
+		t.Fatalf("the same bytes were kept as %d contents", len(contents))
 	}
 }
