@@ -25,12 +25,13 @@ import (
 )
 
 const (
-	imageSmallest  = 100
-	imageLargest   = 8000
-	imageMostBytes = 3_750_000
-	imageMaxReply  = 8000
-	pdfMaxReply    = 128000
-	decoration     = "(decoration)"
+	imageSmallest    = 100
+	imageLargest     = 8000
+	imageSentLongest = 2576
+	imageMostBytes   = 3_750_000
+	imageMaxReply    = 8000
+	pdfMaxReply      = 128000
+	decoration       = "(decoration)"
 )
 
 const pdfSystem = `You are given one PDF a school shared with its families - a flyer, a letter, a schedule, a form, a handbook, a slide deck. A slide deck's slides each become a section headed by the slide's title. Write out everything it says as markdown, so a reader who cannot see it loses nothing. Keep its structure: headings stay headings, lists stay lists, a schedule or grid becomes a markdown table. Transcribe; do not summarise, explain or add anything. Your answer is the transcription and nothing else: never a word about what kind of document it is or what you are doing and why.
@@ -191,18 +192,20 @@ func claudeImage(raw []byte, mimeType string, config image.Config) ([]byte, stri
 	if err != nil {
 		return nil, "", err
 	}
+	if longest := max(img.Bounds().Dx(), img.Bounds().Dy()); longest > imageSentLongest {
+		img = scaled(img, float64(imageSentLongest)/float64(longest))
+	}
 	for {
-		if longest := max(img.Bounds().Dx(), img.Bounds().Dy()); longest > imageLargest {
-			img = scaled(img, float64(imageLargest)/float64(longest))
-		}
 		buf := &bytes.Buffer{}
-		if err := png.Encode(buf, img); err != nil {
-			return nil, "", err
+		if mimeType != "image/jpeg" {
+			if err := png.Encode(buf, img); err != nil {
+				return nil, "", err
+			}
+			if buf.Len() <= imageMostBytes {
+				return buf.Bytes(), "image/png", nil
+			}
+			buf.Reset()
 		}
-		if buf.Len() <= imageMostBytes {
-			return buf.Bytes(), "image/png", nil
-		}
-		buf.Reset()
 		if err := jpeg.Encode(buf, img, &jpeg.Options{Quality: 90}); err != nil {
 			return nil, "", err
 		}

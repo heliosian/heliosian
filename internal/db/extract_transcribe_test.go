@@ -85,6 +85,28 @@ func jpegOf(t *testing.T, size int) []byte {
 	return buf.Bytes()
 }
 
+func TestAnOversizeJPEGIsSentAsASmallerJPEG(t *testing.T) {
+	buf := &bytes.Buffer{}
+	if err := jpeg.Encode(buf, image.NewRGBA(image.Rect(0, 0, imageLargest+1, 100)), nil); err != nil {
+		t.Fatal(err)
+	}
+	config, _, err := image.DecodeConfig(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, mimeType, err := claudeImage(buf.Bytes(), "image/jpeg", config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sent, _, err := image.DecodeConfig(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mimeType != "image/jpeg" || sent.Width != imageSentLongest || len(body) > imageMostBytes {
+		t.Fatalf("sent as %s at %dx%d in %d bytes, want a JPEG %d wide", mimeType, sent.Width, sent.Height, len(body), imageSentLongest)
+	}
+}
+
 func TestImagesAreTranscribed(t *testing.T) {
 	schedule, logo, icon, flyer, chart, sign := gifOf(t, 200), gifOf(t, 150), gifOf(t, 50), bmpOf(t, 120), pngOf(t, 130), jpegOf(t, 140)
 	poster, err := base64.StdEncoding.DecodeString("UklGRiQAAABXRUJQVlA4TBcAAAAvd8AdAAfQ//73v/9hABLC//9KRP9TgwA=")
