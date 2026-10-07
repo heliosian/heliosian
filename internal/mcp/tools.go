@@ -62,12 +62,15 @@ func (c call) run(q tree) (db.Result, *db.Query, error) {
 	return c.m.Run(c.ctx, query, c.env), query, nil
 }
 
-func compact(row store.Row) store.Row {
+func (c call) compact(table string, row store.Row) store.Row {
 	out := store.Row{}
 	for k, v := range row {
 		if v != "" {
 			out[k] = v
 		}
+	}
+	if href := db.Link(table, row, c.s.origin); href != "" {
+		out["href"] = href
 	}
 	return out
 }
@@ -89,7 +92,7 @@ type rows struct {
 	Included map[string]map[string]store.Row `json:"included,omitempty"`
 }
 
-func shape(res db.Result, q *db.Query, keep int) rows {
+func (c call) shape(res db.Result, q *db.Query, keep int) rows {
 	out := rows{Count: len(res.IDs), Rows: []store.Row{}}
 	if q != nil {
 		out.Query = q.String()
@@ -99,7 +102,7 @@ func shape(res db.Result, q *db.Query, keep int) rows {
 			out.More = len(res.IDs) - keep
 			break
 		}
-		out.Rows = append(out.Rows, compact(row))
+		out.Rows = append(out.Rows, c.compact(res.Table, row))
 	}
 	for table, byID := range res.Resources {
 		for id, row := range byID {
@@ -112,7 +115,7 @@ func shape(res db.Result, q *db.Query, keep int) rows {
 			if out.Included[table] == nil {
 				out.Included[table] = map[string]store.Row{}
 			}
-			out.Included[table][id] = compact(row)
+			out.Included[table][id] = c.compact(table, row)
 		}
 	}
 	return out
@@ -201,7 +204,7 @@ type eventsIn struct {
 }
 
 func (s *Server) tools() {
-	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers each hit's ID, table, name and summary, best first; helios_get or helios_read_document opens one.", search)
+	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers each hit's ID, table, name, summary and href, best first; helios_get or helios_read_document opens one. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
 	addTool(s, "helios_whoami", "The person connected to Helios School's community data: their record, their addresses, their family and children, the classrooms, sign-ups, tickets and email lists they are in, the groups they manage and the Helios apps they are an admin of. Use it for questions about \"my family\", \"my kids\" or \"my classes\" at Helios.", whoami)
 	addTool(s, "helios_events", "Helios School's calendar: school and community events starting in a range of days, in order, with the category each sits under. Use it for what is coming up at Helios.", events)
 	addTool(s, "helios_find_people", "People in the Helios School directory by any of words (a name, job title or the like), role (student, parent or staff), grade and classroom, with their classroom, crew and department named.", findPeople)
@@ -262,7 +265,7 @@ func query(c call, in queryIn) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return shape(c.m.Run(c.ctx, q, c.env), q, 0), nil
+	return c.shape(c.m.Run(c.ctx, q, c.env), q, 0), nil
 }
 
 func whoami(c call, _ none) (any, error) {
@@ -281,7 +284,7 @@ func whoami(c call, _ none) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		out[part.name] = shape(res, q, 0)
+		out[part.name] = c.shape(res, q, 0)
 	}
 	return out, nil
 }
@@ -290,10 +293,20 @@ type hit struct {
 	ID      string `json:"id"`
 	Table   string `json:"table"`
 	Name    string `json:"name,omitempty"`
+	Href    string `json:"href,omitempty"`
 	Summary string `json:"summary,omitempty"`
 }
 
-func (c call) named(ids []string) (map[string]string, error) {
+type named struct {
+	Name string `json:"name"`
+	Href string `json:"href,omitempty"`
+}
+
+func (c call) named(table string, row store.Row) named {
+	return named{Name: title(row), Href: db.Link(table, row, c.s.origin)}
+}
+
+func (c call) names(ids []string) (map[string]named, error) {
 	byTable := map[string][]string{}
 	for _, id := range ids {
 		table, ok := db.TableOf(id)
@@ -301,14 +314,14 @@ func (c call) named(ids []string) (map[string]string, error) {
 			byTable[table] = append(byTable[table], id)
 		}
 	}
-	out := map[string]string{}
+	out := map[string]named{}
 	for table, ids := range byTable {
 		res, _, err := c.run(tree{"from": table, "where": []any{among("id", ids)}})
 		if err != nil {
 			return nil, err
 		}
 		for _, row := range res.Rows() {
-			out[row["id"]] = title(row)
+			out[row["id"]] = c.named(table, row)
 		}
 	}
 	return out, nil
@@ -319,14 +332,14 @@ func (c call) hits(found []db.SearchHit) ([]hit, error) {
 	for _, h := range found {
 		ids = append(ids, h.ID)
 	}
-	names, err := c.named(ids)
+	names, err := c.names(ids)
 	if err != nil {
 		return nil, err
 	}
 	out := []hit{}
 	for _, h := range found {
 		table, _ := db.TableOf(h.ID)
-		out = append(out, hit{ID: h.ID, Table: table, Name: names[h.ID], Summary: h.Summary})
+		out = append(out, hit{ID: h.ID, Table: table, Name: names[h.ID].Name, Href: names[h.ID].Href, Summary: h.Summary})
 	}
 	return out, nil
 }
@@ -384,12 +397,12 @@ func get(c call, in idIn) (any, error) {
 	if len(res.IDs) == 0 {
 		return nil, fmt.Errorf("no %s %s that you can see", t.Name, id)
 	}
-	row := compact(res.Resources[t.Name][id])
-	names := map[string]string{}
+	row := c.compact(t.Name, res.Resources[t.Name][id])
+	names := map[string]named{}
 	for _, name := range refs {
 		col, _ := t.Column(name)
 		if target, ok := res.Resources[col.Target][row[name]]; ok {
-			names[row[name]] = title(target)
+			names[row[name]] = c.named(col.Target, target)
 		}
 	}
 	pointed := map[string]pointers{}
@@ -411,7 +424,7 @@ func get(c call, in idIn) (any, error) {
 					p.More = len(found.IDs) - referrerRows
 					break
 				}
-				p.Rows = append(p.Rows, compact(r))
+				p.Rows = append(p.Rows, c.compact(other.Name, r))
 			}
 			pointed[other.Name+"."+col.Name] = p
 		}
@@ -422,8 +435,17 @@ func get(c call, in idIn) (any, error) {
 type person struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
+	Href    string `json:"href,omitempty"`
 	Reasons string `json:"reasons,omitempty"`
 	Via     string `json:"via,omitempty"`
+}
+
+func (c call) person(id string, row store.Row) person {
+	if row == nil {
+		return person{ID: id, Name: id}
+	}
+	n := c.named("PERSON", row)
+	return person{ID: id, Name: n.Name, Href: n.Href}
 }
 
 func (c call) row(table, id string) (store.Row, bool, error) {
@@ -475,7 +497,9 @@ func group(c call, in idIn) (any, error) {
 				continue
 			}
 			seen[m["person"]] = true
-			managers = append(managers, person{ID: m["person"], Name: title(res.Resources["PERSON"][m["person"]]), Via: title(res.Resources["GROUP"][m["group"]])})
+			p := c.person(m["person"], res.Resources["PERSON"][m["person"]])
+			p.Via = title(res.Resources["GROUP"][m["group"]])
+			managers = append(managers, p)
 		}
 	}
 	res, _, err := c.run(tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", id)}, "include": []any{"person"}})
@@ -487,7 +511,9 @@ func group(c call, in idIn) (any, error) {
 		if i == listRows {
 			break
 		}
-		members = append(members, person{ID: m["person"], Name: title(res.Resources["PERSON"][m["person"]]), Reasons: m["reasons"]})
+		p := c.person(m["person"], res.Resources["PERSON"][m["person"]])
+		p.Reasons = m["reasons"]
+		members = append(members, p)
 	}
 	rules, rulesQuery, err := c.run(tree{"from": "RULE", "where": []any{eq("group", id)}, "order": []any{tree{"path": "order", "dir": "asc"}}, "include": []any{"target", "person", "within"}})
 	if err != nil {
@@ -498,12 +524,12 @@ func group(c call, in idIn) (any, error) {
 		return nil, err
 	}
 	return map[string]any{
-		"group":        compact(self),
+		"group":        c.compact("GROUP", self),
 		"managers":     managers,
 		"memberCount":  len(res.IDs),
 		"members":      members,
-		"rules":        shape(rules, rulesQuery, 0),
-		"under":        shape(under, underQuery, 0),
+		"rules":        c.shape(rules, rulesQuery, 0),
+		"under":        c.shape(under, underQuery, 0),
 		"membersShown": len(members),
 	}, nil
 }
@@ -568,6 +594,9 @@ func readDocument(c call, in idIn) (any, error) {
 				fmt.Fprintf(outline, " | %s: %s", col, r[col])
 			}
 		}
+		if href := db.Link("DOCUMENT", r, c.s.origin); href != "" && href != r["url"] {
+			fmt.Fprintf(outline, " | href: %s", href)
+		}
 		mime := mimes[r["content"]]
 		if mime != "" {
 			fmt.Fprintf(outline, " | %s", mime)
@@ -590,7 +619,11 @@ func readDocument(c call, in idIn) (any, error) {
 		}
 		fmt.Fprintf(texts, "\n## %s (%s)\n\n%s\n", what, r["id"], body)
 	}
-	out := "# " + title(root) + "\n\n" + outline.String()
+	out := "# " + title(root) + "\n\n"
+	if href := db.Link("DOCUMENT", root, c.s.origin); href != "" {
+		out += href + "\n\n"
+	}
+	out += outline.String()
 	if len(nodes) >= documentNodes {
 		out += fmt.Sprintf("\n(the tree is cut at %d documents)\n", documentNodes)
 	}
@@ -609,7 +642,7 @@ func history(c call, in idIn) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return shape(res, q, 0), nil
+	return c.shape(res, q, 0), nil
 }
 
 var roles = map[string]string{"student": "students", "parent": "parents", "staff": "staff"}
@@ -648,7 +681,7 @@ func findPeople(c call, in peopleIn) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return shape(res, q, 0), nil
+	return c.shape(res, q, 0), nil
 }
 
 func events(c call, in eventsIn) (any, error) {
@@ -682,5 +715,5 @@ func events(c call, in eventsIn) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return shape(res, q, 0), nil
+	return c.shape(res, q, 0), nil
 }

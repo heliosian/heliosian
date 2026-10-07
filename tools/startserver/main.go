@@ -92,6 +92,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 	fillSampleBucket(bucket)
 	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
+		Domain:        app.DevDomain + ":" + app.Port(),
 		Source:        dir,
 		Writer:        dir,
 		Geocoder:      geocode.New("sample"),

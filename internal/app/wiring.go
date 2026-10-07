@@ -45,6 +45,7 @@ const OptInPath = "/optin"
 var spend = claude.NewLimiter()
 
 type Config struct {
+	Domain        string
 	Source        data.Source
 	Writer        data.Writer
 	Geocoder      *geocode.Client
@@ -236,6 +237,7 @@ func NewCore(cfg Config) *Core {
 		Sessions: models,
 		Member:   models.Member,
 		Now:      schoolNow,
+		Domain:   cfg.Domain,
 	})
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
@@ -350,6 +352,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	mcpKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	core := NewCore(Config{
+		Domain:        domain,
 		Source:        sheet,
 		Writer:        sheet,
 		Geocoder:      geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY")),

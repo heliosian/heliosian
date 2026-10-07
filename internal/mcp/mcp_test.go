@@ -95,6 +95,7 @@ func setup(t *testing.T) fixture {
 		Sessions: signed,
 		Member:   func(string) bool { return true },
 		Now:      time.Now,
+		Domain:   "heliosian.com",
 	})
 	server := httptest.NewServer(auth.Fixed(rowan, mux))
 	t.Cleanup(server.Close)
@@ -383,13 +384,13 @@ func TestTools(t *testing.T) {
 		{"helios_describe_schema", nil, []string{"PERSON:", "DOCUMENT:", "EFFECTIVE_MEMBER:"}, false},
 		{"helios_describe_table", map[string]any{"table": "person"}, []string{"- name_show (text)", "Pointed at by:", "PERSON_EMAIL.person"}, false},
 		{"helios_policies", nil, []string{"(define (visible @g)"}, false},
-		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, rowanID}, false},
+		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, `"href":"https://who.heliosian.com/people/` + rowanID + `"`}, false},
 		{"helios_query", map[string]any{"query": "(from PERSON (where (= grde \"3\")))"}, []string{"did you mean grade"}, true},
-		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`}, false},
+		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`, `"href":"https://when.heliosian.com/e/`}, false},
 		{"helios_get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
-		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`}, false},
+		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/people/`}, false},
 		{"helios_group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
-		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
+		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "https://wiki.heliosian.com/p/" + camping, "doc00000000109 side", "## wiki (" + camping + ")"}, false},
 		{"helios_history", map[string]any{"id": picnic}, []string{`"count"`}, false},
 		{"helios_find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
 		{"helios_find_people", nil, []string{"name at least one"}, true},
@@ -427,7 +428,7 @@ func TestSearchNamesEachHit(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &found); err != nil {
 		t.Fatalf("%v: %s", err, text)
 	}
-	if len(found.Words) == 0 || found.Words[0].ID != rowanID || found.Words[0].Table != "PERSON" || found.Words[0].Name == "" {
+	if len(found.Words) == 0 || found.Words[0].ID != rowanID || found.Words[0].Table != "PERSON" || found.Words[0].Name == "" || found.Words[0].Href != "https://who.heliosian.com/people/"+rowanID {
 		t.Fatalf("the word search answered %s", text)
 	}
 	if len(found.Meaning) == 0 {

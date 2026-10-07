@@ -40,6 +40,10 @@ A client decides whether to use a connector mostly from its tools' names and des
 | `helios_policies` | `db.PolicySource`: the definitions a query may call and every clause |
 | `helios_history` | a row's `CHANGES`, newest first, which only super admins read |
 
+## Links
+
+Every record a tool answers that has a page on the Helios apps carries `href`, the address of that page, and the instructions and `helios_search`'s description tell the model to link a record to it whenever it names one and never to make an address up. The field is `href` because `link` and `url` are columns already (`DOCUMENT.link`, and `url` on groups and documents). The rule is `db.Link` in `internal/db/link.go`, beside the data model, so anything else that needs a record's page reads the same one: each kind's page on its app, by the record's `slug` or else its ID, under the app's host on the server's domain (`Deps.Domain`, the production domain or the dev server's with its port). A wiki page links to its page on Helios Wiki, and any other document to its own address on the web. A record of any other kind has no `href`; nothing links to Helios Admin, which is an admin's tool.
+
 Each call logs an `mcp: tool` line with the tool, the viewer's person ID, how long it took and any error.
 
 ## Tests
