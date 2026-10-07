@@ -42,7 +42,7 @@ const peopleRule = `Photos of people are never described. Do not say who is in a
 
 var claudeImageTypes = []string{"image/jpeg", "image/png", "image/gif", "image/webp"}
 
-const imageSystem = `You are given one image from an email a school sent to its families. Write out everything the image says as markdown, so a reader who cannot see the image loses nothing. Keep its structure: a schedule or grid becomes a markdown table, a list stays a list, headings stay headings. Transcribe; do not summarise, explain or add anything.
+const imageSystem = `You are given one image from an email a school sent to its families. Write out everything the image says as markdown, so a reader who cannot see the image loses nothing. Keep its structure: a schedule or grid becomes a markdown table, a list stays a list, headings stay headings. Transcribe; do not summarise, explain or add anything. Your answer is the transcription and nothing else: never a word about what kind of image it is, whether it is a decoration, or what you are doing and why.
 
 Transcribe only text you can read with certainty, letter by letter. Images often hold a small inset - a thumbnail of a table, a screenshot shrunk into a corner - whose text is too small to read. Never transcribe such text, and never reconstruct it from context, from nearby text, or from what it probably says: a table you cannot read cell by cell is left out entirely. Where you leave something out, write one line in its place saying what it is, e.g. "(a small schedule table, too small to read)". If you are unsure whether you can read something, you cannot.
 
