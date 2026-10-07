@@ -279,7 +279,7 @@ export function render(text, cards = {}) {
     }
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
-      const h = el('h3');
+      const h = el(`h${Math.min(heading[1].length + 1, 6)}`);
       inline(h, heading[2], cards);
       out.append(h);
       i++;

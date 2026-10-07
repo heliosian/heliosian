@@ -31,6 +31,9 @@ var (
 	markdownMarks    = strings.NewReplacer("**", "", "*", "", "`", "")
 	sentenceEnd      = regexp.MustCompile(`[.!?](\s|$)`)
 	markdownHeadLine = regexp.MustCompile(`^\s*#{1,6}\s`)
+	markdownQuotes   = regexp.MustCompile(`^\s*(>\s?)+`)
+	calloutMark      = regexp.MustCompile(`^\[![A-Za-z]+\]\s*`)
+	questionMark     = regexp.MustCompile(`(?i)^\[!question\]\s*`)
 )
 
 type WikiShare struct {
@@ -40,8 +43,8 @@ type WikiShare struct {
 }
 
 type wikiShared struct {
-	id, path, name, top, sentence string
-	subPages                      []string
+	id, path, name, top, sentence, outlineIntro string
+	outline                                     []string
 }
 
 func NewWikiShare(s *Store, pics *Pictures, name func() string) *WikiShare {
@@ -70,8 +73,8 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 		return ""
 	}
 	desc := page.sentence
-	if len(page.subPages) > 0 {
-		desc = strings.TrimSpace(desc + " In this section: " + strings.Join(page.subPages, " · "))
+	if len(page.outline) > 0 {
+		desc = strings.TrimSpace(desc + " " + page.outlineIntro + ": " + strings.Join(page.outline, " · "))
 	}
 	origin := "https://" + r.Host
 	return w.style.PreviewTags(page.name, desc, origin+(&url.URL{Path: page.path}).EscapedPath(), origin+"/open/share/"+page.id+".png")
@@ -98,14 +101,14 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	card := sharecard.Card{Section: page.top, Title: page.name, Subtitle: page.sentence, Picture: picture}
-	shown := page.subPages
+	shown := page.outline
 	if len(shown) > wikiShareSubPages {
-		shown = append(shown[:wikiShareSubPages-1:wikiShareSubPages-1], fmt.Sprintf("and %d more", len(page.subPages)-wikiShareSubPages+1))
+		shown = append(shown[:wikiShareSubPages-1:wikiShareSubPages-1], fmt.Sprintf("and %d more", len(page.outline)-wikiShareSubPages+1))
 	}
 	for _, name := range shown {
 		card.Lines = append(card.Lines, sharecard.Line{Icon: "dot", Text: name})
 	}
-	w.style.Serve(rw, r, card, slices.Concat([]string{page.top, page.name, page.sentence, header}, page.subPages)...)
+	w.style.Serve(rw, r, card, slices.Concat([]string{page.top, page.name, page.sentence, header}, page.outline)...)
 }
 
 func (w *WikiShare) header(ctx context.Context, id string) (string, []byte, error) {
@@ -176,19 +179,25 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 		return wikiShared{}, false, nil
 	}
 	row, _ := docs.Get(id)
-	page := wikiShared{id: id, path: m.WikiPath(row), name: row["name"], subPages: []string{}}
+	page := wikiShared{id: id, path: m.WikiPath(row), name: row["name"], outlineIntro: "In this section", outline: []string{}}
 	for at := row["parent"]; at != ""; {
 		above, _ := docs.Get(at)
 		page.top, at = above["name"], above["parent"]
 	}
 	for _, child := range m.wikiChildren(id) {
-		page.subPages = append(page.subPages, child["name"])
+		page.outline = append(page.outline, child["name"])
 	}
 	markdown, err := w.markdown(ctx, row)
 	if err != nil {
 		return wikiShared{}, false, err
 	}
 	page.sentence = firstSentence(markdown)
+	if len(page.outline) == 0 {
+		page.outlineIntro, page.outline = "On this page", pageOutline(markdown)
+	}
+	if len(page.outline) > 0 && strings.HasPrefix(page.outline[0], page.sentence) {
+		page.sentence = ""
+	}
 	return page, true, nil
 }
 
@@ -203,26 +212,52 @@ func withoutFrontMatter(markdown string) string {
 	return markdown
 }
 
-func firstSentence(markdown string) string {
+type markdownLine struct {
+	text              string
+	heading, question bool
+}
+
+func markdownLines(markdown string) []markdownLine {
+	out := []markdownLine{}
 	fenced := false
 	for _, line := range strings.Split(withoutFrontMatter(markdown), "\n") {
 		if strings.HasPrefix(line, "```") {
 			fenced = !fenced
 			continue
 		}
-		if fenced || markdownHeadLine.MatchString(line) {
+		if fenced {
 			continue
 		}
-		text := markdownImage.ReplaceAllString(line, "")
+		line = strings.TrimSpace(markdownQuotes.ReplaceAllString(line, ""))
+		read := markdownLine{heading: markdownHeadLine.MatchString(line), question: questionMark.MatchString(line)}
+		text := markdownImage.ReplaceAllString(calloutMark.ReplaceAllString(line, ""), "")
 		text = markdownLink.ReplaceAllString(markdownLead.ReplaceAllString(text, ""), "$1")
-		text = strings.TrimSpace(markdownMarks.Replace(text))
-		if text == "" {
+		if read.text = strings.TrimSpace(markdownMarks.Replace(text)); read.text != "" {
+			out = append(out, read)
+		}
+	}
+	return out
+}
+
+func firstSentence(markdown string) string {
+	for _, line := range markdownLines(markdown) {
+		if line.heading {
 			continue
 		}
-		if end := sentenceEnd.FindStringIndex(text); end != nil {
-			return strings.TrimSpace(text[:end[0]+1])
+		if end := sentenceEnd.FindStringIndex(line.text); end != nil {
+			return strings.TrimSpace(line.text[:end[0]+1])
 		}
-		return text
+		return line.text
 	}
 	return ""
+}
+
+func pageOutline(markdown string) []string {
+	out := []string{}
+	for _, line := range markdownLines(markdown) {
+		if line.heading || line.question {
+			out = append(out, line.text)
+		}
+	}
+	return out
 }

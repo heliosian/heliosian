@@ -117,13 +117,15 @@ function anchorFor(text, taken) {
 }
 
 function outline(content, card) {
-  const headings = [...content.querySelectorAll('h3')];
+  const headings = [...content.querySelectorAll('h2, h3, h4')];
   card.hidden = !headings.length;
   const list = el('nav', 'wiki-outline');
   const taken = new Set();
+  const levelOf = h => Number(h.tagName[1]);
+  const top = Math.min(...headings.map(levelOf));
   for (const h of headings) {
     h.id = anchorFor(h.textContent, taken);
-    const a = el('a', 'wiki-outline-item', h.textContent);
+    const a = el('a', `wiki-outline-item depth-${levelOf(h) - top}`, h.textContent);
     a.href = `#${h.id}`;
     a.addEventListener('click', e => {
       e.preventDefault();

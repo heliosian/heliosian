@@ -222,12 +222,12 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 
 	width := fixed.I(textRight - 72)
 	top := 226
-	above, aboveFont, aboveSize, aboveY := strings.ToUpper(c.Kicker), medium, 22.0, 176
+	above := strings.ToUpper(c.Kicker)
 	if c.Section != "" {
-		above, aboveFont, aboveSize, aboveY = c.Section, bold, 40, 204
+		above = c.Section
 	}
-	if above != "" {
-		kicker, err := face(aboveFont, aboveSize)
+	if c.Kicker != "" {
+		kicker, err := face(medium, 22)
 		if err != nil {
 			return nil, err
 		}
@@ -237,9 +237,39 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 			kickerLines = kickerLines[:1]
 			kickerLines[0] += "…"
 		}
-		d.Dot = fixed.P(72, aboveY)
+		d.Dot = fixed.P(72, 176)
 		d.DrawString(kickerLines[0])
-		top = aboveY + 62
+		top = 238
+	}
+	if c.Section != "" {
+		var sectionLines []string
+		sectionSize := 40.0
+		for ; sectionSize > 28; sectionSize -= 4 {
+			sectionFace, err := face(bold, sectionSize)
+			if err != nil {
+				return nil, err
+			}
+			d.Face = sectionFace
+			if sectionLines = Wrap(d, c.Section, width); len(sectionLines) == 1 {
+				break
+			}
+		}
+		sectionFace, err := face(bold, sectionSize)
+		if err != nil {
+			return nil, err
+		}
+		d.Face, d.Src = sectionFace, image.NewUniform(s.Accent)
+		sectionLines = Wrap(d, c.Section, width)
+		if len(sectionLines) > 2 {
+			sectionLines = sectionLines[:2]
+			sectionLines[1] += "…"
+		}
+		step := int(sectionSize * 1.2)
+		for i, l := range sectionLines {
+			d.Dot = fixed.P(72, 204+i*step)
+			d.DrawString(l)
+		}
+		top = 204 + (len(sectionLines)-1)*step + 62
 	}
 
 	var lines []string
@@ -296,20 +326,59 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		y = subY + (len(subLines)-1)*int(subSize*1.25) + 52
 	}
 
+	fits := func(size float64, texts ...string) (bool, error) {
+		lineFace, err := face(bold, size)
+		if err != nil {
+			return false, err
+		}
+		d.Face = lineFace
+		for _, text := range texts {
+			if d.MeasureString(text) > fixed.I(textRight-72-int(size*1.45)) {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+	dots := []string{}
+	for _, line := range c.Lines {
+		if line.Icon == "dot" {
+			dots = append(dots, line.Text)
+		}
+	}
+	dotSize := 30.0
+	for ; dotSize > 22; dotSize -= 2 {
+		if ok, err := fits(dotSize, dots...); err != nil {
+			return nil, err
+		} else if ok {
+			break
+		}
+	}
 	for _, line := range c.Lines {
 		if line.Text == "" {
 			continue
 		}
-		var lineFace font.Face
-		lineSize := 34.0
-		for ; lineSize >= 22; lineSize -= 2 {
-			if lineFace, err = face(bold, lineSize); err != nil {
-				return nil, err
+		if y > Height-28 {
+			break
+		}
+		lineSize := dotSize
+		if line.Icon != "dot" {
+			for lineSize = 34.0; lineSize > 22; lineSize -= 2 {
+				if ok, err := fits(lineSize, line.Text); err != nil {
+					return nil, err
+				} else if ok {
+					break
+				}
 			}
-			d.Face = lineFace
-			if len(Wrap(d, line.Text, fixed.I(textRight-136))) == 1 {
-				break
-			}
+		}
+		lineFace, err := face(bold, lineSize)
+		if err != nil {
+			return nil, err
+		}
+		d.Face = lineFace
+		text, words := line.Text, strings.Fields(line.Text)
+		for d.MeasureString(text) > fixed.I(textRight-72-int(lineSize*1.45)) && len(words) > 1 {
+			words = words[:len(words)-1]
+			text = strings.Join(words, " ") + "…"
 		}
 		icon := image.Rect(72, y-int(lineSize*0.78), 72+int(lineSize*0.95), y-int(lineSize*0.78)+int(lineSize*0.95))
 		switch line.Icon {
@@ -326,7 +395,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		}
 		d.Src = image.NewUniform(s.Ink)
 		d.Dot = fixed.P(72+int(lineSize*1.45), y)
-		d.DrawString(line.Text)
+		d.DrawString(text)
 		y += int(lineSize * 1.55)
 	}
 

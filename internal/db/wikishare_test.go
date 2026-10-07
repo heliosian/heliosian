@@ -98,6 +98,16 @@ func TestHeaderImage(t *testing.T) {
 	}
 }
 
+func TestPageOutline(t *testing.T) {
+	markdown := "> [!QUESTION] 30 minutes is not much time. How do you get through it all?\n> Some tips:\n\n### Key Topics\n\nYour goal.\n\n> [!QUESTION] What matters **most**?\n>\n> ### Who We Are\n>\n> - Culture\n\n```\n# not this\n```\n> [!NOTE]\n> Plain."
+	if got := strings.Join(pageOutline(markdown), " | "); got != "30 minutes is not much time. How do you get through it all? | Key Topics | What matters most? | Who We Are" {
+		t.Errorf("the outline reads %q", got)
+	}
+	if got := firstSentence(markdown); got != "30 minutes is not much time." {
+		t.Errorf("the first sentence reads %q", got)
+	}
+}
+
 func TestFirstSentence(t *testing.T) {
 	for markdown, want := range map[string]string{
 		"# Title\n\nOne. Two.":                                 "One.",

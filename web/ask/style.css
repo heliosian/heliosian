@@ -173,7 +173,11 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .turn-body li { margin: 3px 0; }
 
+.turn-body h2 { font-size: 18px; margin: 16px 0 6px; color: var(--brand); }
+
 .turn-body h3 { font-size: 16px; margin: 14px 0 6px; color: var(--brand); }
+
+.turn-body h4, .turn-body h5, .turn-body h6 { font-size: 15px; margin: 12px 0 4px; color: var(--brand); }
 
 .turn-body a { color: var(--brand); font-weight: 600; }
 
