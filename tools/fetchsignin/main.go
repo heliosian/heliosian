@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -144,8 +143,6 @@ func send(c qclient.Client, id string, body []byte, stop string) (answer, error)
 }
 
 func main() {
-	signInGone := flag.Bool("sign-in-gone", true, "mark a document still asking for a sign-in as gone")
-	flag.Parse()
 	c := qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}
 	if _, err := capture.Start(); err != nil {
 		logging.Fatal("start capture browser", "error", err)
@@ -178,30 +175,9 @@ func main() {
 		body, status, final, err := s.get(address, accept)
 		stop := ""
 		switch {
-		case db.Unreachable(err):
+		case err != nil || status != http.StatusOK || host(final) == googleSignIn:
+			slog.Warn("gone", "document", id, "url", address, "status", status, "page", final, "error", err)
 			stop = "gone"
-		case err != nil:
-			slog.Warn("failed", "document", id, "url", address, "error", err)
-			counts["failed"]++
-			continue
-		case host(final) == googleSignIn || status == http.StatusUnauthorized || status == http.StatusForbidden:
-			if *signInGone {
-				stop = "gone"
-				break
-			}
-			slog.Warn("still needs a sign-in", "document", id, "url", address, "status", status, "page", final)
-			counts["sign_in"]++
-			continue
-		case status == http.StatusTooManyRequests || status == http.StatusRequestTimeout || status >= 500:
-			slog.Warn("failed", "document", id, "url", address, "status", status)
-			counts["failed"]++
-			continue
-		case status >= 400:
-			stop = "gone"
-		case status != http.StatusOK:
-			slog.Warn("unexpected answer", "document", id, "url", address, "status", status)
-			counts["failed"]++
-			continue
 		case len(body) > bodyLimit:
 			stop = "refused"
 		}
@@ -216,5 +192,5 @@ func main() {
 		counts[outcome]++
 		slog.Info("fetched", "n", i+1, "of", len(a.Result), "document", id, "outcome", outcome, "why", got.Why, "hash", got.Hash, "bytes", len(body), "type", http.DetectContentType(body))
 	}
-	slog.Info("done", "documents", len(a.Result), "filled", counts["filled"], "gone", counts["gone"], "refused", counts["refused"], "sign_in", counts["sign_in"], "failed", counts["failed"])
+	slog.Info("done", "documents", len(a.Result), "filled", counts["filled"], "gone", counts["gone"], "refused", counts["refused"])
 }
