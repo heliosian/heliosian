@@ -34,7 +34,10 @@ function row(q, part) {
 }
 
 async function show() {
-  reload.disabled = true;
+  if (reload.ariaBusy === 'true') {
+    return;
+  }
+  reload.ariaBusy = 'true';
   try {
     const report = await api('GET', '/api/queues');
     body.replaceChildren(...report.queues.flatMap(q => [row(q, false), ...(q.parts ?? []).map(p => row(p, true))]));
@@ -43,7 +46,7 @@ async function show() {
   } catch (err) {
     summary.replaceChildren(el('span', 'error', err.message));
   } finally {
-    reload.disabled = false;
+    reload.ariaBusy = 'false';
   }
 }
 
