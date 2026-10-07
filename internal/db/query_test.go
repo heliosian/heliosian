@@ -164,6 +164,22 @@ func TestRun(t *testing.T) {
 	}
 }
 
+func TestInLiteralsMatchOr(t *testing.T) {
+	m := sample(t).Model()
+	for _, c := range []struct{ in, or string }{
+		{`(from GROUP (where (in kind "FAMILY" "event")))`, `(from GROUP (where (or (= kind "family") (= kind "event"))))`},
+		{`(from DOCUMENT (where (in kind "wiki")))`, `(from DOCUMENT (where (or (= kind "wiki"))))`},
+		{`(from PERSON (where (in id "per00000000001" "per00000000003")))`, `(from PERSON (where (or (= id "per00000000001") (= id "per00000000003"))))`},
+		{`(from MEMBER (where (in group "grp00000000020" "grp00000000040")))`, `(from MEMBER (where (or (= group "grp00000000020") (= group "grp00000000040"))))`},
+	} {
+		in := ids(runAs(t, m, "", c.in).Rows(), "id")
+		or := ids(runAs(t, m, "", c.or).Rows(), "id")
+		if len(in) == 0 || !slices.Equal(in, or) {
+			t.Errorf("%s = %v, %s = %v", c.in, in, c.or, or)
+		}
+	}
+}
+
 func TestCorrelatedSelectsAreNotShared(t *testing.T) {
 	m := sample(t).Model()
 	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {

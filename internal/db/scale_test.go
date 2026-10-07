@@ -137,6 +137,17 @@ func BenchmarkWikiSides(b *testing.B) {
 	benchQuery(b, `(from DOCUMENT (where (= relation "side")))`)
 }
 
+func BenchmarkRebuildDocuments(b *testing.B) {
+	s := scaleStore(b)
+	i := 0
+	for b.Loop() {
+		i++
+		if err := commit(s, DocumentsSheet, store.Update("DOCUMENT", store.Row{"id": "doc00000100001"}, store.Row{"name": fmt.Sprintf("Mail %d", i)})); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkRebuild(b *testing.B) {
 	s := scaleStore(b)
 	i := 0

@@ -261,19 +261,30 @@ func (cx *compiler) closed(mark int, inner *scope) bool {
 	return true
 }
 
+func indexed(t typ) bool {
+	return t.class == classRow || t.kind == Enum
+}
+
 func (s *scan) pickProbe() {
-	for _, c := range s.conds {
-		if c.probe != nil {
-			s.probeCol, s.probe = c.probeCol, c.probe
-			return
+	for _, enum := range []bool{false, true} {
+		for _, c := range s.conds {
+			if c.probe != nil && s.enum(c.probeCol) == enum {
+				s.probeCol, s.probe = c.probeCol, c.probe
+				return
+			}
+		}
+		for _, c := range s.conds {
+			if c.probeSet != nil && s.enum(c.probeCol) == enum {
+				s.probeCol, s.probeSet = c.probeCol, c.probeSet
+				return
+			}
 		}
 	}
-	for _, c := range s.conds {
-		if c.probeSet != nil {
-			s.probeCol, s.probeSet = c.probeCol, c.probeSet
-			return
-		}
-	}
+}
+
+func (s *scan) enum(column string) bool {
+	c, _ := s.table.Column(column)
+	return c.Kind == Enum
 }
 
 func (s *scan) candidates(f *frame) []store.Row {
@@ -303,6 +314,8 @@ func (s *scan) candidates(f *frame) []store.Row {
 
 func (s *scan) lookup(f *frame, v string) []store.Row {
 	m := f.run.m
+	c, _ := s.table.Column(s.probeCol)
+	v = indexKey(c, v)
 	if s.table.Generated {
 		if s.table.Name == "EFFECTIVE_MEMBER" && s.probeCol == "group" {
 			return m.effectiveRows(v)
@@ -561,9 +574,9 @@ func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 	switch op {
 	case "=":
 		out.eval = func(f *frame) bool { return equalValues(a.eval(f), b.eval(f)) }
-		if a.direct != "" && !b.local && a.t.class == classRow {
+		if a.direct != "" && !b.local && indexed(a.t) {
 			out.probeCol, out.probe = a.direct, &b
-		} else if b.direct != "" && !a.local && b.t.class == classRow {
+		} else if b.direct != "" && !a.local && indexed(b.t) {
 			out.probeCol, out.probe = b.direct, &a
 		}
 	case "!=":
@@ -624,12 +637,13 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 			return cond{}, err
 		}
 		out := cond{eval: func(f *frame) bool { return set(f).has(x.eval(f)) }}
-		if outer && x.direct != "" && x.t.class == classRow {
+		if outer && x.direct != "" && indexed(x.t) {
 			out.probeCol, out.probeSet = x.direct, set
 		}
 		return out, nil
 	}
 	options := []value{}
+	keys := newValueSet(false)
 	for _, item := range s.list[2:] {
 		if item.isList {
 			return cond{}, item.errorf("in takes literals or one select")
@@ -639,8 +653,9 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 			return cond{}, err
 		}
 		options = append(options, o.eval(nil))
+		keys.add(o.eval(nil))
 	}
-	return cond{eval: func(f *frame) bool {
+	out := cond{eval: func(f *frame) bool {
 		v := x.eval(f)
 		for _, o := range options {
 			if equalValues(v, o) {
@@ -648,7 +663,11 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 			}
 		}
 		return false
-	}, cheap: x.cheap}, nil
+	}, cheap: x.cheap}
+	if x.direct != "" && indexed(x.t) {
+		out.probeCol, out.probeSet = x.direct, func(*frame) *valueSet { return keys }
+	}
+	return out, nil
 }
 
 func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {

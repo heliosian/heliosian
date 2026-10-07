@@ -23,7 +23,7 @@ type Rows struct {
 	rows     []store.Row
 	byID     map[string]int
 	byUnique map[string]int
-	refs     map[string]map[string][]int
+	by       map[string]map[string][]int
 }
 
 type Sheet map[string]*Rows
@@ -93,7 +93,7 @@ func (v *View) Find(values ...string) (store.Row, bool) {
 
 func (v *View) Referencing(column, id string) []store.Row {
 	out := []store.Row{}
-	for _, i := range v.rows.refs[column][id] {
+	for _, i := range v.rows.by[column][id] {
 		if v.shown[i] != nil {
 			out = append(out, v.shown[i])
 		}
@@ -166,7 +166,7 @@ func (r *Rows) Find(values ...string) (store.Row, bool) {
 
 func (r *Rows) Referencing(column, id string) []store.Row {
 	out := []store.Row{}
-	for _, i := range r.refs[column][id] {
+	for _, i := range r.by[column][id] {
 		out = append(out, r.rows[i])
 	}
 	return out
@@ -203,7 +203,7 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
 }
 
 func indexRows(t *Table, rows []store.Row) (*Rows, error) {
-	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, refs: map[string]map[string][]int{}}
+	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, by: map[string]map[string][]int{}}
 	for _, row := range rows {
 		if _, dup := out.byID[row["id"]]; dup {
 			return nil, fmt.Errorf("%s: two rows have the id %s", t.Name, row["id"])
@@ -217,12 +217,14 @@ func indexRows(t *Table, rows []store.Row) (*Rows, error) {
 			out.byUnique[unique] = len(out.rows)
 		}
 		for _, c := range t.Columns {
-			for _, value := range references(c, row[c.Name]) {
-				if out.refs[c.Name] == nil {
-					out.refs[c.Name] = map[string][]int{}
-				}
-				out.refs[c.Name][value] = append(out.refs[c.Name][value], len(out.rows))
+			if (c.Kind != Ref && c.Kind != Enum) || row[c.Name] == "" {
+				continue
 			}
+			if out.by[c.Name] == nil {
+				out.by[c.Name] = map[string][]int{}
+			}
+			key := indexKey(c, row[c.Name])
+			out.by[c.Name][key] = append(out.by[c.Name][key], len(out.rows))
 		}
 		out.rows = append(out.rows, row)
 	}
@@ -234,6 +236,13 @@ func references(c Column, cell string) []string {
 		return nil
 	}
 	return []string{cell}
+}
+
+func indexKey(c Column, value string) string {
+	if c.Kind == Enum {
+		return strings.ToLower(strings.TrimSpace(value))
+	}
+	return value
 }
 
 func describeUnique(t *Table, row store.Row) string {

@@ -65,12 +65,13 @@ func (m *Model) generated(t *Table) *generatedSet {
 	}
 	set = &generatedSet{rows: rows, by: map[string]map[string][]store.Row{}}
 	for _, c := range t.Columns {
-		if c.Kind != ID && c.Kind != Ref {
+		if c.Kind != ID && c.Kind != Ref && c.Kind != Enum {
 			continue
 		}
 		index := map[string][]store.Row{}
 		for _, row := range rows {
-			index[row[c.Name]] = append(index[row[c.Name]], row)
+			key := indexKey(c, row[c.Name])
+			index[key] = append(index[key], row)
 		}
 		set.by[c.Name] = index
 	}
