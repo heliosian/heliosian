@@ -320,6 +320,34 @@ function prefixLines(textarea, first, prefix, blank) {
   replaceRange(textarea, start, end, text, text.length, text.length);
 }
 
+const listItem = /^\s*([-*]|\d+[.)])\s+/;
+
+function indentLists(textarea) {
+  textarea.addEventListener('keydown', e => {
+    if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) {
+      return;
+    }
+    const {start, end, lines} = selectedLines(textarea);
+    if (!lines.some(line => listItem.test(line))) {
+      return;
+    }
+    e.preventDefault();
+    const shifted = lines.map(line => {
+      if (!listItem.test(line)) {
+        return line;
+      }
+      return e.shiftKey ? line.replace(/^( {1,2}|\t)/, '') : '  ' + line;
+    });
+    const text = shifted.join('\n');
+    if (lines.length === 1 && textarea.selectionStart === textarea.selectionEnd) {
+      const caret = Math.max(0, textarea.selectionStart - start + text.length - lines[0].length);
+      replaceRange(textarea, start, end, text, caret, caret);
+      return;
+    }
+    replaceRange(textarea, start, end, text, 0, text.length);
+  });
+}
+
 function linkPopup(textarea) {
   const {selectionStart: start, selectionEnd: end, value} = textarea;
   const words = textInput(value.slice(start, end), {placeholder: 'What the link says', required: true});
@@ -480,7 +508,8 @@ export function editPage(id) {
   const text = el('textarea', 'wiki-text');
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);
-  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list, [words](https://a.link), > [!NOTE] (or TIP, IMPORTANT, WARNING, CAUTION) for a callout; Insert Image puts a picture at the cursor.');
+  indentLists(text);
+  const hint = el('p', 'wiki-hint', 'Markdown works: # Heading, **bold**, *italic*, - a list (Tab and Shift+Tab indent and outdent its lines for sub-bullets), [words](https://a.link), > [!NOTE] (or TIP, IMPORTANT, WARNING, CAUTION) for a callout; Insert Image puts a picture at the cursor.');
   const saveButton = el('button', 'button', 'Save');
   saveButton.type = 'submit';
   const back = p ? pagePath(p) : (parentId ? pagePath(page(parentId)) : '/');

@@ -200,6 +200,39 @@ function callout(lines, i, cards) {
   return [box, i];
 }
 
+const listItem = /^(\s*)([-*]|\d+[.)])\s+(.*)$/;
+
+function list(lines, i, cards) {
+  const [, lead, mark] = lines[i].match(listItem);
+  const ordered = /\d/.test(mark);
+  const node = el(ordered ? 'ol' : 'ul');
+  while (i < lines.length) {
+    const m = lines[i].match(listItem);
+    if (!m || m[1].length < lead.length) {
+      break;
+    }
+    if (m[1].length > lead.length) {
+      const [sub, next] = list(lines, i, cards);
+      node.lastElementChild.append(sub);
+      i = next;
+      continue;
+    }
+    if (/\d/.test(m[2]) !== ordered) {
+      break;
+    }
+    const item = el('li');
+    let body = m[3];
+    i++;
+    while (i < lines.length && lines[i].trim() && !listItem.test(lines[i]) && /^\s+/.test(lines[i])) {
+      body += ' ' + lines[i].trim();
+      i++;
+    }
+    inline(item, body, cards);
+    node.append(item);
+  }
+  return [node, i];
+}
+
 export function render(text, cards = {}) {
   const out = document.createDocumentFragment();
   const lines = text.replace(/\r/g, '').split('\n');
@@ -234,23 +267,10 @@ export function render(text, cards = {}) {
       i++;
       continue;
     }
-    const bullet = line.match(/^\s*[-*]\s+/);
-    const numbered = line.match(/^\s*\d+[.)]\s+/);
-    if (bullet || numbered) {
-      const list = el(bullet ? 'ul' : 'ol');
-      const pattern = bullet ? /^\s*[-*]\s+/ : /^\s*\d+[.)]\s+/;
-      while (i < lines.length && pattern.test(lines[i])) {
-        const item = el('li');
-        let body = lines[i].replace(pattern, '');
-        i++;
-        while (i < lines.length && lines[i].trim() && !pattern.test(lines[i]) && /^\s+/.test(lines[i])) {
-          body += ' ' + lines[i].trim();
-          i++;
-        }
-        inline(item, body, cards);
-        list.append(item);
-      }
-      out.append(list);
+    if (listItem.test(line)) {
+      const [node, next] = list(lines, i, cards);
+      out.append(node);
+      i = next;
       continue;
     }
     if (calloutMarker.test(line)) {
