@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,7 +43,7 @@ Fetch a link when what it leads to holds information the email points at: a docu
 
 Otherwise say why it is not worth fetching: a form to fill in (form); a sign-up, RSVP, volunteer or ticket page (signup); a social media profile or post (social); a site's front page that says nothing about this email (homepage); a link made for the one person it was sent to, such as an account, a preference, an RSVP or a login (per_recipient); a mailer's tracking or unsubscribe link (tracking); a video, a map, an app store page or a photo gallery (media); or anything else (other).
 
-Answer every link, by its number and its address as given.`
+Answer every link, by its number and its key as given.`
 
 var linkSchema = map[string]any{
 	"type": "object",
@@ -52,10 +54,10 @@ var linkSchema = map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"n":        map[string]any{"type": "integer", "description": "the link's number, as given"},
-					"url":      map[string]any{"type": "string", "description": "the link's address, exactly as given"},
+					"key":      map[string]any{"type": "string", "description": "the link's key, exactly as given"},
 					"decision": map[string]any{"type": "string", "enum": append([]string{fetchLink}, skipReasons...), "description": "fetch, or why it is not worth fetching"},
 				},
-				"required":             []string{"n", "url", "decision"},
+				"required":             []string{"n", "key", "decision"},
 				"additionalProperties": false,
 			},
 		},
@@ -143,12 +145,12 @@ func ChooseLinks(ctx context.Context, client anthropic.Client, email LinkEmail, 
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "Subject: %s\nKind: %s\nSent: %s\n\nLinks:\n", email.Subject, email.Kind, email.Sent)
 	for i, l := range links {
-		fmt.Fprintf(b, "\n%d. %s\n   words: %s\n   sentence: %s\n", i+1, l.URL, l.Text, l.Context)
+		fmt.Fprintf(b, "\n%d. key %s: %s\n   words: %s\n   sentence: %s\n", i+1, linkKey(l.URL), l.URL, l.Text, l.Context)
 	}
 	var out struct {
 		Links []struct {
 			N        int    `json:"n"`
-			URL      string `json:"url"`
+			Key      string `json:"key"`
 			Decision string `json:"decision"`
 		} `json:"links"`
 	}
@@ -166,7 +168,7 @@ func ChooseLinks(ctx context.Context, client anthropic.Client, email LinkEmail, 
 	}
 	answered := make([]bool, len(links))
 	for _, a := range out.Links {
-		if a.N < 1 || a.N > len(links) || answered[a.N-1] || a.URL != links[a.N-1].URL || (a.Decision != fetchLink && !slices.Contains(skipReasons, a.Decision)) {
+		if a.N < 1 || a.N > len(links) || answered[a.N-1] || a.Key != linkKey(links[a.N-1].URL) || (a.Decision != fetchLink && !slices.Contains(skipReasons, a.Decision)) {
 			answer, _ := json.Marshal(a)
 			return nil, fmt.Errorf("%w: an answer that matches no link: %s", errAskAgain, answer)
 		}
@@ -179,6 +181,11 @@ func ChooseLinks(ctx context.Context, client anthropic.Client, email LinkEmail, 
 		return nil, fmt.Errorf("%w: link %d was not answered", errAskAgain, i+1)
 	}
 	return links, nil
+}
+
+func linkKey(address string) string {
+	sum := sha256.Sum256([]byte(address))
+	return "L" + hex.EncodeToString(sum[:4])
 }
 
 func (m *Model) mailRootOf(doc store.Row) (store.Row, bool) {

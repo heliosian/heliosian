@@ -32,6 +32,7 @@ const (
 	extractActor   = "extract"
 	pdfType        = "application/pdf"
 	extractTimeout = 30 * time.Minute
+	extractAsks    = 3
 )
 
 type Extractor struct {
@@ -40,6 +41,7 @@ type Extractor struct {
 	bucket *blob.Bucket
 	client anthropic.Client
 	failed map[string]bool
+	asked  map[string]int
 	poke   chan struct{}
 }
 
@@ -76,7 +78,7 @@ func extractable(kind string) bool {
 }
 
 func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
-	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, poke: make(chan struct{}, 1)}
+	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, asked: map[string]int{}, poke: make(chan struct{}, 1)}
 	go x.run()
 	queue.OnSwap(func() {
 		select {
@@ -94,7 +96,13 @@ func (x *Extractor) run() {
 			start := time.Now()
 			n, err := x.extract(id)
 			if errors.Is(err, errAskAgain) {
-				slog.Error("extract, to be asked again", "document", id, "error", err)
+				x.asked[id]++
+				if x.asked[id] >= extractAsks {
+					x.failed[id] = true
+					slog.Error("extract, left until a restart", "document", id, "asked", x.asked[id], "error", err)
+					continue
+				}
+				slog.Error("extract, to be asked again", "document", id, "asked", x.asked[id], "error", err)
 				time.Sleep(linkBackoff)
 				again = true
 				continue

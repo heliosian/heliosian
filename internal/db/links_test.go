@@ -1,8 +1,12 @@
 package db
 
 import (
+	"errors"
 	"strings"
 	"testing"
+
+	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
@@ -39,7 +43,7 @@ func TestExtractingAnEmailChoosesItsLinks(t *testing.T) {
 		if !strings.Contains(request, "Handbook week") {
 			return `{"links": []}`
 		}
-		return `{"links": [{"n": 1, "url": "https://docs.example.org/handbook", "decision": "fetch"}, {"n": 2, "url": "https://forms.example.org/signup", "decision": "form"}]}`
+		return `{"links": [{"n": 1, "key": "` + linkKey("https://docs.example.org/handbook") + `", "decision": "fetch"}, {"n": 2, "key": "` + linkKey("https://forms.example.org/signup") + `", "decision": "form"}]}`
 	}))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
@@ -60,6 +64,28 @@ func TestExtractingAnEmailChoosesItsLinks(t *testing.T) {
 		"linked|https://docs.example.org/handbook|handbook||",
 		"linked|https://forms.example.org/signup|sign up|skipped|form",
 	})
+}
+
+func TestALongLinkIsAnsweredByItsKey(t *testing.T) {
+	long := "https://u1.ct.example.net/wf/click?upn=" + strings.Repeat("YdheIwSkWyDo3iWitYBdGbTYBr2a", 32)
+	raw := []byte(`<p>Read the <a href="` + long + `">newsletter</a>.</p>`)
+	var key string
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+		if !strings.Contains(request, long) {
+			return `{"links": []}`
+		}
+		return `{"links": [{"n": 1, "key": "` + key + `", "decision": "tracking"}]}`
+	}))
+	client := anthropic.NewClient(option.WithAPIKey("test"))
+	key = linkKey(long)
+	got, err := ChooseLinks(t.Context(), client, LinkEmail{Subject: "News"}, raw)
+	if err != nil || len(got) != 1 || got[0].Skip != "tracking" {
+		t.Fatalf("answered by its key: %+v, %v", got, err)
+	}
+	key = "x"
+	if _, err := ChooseLinks(t.Context(), client, LinkEmail{Subject: "News"}, raw); !errors.Is(err, errAskAgain) {
+		t.Fatalf("answered by the wrong key: %v", err)
+	}
 }
 
 func TestAnEmailsLinksAreCollected(t *testing.T) {
