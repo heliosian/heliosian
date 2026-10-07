@@ -9,6 +9,7 @@ import (
 	"image/png"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -16,7 +17,6 @@ import (
 
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
-	"heliosian/internal/store"
 )
 
 const (
@@ -41,7 +41,7 @@ type WikiShare struct {
 }
 
 type wikiShared struct {
-	id, slug, name, sentence string
+	id, path, name, sentence string
 	subPages                 []string
 }
 
@@ -58,7 +58,10 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if !ok {
 		return ""
 	}
-	key, _, _ := strings.Cut(rest, "/")
+	key := strings.TrimSuffix(rest, "/edit")
+	if w.s.Model().wikiPageAt(rest) != "" {
+		key = rest
+	}
 	page, found, err := w.page(r.Context(), key)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "page", key, "error", err)
@@ -71,12 +74,8 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if len(page.subPages) > 0 {
 		desc = strings.TrimSpace(desc + " In this section: " + strings.Join(page.subPages, " · "))
 	}
-	address := page.slug
-	if address == "" {
-		address = page.id
-	}
 	origin := "https://" + r.Host
-	return w.style.PreviewTags(page.name, desc, origin+wikiPathPrefix+address, origin+"/open/share/"+page.id+".png")
+	return w.style.PreviewTags(page.name, desc, origin+(&url.URL{Path: page.path}).EscapedPath(), origin+"/open/share/"+page.id+".png")
 }
 
 func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
@@ -138,23 +137,8 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 		return wikiShared{}, false, nil
 	}
 	row, _ := docs.Get(id)
-	page := wikiShared{id: id, slug: row["slug"], name: row["name"], subPages: []string{}}
-	children := []store.Row{}
-	for _, child := range docs.Referencing("parent", id) {
-		if child["kind"] == "wiki" {
-			children = append(children, child)
-		}
-	}
-	slices.SortFunc(children, func(a, b store.Row) int {
-		if a["order"] != b["order"] {
-			if a["order"] == "" || b["order"] == "" {
-				return strings.Compare(b["order"], a["order"])
-			}
-			return store.CompareKeys(a["order"], b["order"])
-		}
-		return strings.Compare(a["name"], b["name"])
-	})
-	for _, child := range children {
+	page := wikiShared{id: id, path: m.WikiPath(row), name: row["name"], subPages: []string{}}
+	for _, child := range m.wikiChildren(id) {
 		page.subPages = append(page.subPages, child["name"])
 	}
 	if row["content"] == "" {

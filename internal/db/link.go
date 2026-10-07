@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func Link(table string, row store.Row, origin func(app string) string) string {
+func (m *Model) Link(table string, row store.Row, origin func(app string) string) string {
 	key := row["slug"]
 	if key == "" {
 		key = row["id"]
@@ -18,7 +18,7 @@ func Link(table string, row store.Row, origin func(app string) string) string {
 		return origin("who") + "/people/" + url.PathEscape(row["id"])
 	case "DOCUMENT":
 		if row["kind"] == "wiki" {
-			return origin("wiki") + "/p/" + key
+			return origin("wiki") + (&url.URL{Path: m.WikiPath(row)}).EscapedPath()
 		}
 		return row["url"]
 	case "GROUP":

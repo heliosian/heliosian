@@ -30,10 +30,12 @@ func TestWikiShare(t *testing.T) {
 	testkit.Previews(t, share.PreviewHead,
 		testkit.Preview{
 			URL:   "https://wiki.heliosian.com/p/" + id,
-			Want:  []string{`og:title" content="Field Trips"`, `og:description" content="Every grade goes somewhere twice a year. In this section: Museums · Farms"`, `og:url" content="https://wiki.heliosian.com/p/` + id + `"`, `og:image" content="https://wiki.heliosian.com/open/share/` + id + `.png"`},
+			Want:  []string{`og:title" content="Field Trips"`, `og:description" content="Every grade goes somewhere twice a year. In this section: Museums · Farms"`, `og:url" content="https://wiki.heliosian.com/p/Field-Trips"`, `og:image" content="https://wiki.heliosian.com/open/share/` + id + `.png"`},
 			Never: []string{"Forms come home", "None.", "a bus"},
 		},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/" + id + "/edit", Want: []string{`og:title" content="Field Trips"`}},
+		testkit.Preview{URL: "https://wiki.heliosian.com/p/field-trips/museums", Want: []string{`og:title" content="Museums"`, `og:url" content="https://wiki.heliosian.com/p/Field-Trips/Museums"`}},
+		testkit.Preview{URL: "https://wiki.heliosian.com/p/Field-Trips/Museums/edit", Want: []string{`og:title" content="Museums"`}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/" + empty, Want: []string{`og:title" content="Empty"`, `og:description" content=""`}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/getting-started", Want: []string{`og:title" content="Getting Started"`, `og:url" content="https://wiki.heliosian.com/p/getting-started"`, `og:image" content="https://wiki.heliosian.com/open/share/doc00000000102.png"`}},
 		testkit.Preview{URL: "https://wiki.heliosian.com/p/doc00000000102", Want: []string{`og:url" content="https://wiki.heliosian.com/p/getting-started"`}},

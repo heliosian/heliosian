@@ -158,6 +158,68 @@ func TestWikiSlugs(t *testing.T) {
 	}
 }
 
+func TestWikiAddresses(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	ctx := context.Background()
+	save := func(page wikiPage) (string, error) {
+		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
+		return id, err
+	}
+	pathOf := func(id string) string {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		return s.Model().WikiPath(row)
+	}
+	top, err := save(wikiPage{Name: "School Tours", Slug: "tours", Body: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, err := save(wikiPage{Parent: top, Name: "Getting Started!", Body: "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pathOf(sub); got != "/p/tours/Getting-Started" {
+		t.Fatalf("the sub-page's address is %s", got)
+	}
+	if _, err := save(wikiPage{Parent: top, Name: "getting started", Body: "x"}); err == nil {
+		t.Fatal("a second page under the same parent took the same address")
+	}
+	if _, err := save(wikiPage{Name: "Getting started", Body: "x"}); err == nil {
+		t.Fatal("a page at the top took the address the slug getting-started has")
+	}
+	if _, err := save(wikiPage{Parent: "doc00000000105", Name: "Getting Started", Body: "x"}); err != nil {
+		t.Fatalf("a page with the same title under another parent: %v", err)
+	}
+	for _, key := range []string{"tours/Getting-Started", "TOURS/getting-started", sub} {
+		if got := s.Model().wikiPageAt(key); got != sub {
+			t.Errorf("%s finds %q", key, got)
+		}
+	}
+	if _, err := save(wikiPage{Document: top, Name: "School Tours", Slug: "visits", Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := save(wikiPage{Document: sub, Parent: top, Name: "Getting Started", Slug: "start", Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := pathOf(sub); got != "/p/visits/start" {
+		t.Fatalf("the sub-page's address after its slug and its parent's is %s", got)
+	}
+	for _, key := range []string{"tours/Getting-Started", "visits/Getting-Started", "tours/start", "visits/start"} {
+		if got := s.Model().wikiPageAt(key); got != sub {
+			t.Errorf("%s finds %q after the moves", key, got)
+		}
+	}
+	if _, err := save(wikiPage{Document: sub, Name: "Getting Started", Slug: "start", Body: "x"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.Model().wikiPageAt("visits/start"); got != sub || pathOf(sub) != "/p/start" {
+		t.Errorf("after moving to the top the old address finds %q and the page is at %s", got, pathOf(sub))
+	}
+	if got := s.Model().wikiPageAt("visits/nothing"); got != "" {
+		t.Errorf("a missing sub-page finds %q", got)
+	}
+}
+
 func TestWikiHiddenPages(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

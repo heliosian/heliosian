@@ -1,4 +1,4 @@
-import {state, page, pagePath, editPath, childrenOf, pageCount, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
+import {state, page, pagePath, segmentOf, editPath, childrenOf, pageCount, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
 import {card} from '/cardgrid.js';
 import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -511,12 +511,19 @@ export function editPage(id) {
   where.append(el('span', '', 'Under'), parent);
   const slug = el('input', 'wiki-slug');
   slug.value = p ? p.slug : '';
-  slug.placeholder = 'its-address';
   slug.pattern = '[a-z0-9]+(-[a-z0-9]+)*';
   slug.maxLength = 40;
-  slug.title = 'Lowercase letters, digits and single hyphens';
+  slug.title = 'Lowercase letters, digits and single hyphens; left blank, the address follows the title';
+  const host = el('span', 'wiki-slug-host');
+  const showAddress = () => {
+    host.textContent = `${location.host}${parent.value ? decodeURIComponent(pagePath(page(parent.value))) : '/p'}/`;
+    slug.placeholder = segmentOf({slug: '', name: title.value, id: ''}) || 'its-address';
+  };
+  showAddress();
+  parent.addEventListener('change', showAddress);
+  title.addEventListener('input', showAddress);
   const address = el('label', 'wiki-parent-field');
-  address.append(el('span', '', 'Address'), el('span', 'wiki-slug-host', `${location.host}/p/`), slug);
+  address.append(el('span', '', 'Address'), host, slug);
   const text = el('textarea', 'wiki-text');
   text.placeholder = 'Write the page here.';
   text.disabled = Boolean(p);

@@ -23,7 +23,7 @@ var triggers = []trigger{
 	{table: "PHOTO", fire: photoNotReady},
 	{table: "GROUP", fire: servingNames},
 	{table: "MEMBER", fire: oneAnswer},
-	{table: "DOCUMENT", fire: wikiSlugMoved},
+	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
 }
@@ -62,11 +62,15 @@ func postSentTo(m *Model, c Change) ([]Edit, error) {
 	return []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": c.New["id"], "group": post["group"], "relation": "sent_to"}}}, nil
 }
 
-func wikiSlugMoved(m *Model, c Change) ([]Edit, error) {
-	if c.Old == nil || c.New == nil || c.Old["kind"] != "wiki" || c.Old["slug"] == "" || c.Old["slug"] == c.New["slug"] {
+func wikiAddressMoved(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["kind"] != "wiki" {
 		return nil, nil
 	}
-	old, now := wikiPathPrefix+c.Old["slug"], wikiPathPrefix+c.New["id"]
+	old := m.wikiPath(c.Old["parent"], wikiSegment(c.Old))
+	if strings.EqualFold(old, m.wikiPath(c.New["parent"], wikiSegment(c.New))) {
+		return nil, nil
+	}
+	now := wikiPathPrefix + c.New["id"]
 	if row, ok := m.Table("REDIRECT").Find("wiki", old); ok {
 		if row["new"] == now {
 			return nil, nil

@@ -27,7 +27,7 @@ export async function loadModel() {
   ]);
   state.moved = new Map(redirects.result.map(id => {
     const row = redirects.resources.REDIRECT[id];
-    return [row.old, row.new];
+    return [row.old.toLowerCase(), row.new];
   }));
   state.sides = new Map();
   for (const id of cards.result) {
@@ -60,17 +60,37 @@ export function page(id) {
   return state.pages.find(p => p.id === id) || null;
 }
 
-export function pageAt(key) {
-  const found = page(key) || state.pages.find(p => p.slug === key);
-  if (found) {
-    return found;
-  }
-  const moved = state.moved.get(`/p/${key}`);
+export function segmentOf(p) {
+  return p.slug || p.name.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || p.id;
+}
+
+function childAt(parent, segment) {
+  const wanted = segment.toLowerCase();
+  return state.pages.filter(p => p.parent === parent).sort(bySiblingOrder).find(p => segmentOf(p).toLowerCase() === wanted) || null;
+}
+
+function movedTo(path) {
+  const moved = state.moved.get(path.toLowerCase());
   return moved ? page(moved.slice('/p/'.length)) : null;
 }
 
+export function pageAt(segments) {
+  if (segments.length === 1 && page(segments[0])) {
+    return page(segments[0]);
+  }
+  let at = null;
+  for (let i = 0; i < segments.length; i++) {
+    const live = at ? decodeURIComponent(pagePath(at)) : '/p';
+    at = childAt(at ? at.id : '', segments[i]) || movedTo(`/p/${segments.slice(0, i + 1).join('/')}`) || movedTo(`${live}/${segments[i]}`);
+    if (!at) {
+      return null;
+    }
+  }
+  return at;
+}
+
 export function pagePath(p) {
-  return `/p/${p.slug || p.id}`;
+  return '/p/' + [...trail(p), p].map(a => encodeURIComponent(segmentOf(a))).join('/');
 }
 
 export function editPath(p) {

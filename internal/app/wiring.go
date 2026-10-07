@@ -220,7 +220,7 @@ func NewCore(cfg Config) *Core {
 		})
 	}
 	wikiMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/new", "/p/{id}", "/p/{id}/edit"} {
+	for _, page := range []string{"/{$}", "/new", "/p/{path...}"} {
 		wikiMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/wiki/index.html")
 		})

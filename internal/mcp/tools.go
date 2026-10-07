@@ -69,7 +69,7 @@ func (c call) compact(table string, row store.Row) store.Row {
 			out[k] = v
 		}
 	}
-	if href := db.Link(table, row, c.s.origin); href != "" {
+	if href := c.m.Link(table, row, c.s.origin); href != "" {
 		out["href"] = href
 	}
 	return out
@@ -302,7 +302,7 @@ type named struct {
 }
 
 func (c call) named(table string, row store.Row) named {
-	return named{Name: title(row), Href: db.Link(table, row, c.s.origin)}
+	return named{Name: title(row), Href: c.m.Link(table, row, c.s.origin)}
 }
 
 func (c call) names(ids []string) (map[string]named, error) {
@@ -593,7 +593,7 @@ func readDocument(c call, in idIn) (any, error) {
 				fmt.Fprintf(outline, " | %s: %s", col, r[col])
 			}
 		}
-		if href := db.Link("DOCUMENT", r, c.s.origin); href != "" && href != r["url"] {
+		if href := c.m.Link("DOCUMENT", r, c.s.origin); href != "" && href != r["url"] {
 			fmt.Fprintf(outline, " | href: %s", href)
 		}
 		mime := mimes[r["content"]]
@@ -619,7 +619,7 @@ func readDocument(c call, in idIn) (any, error) {
 		fmt.Fprintf(texts, "\n## %s (%s)\n\n%s\n", what, r["id"], body)
 	}
 	out := "# " + title(root) + "\n\n"
-	if href := db.Link("DOCUMENT", root, c.s.origin); href != "" {
+	if href := c.m.Link("DOCUMENT", root, c.s.origin); href != "" {
 		out += href + "\n\n"
 	}
 	out += outline.String()

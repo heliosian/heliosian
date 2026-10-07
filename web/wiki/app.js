@@ -9,15 +9,19 @@ const routes = {
   '': () => listPage(),
   new: () => editPage(''),
   p: parts => {
-    const p = pageAt(parts[1] || '');
-    if (!p || (parts[2] && parts[2] !== 'edit')) {
+    let p = pageAt(parts.slice(1));
+    const edit = !p && parts.at(-1) === 'edit';
+    if (edit) {
+      p = pageAt(parts.slice(1, -1));
+    }
+    if (!p) {
       return notFound('That page');
     }
-    const here = pagePath(p) + (parts[2] ? '/edit' : '');
+    const here = pagePath(p) + (edit ? '/edit' : '');
     if (location.pathname !== here) {
       history.replaceState(history.state, '', here + location.search + location.hash);
     }
-    return parts[2] ? editPage(p.id) : viewPage(p.id);
+    return edit ? editPage(p.id) : viewPage(p.id);
   },
 };
 

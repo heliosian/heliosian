@@ -346,7 +346,7 @@ func checkDocuments(documents Sheet) error {
 	for _, row := range documents["DOCUMENT"].rows {
 		parents[row["id"]], kinds[row["id"]] = row["parent"], row["kind"]
 	}
-	slugs := map[string]string{}
+	slugs := map[[2]string]string{}
 	for _, row := range documents["DOCUMENT"].rows {
 		if row["relation"] == "side" && kinds[row["parent"]] != "wiki" {
 			return fmt.Errorf("DOCUMENT %s: a side card sits under a wiki page", row["id"])
@@ -354,10 +354,10 @@ func checkDocuments(documents Sheet) error {
 		if err := checkWikiSlug(row["slug"], row["kind"]); err != nil {
 			return fmt.Errorf("DOCUMENT %s: %v", row["id"], err)
 		}
-		if other, taken := slugs[row["slug"]]; taken && row["slug"] != "" {
-			return fmt.Errorf("DOCUMENT %s: %s already has the slug %q", row["id"], other, row["slug"])
+		if other, taken := slugs[[2]string{row["parent"], row["slug"]}]; taken && row["slug"] != "" {
+			return fmt.Errorf("DOCUMENT %s: %s, under the same page, already has the slug %q", row["id"], other, row["slug"])
 		}
-		slugs[row["slug"]] = row["id"]
+		slugs[[2]string{row["parent"], row["slug"]}] = row["id"]
 		if row["hidden"] == "Yes" && row["kind"] != "wiki" {
 			return fmt.Errorf("DOCUMENT %s: only a wiki page is hidden", row["id"])
 		}

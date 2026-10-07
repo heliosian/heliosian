@@ -33,8 +33,9 @@ const (
 )
 
 var (
-	wikiImage = regexp.MustCompile(`^wiki-images/[0-9a-f]{64}\.(jpg|png|gif|webp)$`)
-	wikiSlug  = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	wikiImage   = regexp.MustCompile(`^wiki-images/[0-9a-f]{64}\.(jpg|png|gif|webp)$`)
+	wikiSlug    = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	wikiNameRun = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 )
 
 func checkWikiSlug(slug, kind string) error {
@@ -184,8 +185,9 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		if err != nil {
 			return err
 		}
-		if other := m.wikiPageWithSlug(slug); other != "" && other != page.Document {
-			return access.Invalid("another page already has the address %q", slug)
+		segment := wikiSegment(store.Row{"id": page.Document, "name": name, "slug": slug})
+		if segment != "" && m.wikiSibling(page.Document, page.Parent, segment) != "" {
+			return access.Invalid("another page here already has the address %s", m.wikiPath(page.Parent, segment))
 		}
 		edit := Edit{Set: page.Document, Cells: map[string]any{"name": name, "content": contentID}}
 		if page.Document == "" {
@@ -274,26 +276,69 @@ func (m *Model) wikiParentFits(document, parent string) error {
 	return nil
 }
 
-func (m *Model) wikiPageWithSlug(slug string) string {
-	if slug == "" {
-		return ""
+func wikiSegment(row store.Row) string {
+	if row["slug"] != "" {
+		return row["slug"]
 	}
-	for _, row := range m.Table("DOCUMENT").All() {
-		if row["kind"] == "wiki" && row["slug"] == slug {
+	if segment := strings.Trim(wikiNameRun.ReplaceAllString(row["name"], "-"), "-"); segment != "" {
+		return segment
+	}
+	return row["id"]
+}
+
+func (m *Model) wikiPath(parent, segment string) string {
+	docs := m.Table("DOCUMENT")
+	parts := []string{segment}
+	for at := parent; at != ""; {
+		row, _ := docs.Get(at)
+		parts = append([]string{wikiSegment(row)}, parts...)
+		at = row["parent"]
+	}
+	return wikiPathPrefix + strings.Join(parts, "/")
+}
+
+func (m *Model) WikiPath(row store.Row) string {
+	return m.wikiPath(row["parent"], wikiSegment(row))
+}
+
+func (m *Model) wikiChildren(parent string) []store.Row {
+	docs := m.Table("DOCUMENT")
+	rows := docs.Referencing("parent", parent)
+	if parent == "" {
+		rows = docs.All()
+	}
+	children := []store.Row{}
+	for _, row := range rows {
+		if row["kind"] == "wiki" && row["parent"] == parent {
+			children = append(children, row)
+		}
+	}
+	slices.SortFunc(children, func(a, b store.Row) int {
+		if a["order"] != b["order"] {
+			if a["order"] == "" || b["order"] == "" {
+				return strings.Compare(b["order"], a["order"])
+			}
+			return store.CompareKeys(a["order"], b["order"])
+		}
+		return strings.Compare(a["name"], b["name"])
+	})
+	return children
+}
+
+func (m *Model) wikiSibling(document, parent, segment string) string {
+	for _, row := range m.wikiChildren(parent) {
+		if row["id"] != document && strings.EqualFold(wikiSegment(row), segment) {
 			return row["id"]
 		}
 	}
 	return ""
 }
 
-func (m *Model) wikiPageAt(key string) string {
-	if row, ok := m.Table("DOCUMENT").Get(key); ok && row["kind"] == "wiki" {
-		return key
-	}
-	if id := m.wikiPageWithSlug(key); id != "" {
-		return id
-	}
-	if row, ok := m.Table("REDIRECT").Find("wiki", wikiPathPrefix+key); ok {
+func (m *Model) wikiRedirect(path string) string {
+	for _, row := range m.Table("REDIRECT").All() {
+		if row["app"] != "wiki" || !strings.EqualFold(row["old"], path) {
+			continue
+		}
 		if id, ok := strings.CutPrefix(row["new"], wikiPathPrefix); ok {
 			if page, ok := m.Table("DOCUMENT").Get(id); ok && page["kind"] == "wiki" {
 				return id
@@ -301,6 +346,28 @@ func (m *Model) wikiPageAt(key string) string {
 		}
 	}
 	return ""
+}
+
+func (m *Model) wikiPageAt(key string) string {
+	segments := strings.Split(strings.Trim(key, "/"), "/")
+	if row, ok := m.Table("DOCUMENT").Get(segments[0]); ok && row["kind"] == "wiki" && len(segments) == 1 {
+		return segments[0]
+	}
+	at := ""
+	for i, segment := range segments {
+		next := m.wikiSibling("", at, segment)
+		if next == "" {
+			next = m.wikiRedirect(wikiPathPrefix + strings.Join(segments[:i+1], "/"))
+		}
+		if next == "" {
+			next = m.wikiRedirect(m.wikiPath(at, segment))
+		}
+		if next == "" {
+			return ""
+		}
+		at = next
+	}
+	return at
 }
 
 func (m *Model) lastWikiOrder(parent string) string {

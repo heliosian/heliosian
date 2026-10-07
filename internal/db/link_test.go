@@ -7,6 +7,7 @@ import (
 )
 
 func TestLinkPointsAtEachAppsPage(t *testing.T) {
+	m := sample(t).Model()
 	origin := func(app string) string { return "https://" + app + ".example.org" }
 	for _, c := range []struct {
 		table string
@@ -24,12 +25,14 @@ func TestLinkPointsAtEachAppsPage(t *testing.T) {
 		{"GROUP", store.Row{"id": "grp00000000070", "kind": "group", "slug": "soccer", "mail": "Yes"}, "https://loop.example.org/groups/soccer"},
 		{"GROUP", store.Row{"id": "grp00000000071", "kind": "group", "slug": "tag"}, ""},
 		{"GROUP", store.Row{"id": "grp00000000072", "kind": "category"}, ""},
-		{"DOCUMENT", store.Row{"id": "doc00000000102", "kind": "wiki", "slug": "getting-started"}, "https://wiki.example.org/p/getting-started"},
+		{"DOCUMENT", store.Row{"id": "doc00000000102", "kind": "wiki", "name": "Getting Started", "slug": "getting-started"}, "https://wiki.example.org/p/getting-started"},
+		{"DOCUMENT", store.Row{"id": "doc00000000104", "kind": "wiki", "name": "Drop-off and Pickup", "parent": "doc00000000102"}, "https://wiki.example.org/p/getting-started/Drop-off-and-Pickup"},
+		{"DOCUMENT", store.Row{"id": "doc00000000107", "kind": "wiki", "name": "Clubs & Cafés", "parent": "doc00000000105"}, "https://wiki.example.org/p/Activities/Clubs-Caf%C3%A9s"},
 		{"DOCUMENT", store.Row{"id": "doc00000000200", "relation": "linked", "url": "https://docs.google.com/x"}, "https://docs.google.com/x"},
 		{"DOCUMENT", store.Row{"id": "doc00000000001", "kind": "mail"}, ""},
 		{"MEMBER", store.Row{"id": "mem00000000010"}, ""},
 	} {
-		if got := Link(c.table, c.row, origin); got != c.want {
+		if got := m.Link(c.table, c.row, origin); got != c.want {
 			t.Errorf("%s %v links to %q, want %q", c.table, c.row, got, c.want)
 		}
 	}

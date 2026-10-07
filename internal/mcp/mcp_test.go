@@ -390,7 +390,7 @@ func TestTools(t *testing.T) {
 		{"helios_get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
 		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/people/`}, false},
 		{"helios_group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
-		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "https://wiki.heliosian.com/p/" + camping, "doc00000000109 side", "## wiki (" + camping + ")"}, false},
+		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "https://wiki.heliosian.com/p/Activities/Camping-Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
 		{"helios_find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
 		{"helios_find_people", nil, []string{"name at least one"}, true},
 		{"helios_events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"count"`}, false},

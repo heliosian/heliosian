@@ -9,7 +9,10 @@ let dragged = null;
 
 function currentPage() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  return parts[0] === 'p' ? pageAt(parts[1] || '') : null;
+  if (parts[0] !== 'p') {
+    return null;
+  }
+  return pageAt(parts.slice(1)) || (parts.at(-1) === 'edit' ? pageAt(parts.slice(1, -1)) : null);
 }
 
 function opened() {
