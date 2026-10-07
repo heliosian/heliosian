@@ -39,8 +39,9 @@ import (
 )
 
 const (
-	logPath = "local/heliosian-server.log"
-	mailDir = "local/mail"
+	logPath      = "local/heliosian-server.log"
+	mailDir      = "local/mail"
+	snapshotRoot = "local/snapshot"
 )
 
 const sampleUser = "jordan.whitfield@heliosschool.org"
@@ -56,10 +57,17 @@ func main() {
 	click := flag.String("click", "", "css selectors to click once --wait is visible, separated by |, for --capture")
 	settle := flag.Duration("settle", 0, "how long to wait after the last click before capturing, for --capture")
 	as := flag.String("as", "", "view as this directory address through Spoof Mode, for --capture")
+	snapshot := flag.Bool("snapshot", false, "serve the snapshot tools/snapshot took under "+snapshotRoot+", disconnected: writes stay in memory and the media bucket is read but never written")
+	email := flag.String("email", "", "the directory address to sign in as, for --snapshot")
 	flag.Parse()
 	slog.SetDefault(logging.Console())
 
 	switch {
+	case *snapshot:
+		if *email == "" {
+			logging.Fatal("--snapshot needs --email, the directory address to sign in as")
+		}
+		app.Serve(snapshotServer(*email))
 	case *real:
 		devcache.Install()
 		app.Serve(localTLS(app.Production(app.DevDomain)))
@@ -77,19 +85,44 @@ func main() {
 }
 
 func sampleServer() (*http.Server, *store.Queue) {
+	intercept.GoogleLogin("local/google")
+	bucket := blob.NewMemoryBucket()
+	fillSampleBucket(bucket)
+	core := localCore(&data.Dir{Root: "sampledata"}, bucket)
+	saved, err := filepath.Glob("sampledata/artifacts/*.json")
+	if err != nil {
+		logging.Fatal("list the sample documents", "error", err)
+	}
+	for _, path := range saved {
+		if err := core.Documents.FileSaved(context.Background(), access.System("sample"), path); err != nil {
+			logging.Fatal("file a sample document", "path", path, "error", err)
+		}
+	}
+	slog.Info("serving sample data", "as", sampleUser)
+	return localServer(core, sampleUser)
+}
+
+func snapshotServer(email string) (*http.Server, *store.Queue) {
+	devcache.Install()
+	base, err := blob.Open(blob.MediaBucket)
+	if err != nil {
+		logging.Fatal("media bucket", "error", err)
+	}
+	core := localCore(&data.Dir{Root: snapshotRoot}, blob.Overlay(base))
+	slog.Info("serving the snapshot, disconnected", "dir", snapshotRoot, "as", email)
+	return localServer(core, email)
+}
+
+func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	intercept.Install(mail.Host, mailFiles{dir: mailDir})
 	intercept.Install(intercept.ClaudeHost, intercept.Claude())
 	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
 	intercept.Install(intercept.PlacesHost, intercept.Places())
-	intercept.GoogleLogin("local/google")
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
 	}
-	dir := &data.Dir{Root: "sampledata"}
-	bucket := blob.NewMemoryBucket()
-	fillSampleBucket(bucket)
 	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
 		Domain:        app.DevDomain + ":" + app.Port(),
@@ -119,24 +152,18 @@ func sampleServer() (*http.Server, *store.Queue) {
 		Composer:      db.NewComposer("sample", claude.NewLimiter()),
 	})
 	core.Search.StartMaking("sample")
-	saved, err := filepath.Glob("sampledata/artifacts/*.json")
-	if err != nil {
-		logging.Fatal("list the sample documents", "error", err)
-	}
-	for _, path := range saved {
-		if err := core.Documents.FileSaved(context.Background(), access.System("sample"), path); err != nil {
-			logging.Fatal("file a sample document", "path", path, "error", err)
-		}
-	}
+	return core
+}
+
+func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
 	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.Store.Member, []string{app.OptInPath}, core.Store)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))
 		signIn.RegisterSpoof(m)
 	}
-	slog.Info("serving sample data", "as", sampleUser)
 	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
-		return signIn.Fixed(sampleUser, next)
+		return signIn.Fixed(user, next)
 	}), core.Aliased()), core.Queue)
 }
 

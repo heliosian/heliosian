@@ -137,15 +137,46 @@ func (s *Sheet) Raw(app, name string) ([][]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return rawRows(resp.Values), nil
+}
+
+func (s *Sheet) RawTabs(app string) (map[string][][]string, error) {
+	id, err := s.spreadsheet(app)
+	if err != nil {
+		return nil, err
+	}
+	_, tabs, err := s.Layout(app)
+	if err != nil {
+		return nil, err
+	}
+	ranges := []string{}
+	for _, t := range tabs {
+		ranges = append(ranges, quoteTab(t.Title))
+	}
+	resp, err := call("batch get "+app, s.service.Spreadsheets.Values.BatchGet(id).Ranges(ranges...).Do)
+	if err != nil {
+		return nil, err
+	}
+	if len(resp.ValueRanges) != len(tabs) {
+		return nil, fmt.Errorf("spreadsheet %s answered %d ranges for %d asked", app, len(resp.ValueRanges), len(tabs))
+	}
+	out := map[string][][]string{}
+	for i, t := range tabs {
+		out[t.Title] = rawRows(resp.ValueRanges[i].Values)
+	}
+	return out, nil
+}
+
+func rawRows(values [][]any) [][]string {
 	rows := [][]string{}
-	for _, row := range resp.Values {
+	for _, row := range values {
 		cells := []string{}
 		for _, cell := range row {
 			cells = append(cells, strings.TrimSpace(fmt.Sprint(cell)))
 		}
 		rows = append(rows, cells)
 	}
-	return rows, nil
+	return rows
 }
 
 func (s *Sheet) Upsert(app, table string, match, cells map[string]string) error {

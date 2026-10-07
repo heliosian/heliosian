@@ -21,6 +21,17 @@ func dirWith(t *testing.T, csv string) *Dir {
 
 const categories = "Title,Image,Style\nSchool,a.png,cards\nEvents,,tiles\nChats,c.png,tiles\n"
 
+func TestARaggedRowReadsItsMissingCellsBlank(t *testing.T) {
+	d := dirWith(t, "Title,Image,Style\nSchool,a.png\nEvents\nChats,c.png,tiles\n")
+	_, rows, err := d.Table("apps", "Categories")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 || rows[0]["Image"] != "a.png" || rows[0]["Style"] != "" || rows[1]["Title"] != "Events" || rows[1]["Image"] != "" || rows[2]["Style"] != "tiles" {
+		t.Fatalf("rows = %v", rows)
+	}
+}
+
 func TestTabsReadsTablesWholeAndHeadersAlone(t *testing.T) {
 	d := dirWith(t, categories)
 	tabs, err := d.Tabs(context.Background(), "apps", []string{"Categories"}, []string{"Categories"})

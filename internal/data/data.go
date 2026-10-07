@@ -66,7 +66,9 @@ func (d *Dir) load(app, name string) (*table, error) {
 		return nil, err
 	}
 	defer f.Close()
-	records, err := csv.NewReader(f).ReadAll()
+	reader := csv.NewReader(f)
+	reader.FieldsPerRecord = -1
+	records, err := reader.ReadAll()
 	if err != nil {
 		return nil, err
 	}
