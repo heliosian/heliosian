@@ -400,12 +400,10 @@ var searchLoads = make(chan struct{}, searchLoaders)
 func (x *Searcher) load(hash string) (*SearchEntry, error) {
 	searchLoads <- struct{}{}
 	defer func() { <-searchLoads }()
-	ctx := context.Background()
-	held, err := x.bucket.Exists(ctx, hash)
-	if err != nil || !held {
-		return nil, err
+	raw, _, err := x.bucket.Get(context.Background(), hash)
+	if errors.Is(err, blob.ErrNotFound) {
+		return nil, nil
 	}
-	raw, _, err := x.bucket.Get(ctx, hash)
 	if err != nil {
 		return nil, err
 	}

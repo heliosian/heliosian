@@ -322,7 +322,7 @@ func (w *CalendarWatcher) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state := r.Header.Get("X-Goog-Resource-State")
-	slog.InfoContext(r.Context(), "calendar changed", "channel", r.Header.Get("X-Goog-Channel-ID"), "state", state, "message", r.Header.Get("X-Goog-Message-Number"))
+	slog.InfoContext(r.Context(), "calendar changed", "channel", r.Header.Get("X-Goog-Channel-ID"), "state", state, "number", r.Header.Get("X-Goog-Message-Number"))
 	if state != "sync" {
 		w.Kick()
 	}
