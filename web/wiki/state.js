@@ -123,16 +123,19 @@ export function setOrder(id, key) {
   return api('POST', '/api/q', {batch: [{set: id, cells: {order: key}}]});
 }
 
-export async function body(p) {
+export function body(p) {
   if (!p.content) {
-    return '';
+    return Promise.resolve('');
   }
   if (!bodies.has(p.content)) {
-    const res = await fetch(`/api/blob/${p.content}/blob`);
-    if (!res.ok) {
-      throw new Error(`Couldn’t read the page (${res.status}).`);
-    }
-    bodies.set(p.content, await res.text());
+    const text = fetch(`/api/blob/${p.content}/blob`).then(res => {
+      if (!res.ok) {
+        throw new Error(`Couldn’t read the page (${res.status}).`);
+      }
+      return res.text();
+    });
+    bodies.set(p.content, text);
+    text.catch(() => bodies.delete(p.content));
   }
   return bodies.get(p.content);
 }
