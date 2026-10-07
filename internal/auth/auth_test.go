@@ -11,6 +11,25 @@ import (
 	"time"
 )
 
+func TestPublicPaths(t *testing.T) {
+	for _, c := range []struct {
+		method, path string
+		public       bool
+	}{
+		{"POST", "/", true},
+		{"GET", "/", false},
+		{"POST", "/mcp", true},
+		{"GET", "/.well-known/openid-configuration", true},
+		{"POST", "/oauth/token", true},
+		{"GET", "/oauth/authorize", false},
+		{"POST", "/api/mcp/approve", false},
+	} {
+		if got := Public(httptest.NewRequest(c.method, c.path, nil)); got != c.public {
+			t.Errorf("%s %s public = %v", c.method, c.path, got)
+		}
+	}
+}
+
 func TestLogoutDomains(t *testing.T) {
 	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	cases := map[string][]string{

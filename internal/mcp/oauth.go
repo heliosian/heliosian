@@ -84,13 +84,15 @@ func unseal(key []byte, purpose, sealed string, v any) bool {
 	return json.Unmarshal(raw, v) == nil
 }
 
-func (s *Server) resource(w http.ResponseWriter, r *http.Request) {
-	sdkauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
-		Resource:               origin(r) + "/mcp",
-		AuthorizationServers:   []string{origin(r)},
-		BearerMethodsSupported: []string{"header"},
-		ResourceName:           "Helios",
-	}).ServeHTTP(w, r)
+func (s *Server) resource(path string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		sdkauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
+			Resource:               origin(r) + path,
+			AuthorizationServers:   []string{origin(r)},
+			BearerMethodsSupported: []string{"header"},
+			ResourceName:           "Helios",
+		}).ServeHTTP(w, r)
+	}
 }
 
 func (s *Server) authServer(w http.ResponseWriter, r *http.Request) {

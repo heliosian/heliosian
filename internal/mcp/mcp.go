@@ -46,16 +46,21 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET /oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
 		serve.File(w, r, "web/mcp/authorize.html")
 	})
-	mux.HandleFunc("GET "+resourcePath, s.resource)
-	mux.HandleFunc("GET "+resourcePath+"/mcp", s.resource)
+	mux.HandleFunc("GET "+resourcePath, s.resource("/"))
+	mux.HandleFunc("GET "+resourcePath+"/mcp", s.resource("/mcp"))
 	mux.HandleFunc("GET "+authServerPath, s.authServer)
 	mux.HandleFunc("POST /oauth/register", s.register)
 	mux.HandleFunc("POST /oauth/token", s.token)
 	mux.HandleFunc("POST /api/mcp/request", serve.JSON(s.describe))
 	mux.HandleFunc("POST /api/mcp/approve", serve.JSON(s.approve))
 	mux.HandleFunc("POST /api/mcp/deny", serve.JSON(s.deny))
-	mux.HandleFunc("/mcp", func(w http.ResponseWriter, r *http.Request) {
-		guard := sdkauth.RequireBearerToken(s.verify, &sdkauth.RequireBearerTokenOptions{ResourceMetadataURL: origin(r) + resourcePath + "/mcp"})
+	mux.HandleFunc("POST /{$}", s.guarded(""))
+	mux.HandleFunc("/mcp", s.guarded("/mcp"))
+}
+
+func (s *Server) guarded(suffix string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		guard := sdkauth.RequireBearerToken(s.verify, &sdkauth.RequireBearerTokenOptions{ResourceMetadataURL: origin(r) + resourcePath + suffix})
 		guard(s.handler).ServeHTTP(w, r)
-	})
+	}
 }

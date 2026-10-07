@@ -4,20 +4,20 @@ Helios MCP, at `mcp.heliosian.com`, serves the data model (`docs/datamodel.md`) 
 
 ## Connecting
 
-The host's front page (`web/mcp/index.html`) gives the address to add, the host's own `/mcp`, as a custom connector in Claude or with `claude mcp add --transport http` in Claude Code. The client finds everything else itself.
+The host's front page (`web/mcp/index.html`) gives the address to add, the host itself, as a custom connector in Claude or ChatGPT or with `claude mcp add --transport http` in Claude Code. The client finds everything else itself.
 
-`/mcp` is the MCP endpoint: the Go SDK's streamable HTTP handler, stateless, answering in JSON. Each request carries an `Authorization: Bearer` token and is refused with a 401 without a good one. The 401's `WWW-Authenticate` names the protected-resource metadata, which is how a client learns where to sign in.
+The MCP endpoint answers at both `POST /` and `/mcp`, since people type the bare host and some clients expect the conventional path: the Go SDK's streamable HTTP handler, stateless, answering in JSON. A `GET /` is the front page. Each request carries an `Authorization: Bearer` token and is refused with a 401 without a good one. The 401's `WWW-Authenticate` names the protected-resource metadata for the path asked, which is how a client learns where to sign in.
 
 ## Signing in
 
 The host is its own OAuth 2.1 authorization server, built on the apps' Google sign-in rather than beside it. It keeps nothing: every client id, code and token is a JSON payload signed with an HMAC under a key derived from `SESSION_KEY` (`MCPKey` in `internal/app/wiring.go`), separate from the session cookie's key, so a token can never be used as a cookie or a cookie as a token.
 
-- `/.well-known/oauth-protected-resource` (and the same under `/mcp`) names `/mcp` as the resource and the host as its authorization server. `/.well-known/oauth-authorization-server` names the endpoints below.
+- `/.well-known/oauth-protected-resource` names the root as the resource, and the same under `/mcp` names `/mcp`, each with the host as its authorization server. `/.well-known/oauth-authorization-server` names the endpoints below. Any other `/.well-known/` path is a 404, OpenID Connect's discovery document among them: the host issues no ID tokens, and clients fall back to the OAuth metadata.
 - `POST /oauth/register` is dynamic client registration. It accepts redirect addresses that are https, or plain http on a loopback address, and answers a client id that holds the client's name, its redirect addresses and a random value, so two registrations are two clients. Clients are public: there is no secret, only PKCE.
 - `GET /oauth/authorize` sits behind the normal sign-in, so someone already signed in to any app goes straight to it and anyone else signs in with Google first. The page (`web/mcp/authorize.html`) shows the client's name, the account it will read as and where approving sends the browser, from `POST /api/mcp/request`. Allow posts to `/api/mcp/approve`, Deny to `/api/mcp/deny`, and each answers the client's redirect address with a code or `access_denied` and the request's `state`. All three check the authorization request again: the client id is one this server signed, the redirect address is one the client registered, the response type is `code` and there is an S256 code challenge. They also refuse anything the browser does not mark `Sec-Fetch-Site: same-origin`. Approving binds the code to the signed-in person, never a Spoof Mode view, and is refused for anyone the data model does not sign in.
 - `POST /oauth/token` exchanges a code for an access token. The code must still be within `codeLength`, be presented by the client it was issued to with the same redirect address, and come with the verifier that hashes to its challenge. Because nothing is stored, a code is not single-use; its short life and PKCE are what bind it. There are no refresh tokens: a token lasts `tokenLength`, and the client signs in again after it.
 
-`/mcp` refuses a token once it has expired, once the person signs out of any app after it was issued (the same `Signed Out` record that ends their sessions, `docs/dev.md`), and once the directory or the data model stops admitting them. Those paths, and the OAuth paths a client reaches without a cookie, are named in `auth.Public` (`docs/dev.md`, Hosts and files).
+The endpoint refuses a token once it has expired, once the person signs out of any app after it was issued (the same `Signed Out` record that ends their sessions, `docs/dev.md`), and once the directory or the data model stops admitting them. Those paths, and the OAuth paths a client reaches without a cookie, are named in `auth.Public` (`docs/dev.md`, Hosts and files).
 
 ## Tools
 
@@ -42,4 +42,4 @@ Each call logs an `mcp: tool` line with the tool, the viewer's person ID, how lo
 
 ## Tests
 
-`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling each tool. It also covers the refusals: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.
+`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling each tool, at `/mcp` and at the root. It also covers the refusals, at both: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.

@@ -104,9 +104,11 @@ func (a *Auth) deny(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Public(path string) bool {
+func Public(r *http.Request) bool {
+	path := r.URL.Path
 	return path == "/auth/login" || path == "/auth/client" || strings.HasPrefix(path, "/hooks/") || strings.HasPrefix(path, "/open/") || strings.HasPrefix(path, "/ext/") ||
-		strings.HasPrefix(path, "/.well-known/oauth-") || path == "/oauth/register" || path == "/oauth/token" || path == "/mcp"
+		strings.HasPrefix(path, "/.well-known/") || path == "/oauth/register" || path == "/oauth/token" || path == "/mcp" ||
+		(path == "/" && r.Method == http.MethodPost)
 }
 
 func Bearer(r *http.Request) (string, bool) {
@@ -118,7 +120,7 @@ func Bearer(r *http.Request) (string, bool) {
 
 func passed(r *http.Request) bool {
 	_, bearer := Bearer(r)
-	return Public(r.URL.Path) || bearer
+	return Public(r) || bearer
 }
 
 type session struct {

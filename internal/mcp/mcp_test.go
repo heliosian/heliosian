@@ -192,9 +192,14 @@ func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func (f fixture) connect(t *testing.T, token string) *sdk.ClientSession {
 	t.Helper()
+	return f.connectAt(t, token, "/mcp")
+}
+
+func (f fixture) connectAt(t *testing.T, token, endpoint string) *sdk.ClientSession {
+	t.Helper()
 	client := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil)
 	session, err := client.Connect(context.Background(), &sdk.StreamableClientTransport{
-		Endpoint:   f.server.URL + "/mcp",
+		Endpoint:   f.server.URL + endpoint,
 		HTTPClient: &http.Client{Transport: bearerTransport(token)},
 		MaxRetries: -1,
 	}, nil)
@@ -240,24 +245,56 @@ func TestConnectingReadsAsThePersonWhoApproved(t *testing.T) {
 	}
 }
 
+func TestTheRootServesMCPToo(t *testing.T) {
+	f := setup(t)
+	text, failed := callTool(t, f.connectAt(t, f.token(t), "/"), "whoami", nil)
+	if failed || !strings.Contains(text, rowanID) {
+		t.Fatalf("whoami at the root: %s", text)
+	}
+	res, err := http.Get(f.server.URL + "/.well-known/oauth-protected-resource")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	resource := map[string]any{}
+	json.NewDecoder(res.Body).Decode(&resource)
+	if got, _ := resource["resource"].(string); !strings.HasSuffix(got, "/") || strings.HasSuffix(got, "/mcp") {
+		t.Errorf("the root's resource is %q", got)
+	}
+}
+
+func TestAWellKnownDocumentNotServedIsMissing(t *testing.T) {
+	f := setup(t)
+	res, err := http.Get(f.server.URL + "/.well-known/openid-configuration")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("openid-configuration answered %d", res.StatusCode)
+	}
+}
+
 func TestAMissingOrForeignTokenPointsAtTheMetadata(t *testing.T) {
 	f := setup(t)
-	for name, token := range map[string]string{"none": "", "forged": "e30.bm90LWEtc2lnbmF0dXJl"} {
-		req, _ := http.NewRequest(http.MethodPost, f.server.URL+"/mcp", strings.NewReader(`{}`))
-		req.Header.Set("Content-Type", "application/json")
-		if token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		if res.StatusCode != http.StatusUnauthorized {
-			t.Errorf("%s: answered %d", name, res.StatusCode)
-		}
-		if !strings.Contains(res.Header.Get("WWW-Authenticate"), "resource_metadata=") {
-			t.Errorf("%s: no resource_metadata in %q", name, res.Header.Get("WWW-Authenticate"))
+	for _, endpoint := range []string{"/mcp", "/"} {
+		for name, token := range map[string]string{"none": "", "forged": "e30.bm90LWEtc2lnbmF0dXJl"} {
+			req, _ := http.NewRequest(http.MethodPost, f.server.URL+endpoint, strings.NewReader(`{}`))
+			req.Header.Set("Content-Type", "application/json")
+			if token != "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != http.StatusUnauthorized {
+				t.Errorf("%s %s: answered %d", endpoint, name, res.StatusCode)
+			}
+			if got := res.Header.Get("WWW-Authenticate"); !strings.Contains(got, "resource_metadata=") || !strings.HasSuffix(got, strings.TrimSuffix(resourcePath+endpoint, "/")+`"`) {
+				t.Errorf("%s %s: WWW-Authenticate is %q", endpoint, name, got)
+			}
 		}
 	}
 }
