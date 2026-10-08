@@ -185,6 +185,10 @@ func main() {
 			address, accept = db.ExportURL(address), linkAccept
 		}
 		body, status, final, err := s.get(address, accept)
+		if err == nil && status == http.StatusOK && doc["relation"] == "linked" && db.ExportURL(final) != final {
+			address = db.ExportURL(final)
+			body, status, final, err = s.get(address, accept)
+		}
 		stop := ""
 		switch {
 		case err != nil || status != http.StatusOK || host(final) == googleSignIn:
