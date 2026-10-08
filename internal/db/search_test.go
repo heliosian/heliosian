@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -228,6 +229,48 @@ func TestDeletingEverySearchEntryAtOnceBuildsEveryOneAgain(t *testing.T) {
 	for _, row := range rows {
 		if raw, _, err := bucket.Get(context.Background(), row["object"]); err != nil || !strings.Contains(string(raw), "built again") {
 			t.Fatalf("the bucket holds %.80s for %s, %v", raw, row["target"], err)
+		}
+	}
+}
+
+func TestWordsMatchWhole(t *testing.T) {
+	for _, c := range []struct {
+		text, word string
+		want       bool
+	}{
+		{"map testing next week", "map", true},
+		{"the maps are up", "map", true},
+		{"a maple tree", "map", false},
+		{"isaac is here", "isaac", true},
+		{"this one", "is", false},
+		{"ends with jays", "jays", true},
+		{"jaysmith", "jays", false},
+	} {
+		if got := holdsWord(c.text, c.word); got != c.want {
+			t.Errorf("holdsWord(%q, %q) = %v, want %v", c.text, c.word, got, c.want)
+		}
+	}
+}
+
+func TestFillerWordsAreLeftOut(t *testing.T) {
+	if got := searchTerms("Who teaches the Jays?"); !slices.Equal(got, []string{"teaches", "jays"}) {
+		t.Errorf("searchTerms = %v", got)
+	}
+}
+
+func TestRecencyHalvesEachYear(t *testing.T) {
+	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		when time.Time
+		want float64
+	}{
+		{time.Time{}, 1},
+		{now.AddDate(0, 1, 0), 1},
+		{now.Add(-365 * 24 * time.Hour), 0.5},
+		{now.Add(-730 * 24 * time.Hour), 0.25},
+	} {
+		if got := searchRecency(c.when, now); math.Abs(got-c.want) > 0.001 {
+			t.Errorf("searchRecency(%v) = %v, want %v", c.when, got, c.want)
 		}
 	}
 }
