@@ -12,11 +12,17 @@ const lists = {words: document.getElementById('by-words'), meaning: document.get
 const tables = ['GROUP', 'PERSON', 'DOCUMENT'];
 const sheetOf = {GROUP: 'datagroups', PERSON: 'datapeople', DOCUMENT: 'datadocuments'};
 
-function part(p) {
-  const line = el('div', 'part', '');
-  const source = el('a', '', p.source || p.id);
-  source.href = `/resources#DOCUMENT/${p.extract}`;
-  line.append(source, el('div', 'about', p.summary));
+function link(text, id) {
+  const a = el('a', '', text);
+  a.href = `/resources#DOCUMENT/${id}`;
+  return a;
+}
+
+function ref(r) {
+  const line = el('div', 'ref', '');
+  const name = link(r.name || r.terminal, r.terminal);
+  name.className = 'name';
+  line.append(name, link(r.source || 'itself', r.document), link('extract', r.extract), el('div', 'about', r.summary));
   return line;
 }
 
@@ -24,20 +30,13 @@ function show(kind, results) {
   lists[kind].replaceChildren(...tables.flatMap(table => results[table][kind].map(r => {
     const item = el('li', '');
     item.dataset.sheet = sheetOf[table];
+    if (r.refs) {
+      item.append(el('span', 'kind', table.toLowerCase()), ...r.refs.map(ref));
+      return item;
+    }
     const name = el('a', 'name', r.name || r.id);
     name.href = `/resources#${table}/${r.id}`;
-    item.append(name, el('span', 'kind', table.toLowerCase()));
-    if (!r.parts) {
-      item.append(el('div', 'about', r.summary));
-    }
-    item.append(...(r.parts ?? []).map(part));
-    for (const c of r.copies ?? []) {
-      const copy = el('div', 'copy', '');
-      const copyName = el('a', 'name', c.name || c.id);
-      copyName.href = `/resources#DOCUMENT/${c.id}`;
-      copy.append(el('span', 'kind', 'copy in'), copyName, ...c.parts.map(part));
-      item.append(copy);
-    }
+    item.append(name, el('span', 'kind', table.toLowerCase()), el('div', 'about', r.summary));
     return item;
   })));
 }

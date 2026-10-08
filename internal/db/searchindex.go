@@ -26,16 +26,20 @@ type searchView struct {
 	objects map[string][]string
 	entries map[string]*SearchEntry
 	words   map[string][]string
-	vectors *vectorIndex
+	vectors map[string]*vectorIndex
 	groups  map[string]string
 	members map[string][]string
 }
 
 func emptyView() *searchView {
-	return &searchView{rows: map[string]SearchRow{}, objects: map[string][]string{}, entries: map[string]*SearchEntry{}, words: map[string][]string{}, vectors: &vectorIndex{}, groups: map[string]string{}, members: map[string][]string{}}
+	vectors := map[string]*vectorIndex{}
+	for _, t := range searchTables {
+		vectors[t] = &vectorIndex{}
+	}
+	return &searchView{rows: map[string]SearchRow{}, objects: map[string][]string{}, entries: map[string]*SearchEntry{}, words: map[string][]string{}, vectors: vectors, groups: map[string]string{}, members: map[string][]string{}}
 }
 
-func buildView(rows map[string]SearchRow, entries map[string]*SearchEntry, vectors *vectorIndex) *searchView {
+func buildView(rows map[string]SearchRow, entries map[string]*SearchEntry, vectors map[string]*vectorIndex) *searchView {
 	v := &searchView{rows: rows, objects: map[string][]string{}, entries: entries, words: map[string][]string{}, vectors: vectors}
 	for _, id := range slices.Sorted(maps.Keys(rows)) {
 		if o := rows[id].Object; entries[o] != nil {
@@ -96,8 +100,15 @@ func (v *searchView) byWords(words string) map[string]float64 {
 			scores[o] += weight
 		}
 	}
+	best := 0.0
 	for o := range scores {
 		scores[o] /= total
+		best = max(best, scores[o])
+	}
+	for o, share := range scores {
+		if share < searchWordShare*best {
+			delete(scores, o)
+		}
 	}
 	return scores
 }
@@ -207,18 +218,15 @@ func (v *vectorIndex) order(query []float32) []int {
 	return order
 }
 
-func (v *vectorIndex) scan(query []float32, cells []int, best map[string]float64) float64 {
-	top := math.Inf(-1)
+func (v *vectorIndex) scan(query []float32, cells []int, best map[string]float64) {
 	for _, c := range cells {
 		for _, ref := range v.cells[c] {
 			d := float64(dot(query, ref.vector))
-			top = max(top, d)
 			if old, ok := best[ref.object]; !ok || d > old {
 				best[ref.object] = d
 			}
 		}
 	}
-	return top
 }
 
 func cmpDesc[T float32 | float64](a, b T) int {

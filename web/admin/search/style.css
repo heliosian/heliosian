@@ -67,12 +67,11 @@
   font-size: 13px;
 }
 
-.results li .part,
-.results li .copy {
+.results li .ref {
   margin: 6px 0 0 14px;
   font-size: 13px;
 }
 
-.results li .copy .kind {
-  margin: 0 6px 0 0;
+.results li .ref a + a {
+  margin-left: 8px;
 }

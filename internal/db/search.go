@@ -31,21 +31,27 @@ import (
 )
 
 const (
-	searchFolder       = "search"
-	SearchLimit        = 10
-	searchWordShare    = 0.5
-	searchMeaningLeast = 0.0
-	searchChunk        = 1500
-	searchMakers       = 4
-	searchLoaders      = 16
-	searchTimeout      = 2 * time.Minute
-	searchAttempts     = 3
-	searchShortest     = 20
+	searchFolder    = "search"
+	SearchLimit     = 10
+	searchWordShare = 0.5
+	searchChunk     = 1500
+	searchMakers    = 4
+	searchLoaders   = 16
+	searchTimeout   = 2 * time.Minute
+	searchAttempts  = 3
+	searchShortest  = 20
 )
 
 var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 
-const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
+var terminalNames = map[string]struct{ label, of, published string }{
+	"mail":     {"Email", "email", "Sent"},
+	"file":     {"File", "file", "Updated"},
+	"calendar": {"Calendar", "calendar", "Updated"},
+	"wiki":     {"Wiki page", "wiki page", "Updated"},
+}
+
+const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or the text of something the community received or shared - an email's body, a file attached to it, an image it shows, a page it links to, or a shared file, year calendar or wiki page itself - read as text and headed by where it came from. You are given what everyone who can see it can read.
 
 summary: one or two plain sentences saying what it is, shown under its name in a list of search results. Say only what the text supports.
 keywords: every word and short phrase someone might type to find it: the names of the people, groups, classes, places and events it is about, its subjects, and the dates it gives, then other names for those - synonyms, related terms, likely misspellings. Search matches these keywords alone, never the text, so a term left out here cannot find it. Leave out what says nothing about it, such as greetings, sign-offs and mailing-list boilerplate. At most 100.`
@@ -73,28 +79,22 @@ type SearchChunk struct {
 	Vector []float32 `json:"vector"`
 }
 
-type SearchPart struct {
-	ID      string `json:"id"`
-	Source  string `json:"source,omitempty"`
-	Href    string `json:"href,omitempty"`
-	Extract string `json:"extract"`
-	Summary string `json:"summary"`
-}
-
-type SearchCopy struct {
-	ID    string       `json:"id"`
-	Name  string       `json:"name"`
-	Href  string       `json:"href,omitempty"`
-	Parts []SearchPart `json:"parts"`
+type SearchRef struct {
+	Extract  string `json:"extract"`
+	Document string `json:"document"`
+	Source   string `json:"source,omitempty"`
+	Href     string `json:"href,omitempty"`
+	Terminal string `json:"terminal"`
+	Name     string `json:"name"`
+	Summary  string `json:"summary"`
 }
 
 type SearchResult struct {
-	ID      string       `json:"id"`
-	Name    string       `json:"name"`
-	Href    string       `json:"href,omitempty"`
-	Summary string       `json:"summary"`
-	Parts   []SearchPart `json:"parts,omitempty"`
-	Copies  []SearchCopy `json:"copies,omitempty"`
+	ID      string      `json:"id,omitempty"`
+	Name    string      `json:"name,omitempty"`
+	Href    string      `json:"href,omitempty"`
+	Summary string      `json:"summary,omitempty"`
+	Refs    []SearchRef `json:"refs,omitempty"`
 }
 
 type SearchResults struct {
@@ -103,9 +103,9 @@ type SearchResults struct {
 }
 
 type SearchRow struct {
-	Table, Head, Input, Object, Name, Href   string
-	Source, SourceLine, SourceHref, Terminal string
-	named, source                            store.Row
+	Table, Head, Input, Object, Name, Href, When string
+	Source, SourceLine, SourceHref, Terminal     string
+	named, source                                store.Row
 }
 
 func (r SearchRow) body() string {
@@ -239,11 +239,11 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			if input == "" {
 				continue
 			}
-			name := row["name"]
+			name, when := row["name"], row["start"]
 			if table == "PERSON" {
-				name = row["name_show"]
+				name, when = row["name_show"], ""
 			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, named: row}
+			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, named: row}
 		}
 	}
 	docs := m.Shown("DOCUMENT")
@@ -261,7 +261,7 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 		if name == "" {
 			name = terminal["id"]
 		}
-		out[row["id"]] = SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, Source: source["id"], SourceLine: line, Terminal: terminal["id"], named: terminal, source: source}
+		out[row["id"]] = SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], named: terminal, source: source}
 	}
 	return out
 }
@@ -270,31 +270,32 @@ func (m *Model) sourceLine(source, terminal store.Row) string {
 	if source["id"] == terminal["id"] {
 		return ""
 	}
-	of := "the email"
-	if terminal["kind"] != "mail" {
-		of = "the " + terminal["kind"]
-	}
+	of := "the " + terminalNames[terminal["kind"]].of
 	content, _ := m.Shown("CONTENT").Get(source["content"])
 	mime := baseType(content["mime"])
+	parts := []string{}
 	switch source["relation"] {
 	case "part":
-		if source["filename"] != "" {
-			return fmt.Sprintf("attached file, %s, filename %q", mime, source["filename"])
+		switch {
+		case source["filename"] != "":
+			parts = append(parts, "attached file", mime, fmt.Sprintf("filename %q", source["filename"]))
+		case strings.HasPrefix(mime, "text/"):
+			parts = append(parts, "email body", mime)
+		default:
+			parts = append(parts, "embedded in "+of, mime)
 		}
-		return "email body, " + mime
 	case "image":
-		return fmt.Sprintf("image shown in %s, %s", of, mime)
+		parts = append(parts, "image shown in "+of, mime)
 	case "linked":
-		parts := []string{"linked from " + of, mime}
+		parts = append(parts, "linked from "+of, mime)
 		if source["name"] != "" {
 			parts = append(parts, fmt.Sprintf("link text %q", source["name"]))
 		}
-		if source["url"] != "" {
-			parts = append(parts, source["url"])
-		}
-		return strings.Join(parts, ", ")
+		parts = append(parts, source["url"])
+	default:
+		panic(fmt.Sprintf("search: %s is the source of an extract with relation %q", source["id"], source["relation"]))
 	}
-	return fmt.Sprintf("%s of %s, %s", source["relation"], of, mime)
+	return strings.Join(slices.DeleteFunc(parts, func(p string) bool { return p == "" }), ", ")
 }
 
 func (m *Model) markdownExtracts() []store.Row {
@@ -348,9 +349,10 @@ func (m *Model) extractHead(terminal store.Row, source string) string {
 			lines = append(lines, label+": "+value)
 		}
 	}
-	add("Email", terminal["name"])
+	names := terminalNames[terminal["kind"]]
+	add(names.label, terminal["name"])
 	add("Kind", terminal["kind"])
-	add("Sent", terminal["published"])
+	add(names.published, terminal["published"])
 	if author, ok := m.Shown("PERSON").Get(terminal["author"]); ok {
 		add("From", author["name_show"])
 	}
@@ -441,17 +443,17 @@ func (x *Searcher) follow() {
 		}
 		x.mu.Lock()
 		wanted := map[string]bool{}
-		unknown := []string{}
+		unknown := map[string]bool{}
 		for _, r := range rows {
 			wanted[r.Object] = true
-			if x.entries[r.Object] == nil && !x.missing[r.Object] && !x.dropped[r.Object] && !slices.Contains(unknown, r.Object) {
-				unknown = append(unknown, r.Object)
+			if x.entries[r.Object] == nil && !x.missing[r.Object] && !x.dropped[r.Object] {
+				unknown[r.Object] = true
 			}
 		}
-		removed := []string{}
+		removed := map[string]bool{}
 		for _, r := range x.rows {
-			if x.client != nil && !wanted[r.Object] && !slices.Contains(removed, r.Object) {
-				removed = append(removed, r.Object)
+			if x.client != nil && !wanted[r.Object] {
+				removed[r.Object] = true
 			}
 		}
 		sweep := x.client != nil && !x.swept
@@ -470,19 +472,20 @@ func (x *Searcher) follow() {
 		}
 		x.mu.Unlock()
 		if sweep {
-			removed = append(removed, x.strays(wanted, removed)...)
+			x.strays(wanted, removed)
 		}
 		if len(removed) > 0 {
 			slog.Info("search: remove the unwanted entries", "objects", len(removed))
 		}
-		for _, hash := range removed {
+		for _, hash := range slices.Sorted(maps.Keys(removed)) {
 			if err := x.bucket.Remove(context.Background(), hash); err != nil {
 				slog.Error("search: remove", "object", hash, "error", err)
 			}
 		}
-		loaded, errs := loadAll(len(unknown), func(i int) (*SearchEntry, error) { return x.load(unknown[i]) })
+		toLoad := slices.Sorted(maps.Keys(unknown))
+		loaded, errs := loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
 		x.mu.Lock()
-		for i, hash := range unknown {
+		for i, hash := range toLoad {
 			if errs[i] != nil {
 				slog.Error("search: load", "object", hash, "error", errs[i])
 				continue
@@ -503,43 +506,55 @@ func (x *Searcher) follow() {
 	}
 }
 
-func (x *Searcher) strays(wanted map[string]bool, removed []string) []string {
+func (x *Searcher) strays(wanted, removed map[string]bool) {
 	held, err := x.bucket.List(context.Background(), searchFolder+"/")
 	if err != nil {
 		slog.Error("search: list the entries", "error", err)
 		x.mu.Lock()
 		x.swept = false
 		x.mu.Unlock()
-		return nil
+		return
 	}
-	out := []string{}
 	for _, hash := range held {
-		if !wanted[hash] && !slices.Contains(removed, hash) {
-			out = append(out, hash)
+		if !wanted[hash] {
+			removed[hash] = true
 		}
 	}
-	return out
 }
 
 func (x *Searcher) index() {
-	vectors := &vectorIndex{}
+	vectors := map[string]*vectorIndex{}
+	for _, t := range searchTables {
+		vectors[t] = &vectorIndex{}
+	}
 	for range x.reindex {
 		start := time.Now()
 		x.mu.RLock()
 		rows := x.rows
 		entries := map[string]*SearchEntry{}
+		byTable := map[string]map[string]*SearchEntry{}
+		for _, t := range searchTables {
+			byTable[t] = map[string]*SearchEntry{}
+		}
 		for _, r := range rows {
 			if e := x.entries[r.Object]; e != nil {
 				entries[r.Object] = e
+				byTable[r.Table][r.Object] = e
 			}
 		}
 		x.mu.RUnlock()
-		vectors = vectors.update(entries)
+		next := map[string]*vectorIndex{}
+		cells := 0
+		for _, t := range searchTables {
+			next[t] = vectors[t].update(byTable[t])
+			cells += len(next[t].centroids)
+		}
+		vectors = next
 		view := buildView(rows, entries, vectors)
 		x.mu.Lock()
 		x.view = view
 		x.mu.Unlock()
-		slog.Info("search: indexed", "entries", len(entries), "words", len(view.words), "cells", len(vectors.centroids), "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
+		slog.Info("search: indexed", "entries", len(entries), "words", len(view.words), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
@@ -764,10 +779,6 @@ func (x *Searcher) snapshot() *searchView {
 	return x.view
 }
 
-type placed struct {
-	group, copy int
-}
-
 func SearchLimits(asked map[string]int) (map[string]int, error) {
 	out := map[string]int{}
 	for _, t := range searchTables {
@@ -800,10 +811,16 @@ func readable(r *run, table, id string) bool {
 	return ok && r.readable(t, got)
 }
 
-func (v *searchView) pick(r *run, scores map[string]float64, least float64, limits map[string]int) map[string][]SearchResult {
+func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]int) map[string][]SearchResult {
 	objects := slices.Collect(maps.Keys(scores))
+	when := func(o string) string {
+		return v.rows[v.objects[o][0]].When
+	}
 	slices.SortFunc(objects, func(a, b string) int {
 		if c := cmpDesc(scores[a], scores[b]); c != 0 {
+			return c
+		}
+		if c := strings.Compare(when(b), when(a)); c != 0 {
 			return c
 		}
 		return strings.Compare(a, b)
@@ -812,11 +829,11 @@ func (v *searchView) pick(r *run, scores map[string]float64, least float64, limi
 	for _, t := range searchTables {
 		out[t] = []SearchResult{}
 	}
-	at := map[string]placed{}
+	at := map[string]int{}
 	clusters := map[string]int{}
 	shown := map[string]bool{}
 	for _, o := range objects {
-		if scores[o] < least || full(out, limits) {
+		if full(out, limits) {
 			break
 		}
 		cluster := v.group(o)
@@ -832,26 +849,22 @@ func (v *searchView) pick(r *run, scores map[string]float64, least float64, limi
 			if shown[row.Source] || !readable(r, row.Table, id) {
 				continue
 			}
-			part := SearchPart{ID: row.Source, Source: row.SourceLine, Href: row.SourceHref, Extract: id, Summary: summary}
 			docs := out["DOCUMENT"]
-			if p, ok := at[row.Terminal]; ok {
-				if p.copy < 0 {
-					docs[p.group].Parts = append(docs[p.group].Parts, part)
-				} else {
-					docs[p.group].Copies[p.copy].Parts = append(docs[p.group].Copies[p.copy].Parts, part)
-				}
-			} else if g, ok := clusters[cluster]; ok {
-				docs[g].Copies = append(docs[g].Copies, SearchCopy{ID: row.Terminal, Name: row.Name, Href: row.Href, Parts: []SearchPart{part}})
-				at[row.Terminal] = placed{group: g, copy: len(docs[g].Copies) - 1}
-			} else {
+			i, ok := at[row.Terminal]
+			if !ok {
+				i, ok = clusters[cluster]
+			}
+			if !ok {
 				if len(docs) >= limits["DOCUMENT"] {
 					continue
 				}
-				docs = append(docs, SearchResult{ID: row.Terminal, Name: row.Name, Href: row.Href, Summary: summary, Parts: []SearchPart{part}})
-				at[row.Terminal] = placed{group: len(docs) - 1, copy: -1}
+				docs = append(docs, SearchResult{})
+				i = len(docs) - 1
+				at[row.Terminal] = i
 			}
+			docs[i].Refs = append(docs[i].Refs, row.ref(id, summary))
 			if _, ok := clusters[cluster]; !ok {
-				clusters[cluster] = at[row.Terminal].group
+				clusters[cluster] = i
 			}
 			shown[row.Source] = true
 			out["DOCUMENT"] = docs
@@ -860,9 +873,34 @@ func (v *searchView) pick(r *run, scores map[string]float64, least float64, limi
 	return out
 }
 
+func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (map[string][]SearchResult, map[string]int, int) {
+	scores := map[string]float64{}
+	scanned := map[string]int{}
+	of := 0
+	for _, t := range searchTables {
+		index := v.vectors[t]
+		order := index.order(query)
+		of += len(order)
+		if limits[t] == 0 {
+			continue
+		}
+		own := map[string]float64{}
+		for scanned[t] < len(order) {
+			batch := order[scanned[t]:min(scanned[t]+searchProbe, len(order))]
+			index.scan(query, batch, own)
+			scanned[t] += len(batch)
+			if len(v.pick(r, own, map[string]int{t: limits[t]})[t]) == limits[t] {
+				break
+			}
+		}
+		maps.Copy(scores, own)
+	}
+	return v.pick(r, scores, limits), scanned, of
+}
+
 func (x *Searcher) Words(m *Model, env Env, words string, limits map[string]int) map[string][]SearchResult {
 	v := x.snapshot()
-	return v.pick(m.newRun(env), v.byWords(words), searchWordShare, limits)
+	return v.pick(m.newRun(env), v.byWords(words), limits)
 }
 
 func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, limits map[string]int) (map[string]*SearchResults, error) {
@@ -884,71 +922,56 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 	}()
 	v := x.snapshot()
 	r := m.newRun(env)
-	byWords := v.pick(r, v.byWords(words), searchWordShare, limits)
+	byWords := v.pick(r, v.byWords(words), limits)
 	wordsTook := time.Since(start)
 	e := <-done
 	if e.err != nil {
 		return nil, fmt.Errorf("embed the words: %w", e.err)
 	}
 	waited := time.Since(start)
-	order := v.vectors.order(e.vector)
-	scores := map[string]float64{}
+	byMeaning, scanned, of := v.byMeaning(r, e.vector, limits)
 	cells := 0
-	var byMeaning map[string][]SearchResult
-	for {
-		batch := order[cells:min(cells+searchProbe, len(order))]
-		best := v.vectors.scan(e.vector, batch, scores)
-		cells += len(batch)
-		byMeaning = v.pick(r, scores, searchMeaningLeast, limits)
-		if cells == len(order) || full(byMeaning, limits) || best < searchMeaningLeast {
-			break
-		}
+	for _, n := range scanned {
+		cells += n
 	}
 	out := map[string]*SearchResults{}
 	for _, t := range searchTables {
 		out[t] = &SearchResults{Words: byWords[t], Meaning: byMeaning[t]}
 	}
-	slog.InfoContext(ctx, "search", "viewer", env.Viewer, "system", env.System, "words_took", wordsTook.Round(time.Millisecond), "embed_took", e.took.Round(time.Millisecond), "meaning_took", (time.Since(start) - waited).Round(time.Millisecond), "cells", cells, "of", len(order), "took", time.Since(start).Round(time.Millisecond))
+	slog.InfoContext(ctx, "search", "viewer", env.Viewer, "system", env.System, "words_took", wordsTook.Round(time.Millisecond), "embed_took", e.took.Round(time.Millisecond), "meaning_took", (time.Since(start) - waited).Round(time.Millisecond), "cells", cells, "of", of, "cells_group", scanned["GROUP"], "cells_person", scanned["PERSON"], "cells_document", scanned["DOCUMENT"], "took", time.Since(start).Round(time.Millisecond))
 	return out, nil
 }
 
-func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchCopy, error) {
+func (r SearchRow) ref(extract, summary string) SearchRef {
+	return SearchRef{Extract: extract, Document: r.Source, Source: r.SourceLine, Href: r.SourceHref, Terminal: r.Terminal, Name: r.Name, Summary: summary}
+}
+
+func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchRef, error) {
 	v := x.snapshot()
 	r := m.newRun(env)
 	clusters := map[string]bool{}
-	terminals := map[string]bool{}
+	asked := map[string]bool{}
 	for _, o := range slices.Sorted(maps.Keys(v.objects)) {
 		for _, rid := range v.objects[o] {
 			row := v.rows[rid]
 			if row.Table == "DOCUMENT" && (rid == id || row.Source == id || row.Terminal == id) && readable(r, row.Table, rid) {
 				clusters[v.group(o)] = true
-				terminals[row.Terminal] = true
+				asked[rid] = true
 			}
 		}
 	}
 	if len(clusters) == 0 {
 		return nil, access.Missing("no search entry for %s", id)
 	}
-	out := []SearchCopy{}
-	at := map[string]int{}
-	shown := map[string]bool{}
+	out := []SearchRef{}
 	for _, o := range slices.Sorted(maps.Keys(v.objects)) {
 		if !clusters[v.group(o)] {
 			continue
 		}
 		for _, rid := range v.objects[o] {
-			row := v.rows[rid]
-			if terminals[row.Terminal] || shown[row.Source] || !readable(r, row.Table, rid) {
-				continue
+			if !asked[rid] && readable(r, "DOCUMENT", rid) {
+				out = append(out, v.rows[rid].ref(rid, v.entries[o].Summary))
 			}
-			shown[row.Source] = true
-			part := SearchPart{ID: row.Source, Source: row.SourceLine, Href: row.SourceHref, Extract: rid, Summary: v.entries[o].Summary}
-			if i, ok := at[row.Terminal]; ok {
-				out[i].Parts = append(out[i].Parts, part)
-				continue
-			}
-			at[row.Terminal] = len(out)
-			out = append(out, SearchCopy{ID: row.Terminal, Name: row.Name, Href: row.Href, Parts: []SearchPart{part}})
 		}
 	}
 	return out, nil

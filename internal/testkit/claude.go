@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
-	"strings"
-	"unicode"
+
+	"heliosian/internal/intercept"
 )
 
 func ClaudeReplying(reply func(request string) string) http.HandlerFunc {
@@ -53,13 +52,7 @@ func UserText(request string) string {
 
 func SearchClaude() http.Handler {
 	return ClaudeReplying(func(request string) string {
-		keywords := []string{}
-		for _, w := range strings.FieldsFunc(strings.ToLower(UserText(request)), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-			if len(w) > 1 && !slices.Contains(keywords, w) {
-				keywords = append(keywords, w)
-			}
-		}
-		answer, _ := json.Marshal(map[string]any{"summary": "a thing in the sample", "keywords": keywords})
+		answer, _ := json.Marshal(intercept.SearchAnswer(UserText(request)))
 		return string(answer)
 	})
 }

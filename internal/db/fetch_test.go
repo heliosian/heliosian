@@ -9,12 +9,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/intercept"
 	"heliosian/internal/store"
 )
 
@@ -76,6 +78,65 @@ func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
 	}
 }
 
+func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><div>Could not load network resources</div><button>Retry</button></body></html>`))
+	}))
+	defer site.Close()
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Fund a need"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": site.URL + "/dl/b33482"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	StartFetcher(s, queue, blob.NewMemoryBucket())
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		if row["fetch"] == "refused" && row["content"] == "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the shell page was not refused: %v", row)
+		}
+	}
+}
+
+func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {
+	deck := []byte("%PDF-1.4\n% the condors deck\n")
+	intercept.Install("drive.google.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://docs.google.com/presentation/d/"+r.URL.Query().Get("id")+"/edit?usp=drive_open", http.StatusTemporaryRedirect)
+	}))
+	intercept.Install("docs.google.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/presentation/d/deck1/export" && r.URL.Query().Get("format") == "pdf" {
+			w.Write(deck)
+			return
+		}
+		w.Write([]byte(`<html><body>This browser version is no longer supported. Slideshow Share Sign in</body></html>`))
+	}))
+	s, queue := sampleWithQueue(t)
+	bucket := blob.NewMemoryBucket()
+	if err := commit(s, DocumentsSheet,
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Weekly Update"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": "https://drive.google.com/open?id=deck1"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	StartFetcher(s, queue, bucket)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		if row["content"] != "" {
+			if got := bytesOf(t, s, bucket, row); got != string(deck) {
+				t.Fatalf("the link holds %q", got)
+			}
+			return
+		}
+		if row["fetch"] != "" || time.Now().After(deadline) {
+			t.Fatalf("the link was not filled with the deck's export: %v", row)
+		}
+	}
+}
+
 func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
@@ -129,7 +190,7 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
 		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
 	}
-	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000015"}, []byte("<html><body>the handbook</body></html>")); code != http.StatusOK || answer.Hash == "" {
+	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000015"}, []byte("<html><body>"+strings.Repeat("The handbook says what families need to know. ", 6)+"</body></html>")); code != http.StatusOK || answer.Hash == "" {
 		t.Fatalf("a link's page was not kept: %d %+v", code, answer)
 	}
 	if page, _ := s.Model().Table("DOCUMENT").Get("doc00000000015"); page["content"] == "" || page["fetch"] != "" {

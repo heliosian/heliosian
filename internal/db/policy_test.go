@@ -187,6 +187,37 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 	}
 }
 
+func TestTheImportRefusesAFetchedPage(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/dl/b33482", "content": "cnt00000000002"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name   string
+		system string
+		change Change
+		ok     bool
+	}{
+		{"refuse a fetched page", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "refused"}), true},
+		{"blank a fetched page to fetch it again", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "extracted": ""}), true},
+		{"refuse a fetched page but keep its bytes", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"fetch": "refused"}), false},
+		{"mark a fetched page gone", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "gone"}), false},
+		{"refuse a part", "import", change(t, s, "DOCUMENT", []string{"doc00000000011"}, store.Row{"content": "", "fetch": "refused"}), false},
+		{"refuse a fetched page as another system", "extract", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "refused"}), false},
+	} {
+		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
 func TestTheImportSendsADocumentBackToBeRead(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, DocumentsSheet,

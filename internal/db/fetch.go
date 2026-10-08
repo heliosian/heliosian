@@ -33,6 +33,7 @@ const (
 	fetchTries    = 3
 	fetchWait     = time.Minute
 	fetchLongest  = 15 * time.Minute
+	pageLeast     = 40
 	googleSignIn  = "accounts.google.com"
 )
 
@@ -173,14 +174,17 @@ func (f *Fetcher) fetch(docs []store.Row) {
 }
 
 func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
-	address := ExportURL(doc["url"])
+	return fetchFrom(ctx, doc, ExportURL(doc["url"]), true)
+}
+
+func fetchFrom(ctx context.Context, doc store.Row, address string, follow bool) (fetched, error) {
 	timeout := fetchTimeout
 	if address != doc["url"] {
 		timeout = exportTimeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	within, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
+	req, err := http.NewRequestWithContext(within, http.MethodGet, address, nil)
 	if err != nil {
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
@@ -207,6 +211,9 @@ func fetchURL(ctx context.Context, doc store.Row) (fetched, error) {
 	case code != http.StatusOK:
 		return fetched{stop: "gone", why: resp.Status}, nil
 	}
+	if final := resp.Request.URL.String(); follow && ExportURL(final) != final {
+		return fetchFrom(ctx, doc, ExportURL(final), false)
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, fetchLimit+1))
 	if err != nil {
 		return fetched{}, err
@@ -228,6 +235,16 @@ func keptBody(relation string, body []byte) (string, error) {
 	}
 	if !slices.Contains(keptPages, baseType(mimeType)) {
 		return "", fmt.Errorf("%s is not an image, a pdf or a page", mimeType)
+	}
+	if baseType(mimeType) != "text/html" {
+		return mimeType, nil
+	}
+	text, err := pageMarkdown(body)
+	if err != nil {
+		return "", err
+	}
+	if words := len(strings.Fields(text)); words < pageLeast {
+		return "", fmt.Errorf("page text is %d words", words)
 	}
 	return mimeType, nil
 }

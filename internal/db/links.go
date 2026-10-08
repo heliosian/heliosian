@@ -96,13 +96,18 @@ func emailLinks(raw []byte) ([]LinkChoice, error) {
 		address := resolve(href)
 		text := nodeText(n)
 		lower := strings.ToLower(text + " " + address)
-		if seen[address] || cells.URL(address, false) != nil || slices.ContainsFunc(unwantedLinkWords, func(w string) bool { return strings.Contains(lower, w) }) {
+		if seen[address] || cells.URL(address, false) != nil || homepage(address) || slices.ContainsFunc(unwantedLinkWords, func(w string) bool { return strings.Contains(lower, w) }) {
 			continue
 		}
 		seen[address] = true
 		out = append(out, LinkChoice{URL: address, Text: text, Context: linkSurroundings(n)})
 	}
 	return out, nil
+}
+
+func homepage(address string) bool {
+	u, err := url.Parse(address)
+	return err == nil && strings.Trim(u.Path, "/") == "" && u.RawQuery == ""
 }
 
 func nodeText(n *html.Node) string {

@@ -96,6 +96,7 @@ func TestAnEmailsLinksAreCollected(t *testing.T) {
 <p><a href="mailto:office@example.org">Write to us</a> or <a href="#top">go up</a>.</p>
 <p><a href="https://mailer.example.com/u?id=1">Unsubscribe</a> from these emails.</p>
 <p><a href="https://www.google.com/url?q=https://example.org/menu&amp;sa=D">menu</a></p>
+<p>Visit <a href="https://www.glsen.org/">GLSEN</a> and <a href="https://example.org">our site</a>.</p>
 </body></html>`)
 	got, err := emailLinks(raw)
 	if err != nil {
@@ -133,7 +134,8 @@ func TestGoogleLinksFetchTheirExport(t *testing.T) {
 }
 
 func TestWhatALinkedDocumentKeeps(t *testing.T) {
-	png, pixel, pdf, page := pngOf(t, 3), pngOf(t, 1), []byte("%PDF-1.4\n% a pdf\n"), []byte("<html><body>a page</body></html>")
+	png, pixel, pdf, page := pngOf(t, 3), pngOf(t, 1), []byte("%PDF-1.4\n% a pdf\n"), []byte("<html><body><p>"+strings.Repeat("Hot lunch starts Monday. ", 10)+"</p></body></html>")
+	shell := []byte(`<html><body><div>Could not load network resources</div><button>Retry</button></body></html>`)
 	for _, c := range []struct {
 		name     string
 		relation string
@@ -148,6 +150,7 @@ func TestWhatALinkedDocumentKeeps(t *testing.T) {
 		{"a pixel for a link", "linked", pixel, false},
 		{"a pdf for a link", "linked", pdf, true},
 		{"a page for a link", "linked", page, true},
+		{"a page with no text for a link", "linked", shell, false},
 		{"anything else for a link", "linked", []byte{0, 1, 2, 3}, false},
 	} {
 		if _, err := keptBody(c.relation, c.body); (err == nil) != c.ok {

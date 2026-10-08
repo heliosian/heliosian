@@ -784,6 +784,10 @@ const PolicySource = `
 (set DOCUMENT.content (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
 ; say why fetching an image or a link stopped, or that it no longer has
 (set DOCUMENT.fetch (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
+; drop a fetched page's bytes, to refuse it as the fetcher would now or to fetch it again
+(set DOCUMENT.content (and (system "import") (= @old.relation "linked") (blank @new.content) (or (= @new.fetch "refused") (blank @new.fetch))))
+; refuse such a page, or leave it to fetch again
+(set DOCUMENT.fetch (and (system "import") (= @old.relation "linked") (blank @new.content) (or (= @new.fetch "refused") (blank @new.fetch))))
 ; mark an image placed before images had a relation of their own
 (set DOCUMENT.relation (and (system "import") (= @old.relation "linked") (= @new.relation "image")))
 ; store the bytes of an image, a pdf or a page such a fetch got

@@ -185,8 +185,16 @@ func markdownExtract(markdown string) []extracted {
 	return []extracted{{relation: "extract", body: []byte(markdown), mime: "text/markdown"}}
 }
 
-func htmlMarkdown(raw []byte) ([]extracted, error) {
+func pageMarkdown(raw []byte) (string, error) {
 	markdown, err := tomarkdown.HTML(string(raw), (&tomarkdown.LinkResolver{}).Links(&url.URL{}))
+	if err != nil {
+		return "", err
+	}
+	return tomarkdown.Trim(markdown), nil
+}
+
+func htmlMarkdown(raw []byte) ([]extracted, error) {
+	markdown, err := pageMarkdown(raw)
 	if err != nil {
 		return nil, err
 	}
@@ -194,7 +202,7 @@ func htmlMarkdown(raw []byte) ([]extracted, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(markdownExtract(tomarkdown.Trim(markdown)), images...), nil
+	return append(markdownExtract(markdown), images...), nil
 }
 
 func textMarkdown(raw []byte) ([]extracted, error) {

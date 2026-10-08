@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -121,13 +122,8 @@ func hitIDs(results []SearchResult) []string {
 func extractsOf(results []SearchResult) []string {
 	out := []string{}
 	for _, r := range results {
-		for _, p := range r.Parts {
-			out = append(out, p.Extract)
-		}
-		for _, c := range r.Copies {
-			for _, p := range c.Parts {
-				out = append(out, p.Extract)
-			}
+		for _, ref := range r.Refs {
+			out = append(out, ref.Extract)
 		}
 	}
 	return out
@@ -344,6 +340,29 @@ func TestEveryChunkCarriesTheHeader(t *testing.T) {
 	}
 }
 
+func TestTheHeaderSaysWhatTheThingIs(t *testing.T) {
+	m := sample(t).Model()
+	file := store.Row{"id": "doc1", "kind": "file", "name": "Supply list", "published": "2026-08-20 09:00:00"}
+	wiki := store.Row{"id": "doc2", "kind": "wiki", "name": "Field trips"}
+	mail := store.Row{"id": "doc3", "kind": "mail", "name": "Picture day"}
+	calendar := store.Row{"id": "doc4", "kind": "calendar", "name": "2026-2027 Helios School Calendar"}
+	for _, c := range []struct {
+		terminal, source store.Row
+		want             string
+	}{
+		{file, file, "File: Supply list\nKind: file\nUpdated: 2026-08-20 09:00:00"},
+		{wiki, wiki, "Wiki page: Field trips\nKind: wiki"},
+		{calendar, calendar, "Calendar: 2026-2027 Helios School Calendar\nKind: calendar"},
+		{mail, store.Row{"id": "doc5", "relation": "part", "content": "nothing"}, "Email: Picture day\nKind: mail\nSource: embedded in the email"},
+		{mail, store.Row{"id": "doc6", "relation": "part", "filename": "rules.pdf"}, "Email: Picture day\nKind: mail\nSource: attached file, filename \"rules.pdf\""},
+		{file, store.Row{"id": "doc7", "relation": "linked", "name": "menu", "url": "https://example.org/menu"}, "File: Supply list\nKind: file\nUpdated: 2026-08-20 09:00:00\nSource: linked from the file, link text \"menu\", https://example.org/menu"},
+	} {
+		if got := m.extractHead(c.terminal, m.sourceLine(c.source, c.terminal)); got != c.want {
+			t.Errorf("%s under %s:\n%s\nwant\n%s", c.source["id"], c.terminal["id"], got, c.want)
+		}
+	}
+}
+
 func TestTheSameTextIsFoundOnce(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)
@@ -356,20 +375,18 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	m := s.Model()
 	env := Env{Viewer: parent, Now: testNow}
 	results := x.Words(m, env, "boots", testLimits)["DOCUMENT"]
-	if len(results) != 1 || len(results[0].Parts) != 1 || len(results[0].Copies) != 1 || !slices.Equal(slices.Sorted(slices.Values(extractsOf(results))), slices.Sorted(slices.Values(extracts))) {
-		t.Fatalf("the two copies are not one result with a copy: %+v", results)
+	if len(results) != 1 || len(results[0].Refs) != 2 || !slices.Equal(slices.Sorted(slices.Values(extractsOf(results))), slices.Sorted(slices.Values(extracts))) {
+		t.Fatalf("the two copies are not one result with two refs: %+v", results)
 	}
-	x.mu.RLock()
-	first, second := x.rows[results[0].Parts[0].Extract].Terminal, results[0].Copies[0].ID
-	x.mu.RUnlock()
-	if results[0].ID != first || first == second {
-		t.Fatalf("the result is %s, its copy %s", results[0].ID, second)
+	first, second := results[0].Refs[0].Terminal, results[0].Refs[1].Terminal
+	if results[0].ID != "" || results[0].Name != "" || results[0].Summary != "" || first == second || results[0].Refs[1].Name == "" || results[0].Refs[1].Summary == "" {
+		t.Fatalf("the result is %+v", results[0])
 	}
 	similar, err := x.Similar(m, env, first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(similar) != 1 || similar[0].ID != second {
+	if len(similar) != 1 || similar[0].Terminal != second || similar[0].Extract != results[0].Refs[1].Extract {
 		t.Fatalf("the copies of %s are %+v", first, similar)
 	}
 	if _, err := x.Similar(m, Env{Viewer: student, Now: testNow}, first); err == nil {
@@ -392,9 +409,61 @@ func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
 		got := extractsOf([]SearchResult{r})
 		return slices.Contains(got, extracts[0]) && slices.Contains(got, extracts[1])
 	})
-	if len(results) != 2 || together < 0 || len(results[together].Copies) != 1 || !slices.Contains(extractsOf(results), extracts[2]) {
+	if len(results) != 2 || together < 0 || len(results[together].Refs) != 2 || !slices.Contains(extractsOf(results), extracts[2]) {
 		t.Fatalf("the near copies are not one result beside the sale: %+v", results)
 	}
+}
+
+func TestAHitJoinsItsOwnEmailBeforeItsCopy(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	headers := "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nMIME-Version: 1.0\r\n"
+	body := "<p>Bring <b>boots</b> for the tide pools.</p>"
+	first := uploadMail(t, s, pics, headers+"Date: Fri, 13 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+body+"\r\n")
+	second := uploadMail(t, s, pics, headers+"Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools again\r\nContent-Type: multipart/mixed; boundary=\"b\"\r\n\r\n"+
+		"--b\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+body+"\r\n"+
+		"--b\r\nContent-Type: text/html; charset=utf-8\r\nContent-Disposition: attachment; filename=\"sale.html\"\r\n\r\n<p>Rain boots are on sale at the book fair this week, in every size from toddler to adult.</p>\r\n--b--\r\n")
+	for _, root := range []string{first, second} {
+		made(t, s, "DOCUMENT", root, "extracted")
+		for _, part := range children(s, root) {
+			made(t, s, "DOCUMENT", part["id"], "extracted")
+		}
+	}
+	makeAll(t, s, x)
+	v := x.snapshot()
+	object := func(terminal, source string) string {
+		for _, r := range v.rows {
+			if r.Terminal == terminal && r.SourceLine == source {
+				return r.Object
+			}
+		}
+		t.Fatalf("no extract of %s from %s", terminal, source)
+		return ""
+	}
+	firstBody := object(first, "email body, text/html")
+	secondBody := object(second, "email body, text/html")
+	sale := object(second, `attached file, text/html, filename "sale.html"`)
+	run := s.Model().newRun(Env{Viewer: parent, Now: testNow})
+	grouped := func(scores map[string]float64) []string {
+		got := []string{}
+		for _, r := range v.pick(run, scores, testLimits)["DOCUMENT"] {
+			line := []string{}
+			for _, ref := range r.Refs {
+				line = append(line, ref.Terminal+"|"+ref.Source)
+			}
+			got = append(got, strings.Join(line, " "))
+		}
+		return got
+	}
+	equalLines(t, "the copy ranked before the sale", grouped(map[string]float64{firstBody: 0.9, secondBody: 0.8, sale: 0.7}), []string{
+		first + "|email body, text/html " + second + "|email body, text/html",
+		second + "|attached file, text/html, filename \"sale.html\"",
+	})
+	equalLines(t, "the sale ranked before the copy", grouped(map[string]float64{firstBody: 0.9, sale: 0.8, secondBody: 0.7}), []string{
+		first + "|email body, text/html",
+		second + "|attached file, text/html, filename \"sale.html\" " + second + "|email body, text/html",
+	})
 }
 
 func TestAnEmailsPartsAreOneResult(t *testing.T) {
@@ -407,12 +476,12 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 	row := x.rows[extract]
 	x.mu.RUnlock()
 	results := x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]
-	if len(results) != 1 || results[0].ID != row.Terminal || results[0].Name != "Tide pools" || len(results[0].Parts) != 1 {
+	if len(results) != 1 || len(results[0].Refs) != 1 {
 		t.Fatalf("the email's result: %+v", results)
 	}
-	part := results[0].Parts[0]
-	if part.ID != row.Source || part.Extract != extract || part.Source != "email body, text/html" {
-		t.Fatalf("the email's part: %+v", part)
+	want := SearchRef{Extract: extract, Document: row.Source, Source: "email body, text/html", Href: row.SourceHref, Terminal: row.Terminal, Name: "Tide pools", Summary: "Sample search entry for Email: Tide pools"}
+	if ref := results[0].Refs[0]; ref != want {
+		t.Fatalf("the email's ref: %+v, want %+v", ref, want)
 	}
 	if rows := as(t, s, staff, `(from SEARCH (where (= target "`+extract+`")))`); len(rows) != 1 || rows[0]["source"] != row.Source || rows[0]["terminal"] != row.Terminal {
 		t.Fatalf("the search row: %v", rows)
@@ -468,6 +537,95 @@ func TestTheVectorIndexFindsTheNearest(t *testing.T) {
 	index.scan(query, index.order(query), scores)
 	if _, gone := scores["o0000"]; gone || math.Abs(scores["o9999"]-1) > 1e-4 {
 		t.Fatalf("after an update the removed vector scores %v and the added one %v", scores["o0000"], scores["o9999"])
+	}
+}
+
+func TestEachTableIsScannedUntilItAloneIsFull(t *testing.T) {
+	m := sample(t).Model()
+	rows := m.SearchInputs(nil)
+	random := rand.New(rand.NewPCG(3, 4))
+	near := func(sign float32) []float32 {
+		v := make([]float32, 16)
+		for j := range v {
+			v[j] = float32(random.NormFloat64()) * 0.1
+		}
+		v[0] += sign
+		normalize(v)
+		return v
+	}
+	entries := map[string]*SearchEntry{}
+	byTable := map[string]map[string]*SearchEntry{"GROUP": {}, "PERSON": {}, "DOCUMENT": {}}
+	for _, r := range rows {
+		e := &SearchEntry{Summary: "made"}
+		switch r.Table {
+		case "GROUP":
+			for range 50 {
+				e.Chunks = append(e.Chunks, SearchChunk{Vector: near(1)})
+			}
+		case "PERSON":
+			e.Chunks = []SearchChunk{{Vector: near(-1)}}
+		}
+		entries[r.Object] = e
+		byTable[r.Table][r.Object] = e
+	}
+	vectors := map[string]*vectorIndex{}
+	for _, table := range searchTables {
+		vectors[table] = (&vectorIndex{}).update(byTable[table])
+	}
+	if len(vectors["GROUP"].centroids) <= searchProbe {
+		t.Fatalf("%d group cells; the test needs more than %d", len(vectors["GROUP"].centroids), searchProbe)
+	}
+	v := buildView(rows, entries, vectors)
+	query := near(1)
+	got, scanned, _ := v.byMeaning(m.newRun(Env{Viewer: staff, Now: testNow}), query, map[string]int{"GROUP": 1, "PERSON": 1, "DOCUMENT": 0})
+	if len(got["GROUP"]) != 1 || len(got["PERSON"]) != 1 {
+		t.Fatalf("found %d groups and %d people", len(got["GROUP"]), len(got["PERSON"]))
+	}
+	if scanned["GROUP"] != searchProbe {
+		t.Errorf("scanned %d group cells to fill a limit of one", scanned["GROUP"])
+	}
+}
+
+func keywordView(t *testing.T, m *Model, keywords map[string][]string) (*searchView, []string) {
+	t.Helper()
+	rows := m.SearchInputs(nil)
+	dated := []string{}
+	for _, id := range slices.Sorted(maps.Keys(rows)) {
+		if rows[id].Table == "GROUP" && len(dated) < 3 {
+			dated = append(dated, id)
+		}
+	}
+	at := map[string]string{"oldest": dated[0], "middle": dated[1], "newest": dated[2]}
+	for i, id := range dated {
+		r := rows[id]
+		r.When = fmt.Sprintf("2026-0%d-01 09:00:00", i+1)
+		rows[id] = r
+	}
+	entries := map[string]*SearchEntry{}
+	for _, r := range rows {
+		entries[r.Object] = &SearchEntry{Summary: "made", Keywords: []string{"filler"}}
+	}
+	for name, words := range keywords {
+		entries[rows[at[name]].Object].Keywords = words
+	}
+	return buildView(rows, entries, nil), dated
+}
+
+func TestTheNewestOfEqualHitsComesFirst(t *testing.T) {
+	m := sample(t).Model()
+	v, dated := keywordView(t, m, map[string][]string{"oldest": {"boots"}, "newest": {"boots"}})
+	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byWords("boots"), testLimits)["GROUP"])
+	if !slices.Equal(got, []string{dated[2], dated[0]}) {
+		t.Fatalf("the two holders of boots came back %v, want newest %s then oldest %s", got, dated[2], dated[0])
+	}
+}
+
+func TestAWeakerWordIsKeptWhenNothingHoldsBoth(t *testing.T) {
+	m := sample(t).Model()
+	v, dated := keywordView(t, m, map[string][]string{"oldest": {"boots"}, "middle": {"kite"}, "newest": {"kite"}})
+	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byWords("boots kite"), testLimits)["GROUP"])
+	if !slices.Equal(got, []string{dated[0], dated[2], dated[1]}) {
+		t.Fatalf("boots kite found %v, want the rarer boots %s, then the kites %s and %s", got, dated[0], dated[2], dated[1])
 	}
 }
 

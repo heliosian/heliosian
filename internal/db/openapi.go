@@ -136,6 +136,13 @@ func answers(description, name string) schema {
 	return schema{"description": description, "content": schema{"application/json": schema{"schema": component(name)}}}
 }
 
+func searchLists(item string) schema {
+	return schema{"type": "object", "required": []string{"words", "meaning"}, "properties": schema{
+		"words":   schema{"type": "array", "items": component(item)},
+		"meaning": schema{"type": "array", "items": component(item)},
+	}}
+}
+
 func failure(description string) schema {
 	return schema{"description": description, "content": schema{"text/plain": schema{"schema": schema{"type": "string"}}}}
 }
@@ -212,25 +219,23 @@ func spec() schema {
 		"fetch":  schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}, "description": "What fetch was set to, when it was."},
 		"why":    schema{"type": "string", "description": "Why fetch was set."},
 	}}
-	schemas["SearchPart"] = schema{"type": "object", "required": []string{"id", "extract", "summary"}, "properties": schema{
-		"id":      schema{"type": "string", "description": "The document the text was read from: an attachment, an image, a linked page, an email's body, or the document itself."},
-		"source":  schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the document itself."},
-		"href":    schema{"type": "string", "description": "That document's address, when it has one."},
-		"extract": schema{"type": "string", "description": "The best-matching extract read from it."},
+	schemas["SearchRef"] = schema{"type": "object", "required": []string{"extract", "document", "terminal", "name", "summary"}, "properties": schema{
+		"extract":  schema{"type": "string", "description": "The extract that matched."},
+		"document": schema{"type": "string", "description": "The document its text was read from: an attachment, an image, a linked page, an email's body, or the email or file itself."},
+		"source":   schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the email or file itself."},
+		"href":     schema{"type": "string", "description": "That document's address, when it has one."},
+		"terminal": schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
+		"name":     schema{"type": "string", "description": "That email's or file's name."},
+		"summary":  schema{"type": "string", "description": "The extract's summary."},
+	}}
+	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
+		"id":      schema{"type": "string", "description": "The group or person."},
+		"name":    schema{"type": "string"},
+		"href":    schema{"type": "string", "description": "The page it has on the Helios apps, when it has one."},
 		"summary": schema{"type": "string"},
 	}}
-	schemas["SearchResult"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
-		"id":      schema{"type": "string", "description": "The group or person, or for a document the email, shared file, year calendar or wiki page the matching parts belong to."},
-		"name":    schema{"type": "string"},
-		"href":    schema{"type": "string", "description": "The page it has on the Helios apps or the web, when it has one."},
-		"summary": schema{"type": "string", "description": "Its summary, or a document's best part's."},
-		"parts":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchPart"}, "description": "For a document, the parts that matched, best first, one per source however many extracts it was read in."},
-		"copies": schema{"type": "array", "description": "Near-identical copies of the parts under other emails or files.", "items": schema{"type": "object", "required": []string{"id", "name", "parts"}, "properties": schema{
-			"id":    schema{"type": "string"},
-			"name":  schema{"type": "string"},
-			"href":  schema{"type": "string"},
-			"parts": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchPart"}},
-		}}},
+	schemas["SearchBundle"] = schema{"type": "object", "required": []string{"refs"}, "properties": schema{
+		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "Matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},
 	}}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
@@ -315,7 +320,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Search groups, people and documents",
-				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. Document hits are grouped: one result per email or file, its matching parts inside, and near-identical copies under other emails or files listed with it. Each search keeps taking candidates until every table has its limit or the rest fall below the relevance cutoff.",
+				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. A document result is a bundle of refs, best first: a hit joins the result its own email or file started, else the result holding a near-identical copy of it, else starts one. Words leave out what scores well under the best; equal scores come newest first.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":     "object",
 					"required": []string{"words"},
@@ -332,13 +337,10 @@ func spec() schema {
 				"responses": refusals(schema{
 					"200": schema{"description": "The hits by table.", "content": schema{"application/json": schema{"schema": schema{
 						"type": "object",
-						"additionalProperties": schema{
-							"type":     "object",
-							"required": []string{"words", "meaning"},
-							"properties": schema{
-								"words":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchResult"}},
-								"meaning": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchResult"}},
-							},
+						"properties": schema{
+							"GROUP":    searchLists("SearchHit"),
+							"PERSON":   searchLists("SearchHit"),
+							"DOCUMENT": searchLists("SearchBundle"),
 						},
 					}}}},
 					"400": failure("No words, or a limit naming a table search does not answer, or under 0."),

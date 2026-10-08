@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 )
 
 const ClaudeHost = "api.anthropic.com"
@@ -131,12 +132,43 @@ func Claude() http.Handler {
 	})
 }
 
+func SearchAnswer(text string) map[string]any {
+	keywords := []string{}
+	seen := map[string]bool{}
+	for _, w := range strings.FieldsFunc(strings.ToLower(text), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
+		if len(w) > 1 && !seen[w] {
+			seen[w] = true
+			keywords = append(keywords, w)
+		}
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	return map[string]any{"summary": "Sample search entry for " + first, "keywords": keywords}
+}
+
+func searchSchema(schema map[string]any) bool {
+	properties, _ := schema["properties"].(map[string]any)
+	_, summary := properties["summary"]
+	_, keywords := properties["keywords"]
+	return len(properties) == 2 && summary && keywords
+}
+
+func (r claudeRequest) userText() string {
+	if len(r.Messages) == 0 || len(r.Messages[0].Content) == 0 {
+		return ""
+	}
+	return r.Messages[0].Content[0].Text
+}
+
 func answer(ctx context.Context, s *claudeStream, req claudeRequest) bool {
 	if schema := req.OutputConfig.Format.Schema; schema != nil {
 		if !pause(ctx, time.Second) {
 			return false
 		}
-		encoded, err := json.Marshal(sampleOf(schema, "answer"))
+		reply := sampleOf(schema, "answer")
+		if searchSchema(schema) {
+			reply = SearchAnswer(req.userText())
+		}
+		encoded, err := json.Marshal(reply)
 		if err != nil {
 			panic(err)
 		}
