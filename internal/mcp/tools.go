@@ -187,8 +187,9 @@ type idIn struct {
 	ID string `json:"id" jsonschema:"the row's ID"`
 }
 
-type wordsIn struct {
-	Words string `json:"words" jsonschema:"what to look for, in words"`
+type searchIn struct {
+	Words  string         `json:"words" jsonschema:"what to look for, in words"`
+	Limits map[string]int `json:"limits,omitempty" jsonschema:"how many results to answer for each of GROUP, PERSON and DOCUMENT, by table, 0 to leave a table out; 10 for any table not named"`
 }
 
 type peopleIn struct {
@@ -204,8 +205,8 @@ type eventsIn struct {
 }
 
 func (s *Server) tools() {
-	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a result set for each table - GROUP, PERSON and DOCUMENT - each with hits by words and hits by meaning, best first, every hit its ID, name, summary and href; helios_get or helios_read_document opens one. A document hit stands for itself and any near-identical copies, such as the same newsletter attached to several emails; helios_similar lists them. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
-	addTool(s, "helios_similar", "The near-identical copies of a Helios School document that helios_search answered by ID - the same newsletter, PDF or page attached to or sent in other emails - each with its ID, name, summary and href, for when the differences between copies matter: which email carried it, when, or a version that changed slightly.", similar)
+	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a result set for each table - GROUP, PERSON and DOCUMENT - each with results by words and by meaning, best first, every result its ID, name, summary and href. A document result is one email or file: its parts that matched, each saying how it stands to the email (attached file, email body, image, linked page) with the extract that matched, and any near-identical copies under other emails or files; helios_read_document opens any of them, helios_get any other result, and helios_similar every copy. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
+	addTool(s, "helios_similar", "Every near-identical copy of a Helios School document under other emails or files, by the ID of an email, a part or an extract that helios_search answered - the same newsletter, PDF or page attached to or sent in other emails - each email or file with its ID, name and href and the copied parts, for when the differences between copies matter: which email carried it, when, or a version that changed slightly.", similar)
 	addTool(s, "helios_whoami", "The person connected to Helios School's community data: their record, their addresses, their family and children, the classrooms, sign-ups, tickets and email lists they are in, the groups they manage and the Helios apps they are an admin of. Use it for questions about \"my family\", \"my kids\" or \"my classes\" at Helios.", whoami)
 	addTool(s, "helios_events", "Helios School's calendar: school and community events starting in a range of days, in order, with the category each sits under. Use it for what is coming up at Helios.", events)
 	addTool(s, "helios_find_people", "People in the Helios School directory by any of words (a name, job title or the like), role (student, parent or staff), grade and classroom, with their classroom, crew and department named.", findPeople)
@@ -298,12 +299,16 @@ func (c call) named(table string, row store.Row) named {
 	return named{Name: title(row), Href: c.m.Link(table, row, c.s.origin)}
 }
 
-func search(c call, in wordsIn) (any, error) {
+func search(c call, in searchIn) (any, error) {
 	words := strings.TrimSpace(in.Words)
 	if words == "" {
 		return nil, errors.New("words is required")
 	}
-	return c.s.deps.Search.Search(c.ctx, c.m, c.env, words)
+	limits, err := db.SearchLimits(in.Limits)
+	if err != nil {
+		return nil, err
+	}
+	return c.s.deps.Search.Search(c.ctx, c.m, c.env, words, limits)
 }
 
 func similar(c call, in idIn) (any, error) {
@@ -581,7 +586,7 @@ func findPeople(c call, in peopleIn) (any, error) {
 	where := []any{}
 	if words := strings.TrimSpace(in.Words); words != "" {
 		ids := []string{}
-		for _, h := range c.s.deps.Search.Words(c.m, c.env, words)["PERSON"] {
+		for _, h := range c.s.deps.Search.Words(c.m, c.env, words, map[string]int{"PERSON": listRows})["PERSON"] {
 			ids = append(ids, h.ID)
 		}
 		if len(ids) == 0 {

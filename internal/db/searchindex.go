@@ -18,7 +18,7 @@ const (
 	searchShingle = 5
 	searchHashes  = 128
 	searchBand    = 4
-	searchSame    = 0.8
+	searchSame    = 0.7
 )
 
 type searchView struct {
@@ -79,6 +79,7 @@ func wordForms(t string) []string {
 
 func (v *searchView) byWords(words string) map[string]float64 {
 	scores := map[string]float64{}
+	total := 0.0
 	for _, t := range searchTerms(words) {
 		held := map[string]bool{}
 		for _, form := range wordForms(t) {
@@ -90,9 +91,13 @@ func (v *searchView) byWords(words string) map[string]float64 {
 			continue
 		}
 		weight := math.Log(1 + float64(len(v.entries))/float64(len(held)))
+		total += weight
 		for o := range held {
 			scores[o] += weight
 		}
+	}
+	for o := range scores {
+		scores[o] /= total
 	}
 	return scores
 }
@@ -192,26 +197,28 @@ func train(entries map[string]*SearchEntry, refs []chunkRef) *vectorIndex {
 	return out
 }
 
-func (v *vectorIndex) search(query []float32) map[string]float64 {
-	if len(v.centroids) == 0 {
-		return map[string]float64{}
-	}
+func (v *vectorIndex) order(query []float32) []int {
 	order := make([]int, len(v.centroids))
 	near := make([]float32, len(v.centroids))
 	for i, c := range v.centroids {
 		order[i], near[i] = i, dot(query, c)
 	}
 	slices.SortFunc(order, func(a, b int) int { return cmpDesc(near[a], near[b]) })
-	best := map[string]float64{}
-	for _, c := range order[:min(searchProbe, len(order))] {
+	return order
+}
+
+func (v *vectorIndex) scan(query []float32, cells []int, best map[string]float64) float64 {
+	top := math.Inf(-1)
+	for _, c := range cells {
 		for _, ref := range v.cells[c] {
 			d := float64(dot(query, ref.vector))
+			top = max(top, d)
 			if old, ok := best[ref.object]; !ok || d > old {
 				best[ref.object] = d
 			}
 		}
 	}
-	return best
+	return top
 }
 
 func cmpDesc[T float32 | float64](a, b T) int {

@@ -270,7 +270,7 @@ const PolicySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   key_points extracted slug hidden)
+   key_points extracted slug hidden source terminal)
   true)
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
@@ -591,7 +591,7 @@ const PolicySource = `
 ; every group's and person's search entry
 (read SEARCH (super_admin))
 ; every column of a search entry
-(read SEARCH (id target input summary keywords chunks object made version failures) true)
+(read SEARCH (id target source terminal input summary keywords chunks object made failures) true)
 ; delete a search entry, so it is built again
 (delete SEARCH (or (super_admin) (system "import")))
 ; every document, whoever it was sent to

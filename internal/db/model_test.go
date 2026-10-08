@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -65,6 +66,38 @@ func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
 	juni, _ = s.Model().Table("PERSON").Get("per00000000001")
 	if juni["grade"] != "4" || juni["vc_grade"] != "3" || juni["job_title"] != "Reader" || juni["classroom"] != "grp00000000010" {
 		t.Fatalf("after overrides: grade %q vc_grade %q job_title %q classroom %q", juni["grade"], juni["vc_grade"], juni["job_title"], juni["classroom"])
+	}
+}
+
+func TestDocumentsKnowTheirSourceAndTerminal(t *testing.T) {
+	rows := []store.Row{
+		{"id": "mail", "kind": "mail"},
+		{"id": "body", "parent": "mail", "relation": "part"},
+		{"id": "bodyText", "parent": "body", "relation": "extract"},
+		{"id": "pdf", "parent": "mail", "relation": "part", "filename": "rules.pdf"},
+		{"id": "pages1", "parent": "pdf", "relation": "pages"},
+		{"id": "pages1Text", "parent": "pages1", "relation": "extract"},
+		{"id": "page", "parent": "body", "relation": "linked"},
+		{"id": "pageText", "parent": "page", "relation": "extract"},
+		{"id": "file", "kind": "file"},
+		{"id": "filePages", "parent": "file", "relation": "pages"},
+		{"id": "filePagesText", "parent": "filePages", "relation": "extract"},
+	}
+	documentGenerated(rows)
+	for _, want := range []struct{ id, source, terminal string }{
+		{"mail", "", ""},
+		{"body", "", "mail"},
+		{"bodyText", "body", "mail"},
+		{"pages1", "pdf", "mail"},
+		{"pages1Text", "pdf", "mail"},
+		{"pageText", "page", "mail"},
+		{"file", "", ""},
+		{"filePagesText", "file", "file"},
+	} {
+		i := slices.IndexFunc(rows, func(r store.Row) bool { return r["id"] == want.id })
+		if rows[i]["source"] != want.source || rows[i]["terminal"] != want.terminal {
+			t.Errorf("%s: source %q terminal %q, want %q %q", want.id, rows[i]["source"], rows[i]["terminal"], want.source, want.terminal)
+		}
 	}
 }
 

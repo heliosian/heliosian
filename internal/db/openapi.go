@@ -212,11 +212,25 @@ func spec() schema {
 		"fetch":  schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}, "description": "What fetch was set to, when it was."},
 		"why":    schema{"type": "string", "description": "Why fetch was set."},
 	}}
-	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
-		"id":      schema{"type": "string"},
-		"name":    schema{"type": "string", "description": "The row's name; a document's is the name of the nearest document above it with a kind, such as its email's subject."},
-		"href":    schema{"type": "string", "description": "The page the row has on the Helios apps or the web, when it has one."},
+	schemas["SearchPart"] = schema{"type": "object", "required": []string{"id", "extract", "summary"}, "properties": schema{
+		"id":      schema{"type": "string", "description": "The document the text was read from: an attachment, an image, a linked page, an email's body, or the document itself."},
+		"source":  schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the document itself."},
+		"href":    schema{"type": "string", "description": "That document's address, when it has one."},
+		"extract": schema{"type": "string", "description": "The best-matching extract read from it."},
 		"summary": schema{"type": "string"},
+	}}
+	schemas["SearchResult"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
+		"id":      schema{"type": "string", "description": "The group or person, or for a document the email, shared file, year calendar or wiki page the matching parts belong to."},
+		"name":    schema{"type": "string"},
+		"href":    schema{"type": "string", "description": "The page it has on the Helios apps or the web, when it has one."},
+		"summary": schema{"type": "string", "description": "Its summary, or a document's best part's."},
+		"parts":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchPart"}, "description": "For a document, the parts that matched, best first, one per source however many extracts it was read in."},
+		"copies": schema{"type": "array", "description": "Near-identical copies of the parts under other emails or files.", "items": schema{"type": "object", "required": []string{"id", "name", "parts"}, "properties": schema{
+			"id":    schema{"type": "string"},
+			"name":  schema{"type": "string"},
+			"href":  schema{"type": "string"},
+			"parts": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchPart"}},
+		}}},
 	}}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
@@ -301,11 +315,19 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Search groups, people and documents",
-				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. Only entries of the current version are searched. A document stands for its near-identical copies, which are left out.",
+				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. Document hits are grouped: one result per email or file, its matching parts inside, and near-identical copies under other emails or files listed with it. Each search keeps taking candidates until every table has its limit or the rest fall below the relevance cutoff.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
-					"type":       "object",
-					"required":   []string{"words"},
-					"properties": schema{"words": schema{"type": "string"}},
+					"type":     "object",
+					"required": []string{"words"},
+					"properties": schema{
+						"words": schema{"type": "string"},
+						"limits": schema{
+							"type":                 "object",
+							"description":          "How many results to answer for each table, 0 to leave a table out; a table not named gets 10.",
+							"properties":           schema{"GROUP": schema{"type": "integer", "minimum": 0}, "PERSON": schema{"type": "integer", "minimum": 0}, "DOCUMENT": schema{"type": "integer", "minimum": 0}},
+							"additionalProperties": false,
+						},
+					},
 				}}}},
 				"responses": refusals(schema{
 					"200": schema{"description": "The hits by table.", "content": schema{"application/json": schema{"schema": schema{
@@ -314,12 +336,12 @@ func spec() schema {
 							"type":     "object",
 							"required": []string{"words", "meaning"},
 							"properties": schema{
-								"words":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchHit"}},
-								"meaning": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchHit"}},
+								"words":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchResult"}},
+								"meaning": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchResult"}},
 							},
 						},
 					}}}},
-					"400": failure("No words."),
+					"400": failure("No words, or a limit naming a table search does not answer, or under 0."),
 				}),
 			},
 		},
@@ -327,7 +349,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Make a row's search entry",
-				"description": "The import key alone. Queues the search entry of one group, person or document extract for the makers, who ask Vertex and Claude for it off the request path and store it under the current version. Nothing else makes entries.",
+				"description": "The import key alone. Queues the search entry of one group, person or document extract for the makers, who ask Vertex and Claude for it off the request path and store it. Nothing else makes entries.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":       "object",
 					"required":   []string{"id"},

@@ -190,9 +190,11 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
 		}
 		if t.Generate != nil {
 			row = maps.Clone(row)
-			t.Generate(row)
 		}
 		rows = append(rows, row)
+	}
+	if t.Generate != nil {
+		t.Generate(rows)
 	}
 	table.Tally("check").Add(time.Since(start))
 	start = time.Now()
@@ -251,6 +253,55 @@ func describeUnique(t *Table, row store.Row) string {
 		parts = append(parts, k+"="+row[k])
 	}
 	return strings.Join(parts, "; ")
+}
+
+func eachRow(f func(row map[string]string)) func(rows []store.Row) {
+	return func(rows []store.Row) {
+		for _, row := range rows {
+			f(row)
+		}
+	}
+}
+
+func documentGenerated(rows []store.Row) {
+	byID := map[string]store.Row{}
+	for _, row := range rows {
+		byID[row["id"]] = row
+	}
+	kinded := map[string]string{}
+	var nearest func(id string, depth int) string
+	nearest = func(id string, depth int) string {
+		if found, ok := kinded[id]; ok {
+			return found
+		}
+		row, ok := byID[id]
+		if !ok || depth > len(rows) {
+			return ""
+		}
+		found := id
+		if row["kind"] == "" {
+			found = nearest(row["parent"], depth+1)
+		}
+		kinded[id] = found
+		return found
+	}
+	for _, row := range rows {
+		if row["kind"] == "" {
+			row["terminal"] = nearest(row["parent"], 0)
+		}
+		if row["relation"] != "extract" && row["relation"] != "pages" {
+			continue
+		}
+		source := row["parent"]
+		for steps := 0; steps < len(rows); steps++ {
+			parent, ok := byID[source]
+			if !ok || parent["relation"] != "pages" {
+				break
+			}
+			source = parent["parent"]
+		}
+		row["source"] = source
+	}
 }
 
 func personGenerated(row map[string]string) {

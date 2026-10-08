@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"strings"
+
+	"heliosian/internal/store"
 )
 
 type Kind int
@@ -48,7 +50,7 @@ type Table struct {
 	Columns     []Column
 	AppendOnly  bool
 	Generated   bool
-	Generate    func(row map[string]string)
+	Generate    func(rows []store.Row)
 	Description string
 }
 
@@ -165,7 +167,7 @@ var Tables = []Table{
 	{
 		Name:        "PERSON",
 		Sheet:       PeopleSheet,
-		Generate:    personGenerated,
+		Generate:    eachRow(personGenerated),
 		Description: "Anyone the community touches: a student, parent or staff member, or a guest. Whether someone is a student, parent or staff member is their membership of the role groups. Never deleted: deactivated instead, so what names them keeps its record.",
 		Columns: []Column{
 			ident(PersonPrefix),
@@ -227,7 +229,7 @@ var Tables = []Table{
 		Name:        "PERSON_EMAIL",
 		Sheet:       PeopleSheet,
 		Unique:      []string{"address", "guest"},
-		Generate:    emailGenerated,
+		Generate:    eachRow(emailGenerated),
 		Description: "An email address a person uses. Sign-in, replies and inbound mail find the person through it; outbound mail goes to the primary. One person holds an address among students, adults and staff, and one among guests.",
 		Columns: []Column{
 			ident(PersonEmailPrefix),
@@ -242,7 +244,7 @@ var Tables = []Table{
 		Name:        "PHOTO",
 		Sheet:       PeopleSheet,
 		Unique:      []string{"person", "group", "original"},
-		Generate:    photoGenerated,
+		Generate:    eachRow(photoGenerated),
 		Description: "A picture of a person or a group, exactly one: a portrait, a family photo, a classroom or grade tile, a category's or activity's picture. The first in order is the one shown. Added through /api/do/photo; the server makes the re-encode, crop and thumbnail after the commit.",
 		Columns: []Column{
 			ident(PhotoPrefix),
@@ -333,7 +335,7 @@ var Tables = []Table{
 	{
 		Name:        "GROUP",
 		Sheet:       GroupsSheet,
-		Generate:    groupGenerated,
+		Generate:    eachRow(groupGenerated),
 		Description: "Any set of people, anything things are filed under, and anything on the calendar. A group sits under its parent; a thing's category is its parent. Its managers are the effective members of its managed_by group and of every group above it.",
 		Columns: []Column{
 			ident(GroupPrefix),
@@ -525,7 +527,10 @@ var Tables = []Table{
 			col("key_points", Text).about("Its key points, as the inbox shows them."),
 			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do."),
 			col("slug", Text).about("For a wiki page, its own part of its address in place of the one its title gives, after its parents' parts: lowercase letters, digits and single hyphens, at most 40, never shaped like an id, no two pages under the same parent the same."),
-			col("hidden", Bool).about("For a wiki page, kept out of the wiki's lists of pages for all but its author and the wiki's admins; its link still opens it.")},
+			col("hidden", Bool).about("For a wiki page, kept out of the wiki's lists of pages for all but its author and the wiki's admins; its link still opens it."),
+			{Name: "source", Kind: Ref, Target: "DOCUMENT", Generated: true, Description: "On an extract or a split of a PDF, the document its text was read from: the nearest document above it that is not a split - an attachment, an image, a linked page, an email's body or a shared file. Blank on anything else."},
+			{Name: "terminal", Kind: Ref, Target: "DOCUMENT", Generated: true, Description: "The nearest document above it with a kind - the email, shared file, year calendar or wiki page it is part of. Blank on a document with a kind."}},
+		Generate: documentGenerated,
 	},
 	{
 		Name:        "CONTENT",
@@ -662,14 +667,15 @@ var Tables = []Table{
 		Description: "A group's, person's or document extract's search entry: the input built from what every reader of it may read, and what Claude and Vertex made of it, kept in the media bucket under its object. Read from the searcher's index as it stands, so an entry made since the last commit shows at once.",
 		Columns: []Column{
 			ident(SearchPrefix),
-			ref("target", "").about("The group or person it is the entry of."),
+			ref("target", "").about("The group, person or document extract it is the entry of."),
+			ref("source", "DOCUMENT").about("For an extract, the document its text was read from, as DOCUMENT.source has it."),
+			ref("terminal", "DOCUMENT").about("For an extract, the email, shared file, year calendar or wiki page it is part of, as DOCUMENT.terminal has it."),
 			col("input", Text).about("The search input, built from the row."),
 			col("summary", Text).about("Claude's summary of it, shown under its name in search results; blank until made."),
 			col("keywords", Text).about("Claude's words someone might type looking for it, comma-separated; blank until made."),
 			col("chunks", Int).about("How many pieces the input was cut into, each embedded by Vertex; blank until made."),
 			col("object", Text).about("Where the entry is kept in the media bucket: search/ and the input's SHA-256."),
 			col("made", Bool).about("Whether the entry is in the bucket; no until someone asks for it to be made."),
-			col("version", Int).about("The entry format it was made under; search uses only entries of the current version, and leaves the rest in the bucket untouched. Blank for an entry from before versions."),
 			col("failures", Int).about("How many attempts to make it failed; an entry with no summary is tried again until it has three, and deleting it starts it over."),
 		},
 	},

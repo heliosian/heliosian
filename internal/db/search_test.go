@@ -24,6 +24,8 @@ import (
 	"heliosian/internal/testkit"
 )
 
+var testLimits, _ = SearchLimits(nil)
+
 func testOrigin(app string) string {
 	return "https://" + app + ".example.org"
 }
@@ -108,10 +110,25 @@ func makeAll(t *testing.T, s *Store, x *Searcher) {
 	waitIndexed(t, x, askAll(t, s, x))
 }
 
-func hitIDs(hits []SearchHit) []string {
+func hitIDs(results []SearchResult) []string {
 	out := []string{}
-	for _, h := range hits {
-		out = append(out, h.ID)
+	for _, r := range results {
+		out = append(out, r.ID)
+	}
+	return out
+}
+
+func extractsOf(results []SearchResult) []string {
+	out := []string{}
+	for _, r := range results {
+		for _, p := range r.Parts {
+			out = append(out, p.Extract)
+		}
+		for _, c := range r.Copies {
+			for _, p := range c.Parts {
+				out = append(out, p.Extract)
+			}
+		}
 	}
 	return out
 }
@@ -258,8 +275,8 @@ func TestEveryShownRowHasAnInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := SearchEntry{}
-	if err := json.Unmarshal(raw, &entry); err != nil || entry.Version != searchVersion || len(entry.Chunks[0].Vector) != artifacts.SearchDims {
-		t.Errorf("the picnic's entry is version %d with %d dimensions: %v", entry.Version, len(entry.Chunks[0].Vector), err)
+	if err := json.Unmarshal(raw, &entry); err != nil || len(entry.Chunks[0].Vector) != artifacts.SearchDims {
+		t.Errorf("the picnic's entry has %d dimensions: %v", len(entry.Chunks[0].Vector), err)
 	}
 }
 
@@ -286,7 +303,7 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 	x.mu.RLock()
 	row := x.rows[extract]
 	x.mu.RUnlock()
-	for _, want := range []string{"Email: Tide pools", "Kind: mail", "From: Maya Lindqvist", "Part: text/html", "Bring **boots** for the tide pools."} {
+	for _, want := range []string{"Email: Tide pools", "Kind: mail", "From: Maya Lindqvist", "Source: email body, text/html", "Bring **boots** for the tide pools."} {
 		if !strings.Contains(row.Input, want) {
 			t.Errorf("the extract's input lacks %q:\n%s", want, row.Input)
 		}
@@ -295,10 +312,10 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 		t.Errorf("the extract is named %q", row.Name)
 	}
 	m := s.Model()
-	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots")["DOCUMENT"]); !slices.Contains(got, extract) {
+	if got := extractsOf(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]); !slices.Contains(got, extract) {
 		t.Errorf("the Hummingbirds parent's search for boots found %v", got)
 	}
-	if got := hitIDs(x.Words(m, Env{Viewer: student, Now: testNow}, "boots")["DOCUMENT"]); slices.Contains(got, extract) {
+	if got := extractsOf(x.Words(m, Env{Viewer: student, Now: testNow}, "boots", testLimits)["DOCUMENT"]); slices.Contains(got, extract) {
 		t.Errorf("a student the email was not sent to found it: %v", got)
 	}
 }
@@ -338,28 +355,24 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	makeAll(t, s, x)
 	m := s.Model()
 	env := Env{Viewer: parent, Now: testNow}
-	got := hitIDs(x.Words(m, env, "boots")["DOCUMENT"])
-	found := []string{}
-	for _, id := range extracts {
-		if slices.Contains(got, id) {
-			found = append(found, id)
-		}
+	results := x.Words(m, env, "boots", testLimits)["DOCUMENT"]
+	if len(results) != 1 || len(results[0].Parts) != 1 || len(results[0].Copies) != 1 || !slices.Equal(slices.Sorted(slices.Values(extractsOf(results))), slices.Sorted(slices.Values(extracts))) {
+		t.Fatalf("the two copies are not one result with a copy: %+v", results)
 	}
-	if len(found) != 1 {
-		t.Fatalf("the search for boots found %d of the two copies: %v", len(found), got)
+	x.mu.RLock()
+	first, second := x.rows[results[0].Parts[0].Extract].Terminal, results[0].Copies[0].ID
+	x.mu.RUnlock()
+	if results[0].ID != first || first == second {
+		t.Fatalf("the result is %s, its copy %s", results[0].ID, second)
 	}
-	similar, err := x.Similar(m, env, found[0])
+	similar, err := x.Similar(m, env, first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other := extracts[0]
-	if other == found[0] {
-		other = extracts[1]
+	if len(similar) != 1 || similar[0].ID != second {
+		t.Fatalf("the copies of %s are %+v", first, similar)
 	}
-	if !slices.Equal(hitIDs(similar), []string{other}) {
-		t.Fatalf("the copies of %s are %v", found[0], hitIDs(similar))
-	}
-	if _, err := x.Similar(m, Env{Viewer: student, Now: testNow}, found[0]); err == nil {
+	if _, err := x.Similar(m, Env{Viewer: student, Now: testNow}, first); err == nil {
 		t.Error("a student the email was not sent to listed its copies")
 	}
 }
@@ -374,15 +387,35 @@ func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
 		extracts = append(extracts, sendMail(t, s, pics, fmt.Sprintf("Field trip %d", i), body))
 	}
 	makeAll(t, s, x)
-	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots")["DOCUMENT"])
-	copies := 0
-	for _, id := range extracts[:2] {
-		if slices.Contains(got, id) {
-			copies++
-		}
+	results := x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]
+	together := slices.IndexFunc(results, func(r SearchResult) bool {
+		got := extractsOf([]SearchResult{r})
+		return slices.Contains(got, extracts[0]) && slices.Contains(got, extracts[1])
+	})
+	if len(results) != 2 || together < 0 || len(results[together].Copies) != 1 || !slices.Contains(extractsOf(results), extracts[2]) {
+		t.Fatalf("the near copies are not one result beside the sale: %+v", results)
 	}
-	if copies != 1 || !slices.Contains(got, extracts[2]) {
-		t.Fatalf("the search for boots found %d of the two near copies, and the sale %v: %v", copies, slices.Contains(got, extracts[2]), got)
+}
+
+func TestAnEmailsPartsAreOneResult(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
+	makeAll(t, s, x)
+	x.mu.RLock()
+	row := x.rows[extract]
+	x.mu.RUnlock()
+	results := x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]
+	if len(results) != 1 || results[0].ID != row.Terminal || results[0].Name != "Tide pools" || len(results[0].Parts) != 1 {
+		t.Fatalf("the email's result: %+v", results)
+	}
+	part := results[0].Parts[0]
+	if part.ID != row.Source || part.Extract != extract || part.Source != "email body, text/html" {
+		t.Fatalf("the email's part: %+v", part)
+	}
+	if rows := as(t, s, staff, `(from SEARCH (where (= target "`+extract+`")))`); len(rows) != 1 || rows[0]["source"] != row.Source || rows[0]["terminal"] != row.Terminal {
+		t.Fatalf("the search row: %v", rows)
 	}
 }
 
@@ -408,7 +441,7 @@ func TestTheVectorIndexFindsTheNearest(t *testing.T) {
 			v[j] = float32(random.NormFloat64())
 		}
 		normalize(v)
-		entries[fmt.Sprintf("o%04d", i)] = &SearchEntry{Version: searchVersion, Chunks: []SearchChunk{{Vector: v}}}
+		entries[fmt.Sprintf("o%04d", i)] = &SearchEntry{Chunks: []SearchChunk{{Vector: v}}}
 	}
 	index := (&vectorIndex{}).update(entries)
 	if len(index.centroids) < 2 {
@@ -417,7 +450,9 @@ func TestTheVectorIndexFindsTheNearest(t *testing.T) {
 	missed := 0
 	for i := 0; i < 3000; i += 100 {
 		o := fmt.Sprintf("o%04d", i)
-		scores := index.search(entries[o].Chunks[0].Vector)
+		query := entries[o].Chunks[0].Vector
+		scores := map[string]float64{}
+		index.scan(query, index.order(query)[:searchProbe], scores)
 		if math.Abs(scores[o]-1) > 1e-4 {
 			missed++
 		}
@@ -426,9 +461,11 @@ func TestTheVectorIndexFindsTheNearest(t *testing.T) {
 		t.Fatalf("%d of 30 vectors were not found as their own nearest", missed)
 	}
 	delete(entries, "o0000")
-	entries["o9999"] = &SearchEntry{Version: searchVersion, Chunks: []SearchChunk{{Vector: entries["o0100"].Chunks[0].Vector}}}
+	entries["o9999"] = &SearchEntry{Chunks: []SearchChunk{{Vector: entries["o0100"].Chunks[0].Vector}}}
 	index = index.update(entries)
-	scores := index.search(entries["o0100"].Chunks[0].Vector)
+	query := entries["o0100"].Chunks[0].Vector
+	scores := map[string]float64{}
+	index.scan(query, index.order(query), scores)
 	if _, gone := scores["o0000"]; gone || math.Abs(scores["o9999"]-1) > 1e-4 {
 		t.Fatalf("after an update the removed vector scores %v and the added one %v", scores["o0000"], scores["o9999"])
 	}
@@ -463,13 +500,13 @@ func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 	s, _, _, x := searcher(t)
 	makeAll(t, s, x)
 	m := s.Model()
-	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); !slices.Contains(got, "grp00000000040") {
+	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "picnic", testLimits)["GROUP"]); !slices.Contains(got, "grp00000000040") {
 		t.Errorf("the parent's word search for picnic found %v", got)
 	}
-	if got := hitIDs(x.Words(m, Env{Viewer: guest, Now: testNow}, "picnic")["GROUP"]); slices.Contains(got, "grp00000000040") {
+	if got := hitIDs(x.Words(m, Env{Viewer: guest, Now: testNow}, "picnic", testLimits)["GROUP"]); slices.Contains(got, "grp00000000040") {
 		t.Errorf("a guest's word search found the picnic they can't see: %v", got)
 	}
-	results, err := x.Search(context.Background(), m, Env{Viewer: parent, Now: testNow}, "fall picnic")
+	results, err := x.Search(context.Background(), m, Env{Viewer: parent, Now: testNow}, "fall picnic", testLimits)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,7 +547,7 @@ func TestAChangedRowLosesItsOldEntry(t *testing.T) {
 	}
 }
 
-func TestAnEntryWithoutTheVersionIsLeftAlone(t *testing.T) {
+func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
 	intercept.Install(intercept.ClaudeHost, testkit.SearchClaude())
@@ -520,46 +557,23 @@ func TestAnEntryWithoutTheVersionIsLeftAlone(t *testing.T) {
 	}
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	picnic := s.Model().SearchInputs(nil)["grp00000000040"].Object
-	old := []byte(`{"summary":"the fall picnic, from before versions","keywords":["picnic"],"chunks":[]}`)
 	stray := SearchObject("a row long gone")
-	strayVersioned := SearchObject("another row long gone")
-	for name, body := range map[string][]byte{picnic: old, stray: old, strayVersioned: []byte(`{"version":1,"summary":"gone"}`)} {
-		if err := bucket.Put(context.Background(), name, "application/json", body); err != nil {
-			t.Fatal(err)
-		}
+	if err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`)); err != nil {
+		t.Fatal(err)
 	}
 	x := NewSearcher(s, queue, bucket, vertex, testOrigin)
 	x.StartMaking("test")
-	waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		held, err := bucket.Exists(context.Background(), strayVersioned)
+		held, err := bucket.Exists(context.Background(), stray)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !held {
-			break
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("a stray versioned entry is still stored")
+			t.Fatalf("the stray entry %s is still stored", stray)
 		}
-	}
-	time.Sleep(200 * time.Millisecond)
-	for _, name := range []string{picnic, stray} {
-		raw, _, err := bucket.Get(context.Background(), name)
-		if err != nil || string(raw) != string(old) {
-			t.Fatalf("the unversioned entry %s became %.80s, %v", name, raw, err)
-		}
-	}
-	if got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); slices.Contains(got, "grp00000000040") {
-		t.Fatalf("search used an unversioned entry: %v", got)
-	}
-	if _, err := x.Make("grp00000000040"); err != nil {
-		t.Fatal(err)
-	}
-	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: picnic}})
-	if got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); !slices.Contains(got, "grp00000000040") {
-		t.Fatalf("the picnic, made when asked, was not found: %v", got)
 	}
 }
 
@@ -568,7 +582,7 @@ func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 	makeAll(t, s, x)
 	q := `(from SEARCH (where (= target "grp00000000040")))`
 	rows := as(t, s, staff, q)
-	if len(rows) != 1 || rows[0]["made"] != "Yes" || rows[0]["version"] != "1" || rows[0]["summary"] == "" || !strings.Contains(rows[0]["input"], "Fall Picnic") || rows[0]["chunks"] != "1" {
+	if len(rows) != 1 || rows[0]["made"] != "Yes" || rows[0]["summary"] == "" || !strings.Contains(rows[0]["input"], "Fall Picnic") || rows[0]["chunks"] != "1" {
 		t.Fatalf("the super admin reads the picnic's entry as %v", rows)
 	}
 	if n := len(as(t, s, parent, q)); n != 0 {
@@ -600,9 +614,49 @@ func TestSearchAnswersOnceByTable(t *testing.T) {
 	if len(got) != len(searchTables) || got["DOCUMENT"].Words == nil || got["PERSON"].Meaning == nil {
 		t.Fatalf("the answer's tables: %s", rec.Body)
 	}
-	i := slices.IndexFunc(got["GROUP"].Words, func(h SearchHit) bool { return h.ID == "grp00000000040" })
+	i := slices.IndexFunc(got["GROUP"].Words, func(h SearchResult) bool { return h.ID == "grp00000000040" })
 	if i < 0 || got["GROUP"].Words[i].Name != "Fall Picnic" || got["GROUP"].Words[i].Href == "" || got["GROUP"].Words[i].Summary == "" {
 		t.Fatalf("the picnic's hit: %s", rec.Body)
+	}
+}
+
+func TestEachTableHasItsOwnLimit(t *testing.T) {
+	if limits, err := SearchLimits(nil); err != nil || limits["GROUP"] != SearchLimit || limits["PERSON"] != SearchLimit || limits["DOCUMENT"] != SearchLimit {
+		t.Fatalf("the default limits are %v, %v", limits, err)
+	}
+	for _, bad := range []map[string]int{{"MEMBER": 3}, {"GROUP": -1}} {
+		if _, err := SearchLimits(bad); err == nil {
+			t.Errorf("limits %v were taken", bad)
+		}
+	}
+	s, _, _, x := searcher(t)
+	makeAll(t, s, x)
+	env := Env{Viewer: parent, Now: testNow}
+	if all := x.Words(s.Model(), env, "picnic", testLimits)["GROUP"]; len(all) < 2 {
+		t.Fatalf("the picnic search found %d groups; the test needs two", len(all))
+	}
+	one, _ := SearchLimits(map[string]int{"GROUP": 1, "PERSON": 0})
+	got := x.Words(s.Model(), env, "picnic", one)
+	if len(got["GROUP"]) != 1 || len(got["PERSON"]) != 0 {
+		t.Fatalf("limited to one group and no people, the search found %d and %d", len(got["GROUP"]), len(got["PERSON"]))
+	}
+	mux := http.NewServeMux()
+	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
+	ask := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+testImportKey)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		return rec
+	}
+	rec := ask(`{"words": "picnic", "limits": {"GROUP": 1}}`)
+	var answer map[string]SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || rec.Code != http.StatusOK || len(answer["GROUP"].Words) != 1 {
+		t.Fatalf("%d %s: %v", rec.Code, rec.Body, err)
+	}
+	if rec := ask(`{"words": "picnic", "limits": {"FAMILY": 1}}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown table's limit answered %d", rec.Code)
 	}
 }
 
