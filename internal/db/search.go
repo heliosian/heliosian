@@ -25,7 +25,6 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
-	"heliosian/internal/cells"
 	"heliosian/internal/claude"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
@@ -41,9 +40,6 @@ const (
 	searchTimeout  = 2 * time.Minute
 	searchAttempts = 3
 	searchShortest = 20
-	searchRecent   = 0.05
-	searchHalfLife = 365.0
-	searchSame     = 0.985
 )
 
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
@@ -80,7 +76,6 @@ type SearchHit struct {
 
 type SearchRow struct {
 	Table, Input, Object string
-	When                 time.Time
 }
 
 type SearchIndex struct {
@@ -190,7 +185,7 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			if input == "" {
 				continue
 			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), When: searchWhen(row["start"])}
+			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input)}
 		}
 	}
 	for _, row := range m.markdownExtracts() {
@@ -199,7 +194,7 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			continue
 		}
 		input := m.extractInput(row, text)
-		out[row["id"]] = SearchRow{Table: "DOCUMENT", Input: input, Object: SearchObject(input), When: searchWhen(m.extractRoot(row)["published"])}
+		out[row["id"]] = SearchRow{Table: "DOCUMENT", Input: input, Object: SearchObject(input)}
 	}
 	return out
 }
@@ -248,27 +243,14 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 	return out, nil
 }
 
-func (m *Model) extractRoot(row store.Row) store.Row {
+func (m *Model) extractInput(row store.Row, text string) string {
 	docs := m.Shown("DOCUMENT")
-	root, _ := docs.Get(row["parent"])
+	part, _ := docs.Get(row["parent"])
+	root := part
 	for seen := map[string]bool{}; root["parent"] != "" && !seen[root["id"]]; {
 		seen[root["id"]] = true
 		root, _ = docs.Get(root["parent"])
 	}
-	return root
-}
-
-func searchWhen(cell string) time.Time {
-	t, err := cells.When(cell)
-	if err != nil {
-		return time.Time{}
-	}
-	return t
-}
-
-func (m *Model) extractInput(row store.Row, text string) string {
-	part, _ := m.Shown("DOCUMENT").Get(row["parent"])
-	root := m.extractRoot(row)
 	lines := []string{}
 	add := func(label, value string) {
 		if value = strings.TrimSpace(value); value != "" {
@@ -559,17 +541,6 @@ func (x *Searcher) make() {
 	}
 }
 
-func (e *SearchEntry) mean() []float32 {
-	out := make([]float32, len(e.Chunks[0].Vector))
-	for _, c := range e.Chunks {
-		for i, f := range c.Vector {
-			out[i] += f
-		}
-	}
-	normalize(out)
-	return out
-}
-
 func (e *SearchEntry) unfinished() bool {
 	return e.Summary == "" && e.Failures < searchAttempts
 }
@@ -636,114 +607,63 @@ func normalize(v []float32) {
 	}
 }
 
-var searchFiller = []string{"a", "an", "and", "any", "are", "as", "at", "be", "by", "can", "do", "does", "for", "from", "how", "i", "in", "is", "it", "its", "my", "of", "on", "or", "our", "should", "the", "their", "there", "this", "that", "these", "those", "to", "was", "we", "what", "when", "where", "which", "who", "why", "will", "with", "you", "your"}
-
 func searchTerms(words string) []string {
 	out := []string{}
 	for _, t := range strings.FieldsFunc(strings.ToLower(words), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		if len(t) > 1 && !slices.Contains(searchFiller, t) && !slices.Contains(out, t) && len(out) < 64 {
+		if len(t) > 1 && !slices.Contains(out, t) {
 			out = append(out, t)
 		}
 	}
 	return out
 }
 
-func wordRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r)
-}
-
-func holdsWord(text, word string) bool {
-	for from := 0; ; {
-		at := strings.Index(text[from:], word)
-		if at < 0 {
-			return false
-		}
-		start, end := from+at, from+at+len(word)
-		before, _ := utf8.DecodeLastRuneInString(text[:start])
-		rest := strings.TrimPrefix(text[end:], "s")
-		after, _ := utf8.DecodeRuneInString(rest)
-		if (start == 0 || !wordRune(before)) && (rest == "" || !wordRune(after)) {
-			return true
-		}
-		from = start + 1
-	}
-}
-
-func searchRecency(when, now time.Time) float64 {
-	if when.IsZero() || !when.Before(now) {
-		return 1
-	}
-	return math.Exp2(-now.Sub(when).Hours() / 24 / searchHalfLife)
-}
-
 type scored struct {
 	id      string
 	summary string
 	score   float64
-	entry   *SearchEntry
 }
 
 func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []SearchHit {
 	terms := searchTerms(words)
 	r := m.newRun(env)
 	x.mu.RLock()
-	type candidate struct {
-		id    string
-		row   SearchRow
-		entry *SearchEntry
-		held  uint64
-	}
-	candidates := []candidate{}
-	holding := make([]int, len(terms))
+	hits := []scored{}
 	for id, row := range x.rows {
-		c := candidate{id: id, row: row, entry: x.entries[row.Object]}
+		entry := x.entries[row.Object]
+		found := 0
 		if len(terms) > 0 {
 			text := strings.ToLower(row.Input)
-			if c.entry != nil {
-				text += "\n" + strings.ToLower(c.entry.Summary+"\n"+strings.Join(c.entry.Keywords, "\n"))
+			if entry != nil {
+				text += "\n" + strings.ToLower(entry.Summary+"\n"+strings.Join(entry.Keywords, "\n"))
 			}
-			for i, t := range terms {
-				if holdsWord(text, t) {
-					c.held |= 1 << i
-					holding[i]++
+			for _, t := range terms {
+				if strings.Contains(text, t) {
+					found++
 				}
 			}
 		}
-		candidates = append(candidates, c)
-	}
-	weights := make([]float64, len(terms))
-	total := 0.0
-	for i := range terms {
-		weights[i] = math.Log(1 + float64(len(x.rows))/float64(max(holding[i], 1)))
-		total += weights[i]
-	}
-	hits := []scored{}
-	for _, c := range candidates {
 		lexical := 0.0
-		for i := range terms {
-			if c.held&(1<<i) != 0 {
-				lexical += weights[i] / total
-			}
+		if len(terms) > 0 {
+			lexical = float64(found) / float64(len(terms))
 		}
 		score := lexical
 		if vector != nil {
-			if c.entry == nil {
+			if entry == nil {
 				continue
 			}
 			best := -1.0
-			for _, chunk := range c.entry.Chunks {
-				best = max(best, dot(vector, chunk.Vector))
+			for _, c := range entry.Chunks {
+				best = max(best, dot(vector, c.Vector))
 			}
 			score = best + searchLexical*lexical
-		} else if c.held == 0 {
+		} else if found == 0 {
 			continue
 		}
-		score += searchRecent * searchRecency(c.row.When, env.Now)
 		summary := ""
-		if c.entry != nil {
-			summary = c.entry.Summary
+		if entry != nil {
+			summary = entry.Summary
 		}
-		hits = append(hits, scored{id: c.id, summary: summary, score: score, entry: c.entry})
+		hits = append(hits, scored{id: id, summary: summary, score: score})
 	}
 	tables := map[string]string{}
 	for _, h := range hits {
@@ -761,7 +681,6 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 	})
 	out := []SearchHit{}
 	shown := map[string]bool{}
-	kept := [][]float32{}
 	for _, h := range hits {
 		if len(out) == searchResults {
 			break
@@ -776,13 +695,6 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 				continue
 			}
 			shown[row["content"]] = true
-			if h.entry != nil && len(h.entry.Chunks) > 0 {
-				mean := h.entry.mean()
-				if slices.ContainsFunc(kept, func(k []float32) bool { return dot(mean, k) >= searchSame }) {
-					continue
-				}
-				kept = append(kept, mean)
-			}
 		}
 		out = append(out, SearchHit{ID: h.id, Summary: h.summary})
 	}

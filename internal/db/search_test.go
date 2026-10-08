@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -233,48 +232,6 @@ func TestDeletingEverySearchEntryAtOnceBuildsEveryOneAgain(t *testing.T) {
 	}
 }
 
-func TestWordsMatchWhole(t *testing.T) {
-	for _, c := range []struct {
-		text, word string
-		want       bool
-	}{
-		{"map testing next week", "map", true},
-		{"the maps are up", "map", true},
-		{"a maple tree", "map", false},
-		{"isaac is here", "isaac", true},
-		{"this one", "is", false},
-		{"ends with jays", "jays", true},
-		{"jaysmith", "jays", false},
-	} {
-		if got := holdsWord(c.text, c.word); got != c.want {
-			t.Errorf("holdsWord(%q, %q) = %v, want %v", c.text, c.word, got, c.want)
-		}
-	}
-}
-
-func TestFillerWordsAreLeftOut(t *testing.T) {
-	if got := searchTerms("Who teaches the Jays?"); !slices.Equal(got, []string{"teaches", "jays"}) {
-		t.Errorf("searchTerms = %v", got)
-	}
-}
-
-func TestRecencyHalvesEachYear(t *testing.T) {
-	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	for _, c := range []struct {
-		when time.Time
-		want float64
-	}{
-		{time.Time{}, 1},
-		{now.AddDate(0, 1, 0), 1},
-		{now.Add(-365 * 24 * time.Hour), 0.5},
-		{now.Add(-730 * 24 * time.Hour), 0.25},
-	} {
-		if got := searchRecency(c.when, now); math.Abs(got-c.want) > 0.001 {
-			t.Errorf("searchRecency(%v) = %v, want %v", c.when, got, c.want)
-		}
-	}
-}
-
 func madeAll(t *testing.T, s *Store, x *Searcher) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
@@ -379,33 +336,6 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	}
 	if found != 1 {
 		t.Fatalf("the search for boots found %d of the two copies: %v", found, got)
-	}
-}
-
-func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
-	tidePools := "Bring boots for the tide pools. We meet at the north end of the beach at nine, walk the rocks with the ranger, count the anemones, sea stars and crabs in each pool, sketch what we find in our field journals, eat lunch on the bluff above the cove and walk back to the bus by one. Pack water, a hat, sunscreen and a change of socks in case a wave comes over the rocks."
-	bodies := []string{tidePools + " See you Friday.", tidePools + " See you Monday.", "Rain boots are on sale at the book fair this week, in every size from toddler to adult, with half the money going to the library."}
-	extracts := []string{}
-	for i, body := range bodies {
-		root := uploadMail(t, s, pics, fmt.Sprintf("From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:0%d +0000\r\nSubject: Field trip %d\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>%s</p>\r\n", i, i, body))
-		made(t, s, "DOCUMENT", root, "extracted")
-		part := children(s, root)[0]
-		made(t, s, "DOCUMENT", part["id"], "extracted")
-		extracts = append(extracts, children(s, part["id"])[0]["id"])
-	}
-	madeAll(t, s, x)
-	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots"))
-	copies := 0
-	for _, id := range extracts[:2] {
-		if slices.Contains(got, id) {
-			copies++
-		}
-	}
-	if copies != 1 || !slices.Contains(got, extracts[2]) {
-		t.Fatalf("the search for boots found %d of the two near copies, and the sale %v: %v", copies, slices.Contains(got, extracts[2]), got)
 	}
 }
 
