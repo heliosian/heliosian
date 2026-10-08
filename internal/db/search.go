@@ -38,7 +38,7 @@ const (
 	searchMakers   = 4
 	searchLoaders  = 16
 	searchTimeout  = 2 * time.Minute
-	searchBackoff  = 30 * time.Second
+	searchAttempts = 3
 	searchShortest = 20
 )
 
@@ -61,7 +61,7 @@ type SearchEntry struct {
 	Summary  string        `json:"summary"`
 	Keywords []string      `json:"keywords"`
 	Chunks   []SearchChunk `json:"chunks"`
-	Failed   string        `json:"failed,omitempty"`
+	Failures int           `json:"failures,omitempty"`
 }
 
 type SearchChunk struct {
@@ -118,7 +118,7 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 		r := x.rows[id]
 		row := store.Row{"id": Derive(SearchPrefix, id), "target": id, "input": r.Input, "object": r.Object, "made": "No"}
 		if e := x.entries[r.Object]; e != nil {
-			row["summary"], row["keywords"], row["chunks"], row["failed"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), e.Failed, "Yes"
+			row["summary"], row["keywords"], row["chunks"], row["failures"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), strconv.Itoa(e.Failures), "Yes"
 		}
 		out = append(out, row)
 	}
@@ -127,20 +127,19 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 
 type Searcher struct {
 	*SearchIndex
-	s         *Store
-	bucket    *blob.Bucket
-	vertex    *artifacts.Vertex
-	client    *anthropic.Client
-	texts     map[string]string
-	summaries map[string]*SearchEntry
-	pending   []string
-	waiting   map[string]bool
-	swept     bool
-	wake      chan struct{}
+	s       *Store
+	bucket  *blob.Bucket
+	vertex  *artifacts.Vertex
+	client  *anthropic.Client
+	texts   map[string]string
+	pending []string
+	waiting map[string]bool
+	swept   bool
+	wake    chan struct{}
 }
 
 func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, summaries: map[string]*SearchEntry{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go x.follow()
 	queue.OnSwap(func() {
 		select {
@@ -157,6 +156,11 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	x.client = &client
 	for hash := range x.missing {
 		x.enqueue(hash)
+	}
+	for hash, e := range x.entries {
+		if e.unfinished() {
+			x.enqueue(hash)
+		}
 	}
 	x.mu.Unlock()
 	for range searchMakers {
@@ -368,11 +372,6 @@ func (x *Searcher) follow() {
 				delete(x.missing, hash)
 			}
 		}
-		for hash := range x.summaries {
-			if !wanted[hash] {
-				delete(x.summaries, hash)
-			}
-		}
 		x.mu.Unlock()
 		if sweep {
 			held, err := x.bucket.List(context.Background(), searchFolder+"/")
@@ -406,6 +405,9 @@ func (x *Searcher) follow() {
 			if loaded[i] != nil {
 				x.entries[hash] = loaded[i]
 				x.version++
+				if x.client != nil && loaded[i].unfinished() {
+					x.enqueue(hash)
+				}
 				continue
 			}
 			x.missing[hash] = true
@@ -475,7 +477,7 @@ func (x *Searcher) next() (string, string, bool) {
 		hash := x.pending[0]
 		x.pending = x.pending[1:]
 		delete(x.waiting, hash)
-		if !x.missing[hash] {
+		if e := x.entries[hash]; !x.missing[hash] && (e == nil || !e.unfinished()) {
 			continue
 		}
 		for _, r := range x.rows {
@@ -502,27 +504,25 @@ func (x *Searcher) make() {
 			continue
 		}
 		start := time.Now()
+		x.mu.Lock()
+		was := x.entries[hash]
+		x.mu.Unlock()
+		if was == nil {
+			was = &SearchEntry{}
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
-		entry, err := x.entry(ctx, hash, input)
+		entry, err := x.entry(ctx, input, was)
 		cancel()
 		if err != nil {
-			slog.Error("search: make", "object", hash, "error", err)
-			x.retry(hash)
-			continue
+			entry.Failures++
+			slog.Warn("search: make failed", "object", hash, "failures", entry.Failures, "error", err)
 		}
-		raw, err := json.Marshal(entry)
-		if err != nil {
-			slog.Error("search: encode", "object", hash, "error", err)
-			x.retry(hash)
-			continue
-		}
+		raw, _ := json.Marshal(entry)
 		if err := x.bucket.Put(context.Background(), hash, "application/json", raw); err != nil {
 			slog.Error("search: store", "object", hash, "error", err)
-			x.retry(hash)
-			continue
 		}
 		x.mu.Lock()
-		if !x.missing[hash] {
+		if !x.missing[hash] && x.entries[hash] == nil {
 			x.mu.Unlock()
 			if err := x.bucket.Remove(context.Background(), hash); err != nil {
 				slog.Error("search: remove", "object", hash, "error", err)
@@ -530,60 +530,49 @@ func (x *Searcher) make() {
 			continue
 		}
 		x.entries[hash] = entry
-		delete(x.summaries, hash)
 		delete(x.missing, hash)
 		x.version++
+		if entry.unfinished() {
+			x.enqueue(hash)
+		}
 		left := len(x.missing)
 		x.mu.Unlock()
-		slog.Info("search: made", "object", hash, "missing", left, "took", time.Since(start).Round(time.Millisecond))
+		slog.Info("search: made", "object", hash, "missing", left, "failures", entry.Failures, "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
-func (x *Searcher) retry(hash string) {
-	time.Sleep(searchBackoff)
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	x.enqueue(hash)
+func (e *SearchEntry) unfinished() bool {
+	return e.Summary == "" && e.Failures < searchAttempts
 }
 
-func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry, error) {
-	x.mu.Lock()
-	summary := x.summaries[hash]
-	x.mu.Unlock()
-	if summary == nil {
-		summary = &SearchEntry{}
-		_, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
+func (x *Searcher) entry(ctx context.Context, input string, was *SearchEntry) (*SearchEntry, error) {
+	entry := &SearchEntry{Summary: was.Summary, Keywords: was.Keywords, Chunks: was.Chunks, Failures: was.Failures}
+	if len(entry.Chunks) == 0 {
+		texts := searchChunks(input)
+		vectors, err := x.vertex.Embed(ctx, texts, false)
+		if err != nil {
+			return entry, err
+		}
+		for i, text := range texts {
+			normalize(vectors[i])
+			entry.Chunks = append(entry.Chunks, SearchChunk{Text: text, Vector: vectors[i]})
+		}
+	}
+	if entry.Summary == "" {
+		answer := &SearchEntry{}
+		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
 			Model:        claude.SearchSummaryModel,
 			MaxTokens:    32000,
 			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
 			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
 			OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
-		}, summary)
-		switch {
-		case errors.Is(err, claude.ErrFinal):
-			summary = &SearchEntry{Failed: err.Error()}
-		case err != nil:
-			return nil, err
-		case utf8.RuneCountInString(strings.TrimSpace(summary.Summary)) < searchShortest:
-			summary.Failed = fmt.Sprintf("the summary is too short: %q", summary.Summary)
-			summary.Summary = ""
+		}, answer); err != nil {
+			return entry, err
 		}
-		if summary.Failed != "" {
-			slog.Warn("search: the summary failed", "object", hash, "failed", summary.Failed)
+		if utf8.RuneCountInString(strings.TrimSpace(answer.Summary)) < searchShortest {
+			return entry, fmt.Errorf("the summary is too short: %q", answer.Summary)
 		}
-		x.mu.Lock()
-		x.summaries[hash] = summary
-		x.mu.Unlock()
-	}
-	texts := searchChunks(input)
-	vectors, err := x.vertex.Embed(ctx, texts, false)
-	if err != nil {
-		return nil, err
-	}
-	entry := &SearchEntry{Summary: summary.Summary, Keywords: summary.Keywords, Failed: summary.Failed}
-	for i, text := range texts {
-		normalize(vectors[i])
-		entry.Chunks = append(entry.Chunks, SearchChunk{Text: text, Vector: vectors[i]})
+		entry.Summary, entry.Keywords = answer.Summary, answer.Keywords
 	}
 	return entry, nil
 }

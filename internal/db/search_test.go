@@ -68,7 +68,7 @@ func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
 	return s, queue, bucket, x
 }
 
-func TestAnAnswerCutShortIsNotAskedAgain(t *testing.T) {
+func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
 	intercept.GoogleLogin(t.TempDir())
@@ -87,32 +87,51 @@ func TestAnAnswerCutShortIsNotAskedAgain(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
 	x.StartMaking("test")
-	time.Sleep(500 * time.Millisecond)
-	mu.Lock()
-	defer mu.Unlock()
-	if len(asked) == 0 {
-		t.Fatal("nothing was asked")
-	}
-	for request, n := range asked {
-		if n > 1 {
-			t.Fatalf("an input was asked %d times after its answer was cut short: %.80s", n, request)
+	madeAll(t, s, x)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		x.mu.RLock()
+		done := true
+		for _, e := range x.entries {
+			done = done && e.Failures == searchAttempts
+		}
+		x.mu.RUnlock()
+		if done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the entries never reached three failures")
 		}
 	}
-	madeAll(t, s, x)
+	time.Sleep(200 * time.Millisecond)
 	x.mu.RLock()
-	defer x.mu.RUnlock()
 	for _, e := range x.entries {
-		if !strings.Contains(e.Failed, "max_tokens") || e.Summary != "" || len(e.Chunks) == 0 {
+		if e.Summary != "" || len(e.Chunks) == 0 {
 			t.Fatalf("an entry whose answer was cut short: %+v", e)
+		}
+	}
+	x.mu.RUnlock()
+	mu.Lock()
+	defer mu.Unlock()
+	for request, n := range asked {
+		if n != searchAttempts {
+			t.Fatalf("an input was asked %d times, want %d: %.80s", n, searchAttempts, request)
 		}
 	}
 }
 
-func TestAShortSummaryIsKeptAsFailed(t *testing.T) {
+func TestAShortSummaryCountsAsAFailure(t *testing.T) {
+	var mu sync.Mutex
+	asked := map[string]int{}
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
-		return `{"summary": "x", "keywords": ["outing"]}`
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+		mu.Lock()
+		defer mu.Unlock()
+		asked[request]++
+		if asked[request] == 1 {
+			return `{"summary": "x", "keywords": ["outing"]}`
+		}
+		return `{"summary": "a thing in the sample, asked twice", "keywords": ["outing"]}`
 	}))
 	vertex, err := artifacts.NewVertex()
 	if err != nil {
@@ -121,10 +140,14 @@ func TestAShortSummaryIsKeptAsFailed(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
 	x.StartMaking("test")
-	madeAll(t, s, x)
-	rows := ids(runAs(t, s.Model(), "", `(from SEARCH (where (not (blank failed)) (blank summary) (> chunks 0)))`).Rows(), "target")
-	if len(rows) == 0 || len(rows) != len(x.rows) {
-		t.Fatalf("%d of %d entries are kept as failed, without a summary but with chunks", len(rows), len(x.rows))
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		rows := runAs(t, s.Model(), "", `(from SEARCH (where (= failures 1) (= summary "a thing in the sample, asked twice") (> chunks 0)))`).Rows()
+		if len(rows) > 0 && len(rows) == len(runAs(t, s.Model(), "", `(from SEARCH)`).Rows()) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d entries have one failure and the second answer", len(rows))
+		}
 	}
 }
 
