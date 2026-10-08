@@ -212,6 +212,12 @@ func spec() schema {
 		"fetch":  schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}, "description": "What fetch was set to, when it was."},
 		"why":    schema{"type": "string", "description": "Why fetch was set."},
 	}}
+	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
+		"id":      schema{"type": "string"},
+		"name":    schema{"type": "string", "description": "The row's name; a document's is the name of the nearest document above it with a kind, such as its email's subject."},
+		"href":    schema{"type": "string", "description": "The page the row has on the Helios apps or the web, when it has one."},
+		"summary": schema{"type": "string"},
+	}}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
 		"/api/q": schema{
@@ -294,16 +300,46 @@ func spec() schema {
 		doPrefix + "search": schema{
 			"post": schema{
 				"tags":        []string{"do"},
-				"summary":     "Search groups and people",
-				"description": "Answers server-sent events, each a list of {id, summary} the caller may read, best first: words, the rows holding the most of the words, at once; then meaning, ranked by the closest of each row's embedded chunks to the words; or error if the meaning search fails.",
+				"summary":     "Search groups, people and documents",
+				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. Only entries of the current version are searched. A document stands for its near-identical copies, which are left out.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":       "object",
 					"required":   []string{"words"},
 					"properties": schema{"words": schema{"type": "string"}},
 				}}}},
 				"responses": refusals(schema{
-					"200": schema{"description": "The words event, then the meaning or error event.", "content": schema{"text/event-stream": schema{"schema": schema{"type": "string"}}}},
+					"200": schema{"description": "The hits by table.", "content": schema{"application/json": schema{"schema": schema{
+						"type": "object",
+						"additionalProperties": schema{
+							"type":     "object",
+							"required": []string{"words", "meaning"},
+							"properties": schema{
+								"words":   schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchHit"}},
+								"meaning": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchHit"}},
+							},
+						},
+					}}}},
 					"400": failure("No words."),
+				}),
+			},
+		},
+		doPrefix + "search/make": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Make a row's search entry",
+				"description": "The import key alone. Queues the search entry of one group, person or document extract for the makers, who ask Vertex and Claude for it off the request path and store it under the current version. Nothing else makes entries.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+					"type":       "object",
+					"required":   []string{"id"},
+					"properties": schema{"id": schema{"type": "string"}},
+				}}}},
+				"responses": refusals(schema{
+					"200": schema{"description": "Queued; the entry's object.", "content": schema{"application/json": schema{"schema": schema{
+						"type":       "object",
+						"required":   []string{"object"},
+						"properties": schema{"object": schema{"type": "string"}},
+					}}}},
+					"404": failure("No search row for the ID."),
 				}),
 			},
 		},

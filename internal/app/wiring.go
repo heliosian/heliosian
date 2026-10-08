@@ -120,7 +120,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
-	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
+	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, model.Origin(cfg.Domain))
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
 		return func() string {

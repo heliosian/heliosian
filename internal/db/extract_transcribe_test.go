@@ -17,12 +17,13 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 	var mu sync.Mutex
 	asked := 0
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		if !strings.Contains(request, "application/pdf") {
@@ -88,7 +89,7 @@ func jpegOf(t *testing.T, size int) []byte {
 }
 
 func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string { return "# Slides" }))
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(string) string { return "# Slides" }))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	if err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25)); err != nil {
@@ -185,7 +186,7 @@ func TestImagesAreTranscribed(t *testing.T) {
 	}
 	var mu sync.Mutex
 	asked := map[string]int{}
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {

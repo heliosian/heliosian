@@ -46,7 +46,7 @@ func main() {
 	oldest, newest := docs.Span()
 	fmt.Printf("%d documents, %d chunks, %s to %s, loaded in %s\n",
 		len(docs.Documents), docs.Chunks(), oldest, newest, time.Since(start).Round(time.Millisecond))
-	vectors, err := embedder.Embed(context.Background(), []string{query}, true)
+	vectors, err := embedder.Embed(context.Background(), []string{query}, true, artifacts.AskDims)
 	if err != nil {
 		log.Fatalf("embed: %v", err)
 	}

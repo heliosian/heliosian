@@ -591,7 +591,7 @@ const PolicySource = `
 ; every group's and person's search entry
 (read SEARCH (super_admin))
 ; every column of a search entry
-(read SEARCH (id target input summary keywords chunks object made failures) true)
+(read SEARCH (id target input summary keywords chunks object made version failures) true)
 ; delete a search entry, so it is built again
 (delete SEARCH (or (super_admin) (system "import")))
 ; every document, whoever it was sent to

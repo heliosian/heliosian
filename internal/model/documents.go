@@ -123,7 +123,7 @@ func (d *Document) Embed(ctx context.Context, embedder *artifacts.Vertex) error 
 	for _, c := range d.Chunks {
 		texts = append(texts, d.embedText(c))
 	}
-	vectors, err := embedder.Embed(ctx, texts, false)
+	vectors, err := embedder.Embed(ctx, texts, false, artifacts.AskDims)
 	if err != nil {
 		return err
 	}

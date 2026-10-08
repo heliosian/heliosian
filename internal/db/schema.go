@@ -659,7 +659,7 @@ var Tables = []Table{
 	{
 		Name:        "SEARCH",
 		Generated:   true,
-		Description: "A group's or person's search entry: the input built from what every reader of it may read, and what Claude and Vertex made of it, kept in the media bucket under its object. Read from the searcher's index as it stands, so an entry made since the last commit shows at once.",
+		Description: "A group's, person's or document extract's search entry: the input built from what every reader of it may read, and what Claude and Vertex made of it, kept in the media bucket under its object. Read from the searcher's index as it stands, so an entry made since the last commit shows at once.",
 		Columns: []Column{
 			ident(SearchPrefix),
 			ref("target", "").about("The group or person it is the entry of."),
@@ -668,7 +668,8 @@ var Tables = []Table{
 			col("keywords", Text).about("Claude's words someone might type looking for it, comma-separated; blank until made."),
 			col("chunks", Int).about("How many pieces the input was cut into, each embedded by Vertex; blank until made."),
 			col("object", Text).about("Where the entry is kept in the media bucket: search/ and the input's SHA-256."),
-			col("made", Bool).about("Whether the entry is in the index; no while it waits for Claude and Vertex."),
+			col("made", Bool).about("Whether the entry is in the bucket; no until someone asks for it to be made."),
+			col("version", Int).about("The entry format it was made under; search uses only entries of the current version, and leaves the rest in the bucket untouched. Blank for an entry from before versions."),
 			col("failures", Int).about("How many attempts to make it failed; an entry with no summary is tried again until it has three, and deleting it starts it over."),
 		},
 	},

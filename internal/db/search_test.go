@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -15,84 +17,144 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
-func instantClaude(w http.ResponseWriter, r *http.Request) {
-	claudeReplying(func(string) string {
-		return `{"summary": "a thing in the sample", "keywords": ["outing", "lunch"]}`
-	})(w, r)
+func testOrigin(app string) string {
+	return "https://" + app + ".example.org"
 }
 
-func claudeReplying(reply func(request string) string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		request, _ := io.ReadAll(r.Body)
-		claudeStream(w, reply(string(request)), "end_turn")
-	}
-}
-
-func claudeStream(w http.ResponseWriter, text, stop string) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	answer, _ := json.Marshal(text)
-	for _, event := range []string{
-		`{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`,
-		`{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`,
-		`{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":` + string(answer) + `}}`,
-		`{"type":"content_block_stop","index":0}`,
-		`{"type":"message_delta","delta":{"stop_reason":"` + stop + `","stop_sequence":null},"usage":{"output_tokens":0}}`,
-		`{"type":"message_stop"}`,
-	} {
-		var kind struct {
-			Type string `json:"type"`
-		}
-		json.Unmarshal([]byte(event), &kind)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind.Type, event)
-	}
-}
-
-func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
+func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store, *store.Queue, *Searcher) {
 	t.Helper()
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
-	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(instantClaude))
+	intercept.Install(intercept.ClaudeHost, claude)
 	vertex, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
 	s, queue := sampleWithQueue(t)
-	bucket := blob.NewMemoryBucket()
-	x := NewSearcher(s, queue, bucket, vertex)
+	x := NewSearcher(s, queue, bucket, vertex, testOrigin)
 	x.StartMaking("test")
+	return s, queue, x
+}
+
+func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
+	t.Helper()
+	bucket := blob.NewMemoryBucket()
+	s, queue, x := newSearcher(t, testkit.SearchClaude(), bucket)
 	return s, queue, bucket, x
+}
+
+func waitRows(t *testing.T, s *Store, x *Searcher) map[string]SearchRow {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		m := s.Model()
+		texts, err := SearchTexts(context.Background(), m, x.bucket, map[string]string{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := m.SearchInputs(texts)
+		x.mu.RLock()
+		done := len(x.rows) == len(want)
+		for id, r := range want {
+			if x.rows[id].Object != r.Object {
+				done = false
+			}
+		}
+		x.mu.RUnlock()
+		if done {
+			return want
+		}
+	}
+	t.Fatal("the searcher never read every row")
+	return nil
+}
+
+func askAll(t *testing.T, s *Store, x *Searcher) map[string]SearchRow {
+	t.Helper()
+	rows := waitRows(t, s, x)
+	for id := range rows {
+		if _, err := x.Make(id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return rows
+}
+
+func waitIndexed(t *testing.T, x *Searcher, rows map[string]SearchRow) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		v := x.snapshot()
+		done := true
+		for _, r := range rows {
+			if e := v.entries[r.Object]; e == nil || e.Summary == "" {
+				done = false
+			}
+		}
+		if done {
+			return
+		}
+	}
+	t.Fatal("the searcher never indexed every row it was asked to make")
+}
+
+func makeAll(t *testing.T, s *Store, x *Searcher) {
+	t.Helper()
+	waitIndexed(t, x, askAll(t, s, x))
+}
+
+func hitIDs(hits []SearchHit) []string {
+	out := []string{}
+	for _, h := range hits {
+		out = append(out, h.ID)
+	}
+	return out
+}
+
+func sendMail(t *testing.T, s *Store, pics *Pictures, subject, body string) string {
+	t.Helper()
+	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: "+subject+"\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>"+body+"</p>\r\n")
+	made(t, s, "DOCUMENT", root, "extracted")
+	part := children(s, root)[0]
+	made(t, s, "DOCUMENT", part["id"], "extracted")
+	return children(s, part["id"])[0]["id"]
+}
+
+func TestNothingIsMadeUnasked(t *testing.T) {
+	s, _, bucket, x := searcher(t)
+	waitRows(t, s, x)
+	time.Sleep(200 * time.Millisecond)
+	held, err := bucket.List(context.Background(), searchFolder+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 0 {
+		t.Fatalf("the searcher made %d entries nobody asked for", len(held))
+	}
 }
 
 func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
-	intercept.GoogleLogin(t.TempDir())
-	intercept.Install(intercept.VertexHost, intercept.Vertex())
-	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, _, x := newSearcher(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		request, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		asked[string(request)]++
 		mu.Unlock()
-		claudeStream(w, `{"summary": "cut`, "max_tokens")
-	}))
-	vertex, err := artifacts.NewVertex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, queue := sampleWithQueue(t)
-	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
-	x.StartMaking("test")
-	madeAll(t, s, x)
+		testkit.ClaudeStream(w, `{"summary": "cut`, "max_tokens")
+	}), blob.NewMemoryBucket())
+	rows := askAll(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		x.mu.RLock()
 		done := true
-		for _, e := range x.entries {
-			done = done && e.Failures == searchAttempts
+		for _, r := range rows {
+			e := x.entries[r.Object]
+			done = done && e != nil && e.Failures == searchAttempts
 		}
 		x.mu.RUnlock()
 		if done {
@@ -122,9 +184,7 @@ func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
-	intercept.GoogleLogin(t.TempDir())
-	intercept.Install(intercept.VertexHost, intercept.Vertex())
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	s, _, x := newSearcher(t, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		asked[request]++
@@ -132,14 +192,8 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 			return `{"summary": "x", "keywords": ["outing"]}`
 		}
 		return `{"summary": "a thing in the sample, asked twice", "keywords": ["outing"]}`
-	}))
-	vertex, err := artifacts.NewVertex()
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, queue := sampleWithQueue(t)
-	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
-	x.StartMaking("test")
+	}), blob.NewMemoryBucket())
+	askAll(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		rows := runAs(t, s.Model(), "", `(from SEARCH (where (= failures 1) (= summary "a thing in the sample, asked twice") (> chunks 0)))`).Rows()
 		if len(rows) > 0 && len(rows) == len(runAs(t, s.Model(), "", `(from SEARCH)`).Rows()) {
@@ -151,17 +205,9 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 	}
 }
 
-func TestDeletingASearchEntryBuildsItAgain(t *testing.T) {
-	var mu sync.Mutex
-	asked := 0
+func TestDeletingASearchEntryRemovesItUntilAskedAgain(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
-	madeAll(t, s, x)
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
-		mu.Lock()
-		asked++
-		mu.Unlock()
-		return `{"summary": "a thing in the sample, built again", "keywords": ["outing"]}`
-	}))
+	makeAll(t, s, x)
 	rows := runAs(t, s.Model(), "", `(from SEARCH (where (= target "grp00000000040")))`).Rows()
 	if len(rows) != 1 {
 		t.Fatalf("search rows for the event: %v", rows)
@@ -173,102 +219,33 @@ func TestDeletingASearchEntryBuildsItAgain(t *testing.T) {
 	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
 		t.Fatal(err)
 	}
+	object := rows[0]["object"]
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		x.mu.RLock()
-		e := x.entries[rows[0]["object"]]
-		x.mu.RUnlock()
-		if e != nil && e.Summary == "a thing in the sample, built again" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("the deleted entry was never built again")
-		}
-	}
-	raw, _, err := bucket.Get(context.Background(), rows[0]["object"])
-	if err != nil || !strings.Contains(string(raw), "built again") {
-		t.Fatalf("the bucket holds %.80s, %v", raw, err)
-	}
-	mu.Lock()
-	defer mu.Unlock()
-	if asked != 1 {
-		t.Fatalf("claude was asked %d times, want once", asked)
-	}
-}
-
-func TestDeletingEverySearchEntryAtOnceBuildsEveryOneAgain(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	madeAll(t, s, x)
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
-		return `{"summary": "a thing in the sample, built again", "keywords": ["outing"]}`
-	}))
-	rows := runAs(t, s.Model(), "", `(from SEARCH)`).Rows()
-	b := Batch{}
-	for _, row := range rows {
-		b.Batch = append(b.Batch, Edit{Delete: row["id"]})
-	}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
-		t.Fatal(err)
-	}
-	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		left := 0
-		x.mu.RLock()
-		for _, row := range rows {
-			if e := x.entries[row["object"]]; e == nil || e.Summary != "a thing in the sample, built again" {
-				left++
-			}
-		}
-		x.mu.RUnlock()
-		if left == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("%d of %d deleted entries were never built again", left, len(rows))
-		}
-	}
-	for _, row := range rows {
-		if raw, _, err := bucket.Get(context.Background(), row["object"]); err != nil || !strings.Contains(string(raw), "built again") {
-			t.Fatalf("the bucket holds %.80s for %s, %v", raw, row["target"], err)
-		}
-	}
-}
-
-func madeAll(t *testing.T, s *Store, x *Searcher) {
-	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		m := s.Model()
-		texts, err := SearchTexts(context.Background(), m, x.bucket, map[string]string{})
+		held, err := bucket.Exists(context.Background(), object)
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := m.SearchInputs(texts)
-		x.mu.RLock()
-		done := len(x.rows) == len(want)
-		for id, r := range want {
-			if x.rows[id].Object != r.Object || x.entries[r.Object] == nil {
-				done = false
-			}
+		if !held && x.snapshot().entries[object] == nil {
+			break
 		}
-		x.mu.RUnlock()
-		if done {
-			return
+		if time.Now().After(deadline) {
+			t.Fatal("the deleted entry is still stored or indexed")
 		}
 	}
-	t.Fatal("the searcher never made every row's entry")
-}
-
-func hitIDs(hits []SearchHit) []string {
-	out := []string{}
-	for _, h := range hits {
-		out = append(out, h.ID)
+	time.Sleep(200 * time.Millisecond)
+	if held, _ := bucket.Exists(context.Background(), object); held {
+		t.Fatal("the deleted entry was made again unasked")
 	}
-	return out
+	if _, err := x.Make("grp00000000040"); err != nil {
+		t.Fatal(err)
+	}
+	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: object}})
 }
 
-func TestEveryShownRowGetsAnEntry(t *testing.T) {
+func TestEveryShownRowHasAnInput(t *testing.T) {
 	s, _, bucket, x := searcher(t)
-	madeAll(t, s, x)
-	m := s.Model()
-	inputs := m.SearchInputs(nil)
+	makeAll(t, s, x)
+	inputs := s.Model().SearchInputs(nil)
 	if _, ok := inputs["grp00000000041"]; !ok {
 		t.Error("a managers group has no search input")
 	}
@@ -276,8 +253,27 @@ func TestEveryShownRowGetsAnEntry(t *testing.T) {
 	if !strings.Contains(picnic.Input, "Fall Picnic") || !strings.Contains(picnic.Input, "Under: Community") {
 		t.Errorf("the picnic's input is %q", picnic.Input)
 	}
-	if held, err := bucket.Exists(context.Background(), picnic.Object); err != nil || !held || !strings.HasPrefix(picnic.Object, "search/") {
-		t.Errorf("the picnic's entry %s is not in the bucket: %v", picnic.Object, err)
+	raw, _, err := bucket.Get(context.Background(), picnic.Object)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := SearchEntry{}
+	if err := json.Unmarshal(raw, &entry); err != nil || entry.Version != searchVersion || len(entry.Chunks[0].Vector) != artifacts.SearchDims {
+		t.Errorf("the picnic's entry is version %d with %d dimensions: %v", entry.Version, len(entry.Chunks[0].Vector), err)
+	}
+}
+
+func TestKeywordsAreLowercased(t *testing.T) {
+	s, _, x := newSearcher(t, testkit.ClaudeReplying(func(string) string {
+		return `{"summary": "a thing in the sample, shouted", "keywords": ["Fall Picnic", "fall picnic", " PICNIC "]}`
+	}), blob.NewMemoryBucket())
+	makeAll(t, s, x)
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, e := range x.entries {
+		if !slices.Equal(e.Keywords, []string{"fall picnic", "picnic"}) {
+			t.Fatalf("keywords %q", e.Keywords)
+		}
 	}
 }
 
@@ -285,26 +281,49 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)
 	NewExtractor(s, queue, bucket, "test")
-	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
-	made(t, s, "DOCUMENT", root, "extracted")
-	part := children(s, root)[0]
-	made(t, s, "DOCUMENT", part["id"], "extracted")
-	extract := children(s, part["id"])[0]["id"]
-	madeAll(t, s, x)
+	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
+	makeAll(t, s, x)
 	x.mu.RLock()
-	input := x.rows[extract].Input
+	row := x.rows[extract]
 	x.mu.RUnlock()
 	for _, want := range []string{"Email: Tide pools", "Kind: mail", "From: Maya Lindqvist", "Part: text/html", "Bring **boots** for the tide pools."} {
-		if !strings.Contains(input, want) {
-			t.Errorf("the extract's input lacks %q:\n%s", want, input)
+		if !strings.Contains(row.Input, want) {
+			t.Errorf("the extract's input lacks %q:\n%s", want, row.Input)
 		}
 	}
+	if row.Name != "Tide pools" {
+		t.Errorf("the extract is named %q", row.Name)
+	}
 	m := s.Model()
-	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots")); !slices.Contains(got, extract) {
+	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots")["DOCUMENT"]); !slices.Contains(got, extract) {
 		t.Errorf("the Hummingbirds parent's search for boots found %v", got)
 	}
-	if got := hitIDs(x.Words(m, Env{Viewer: student, Now: testNow}, "boots")); slices.Contains(got, extract) {
+	if got := hitIDs(x.Words(m, Env{Viewer: student, Now: testNow}, "boots")["DOCUMENT"]); slices.Contains(got, extract) {
 		t.Errorf("a student the email was not sent to found it: %v", got)
+	}
+}
+
+func TestEveryChunkCarriesTheHeader(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	paragraphs := []string{}
+	for i := range 40 {
+		paragraphs = append(paragraphs, fmt.Sprintf("<p>Paragraph %d of the long letter about the spring camping trip and what every family needs to pack for three nights.</p>", i))
+	}
+	extract := sendMail(t, s, pics, "Camping letter", strings.Join(paragraphs, ""))
+	makeAll(t, s, x)
+	x.mu.RLock()
+	row := x.rows[extract]
+	entry := x.entries[row.Object]
+	x.mu.RUnlock()
+	if len(entry.Chunks) < 2 {
+		t.Fatalf("the long letter made %d chunks", len(entry.Chunks))
+	}
+	for i, c := range entry.Chunks {
+		if !strings.HasPrefix(c.Text, row.Head+"\n\n") || !strings.Contains(c.Text, "Email: Camping letter") {
+			t.Errorf("chunk %d lacks the header: %.120s", i, c.Text)
+		}
 	}
 }
 
@@ -314,28 +333,104 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	NewExtractor(s, queue, bucket, "test")
 	extracts := []string{}
 	for _, subject := range []string{"Tide pools", "Tide pools again"} {
-		root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: "+subject+"\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
-		made(t, s, "DOCUMENT", root, "extracted")
-		part := children(s, root)[0]
-		made(t, s, "DOCUMENT", part["id"], "extracted")
-		extracts = append(extracts, children(s, part["id"])[0]["id"])
+		extracts = append(extracts, sendMail(t, s, pics, subject, "Bring <b>boots</b> for the tide pools."))
 	}
+	makeAll(t, s, x)
 	m := s.Model()
-	first, _ := m.Table("DOCUMENT").Get(extracts[0])
-	second, _ := m.Table("DOCUMENT").Get(extracts[1])
-	if first["content"] != second["content"] {
-		t.Fatalf("the two extracts hold different content: %v %v", first, second)
-	}
-	madeAll(t, s, x)
-	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots"))
-	found := 0
+	env := Env{Viewer: parent, Now: testNow}
+	got := hitIDs(x.Words(m, env, "boots")["DOCUMENT"])
+	found := []string{}
 	for _, id := range extracts {
 		if slices.Contains(got, id) {
-			found++
+			found = append(found, id)
 		}
 	}
-	if found != 1 {
-		t.Fatalf("the search for boots found %d of the two copies: %v", found, got)
+	if len(found) != 1 {
+		t.Fatalf("the search for boots found %d of the two copies: %v", len(found), got)
+	}
+	similar, err := x.Similar(m, env, found[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := extracts[0]
+	if other == found[0] {
+		other = extracts[1]
+	}
+	if !slices.Equal(hitIDs(similar), []string{other}) {
+		t.Fatalf("the copies of %s are %v", found[0], hitIDs(similar))
+	}
+	if _, err := x.Similar(m, Env{Viewer: student, Now: testNow}, found[0]); err == nil {
+		t.Error("a student the email was not sent to listed its copies")
+	}
+}
+
+func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	tidePools := "Bring boots for the tide pools. We meet at the north end of the beach at nine, walk the rocks with the ranger, count the anemones, sea stars and crabs in each pool, sketch what we find in our field journals, eat lunch on the bluff above the cove and walk back to the bus by one. Pack water, a hat, sunscreen and a change of socks in case a wave comes over the rocks."
+	extracts := []string{}
+	for i, body := range []string{tidePools + " See you Friday.", tidePools + " See you Monday.", "Rain boots are on sale at the book fair this week, in every size from toddler to adult, with half the money going to the library."} {
+		extracts = append(extracts, sendMail(t, s, pics, fmt.Sprintf("Field trip %d", i), body))
+	}
+	makeAll(t, s, x)
+	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots")["DOCUMENT"])
+	copies := 0
+	for _, id := range extracts[:2] {
+		if slices.Contains(got, id) {
+			copies++
+		}
+	}
+	if copies != 1 || !slices.Contains(got, extracts[2]) {
+		t.Fatalf("the search for boots found %d of the two near copies, and the sale %v: %v", copies, slices.Contains(got, extracts[2]), got)
+	}
+}
+
+func TestFingerprintsMeasureSharedText(t *testing.T) {
+	long := strings.Repeat("the class walked to the tide pools and counted sea stars before lunch ", 20)
+	if r := resemblance(fingerprint(long), fingerprint(long)); r != 1 {
+		t.Errorf("identical texts resemble each other %v", r)
+	}
+	if r := resemblance(fingerprint(long+"see you friday"), fingerprint(long+"see you monday")); r < searchSame {
+		t.Errorf("texts differing by one word resemble each other %v", r)
+	}
+	if r := resemblance(fingerprint(long), fingerprint("rain boots are on sale at the book fair this week in every size")); r > 0.2 {
+		t.Errorf("unrelated texts resemble each other %v", r)
+	}
+}
+
+func TestTheVectorIndexFindsTheNearest(t *testing.T) {
+	random := rand.New(rand.NewPCG(1, 2))
+	entries := map[string]*SearchEntry{}
+	for i := range 3000 {
+		v := make([]float32, 64)
+		for j := range v {
+			v[j] = float32(random.NormFloat64())
+		}
+		normalize(v)
+		entries[fmt.Sprintf("o%04d", i)] = &SearchEntry{Version: searchVersion, Chunks: []SearchChunk{{Vector: v}}}
+	}
+	index := (&vectorIndex{}).update(entries)
+	if len(index.centroids) < 2 {
+		t.Fatalf("%d cells for 3000 vectors", len(index.centroids))
+	}
+	missed := 0
+	for i := 0; i < 3000; i += 100 {
+		o := fmt.Sprintf("o%04d", i)
+		scores := index.search(entries[o].Chunks[0].Vector)
+		if math.Abs(scores[o]-1) > 1e-4 {
+			missed++
+		}
+	}
+	if missed > 0 {
+		t.Fatalf("%d of 30 vectors were not found as their own nearest", missed)
+	}
+	delete(entries, "o0000")
+	entries["o9999"] = &SearchEntry{Version: searchVersion, Chunks: []SearchChunk{{Vector: entries["o0100"].Chunks[0].Vector}}}
+	index = index.update(entries)
+	scores := index.search(entries["o0100"].Chunks[0].Vector)
+	if _, gone := scores["o0000"]; gone || math.Abs(scores["o9999"]-1) > 1e-4 {
+		t.Fatalf("after an update the removed vector scores %v and the added one %v", scores["o0000"], scores["o9999"])
 	}
 }
 
@@ -343,12 +438,8 @@ func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)
 	NewExtractor(s, queue, bucket, "test")
-	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bring <b>boots</b> for the tide pools.</p>\r\n")
-	made(t, s, "DOCUMENT", root, "extracted")
-	part := children(s, root)[0]
-	made(t, s, "DOCUMENT", part["id"], "extracted")
-	extract := children(s, part["id"])[0]["id"]
-	madeAll(t, s, x)
+	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
+	makeAll(t, s, x)
 	x.mu.RLock()
 	object := x.rows[extract].Object
 	x.mu.RUnlock()
@@ -356,9 +447,7 @@ func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		x.mu.RLock()
-		_, indexed := x.rows[extract]
-		x.mu.RUnlock()
+		_, indexed := x.snapshot().rows[extract]
 		held, err := bucket.Exists(context.Background(), object)
 		if err != nil {
 			t.Fatal(err)
@@ -372,26 +461,26 @@ func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 
 func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 	s, _, _, x := searcher(t)
-	madeAll(t, s, x)
+	makeAll(t, s, x)
 	m := s.Model()
-	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "picnic")); !slices.Contains(got, "grp00000000040") {
+	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); !slices.Contains(got, "grp00000000040") {
 		t.Errorf("the parent's word search for picnic found %v", got)
 	}
-	if got := hitIDs(x.Words(m, Env{Viewer: guest, Now: testNow}, "picnic")); slices.Contains(got, "grp00000000040") {
+	if got := hitIDs(x.Words(m, Env{Viewer: guest, Now: testNow}, "picnic")["GROUP"]); slices.Contains(got, "grp00000000040") {
 		t.Errorf("a guest's word search found the picnic they can't see: %v", got)
 	}
-	meaning, err := x.Meaning(context.Background(), m, Env{Viewer: parent, Now: testNow}, "fall picnic")
+	results, err := x.Search(context.Background(), m, Env{Viewer: parent, Now: testNow}, "fall picnic")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hitIDs(meaning); !slices.Contains(got, "grp00000000040") {
+	if got := hitIDs(results["GROUP"].Meaning); !slices.Contains(got, "grp00000000040") {
 		t.Errorf("the parent's search by meaning for fall picnic found %v", got)
 	}
 }
 
-func TestAChangedRowIsMadeAgain(t *testing.T) {
+func TestAChangedRowLosesItsOldEntry(t *testing.T) {
 	s, _, bucket, x := searcher(t)
-	madeAll(t, s, x)
+	makeAll(t, s, x)
 	before := s.Model().SearchInputs(nil)["grp00000000040"].Object
 	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"location": "the meadow"})); err != nil {
 		t.Fatal(err)
@@ -400,50 +489,86 @@ func TestAChangedRowIsMadeAgain(t *testing.T) {
 	if after == before {
 		t.Fatal("a new location left the picnic's input unchanged")
 	}
-	madeAll(t, s, x)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		held, err := bucket.Exists(context.Background(), before)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !held {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the picnic's old entry %s is still stored", before)
+		}
+	}
+	if held, _ := bucket.Exists(context.Background(), after); held {
+		t.Fatal("the picnic's new entry was made unasked")
+	}
+	makeAll(t, s, x)
 	if held, err := bucket.Exists(context.Background(), after); err != nil || !held {
 		t.Errorf("the picnic's new entry %s was never made: %v", after, err)
 	}
-	if held, err := bucket.Exists(context.Background(), before); err != nil || held {
-		t.Errorf("the picnic's old entry %s is still stored: %v", before, err)
-	}
 }
 
-func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
+func TestAnEntryWithoutTheVersionIsLeftAlone(t *testing.T) {
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
-	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(instantClaude))
+	intercept.Install(intercept.ClaudeHost, testkit.SearchClaude())
 	vertex, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
+	picnic := s.Model().SearchInputs(nil)["grp00000000040"].Object
+	old := []byte(`{"summary":"the fall picnic, from before versions","keywords":["picnic"],"chunks":[]}`)
 	stray := SearchObject("a row long gone")
-	if err := bucket.Put(context.Background(), stray, "application/json", []byte("{}")); err != nil {
-		t.Fatal(err)
+	strayVersioned := SearchObject("another row long gone")
+	for name, body := range map[string][]byte{picnic: old, stray: old, strayVersioned: []byte(`{"version":1,"summary":"gone"}`)} {
+		if err := bucket.Put(context.Background(), name, "application/json", body); err != nil {
+			t.Fatal(err)
+		}
 	}
-	x := NewSearcher(s, queue, bucket, vertex)
+	x := NewSearcher(s, queue, bucket, vertex, testOrigin)
 	x.StartMaking("test")
-	madeAll(t, s, x)
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		held, err := bucket.Exists(context.Background(), stray)
+	waitRows(t, s, x)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		held, err := bucket.Exists(context.Background(), strayVersioned)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !held {
-			return
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("a stray versioned entry is still stored")
 		}
 	}
-	t.Fatalf("the stray entry %s is still stored", stray)
+	time.Sleep(200 * time.Millisecond)
+	for _, name := range []string{picnic, stray} {
+		raw, _, err := bucket.Get(context.Background(), name)
+		if err != nil || string(raw) != string(old) {
+			t.Fatalf("the unversioned entry %s became %.80s, %v", name, raw, err)
+		}
+	}
+	if got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); slices.Contains(got, "grp00000000040") {
+		t.Fatalf("search used an unversioned entry: %v", got)
+	}
+	if _, err := x.Make("grp00000000040"); err != nil {
+		t.Fatal(err)
+	}
+	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: picnic}})
+	if got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "picnic")["GROUP"]); !slices.Contains(got, "grp00000000040") {
+		t.Fatalf("the picnic, made when asked, was not found: %v", got)
+	}
 }
 
 func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 	s, _, _, x := searcher(t)
-	madeAll(t, s, x)
+	makeAll(t, s, x)
 	q := `(from SEARCH (where (= target "grp00000000040")))`
 	rows := as(t, s, staff, q)
-	if len(rows) != 1 || rows[0]["made"] != "Yes" || rows[0]["summary"] == "" || !strings.Contains(rows[0]["input"], "Fall Picnic") || rows[0]["chunks"] != "1" {
+	if len(rows) != 1 || rows[0]["made"] != "Yes" || rows[0]["version"] != "1" || rows[0]["summary"] == "" || !strings.Contains(rows[0]["input"], "Fall Picnic") || rows[0]["chunks"] != "1" {
 		t.Fatalf("the super admin reads the picnic's entry as %v", rows)
 	}
 	if n := len(as(t, s, parent, q)); n != 0 {
@@ -458,9 +583,9 @@ func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 	}
 }
 
-func TestSearchStreamsWordsThenMeaning(t *testing.T) {
+func TestSearchAnswersOnceByTable(t *testing.T) {
 	s, _, _, x := searcher(t)
-	madeAll(t, s, x)
+	makeAll(t, s, x)
 	mux := http.NewServeMux()
 	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
 	req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(`{"words": "picnic"}`))
@@ -468,9 +593,41 @@ func TestSearchStreamsWordsThenMeaning(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+testImportKey)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	body := rec.Body.String()
-	words, meaning := strings.Index(body, "event: words"), strings.Index(body, "event: meaning")
-	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/event-stream" || words < 0 || meaning < words || !strings.Contains(body, "grp00000000040") {
-		t.Fatalf("%d %s", rec.Code, body)
+	var got map[string]SearchResults
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("%d %s: %v", rec.Code, rec.Body, err)
 	}
+	if len(got) != len(searchTables) || got["DOCUMENT"].Words == nil || got["PERSON"].Meaning == nil {
+		t.Fatalf("the answer's tables: %s", rec.Body)
+	}
+	i := slices.IndexFunc(got["GROUP"].Words, func(h SearchHit) bool { return h.ID == "grp00000000040" })
+	if i < 0 || got["GROUP"].Words[i].Name != "Fall Picnic" || got["GROUP"].Words[i].Href == "" || got["GROUP"].Words[i].Summary == "" {
+		t.Fatalf("the picnic's hit: %s", rec.Body)
+	}
+}
+
+func TestOnlyTheImportKeyAsksForEntries(t *testing.T) {
+	s, _, _, x := searcher(t)
+	waitRows(t, s, x)
+	mux := http.NewServeMux()
+	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
+	ask := func(bearer bool) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/do/search/make", strings.NewReader(`{"id": "grp00000000040"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		if bearer {
+			req.Header.Set("Authorization", "Bearer "+testImportKey)
+			mux.ServeHTTP(rec, req)
+			return rec.Code
+		}
+		auth.Fixed("rowan@example.com", mux).ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := ask(false); code != http.StatusForbidden {
+		t.Errorf("a signed-in person asking for an entry got %d", code)
+	}
+	if code := ask(true); code != http.StatusOK {
+		t.Fatalf("the import key asking for an entry got %d", code)
+	}
+	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: s.Model().SearchInputs(nil)["grp00000000040"].Object}})
 }

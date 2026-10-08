@@ -38,11 +38,6 @@
   color: var(--k);
 }
 
-.results .took {
-  color: var(--faint);
-  font-weight: 400;
-}
-
 .results ol {
   margin: 0;
   padding: 0;

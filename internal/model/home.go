@@ -102,6 +102,16 @@ func Qualify(label, domain string) string {
 	return label + "." + domain
 }
 
+func Origin(domain string) func(app string) string {
+	return func(app string) string {
+		a, ok := appByKey(app)
+		if !ok {
+			panic("no app " + app)
+		}
+		return "https://" + Qualify(a.Hosts[0], domain)
+	}
+}
+
 func appByKey(key string) (App, bool) {
 	for _, app := range Apps {
 		if app.Key == key {

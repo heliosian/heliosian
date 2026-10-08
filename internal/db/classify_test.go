@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 func uploadMail(t *testing.T, s *Store, pics *Pictures, eml string) string {
@@ -41,7 +42,7 @@ func sentTo(s *Store, document string) []string {
 func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	var mu sync.Mutex
 	asked := []string{}
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {

@@ -268,7 +268,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	if len(m.Documents) != 1 || m.Documents[0].Key != rows[0]["Key"] {
 		t.Fatalf("the model holds %d documents, not the one imported", len(m.Documents))
 	}
-	query, err := in.embedder.Embed(context.Background(), []string{"field trip to the library"}, true)
+	query, err := in.embedder.Embed(context.Background(), []string{"field trip to the library"}, true, artifacts.AskDims)
 	if err != nil {
 		t.Fatal(err)
 	}

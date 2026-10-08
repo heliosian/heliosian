@@ -29,6 +29,7 @@ type Server struct {
 	deps    Deps
 	server  *sdk.Server
 	handler http.Handler
+	origin  func(app string) string
 }
 
 const about = "Helios School, a small K-8 school on the San Francisco peninsula coast, and its parents' association, the HCA: the community's people, families, classrooms and teachers, calendar and events, volunteer activities, fundraiser parties, email lists, and the newsletters and school mail families received."
@@ -42,7 +43,7 @@ Start with helios_search or helios_whoami. For anything structured, helios_descr
 ` + db.Language
 
 func Register(mux *http.ServeMux, deps Deps) {
-	s := &Server{deps: deps}
+	s := &Server{deps: deps, origin: model.Origin(deps.Domain)}
 	s.server = sdk.NewServer(&sdk.Implementation{Name: "helios-school", Title: "Helios School", Description: about, Version: "1"}, &sdk.ServerOptions{Instructions: instructions})
 	s.tools()
 	s.handler = sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.server }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
@@ -62,15 +63,6 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("POST /api/mcp/deny", serve.JSON(s.deny))
 	mux.HandleFunc("POST /{$}", s.guarded(""))
 	mux.HandleFunc("/mcp", s.guarded("/mcp"))
-}
-
-func (s *Server) origin(app string) string {
-	for _, a := range model.Apps {
-		if a.Key == app {
-			return "https://" + model.Qualify(a.Hosts[0], s.deps.Domain)
-		}
-	}
-	panic("no app " + app)
 }
 
 func (s *Server) guarded(suffix string) http.HandlerFunc {

@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
@@ -39,7 +40,7 @@ func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
 }
 
 func TestExtractingAnEmailChoosesItsLinks(t *testing.T) {
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		if !strings.Contains(request, "Handbook week") {
 			return `{"links": []}`
 		}
@@ -70,7 +71,7 @@ func TestALongLinkIsAnsweredByItsKey(t *testing.T) {
 	long := "https://u1.ct.example.net/wf/click?upn=" + strings.Repeat("YdheIwSkWyDo3iWitYBdGbTYBr2a", 32)
 	raw := []byte(`<p>Read the <a href="` + long + `">newsletter</a>.</p>`)
 	var key string
-	intercept.Install(intercept.ClaudeHost, claudeReplying(func(request string) string {
+	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		if !strings.Contains(request, long) {
 			return `{"links": []}`
 		}

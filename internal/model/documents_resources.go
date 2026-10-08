@@ -8,6 +8,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/api"
+	"heliosian/internal/artifacts"
 	"heliosian/internal/id"
 )
 
@@ -189,7 +190,7 @@ func DocumentResources(filer *DocumentFiler) []api.Type[*Model] {
 				if value == "" {
 					return nil, access.Invalid("say what to search for")
 				}
-				vectors, err := filer.embedder.Embed(q.Context, []string{value}, true)
+				vectors, err := filer.embedder.Embed(q.Context, []string{value}, true, artifacts.AskDims)
 				if err != nil {
 					return nil, fmt.Errorf("embed the search: %w", err)
 				}

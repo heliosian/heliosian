@@ -22,7 +22,9 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/intercept"
+	"heliosian/internal/model"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 const (
@@ -85,7 +87,7 @@ func setup(t *testing.T) fixture {
 		}
 	}
 	signed := &sessions{out: map[string]time.Time{}}
-	search := db.NewSearcher(s, queue, bucket, vertex)
+	search := db.NewSearcher(s, queue, bucket, vertex, model.Origin("heliosian.com"))
 	mux := http.NewServeMux()
 	Register(mux, Deps{
 		Data:     s,
@@ -391,6 +393,7 @@ func TestTools(t *testing.T) {
 		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/people/`}, false},
 		{"helios_group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
 		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "https://wiki.heliosian.com/p/Activities/Camping-Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
+		{"helios_similar", map[string]any{"id": camping}, []string{"no search entry"}, true},
 		{"helios_find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
 		{"helios_find_people", nil, []string{"name at least one"}, true},
 		{"helios_events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"count"`}, false},
@@ -411,26 +414,28 @@ func TestTools(t *testing.T) {
 
 func TestSearchNamesEachHit(t *testing.T) {
 	f := setup(t)
+	intercept.Install(intercept.ClaudeHost, testkit.SearchClaude())
 	f.search.StartMaking("test")
 	session := f.connect(t, f.token(t))
 	text := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if _, err := f.search.Make(rowanID); err != nil {
+			continue
+		}
 		text, _ = callTool(t, session, "helios_search", map[string]any{"words": "Rowan Ashdown"})
 		if strings.Contains(text, `"meaning":[{`) {
 			break
 		}
 	}
-	var found struct {
-		Words   []hit `json:"words"`
-		Meaning []hit `json:"meaning"`
-	}
+	var found map[string]db.SearchResults
 	if err := json.Unmarshal([]byte(text), &found); err != nil {
 		t.Fatalf("%v: %s", err, text)
 	}
-	if len(found.Words) == 0 || found.Words[0].ID != rowanID || found.Words[0].Table != "PERSON" || found.Words[0].Name == "" || found.Words[0].Href != "https://who.heliosian.com/people/"+rowanID {
+	people := found["PERSON"]
+	if len(people.Words) == 0 || people.Words[0].ID != rowanID || people.Words[0].Name == "" || people.Words[0].Href != "https://who.heliosian.com/people/"+rowanID {
 		t.Fatalf("the word search answered %s", text)
 	}
-	if len(found.Meaning) == 0 {
+	if len(people.Meaning) == 0 {
 		t.Fatalf("the meaning search found nothing: %s", text)
 	}
 }

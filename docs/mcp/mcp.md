@@ -27,7 +27,8 @@ A client decides whether to use a connector mostly from its tools' names and des
 
 | Tool | What it answers |
 | --- | --- |
-| `helios_search` | the Admin search's word and meaning results (`Searcher.Words` and `Meaning`), each with its table and name |
+| `helios_search` | the Admin search's answer (`Searcher.Search`): for each of GROUP, PERSON and DOCUMENT, the hits by words and by meaning, each with its name and `href` from the search index |
+| `helios_similar` | a document's near-identical copies that the search left out (`Searcher.Similar`), those the person may read |
 | `helios_whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
 | `helios_events` | events starting in a range of days, two weeks from today by default |
 | `helios_find_people` | people by search words, role group, grade and classroom name |

@@ -32,9 +32,9 @@ import (
 
 const (
 	searchFolder   = "search"
+	searchVersion  = 1
 	searchResults  = 50
 	searchChunk    = 1500
-	searchLexical  = 0.15
 	searchMakers   = 4
 	searchLoaders  = 16
 	searchTimeout  = 2 * time.Minute
@@ -42,10 +42,12 @@ const (
 	searchShortest = 20
 )
 
+var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
+
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
 
 summary: one or two plain sentences saying what it is, shown under its name in a list of search results. Say only what the text supports.
-keywords: words and short phrases someone might type looking for it that its text doesn't already contain - synonyms, related terms, other names for the same thing, likely misspellings. Lower case, at most 30.`
+keywords: every word and short phrase someone might type to find it: the names of the people, groups, classes, places and events it is about, its subjects, and the dates it gives, then other names for those - synonyms, related terms, likely misspellings. Search matches these keywords alone, never the text, so a term left out here cannot find it. Leave out what says nothing about it, such as greetings, sign-offs and mailing-list boilerplate. At most 100.`
 
 var searchSchema = map[string]any{
 	"type": "object",
@@ -58,10 +60,12 @@ var searchSchema = map[string]any{
 }
 
 type SearchEntry struct {
-	Summary  string        `json:"summary"`
-	Keywords []string      `json:"keywords"`
-	Chunks   []SearchChunk `json:"chunks"`
-	Failures int           `json:"failures,omitempty"`
+	Version     int           `json:"version,omitempty"`
+	Summary     string        `json:"summary"`
+	Keywords    []string      `json:"keywords"`
+	Chunks      []SearchChunk `json:"chunks"`
+	Fingerprint []uint32      `json:"fingerprint,omitempty"`
+	Failures    int           `json:"failures,omitempty"`
 }
 
 type SearchChunk struct {
@@ -71,11 +75,26 @@ type SearchChunk struct {
 
 type SearchHit struct {
 	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Href    string `json:"href,omitempty"`
 	Summary string `json:"summary"`
 }
 
+type SearchResults struct {
+	Words   []SearchHit `json:"words"`
+	Meaning []SearchHit `json:"meaning"`
+}
+
 type SearchRow struct {
-	Table, Input, Object string
+	Table, Head, Input, Object, Name, Href string
+	named                                  store.Row
+}
+
+func (r SearchRow) body() string {
+	if r.Head == "" {
+		return r.Input
+	}
+	return strings.TrimPrefix(r.Input, r.Head+"\n\n")
 }
 
 type SearchIndex struct {
@@ -84,12 +103,14 @@ type SearchIndex struct {
 	entries map[string]*SearchEntry
 	missing map[string]bool
 	dropped map[string]bool
+	view    *searchView
 	version int
 	poke    chan struct{}
+	reindex chan struct{}
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, poke: make(chan struct{}, 1)}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, view: emptyView(), poke: make(chan struct{}, 1), reindex: make(chan struct{}, 1)}
 }
 
 func (x *SearchIndex) drop(object string) {
@@ -100,6 +121,13 @@ func (x *SearchIndex) drop(object string) {
 	x.mu.Unlock()
 	select {
 	case x.poke <- struct{}{}:
+	default:
+	}
+}
+
+func (x *SearchIndex) signal() {
+	select {
+	case x.reindex <- struct{}{}:
 	default:
 	}
 }
@@ -119,6 +147,9 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 		row := store.Row{"id": Derive(SearchPrefix, id), "target": id, "input": r.Input, "object": r.Object, "made": "No"}
 		if e := x.entries[r.Object]; e != nil {
 			row["summary"], row["keywords"], row["chunks"], row["failures"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), strconv.Itoa(e.Failures), "Yes"
+			if e.Version > 0 {
+				row["version"] = strconv.Itoa(e.Version)
+			}
 		}
 		out = append(out, row)
 	}
@@ -130,6 +161,7 @@ type Searcher struct {
 	s       *Store
 	bucket  *blob.Bucket
 	vertex  *artifacts.Vertex
+	origin  func(app string) string
 	client  *anthropic.Client
 	texts   map[string]string
 	pending []string
@@ -138,9 +170,10 @@ type Searcher struct {
 	wake    chan struct{}
 }
 
-func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex, origin func(app string) string) *Searcher {
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, origin: origin, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go x.follow()
+	go x.index()
 	queue.OnSwap(func() {
 		select {
 		case x.poke <- struct{}{}:
@@ -154,14 +187,6 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	client := anthropic.NewClient(option.WithAPIKey(anthropicKey))
 	x.mu.Lock()
 	x.client = &client
-	for hash := range x.missing {
-		x.enqueue(hash)
-	}
-	for hash, e := range x.entries {
-		if e.unfinished() {
-			x.enqueue(hash)
-		}
-	}
 	x.mu.Unlock()
 	for range searchMakers {
 		go x.make()
@@ -170,6 +195,20 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	case x.poke <- struct{}{}:
 	default:
 	}
+}
+
+func (x *Searcher) Make(id string) (string, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	if x.client == nil {
+		return "", access.Refuse(http.StatusServiceUnavailable, "search entries are not made on this server")
+	}
+	r, ok := x.rows[id]
+	if !ok {
+		return "", access.Missing("no search row for %s", id)
+	}
+	x.enqueue(r.Object)
+	return r.Object, nil
 }
 
 func SearchObject(input string) string {
@@ -185,7 +224,11 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			if input == "" {
 				continue
 			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input)}
+			name := row["name"]
+			if table == "PERSON" {
+				name = row["name_show"]
+			}
+			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, named: row}
 		}
 	}
 	for _, row := range m.markdownExtracts() {
@@ -193,8 +236,14 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 		if !ok {
 			continue
 		}
-		input := m.extractInput(row, text)
-		out[row["id"]] = SearchRow{Table: "DOCUMENT", Input: input, Object: SearchObject(input)}
+		terminal := m.terminal(row)
+		head := m.extractHead(row, terminal)
+		input := head + "\n\n" + strings.TrimSpace(text)
+		name := terminal["name"]
+		if name == "" {
+			name = terminal["id"]
+		}
+		out[row["id"]] = SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, named: terminal}
 	}
 	return out
 }
@@ -243,30 +292,37 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 	return out, nil
 }
 
-func (m *Model) extractInput(row store.Row, text string) string {
+func (m *Model) terminal(row store.Row) store.Row {
 	docs := m.Shown("DOCUMENT")
-	part, _ := docs.Get(row["parent"])
-	root := part
-	for seen := map[string]bool{}; root["parent"] != "" && !seen[root["id"]]; {
-		seen[root["id"]] = true
-		root, _ = docs.Get(root["parent"])
+	for seen := map[string]bool{}; row["kind"] == "" && row["parent"] != "" && !seen[row["id"]]; {
+		seen[row["id"]] = true
+		parent, ok := docs.Get(row["parent"])
+		if !ok {
+			break
+		}
+		row = parent
 	}
+	return row
+}
+
+func (m *Model) extractHead(row, terminal store.Row) string {
+	part, _ := m.Shown("DOCUMENT").Get(row["parent"])
 	lines := []string{}
 	add := func(label, value string) {
 		if value = strings.TrimSpace(value); value != "" {
 			lines = append(lines, label+": "+value)
 		}
 	}
-	add("Email", root["name"])
-	add("Kind", root["kind"])
-	add("Sent", root["published"])
-	if author, ok := m.Shown("PERSON").Get(root["author"]); ok {
+	add("Email", terminal["name"])
+	add("Kind", terminal["kind"])
+	add("Sent", terminal["published"])
+	if author, ok := m.Shown("PERSON").Get(terminal["author"]); ok {
 		add("From", author["name_show"])
 	}
 	if content, ok := m.Shown("CONTENT").Get(part["content"]); ok {
 		add("Part", strings.TrimSpace(part["filename"]+" "+baseType(content["mime"])))
 	}
-	return strings.Join(lines, "\n") + "\n\n" + strings.TrimSpace(text)
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) searchInput(table string, row store.Row) string {
@@ -343,6 +399,10 @@ func (x *Searcher) follow() {
 		}
 		x.texts = texts
 		rows := m.SearchInputs(texts)
+		for id, r := range rows {
+			r.Href = m.Link(r.Table, r.named, x.origin)
+			rows[id] = r
+		}
 		x.mu.Lock()
 		wanted := map[string]bool{}
 		unknown := []string{}
@@ -354,7 +414,7 @@ func (x *Searcher) follow() {
 		}
 		removed := []string{}
 		for _, r := range x.rows {
-			if x.client != nil && !wanted[r.Object] && !slices.Contains(removed, r.Object) {
+			if x.client != nil && !wanted[r.Object] && x.entries[r.Object].current() && !slices.Contains(removed, r.Object) {
 				removed = append(removed, r.Object)
 			}
 		}
@@ -374,18 +434,7 @@ func (x *Searcher) follow() {
 		}
 		x.mu.Unlock()
 		if sweep {
-			held, err := x.bucket.List(context.Background(), searchFolder+"/")
-			if err != nil {
-				slog.Error("search: list the entries", "error", err)
-				x.mu.Lock()
-				x.swept = false
-				x.mu.Unlock()
-			}
-			for _, hash := range held {
-				if !wanted[hash] && !slices.Contains(removed, hash) {
-					removed = append(removed, hash)
-				}
-			}
+			removed = append(removed, x.strays(wanted, removed)...)
 		}
 		if len(removed) > 0 {
 			slog.Info("search: remove the unwanted entries", "objects", len(removed))
@@ -405,21 +454,63 @@ func (x *Searcher) follow() {
 			if loaded[i] != nil {
 				x.entries[hash] = loaded[i]
 				x.version++
-				if x.client != nil && loaded[i].unfinished() {
-					x.enqueue(hash)
-				}
 				continue
 			}
 			x.missing[hash] = true
-			if x.client != nil {
-				x.enqueue(hash)
-			}
 		}
 		missing := len(x.missing)
 		x.mu.Unlock()
 		if len(unknown) > 0 {
 			slog.Info("search: read the index", "rows", len(rows), "loaded", len(unknown), "missing", missing, "took", time.Since(start).Round(time.Millisecond))
 		}
+		x.signal()
+	}
+}
+
+func (x *Searcher) strays(wanted map[string]bool, removed []string) []string {
+	held, err := x.bucket.List(context.Background(), searchFolder+"/")
+	if err != nil {
+		slog.Error("search: list the entries", "error", err)
+		x.mu.Lock()
+		x.swept = false
+		x.mu.Unlock()
+		return nil
+	}
+	candidates := []string{}
+	for _, hash := range held {
+		if !wanted[hash] && !slices.Contains(removed, hash) {
+			candidates = append(candidates, hash)
+		}
+	}
+	loaded, errs := loadAll(len(candidates), func(i int) (*SearchEntry, error) { return x.load(candidates[i]) })
+	out := []string{}
+	for i, hash := range candidates {
+		if errs[i] == nil && loaded[i].current() {
+			out = append(out, hash)
+		}
+	}
+	return out
+}
+
+func (x *Searcher) index() {
+	vectors := &vectorIndex{}
+	for range x.reindex {
+		start := time.Now()
+		x.mu.RLock()
+		rows := x.rows
+		entries := map[string]*SearchEntry{}
+		for _, r := range rows {
+			if e := x.entries[r.Object]; e.current() {
+				entries[r.Object] = e
+			}
+		}
+		x.mu.RUnlock()
+		vectors = vectors.update(entries)
+		view := buildView(rows, entries, vectors)
+		x.mu.Lock()
+		x.view = view
+		x.mu.Unlock()
+		slog.Info("search: indexed", "entries", len(entries), "words", len(view.words), "cells", len(vectors.centroids), "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
@@ -470,14 +561,14 @@ func (x *Searcher) enqueue(hash string) {
 	}
 }
 
-func (x *Searcher) next() (string, string, bool) {
+func (x *Searcher) next() (SearchRow, bool) {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	for len(x.pending) > 0 {
 		hash := x.pending[0]
 		x.pending = x.pending[1:]
 		delete(x.waiting, hash)
-		if e := x.entries[hash]; !x.missing[hash] && (e == nil || !e.unfinished()) {
+		if e := x.entries[hash]; !x.missing[hash] && e.current() && !e.unfinished() {
 			continue
 		}
 		for _, r := range x.rows {
@@ -490,28 +581,29 @@ func (x *Searcher) next() (string, string, bool) {
 				default:
 				}
 			}
-			return hash, r.Input, true
+			return r, true
 		}
 	}
-	return "", "", false
+	return SearchRow{}, false
 }
 
 func (x *Searcher) make() {
 	for {
-		hash, input, ok := x.next()
+		row, ok := x.next()
 		if !ok {
 			<-x.wake
 			continue
 		}
+		hash := row.Object
 		start := time.Now()
 		x.mu.Lock()
 		was := x.entries[hash]
 		x.mu.Unlock()
-		if was == nil {
+		if !was.current() {
 			was = &SearchEntry{}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
-		entry, err := x.entry(ctx, input, was)
+		entry, err := x.entry(ctx, row, was)
 		cancel()
 		if err != nil {
 			entry.Failures++
@@ -535,21 +627,28 @@ func (x *Searcher) make() {
 		if entry.unfinished() {
 			x.enqueue(hash)
 		}
-		left := len(x.missing)
 		x.mu.Unlock()
-		slog.Info("search: made", "object", hash, "missing", left, "failures", entry.Failures, "took", time.Since(start).Round(time.Millisecond))
+		x.signal()
+		slog.Info("search: made", "object", hash, "failures", entry.Failures, "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
-func (e *SearchEntry) unfinished() bool {
-	return e.Summary == "" && e.Failures < searchAttempts
+func (e *SearchEntry) current() bool {
+	return e != nil && e.Version == searchVersion
 }
 
-func (x *Searcher) entry(ctx context.Context, input string, was *SearchEntry) (*SearchEntry, error) {
-	entry := &SearchEntry{Summary: was.Summary, Keywords: was.Keywords, Chunks: was.Chunks, Failures: was.Failures}
+func (e *SearchEntry) unfinished() bool {
+	return e.current() && e.Summary == "" && e.Failures < searchAttempts
+}
+
+func (x *Searcher) entry(ctx context.Context, row SearchRow, was *SearchEntry) (*SearchEntry, error) {
+	entry := &SearchEntry{Version: searchVersion, Summary: was.Summary, Keywords: was.Keywords, Chunks: was.Chunks, Fingerprint: was.Fingerprint, Failures: was.Failures}
+	if row.Table == "DOCUMENT" && entry.Fingerprint == nil {
+		entry.Fingerprint = fingerprint(row.body())
+	}
 	if len(entry.Chunks) == 0 {
-		texts := searchChunks(input)
-		vectors, err := x.vertex.Embed(ctx, texts, false)
+		texts := searchChunks(row.Head, row.body())
+		vectors, err := x.vertex.Embed(ctx, texts, false, artifacts.SearchDims)
 		if err != nil {
 			return entry, err
 		}
@@ -564,7 +663,7 @@ func (x *Searcher) entry(ctx context.Context, input string, was *SearchEntry) (*
 			Model:        claude.SearchSummaryModel,
 			MaxTokens:    32000,
 			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
-			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
+			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(row.Input))},
 			OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
 		}, answer); err != nil {
 			return entry, err
@@ -572,17 +671,27 @@ func (x *Searcher) entry(ctx context.Context, input string, was *SearchEntry) (*
 		if utf8.RuneCountInString(strings.TrimSpace(answer.Summary)) < searchShortest {
 			return entry, fmt.Errorf("the summary is too short: %q", answer.Summary)
 		}
-		entry.Summary, entry.Keywords = answer.Summary, answer.Keywords
+		entry.Summary, entry.Keywords = answer.Summary, searchKeywords(answer.Keywords)
 	}
 	return entry, nil
 }
 
-func searchChunks(input string) []string {
+func searchKeywords(keywords []string) []string {
 	out := []string{}
+	for _, k := range keywords {
+		if k = strings.ToLower(strings.TrimSpace(k)); k != "" && !slices.Contains(out, k) {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+func searchChunks(head, body string) []string {
+	pieces := []string{}
 	current := ""
-	for line := range strings.SplitSeq(input, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		if current != "" && len(current)+len(line)+1 > searchChunk {
-			out = append(out, current)
+			pieces = append(pieces, current)
 			current = ""
 		}
 		if current != "" {
@@ -590,7 +699,14 @@ func searchChunks(input string) []string {
 		}
 		current += line
 	}
-	return append(out, current)
+	pieces = append(pieces, current)
+	if head == "" {
+		return pieces
+	}
+	for i, p := range pieces {
+		pieces[i] = head + "\n\n" + p
+	}
+	return pieces
 }
 
 func normalize(v []float32) {
@@ -617,96 +733,123 @@ func searchTerms(words string) []string {
 	return out
 }
 
-type scored struct {
-	id      string
-	summary string
-	score   float64
+func (x *Searcher) snapshot() *searchView {
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	return x.view
 }
 
-func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []SearchHit {
-	terms := searchTerms(words)
-	r := m.newRun(env)
-	x.mu.RLock()
-	hits := []scored{}
-	for id, row := range x.rows {
-		entry := x.entries[row.Object]
-		found := 0
-		if len(terms) > 0 {
-			text := strings.ToLower(row.Input)
-			if entry != nil {
-				text += "\n" + strings.ToLower(entry.Summary+"\n"+strings.Join(entry.Keywords, "\n"))
-			}
-			for _, t := range terms {
-				if strings.Contains(text, t) {
-					found++
-				}
-			}
+func (v *searchView) pick(m *Model, env Env, scores map[string]float64) map[string][]SearchHit {
+	objects := slices.Collect(maps.Keys(scores))
+	slices.SortFunc(objects, func(a, b string) int {
+		if c := cmpDesc(scores[a], scores[b]); c != 0 {
+			return c
 		}
-		lexical := 0.0
-		if len(terms) > 0 {
-			lexical = float64(found) / float64(len(terms))
-		}
-		score := lexical
-		if vector != nil {
-			if entry == nil {
-				continue
-			}
-			best := -1.0
-			for _, c := range entry.Chunks {
-				best = max(best, dot(vector, c.Vector))
-			}
-			score = best + searchLexical*lexical
-		} else if found == 0 {
-			continue
-		}
-		summary := ""
-		if entry != nil {
-			summary = entry.Summary
-		}
-		hits = append(hits, scored{id: id, summary: summary, score: score})
-	}
-	tables := map[string]string{}
-	for _, h := range hits {
-		tables[h.id] = x.rows[h.id].Table
-	}
-	x.mu.RUnlock()
-	slices.SortFunc(hits, func(a, b scored) int {
-		if a.score != b.score {
-			if a.score > b.score {
-				return -1
-			}
-			return 1
-		}
-		return strings.Compare(a.id, b.id)
+		return strings.Compare(a, b)
 	})
-	out := []SearchHit{}
+	r := m.newRun(env)
+	out := map[string][]SearchHit{}
+	for _, t := range searchTables {
+		out[t] = []SearchHit{}
+	}
 	shown := map[string]bool{}
-	for _, h := range hits {
-		if len(out) == searchResults {
+	full := 0
+	for _, o := range objects {
+		if full == len(searchTables) {
 			break
 		}
-		t, _ := Lookup(tables[h.id])
-		row, ok := r.table(t.Name).Get(h.id)
-		if !ok || !r.readable(t, row) {
-			continue
-		}
-		if t.Name == "DOCUMENT" {
-			if shown[row["content"]] {
+		g := v.group(o)
+		for _, id := range v.objects[o] {
+			row := v.rows[id]
+			if len(out[row.Table]) == searchResults || row.Table == "DOCUMENT" && shown[g] {
 				continue
 			}
-			shown[row["content"]] = true
+			t, _ := Lookup(row.Table)
+			got, ok := r.table(t.Name).Get(id)
+			if !ok || !r.readable(t, got) {
+				continue
+			}
+			if row.Table == "DOCUMENT" {
+				shown[g] = true
+			}
+			out[row.Table] = append(out[row.Table], SearchHit{ID: id, Name: row.Name, Href: row.Href, Summary: v.entries[o].Summary})
+			if len(out[row.Table]) == searchResults {
+				full++
+			}
 		}
-		out = append(out, SearchHit{ID: h.id, Summary: h.summary})
 	}
 	return out
 }
 
-func dot(a, b []float32) float64 {
-	sum := 0.0
-	for i := range min(len(a), len(b)) {
-		sum += float64(a[i]) * float64(b[i])
+func (x *Searcher) Words(m *Model, env Env, words string) map[string][]SearchHit {
+	v := x.snapshot()
+	return v.pick(m, env, v.byWords(words))
+}
+
+func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string) (map[string]*SearchResults, error) {
+	start := time.Now()
+	type embedded struct {
+		vector []float32
+		err    error
+		took   time.Duration
 	}
-	return sum
+	done := make(chan embedded, 1)
+	go func() {
+		vectors, err := x.vertex.Embed(ctx, []string{words}, true, artifacts.SearchDims)
+		if err != nil {
+			done <- embedded{err: err, took: time.Since(start)}
+			return
+		}
+		normalize(vectors[0])
+		done <- embedded{vector: vectors[0], took: time.Since(start)}
+	}()
+	v := x.snapshot()
+	byWords := v.pick(m, env, v.byWords(words))
+	wordsTook := time.Since(start)
+	e := <-done
+	if e.err != nil {
+		return nil, fmt.Errorf("embed the words: %w", e.err)
+	}
+	waited := time.Since(start)
+	byMeaning := v.pick(m, env, v.vectors.search(e.vector))
+	out := map[string]*SearchResults{}
+	for _, t := range searchTables {
+		out[t] = &SearchResults{Words: byWords[t], Meaning: byMeaning[t]}
+	}
+	slog.InfoContext(ctx, "search", "viewer", env.Viewer, "system", env.System, "words_took", wordsTook.Round(time.Millisecond), "embed_took", e.took.Round(time.Millisecond), "meaning_took", (time.Since(start) - waited).Round(time.Millisecond), "took", time.Since(start).Round(time.Millisecond))
+	return out, nil
+}
+
+func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchHit, error) {
+	v := x.snapshot()
+	row, ok := v.rows[id]
+	if !ok || v.entries[row.Object] == nil {
+		return nil, access.Missing("no search entry for %s", id)
+	}
+	r := m.newRun(env)
+	t, _ := Lookup(row.Table)
+	if got, ok := r.table(t.Name).Get(id); !ok || !r.readable(t, got) {
+		return nil, access.Missing("no search entry for %s", id)
+	}
+	objects := v.members[v.group(row.Object)]
+	if len(objects) == 0 {
+		objects = []string{row.Object}
+	}
+	out := []SearchHit{}
+	for _, o := range objects {
+		for _, other := range v.objects[o] {
+			if other == id {
+				continue
+			}
+			got, ok := r.table(t.Name).Get(other)
+			if !ok || !r.readable(t, got) {
+				continue
+			}
+			twin := v.rows[other]
+			out = append(out, SearchHit{ID: other, Name: twin.Name, Href: twin.Href, Summary: v.entries[o].Summary})
+		}
+	}
+	return out, nil
 }
 
 func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, importKey []byte, now func() time.Time) {
@@ -727,45 +870,34 @@ func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, importKey []byte,
 			serve.Error(w, r, access.Invalid("words is required"))
 			return
 		}
-		controller := http.NewResponseController(w)
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-store")
-		w.Header().Set("X-Accel-Buffering", "no")
-		emit := func(kind string, data any) {
-			encoded, err := json.Marshal(data)
-			if err != nil {
-				slog.ErrorContext(r.Context(), "search: encode", "event", kind, "error", err)
-				return
-			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", kind, encoded)
-			if err := controller.Flush(); err != nil {
-				slog.ErrorContext(r.Context(), "search: flush", "error", err)
-			}
-		}
-		start := time.Now()
-		words := x.Words(m, env, asked.Words)
-		emit("words", map[string]any{"result": words})
-		took := time.Since(start)
-		meaning, err := x.Meaning(r.Context(), m, env, asked.Words)
+		results, err := x.Search(r.Context(), m, env, asked.Words)
 		if err != nil {
-			slog.ErrorContext(r.Context(), "search: meaning", "error", err)
-			emit("error", map[string]string{"error": "the search by meaning failed"})
+			serve.Error(w, r, err)
 			return
 		}
-		emit("meaning", map[string]any{"result": meaning})
-		slog.InfoContext(r.Context(), "search", "viewer", env.Viewer, "system", env.System, "words", len(words), "meaning", len(meaning), "words_took", took.Round(time.Millisecond), "took", time.Since(start).Round(time.Millisecond))
+		serve.Write(w, r, http.StatusOK, results)
 	})
-}
-
-func (x *Searcher) Words(m *Model, env Env, words string) []SearchHit {
-	return x.rank(m, env, words, nil)
-}
-
-func (x *Searcher) Meaning(ctx context.Context, m *Model, env Env, words string) ([]SearchHit, error) {
-	vectors, err := x.vertex.Embed(ctx, []string{words}, true)
-	if err != nil {
-		return nil, err
-	}
-	normalize(vectors[0])
-	return x.rank(m, env, words, vectors[0]), nil
+	mux.HandleFunc("POST "+doPrefix+"search/make", func(w http.ResponseWriter, r *http.Request) {
+		env, _, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		if env.System != importReader {
+			serve.Error(w, r, access.Forbidden("only the import key makes search entries"))
+			return
+		}
+		var asked struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&asked); err != nil {
+			serve.Error(w, r, access.Invalid("send {\"id\": \"…\"}: %v", err))
+			return
+		}
+		object, err := x.Make(strings.TrimSpace(asked.ID))
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		serve.Write(w, r, http.StatusOK, map[string]string{"object": object})
+	})
 }

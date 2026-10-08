@@ -204,7 +204,8 @@ type eventsIn struct {
 }
 
 func (s *Server) tools() {
-	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers each hit's ID, table, name, summary and href, best first; helios_get or helios_read_document opens one. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
+	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a result set for each table - GROUP, PERSON and DOCUMENT - each with hits by words and hits by meaning, best first, every hit its ID, name, summary and href; helios_get or helios_read_document opens one. A document hit stands for itself and any near-identical copies, such as the same newsletter attached to several emails; helios_similar lists them. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
+	addTool(s, "helios_similar", "The near-identical copies of a Helios School document that helios_search answered by ID - the same newsletter, PDF or page attached to or sent in other emails - each with its ID, name, summary and href, for when the differences between copies matter: which email carried it, when, or a version that changed slightly.", similar)
 	addTool(s, "helios_whoami", "The person connected to Helios School's community data: their record, their addresses, their family and children, the classrooms, sign-ups, tickets and email lists they are in, the groups they manage and the Helios apps they are an admin of. Use it for questions about \"my family\", \"my kids\" or \"my classes\" at Helios.", whoami)
 	addTool(s, "helios_events", "Helios School's calendar: school and community events starting in a range of days, in order, with the category each sits under. Use it for what is coming up at Helios.", events)
 	addTool(s, "helios_find_people", "People in the Helios School directory by any of words (a name, job title or the like), role (student, parent or staff), grade and classroom, with their classroom, crew and department named.", findPeople)
@@ -288,14 +289,6 @@ func whoami(c call, _ none) (any, error) {
 	return out, nil
 }
 
-type hit struct {
-	ID      string `json:"id"`
-	Table   string `json:"table"`
-	Name    string `json:"name,omitempty"`
-	Href    string `json:"href,omitempty"`
-	Summary string `json:"summary,omitempty"`
-}
-
 type named struct {
 	Name string `json:"name"`
 	Href string `json:"href,omitempty"`
@@ -305,67 +298,16 @@ func (c call) named(table string, row store.Row) named {
 	return named{Name: title(row), Href: c.m.Link(table, row, c.s.origin)}
 }
 
-func (c call) names(ids []string) (map[string]named, error) {
-	byTable := map[string][]string{}
-	for _, id := range ids {
-		table, ok := db.TableOf(id)
-		if ok {
-			byTable[table] = append(byTable[table], id)
-		}
-	}
-	out := map[string]named{}
-	for table, ids := range byTable {
-		res, _, err := c.run(tree{"from": table, "where": []any{among("id", ids)}})
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range res.Rows() {
-			out[row["id"]] = c.named(table, row)
-		}
-	}
-	return out, nil
-}
-
-func (c call) hits(found []db.SearchHit) ([]hit, error) {
-	ids := []string{}
-	for _, h := range found {
-		ids = append(ids, h.ID)
-	}
-	names, err := c.names(ids)
-	if err != nil {
-		return nil, err
-	}
-	out := []hit{}
-	for _, h := range found {
-		table, _ := db.TableOf(h.ID)
-		out = append(out, hit{ID: h.ID, Table: table, Name: names[h.ID].Name, Href: names[h.ID].Href, Summary: h.Summary})
-	}
-	return out, nil
-}
-
 func search(c call, in wordsIn) (any, error) {
 	words := strings.TrimSpace(in.Words)
 	if words == "" {
 		return nil, errors.New("words is required")
 	}
-	out := map[string]any{}
-	byWords, err := c.hits(c.s.deps.Search.Words(c.m, c.env, words))
-	if err != nil {
-		return nil, err
-	}
-	out["words"] = byWords
-	meaning, err := c.s.deps.Search.Meaning(c.ctx, c.m, c.env, words)
-	if err != nil {
-		slog.ErrorContext(c.ctx, "mcp: search by meaning", "error", err)
-		out["meaningError"] = "the search by meaning failed"
-		return out, nil
-	}
-	byMeaning, err := c.hits(meaning)
-	if err != nil {
-		return nil, err
-	}
-	out["meaning"] = byMeaning
-	return out, nil
+	return c.s.deps.Search.Search(c.ctx, c.m, c.env, words)
+}
+
+func similar(c call, in idIn) (any, error) {
+	return c.s.deps.Search.Similar(c.m, c.env, strings.TrimSpace(in.ID))
 }
 
 type pointers struct {
@@ -639,10 +581,8 @@ func findPeople(c call, in peopleIn) (any, error) {
 	where := []any{}
 	if words := strings.TrimSpace(in.Words); words != "" {
 		ids := []string{}
-		for _, h := range c.s.deps.Search.Words(c.m, c.env, words) {
-			if table, _ := db.TableOf(h.ID); table == "PERSON" {
-				ids = append(ids, h.ID)
-			}
+		for _, h := range c.s.deps.Search.Words(c.m, c.env, words)["PERSON"] {
+			ids = append(ids, h.ID)
 		}
 		if len(ids) == 0 {
 			return rows{Rows: []store.Row{}}, nil

@@ -322,7 +322,7 @@ func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
 	embedder := vertex(t)
 	first := func(query string) DocumentHit {
 		t.Helper()
-		vectors, err := embedder.Embed(context.Background(), []string{query}, true)
+		vectors, err := embedder.Embed(context.Background(), []string{query}, true, artifacts.AskDims)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -361,7 +361,7 @@ func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	vectors, err := embedder.Embed(context.Background(), []string{"bake sale ingredients allergies"}, true)
+	vectors, err := embedder.Embed(context.Background(), []string{"bake sale ingredients allergies"}, true, artifacts.AskDims)
 	if err != nil {
 		t.Fatal(err)
 	}
