@@ -214,6 +214,18 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 		if err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
+		if table, _ := TableOf(target); table == "SEARCH" {
+			old, ok := m.searchRow(target)
+			if !ok {
+				return "", Change{}, access.Missing("%s: no SEARCH %s", where, target)
+			}
+			c := Change{Table: "SEARCH", Old: old}
+			if err := authorize(m, c); err != nil {
+				return "", Change{}, err
+			}
+			tx.After(func() { m.index.drop(old["object"]) })
+			return target, c, nil
+		}
 		t, old, err := m.existing(target, where, whole)
 		if err != nil {
 			return "", Change{}, err

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
@@ -823,8 +824,22 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			})
 			return value{kind: p.t.kind, num: total}
 		}}, nil
+	case "length":
+		if len(s.list) != 2 {
+			return operand{}, s.errorf("length takes one path")
+		}
+		p, err := cx.path(s.list[1], sc)
+		if err != nil {
+			return operand{}, err
+		}
+		if p.t.class != classText {
+			return operand{}, s.list[1].errorf("length counts the characters of text, and %s is %s", s.list[1].flat(), p.t)
+		}
+		return operand{t: typ{class: classNumber, kind: Int}, local: p.local, cheap: p.cheap, eval: func(f *frame) value {
+			return value{kind: Int, num: new(big.Rat).SetInt64(int64(utf8.RuneCountInString(p.eval(f).s)))}
+		}}, nil
 	}
-	return operand{}, s.errorf("a value is a path, a literal, today, now, count or sum")
+	return operand{}, s.errorf("a value is a path, a literal, today, now, count, sum or length")
 }
 
 func coerce(lit *sexp, t typ) (operand, error) {

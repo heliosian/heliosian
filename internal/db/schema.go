@@ -669,6 +669,7 @@ var Tables = []Table{
 			col("chunks", Int).about("How many pieces the input was cut into, each embedded by Vertex; blank until made."),
 			col("object", Text).about("Where the entry is kept in the media bucket: search/ and the input's SHA-256."),
 			col("made", Bool).about("Whether the entry is in the index; no while it waits for Claude and Vertex."),
+			col("failed", Text).about("Why Claude's summary could not be used, when it could not; the entry is kept without one and found by meaning alone until it is deleted, which builds it again."),
 		},
 	},
 	{

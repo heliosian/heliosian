@@ -54,6 +54,16 @@ func (m *Model) generated(t *Table) *generatedSet {
 	return set
 }
 
+func (m *Model) searchRow(id string) (store.Row, bool) {
+	t, _ := Lookup("SEARCH")
+	c, _ := t.Column("id")
+	rows := m.generated(t).by["id"][indexKey(c, id)]
+	if len(rows) == 0 {
+		return nil, false
+	}
+	return rows[0], true
+}
+
 func (set *generatedSet) build(m *Model, t *Table) {
 	switch t.Name {
 	case "EFFECTIVE_MEMBER":

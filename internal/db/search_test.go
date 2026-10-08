@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
@@ -96,6 +97,78 @@ func TestAnAnswerCutShortIsNotAskedAgain(t *testing.T) {
 		if n > 1 {
 			t.Fatalf("an input was asked %d times after its answer was cut short: %.80s", n, request)
 		}
+	}
+	madeAll(t, s, x)
+	x.mu.RLock()
+	defer x.mu.RUnlock()
+	for _, e := range x.entries {
+		if !strings.Contains(e.Failed, "max_tokens") || e.Summary != "" || len(e.Chunks) == 0 {
+			t.Fatalf("an entry whose answer was cut short: %+v", e)
+		}
+	}
+}
+
+func TestAShortSummaryIsKeptAsFailed(t *testing.T) {
+	intercept.GoogleLogin(t.TempDir())
+	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
+		return `{"summary": "x", "keywords": ["outing"]}`
+	}))
+	vertex, err := artifacts.NewVertex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, queue := sampleWithQueue(t)
+	x := NewSearcher(s, queue, blob.NewMemoryBucket(), vertex)
+	x.StartMaking("test")
+	madeAll(t, s, x)
+	rows := ids(runAs(t, s.Model(), "", `(from SEARCH (where (not (blank failed)) (blank summary) (> chunks 0)))`).Rows(), "target")
+	if len(rows) == 0 || len(rows) != len(x.rows) {
+		t.Fatalf("%d of %d entries are kept as failed, without a summary but with chunks", len(rows), len(x.rows))
+	}
+}
+
+func TestDeletingASearchEntryBuildsItAgain(t *testing.T) {
+	var mu sync.Mutex
+	asked := 0
+	s, queue, bucket, x := searcher(t)
+	madeAll(t, s, x)
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
+		mu.Lock()
+		asked++
+		mu.Unlock()
+		return `{"summary": "a thing in the sample, built again", "keywords": ["outing"]}`
+	}))
+	rows := runAs(t, s.Model(), "", `(from SEARCH (where (= target "grp00000000040")))`).Rows()
+	if len(rows) != 1 {
+		t.Fatalf("search rows for the event: %v", rows)
+	}
+	b := Batch{Batch: []Edit{{Delete: rows[0]["id"]}}}
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
+		t.Fatal("a parent deleted a search entry")
+	}
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		x.mu.RLock()
+		e := x.entries[rows[0]["object"]]
+		x.mu.RUnlock()
+		if e != nil && e.Summary == "a thing in the sample, built again" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the deleted entry was never built again")
+		}
+	}
+	raw, _, err := bucket.Get(context.Background(), rows[0]["object"])
+	if err != nil || !strings.Contains(string(raw), "built again") {
+		t.Fatalf("the bucket holds %.80s, %v", raw, err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if asked != 1 {
+		t.Fatalf("claude was asked %d times, want once", asked)
 	}
 }
 
@@ -315,6 +388,13 @@ func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 	}
 	if n := len(as(t, s, parent, q)); n != 0 {
 		t.Errorf("a parent reads %d search entries", n)
+	}
+	parsed, err := Parse(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(s.Model().Run(t.Context(), parsed, Env{System: importReader, Now: testNow}).IDs); n != 1 {
+		t.Errorf("the import reads %d search entries, want 1", n)
 	}
 }
 

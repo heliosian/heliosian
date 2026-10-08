@@ -591,7 +591,9 @@ const PolicySource = `
 ; every group's and person's search entry
 (read SEARCH (super_admin))
 ; every column of a search entry
-(read SEARCH (id target input summary keywords chunks object made) true)
+(read SEARCH (id target input summary keywords chunks object made failed) true)
+; delete a search entry, so it is built again
+(delete SEARCH (or (super_admin) (system "import")))
 ; every document, whoever it was sent to
 (read DOCUMENT (super_admin))
 ; every document's groups
@@ -772,6 +774,8 @@ const PolicySource = `
 (read DOCUMENT (system "import"))
 ; every document's groups, to find the mail whose groups are not yet said
 (read DOCUMENT_GROUP (system "import"))
+; every search entry, to find the ones to build again
+(read SEARCH (system "import"))
 ; an image or a link of an email's HTML part, still to fetch or judged not worth it, for HTML extracted before extraction placed them
 (insert DOCUMENT (and (system "import") (in @new.relation "image" "linked") (= @new.parent.relation "part") (blank @new.content)))
 ; fill an image or a link still to fetch with what a fetch run with someone's own credentials got
@@ -1612,7 +1616,7 @@ type Change struct {
 
 func (m *Model) Authorize(env Env, c Change) error {
 	t, ok := Lookup(c.Table)
-	if !ok || t.Generated {
+	if !ok || t.Generated && (c.Old == nil || c.New != nil) {
 		return access.Forbidden("no table %s to change", c.Table)
 	}
 	r := m.newRun(env)

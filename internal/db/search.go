@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -30,14 +31,15 @@ import (
 )
 
 const (
-	searchFolder  = "search"
-	searchResults = 50
-	searchChunk   = 1500
-	searchLexical = 0.15
-	searchMakers  = 4
-	searchLoaders = 16
-	searchTimeout = 2 * time.Minute
-	searchBackoff = 30 * time.Second
+	searchFolder   = "search"
+	searchResults  = 50
+	searchChunk    = 1500
+	searchLexical  = 0.15
+	searchMakers   = 4
+	searchLoaders  = 16
+	searchTimeout  = 2 * time.Minute
+	searchBackoff  = 30 * time.Second
+	searchShortest = 20
 )
 
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
@@ -59,6 +61,7 @@ type SearchEntry struct {
 	Summary  string        `json:"summary"`
 	Keywords []string      `json:"keywords"`
 	Chunks   []SearchChunk `json:"chunks"`
+	Failed   string        `json:"failed,omitempty"`
 }
 
 type SearchChunk struct {
@@ -80,11 +83,25 @@ type SearchIndex struct {
 	rows    map[string]SearchRow
 	entries map[string]*SearchEntry
 	missing map[string]bool
+	dropped map[string]bool
 	version int
+	poke    chan struct{}
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, poke: make(chan struct{}, 1)}
+}
+
+func (x *SearchIndex) drop(object string) {
+	x.mu.Lock()
+	delete(x.entries, object)
+	x.dropped[object] = true
+	x.version++
+	x.mu.Unlock()
+	select {
+	case x.poke <- struct{}{}:
+	default:
+	}
 }
 
 func (x *SearchIndex) current() int {
@@ -101,7 +118,7 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 		r := x.rows[id]
 		row := store.Row{"id": Derive(SearchPrefix, id), "target": id, "input": r.Input, "object": r.Object, "made": "No"}
 		if e := x.entries[r.Object]; e != nil {
-			row["summary"], row["keywords"], row["chunks"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), "Yes"
+			row["summary"], row["keywords"], row["chunks"], row["failed"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), e.Failed, "Yes"
 		}
 		out = append(out, row)
 	}
@@ -119,12 +136,11 @@ type Searcher struct {
 	pending   []string
 	waiting   map[string]bool
 	swept     bool
-	poke      chan struct{}
 	wake      chan struct{}
 }
 
 func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, summaries: map[string]*SearchEntry{}, waiting: map[string]bool{}, poke: make(chan struct{}, 1), wake: make(chan struct{}, 1)}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, summaries: map[string]*SearchEntry{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go x.follow()
 	queue.OnSwap(func() {
 		select {
@@ -303,6 +319,18 @@ func (m *Model) searchInput(table string, row store.Row) string {
 func (x *Searcher) follow() {
 	for range x.poke {
 		start := time.Now()
+		x.mu.Lock()
+		dropped := slices.Collect(maps.Keys(x.dropped))
+		clear(x.dropped)
+		x.mu.Unlock()
+		for _, hash := range dropped {
+			if err := x.bucket.Remove(context.Background(), hash); err != nil && !errors.Is(err, blob.ErrNotFound) {
+				slog.Error("search: remove a deleted entry", "object", hash, "error", err)
+			}
+		}
+		if len(dropped) > 0 {
+			slog.Info("search: removed deleted entries", "objects", len(dropped))
+		}
 		m := x.s.Model()
 		texts, err := SearchTexts(context.Background(), m, x.bucket, x.texts)
 		if err != nil {
@@ -477,10 +505,6 @@ func (x *Searcher) make() {
 		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout)
 		entry, err := x.entry(ctx, hash, input)
 		cancel()
-		if errors.Is(err, claude.ErrFinal) {
-			slog.Error("search: make, not to be asked again until a restart", "object", hash, "error", err)
-			continue
-		}
 		if err != nil {
 			slog.Error("search: make", "object", hash, "error", err)
 			x.retry(hash)
@@ -528,14 +552,24 @@ func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry,
 	x.mu.Unlock()
 	if summary == nil {
 		summary = &SearchEntry{}
-		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
+		_, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
 			Model:        claude.SearchSummaryModel,
 			MaxTokens:    32000,
 			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
 			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
 			OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
-		}, summary); err != nil {
+		}, summary)
+		switch {
+		case errors.Is(err, claude.ErrFinal):
+			summary = &SearchEntry{Failed: err.Error()}
+		case err != nil:
 			return nil, err
+		case utf8.RuneCountInString(strings.TrimSpace(summary.Summary)) < searchShortest:
+			summary.Failed = fmt.Sprintf("the summary is too short: %q", summary.Summary)
+			summary.Summary = ""
+		}
+		if summary.Failed != "" {
+			slog.Warn("search: the summary failed", "object", hash, "failed", summary.Failed)
 		}
 		x.mu.Lock()
 		x.summaries[hash] = summary
@@ -546,7 +580,7 @@ func (x *Searcher) entry(ctx context.Context, hash, input string) (*SearchEntry,
 	if err != nil {
 		return nil, err
 	}
-	entry := &SearchEntry{Summary: summary.Summary, Keywords: summary.Keywords}
+	entry := &SearchEntry{Summary: summary.Summary, Keywords: summary.Keywords, Failed: summary.Failed}
 	for i, text := range texts {
 		normalize(vectors[i])
 		entry.Chunks = append(entry.Chunks, SearchChunk{Text: text, Vector: vectors[i]})

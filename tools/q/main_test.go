@@ -37,7 +37,7 @@ func TestReadShowsTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := &strings.Builder{}
-	show(out, a)
+	show(out, a, nil)
 	for _, want := range []string{"MEMBER: 2\n", "PERSON: 2\n", "id  ", "Juni (Juniper) Ashdown", "Rowan Ashdown"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the output lacks %q:\n%s", want, out)
@@ -52,9 +52,27 @@ func TestReadShowsTables(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Reset()
-	show(out, a)
+	show(out, a, nil)
 	if !strings.Contains(out.String(), "EFFECTIVE_MEMBER: 2\n") {
 		t.Errorf("generated rows:\n%s", out)
+	}
+}
+
+func TestReadShowsChosenColumnsWhole(t *testing.T) {
+	c := sampleClient(t)
+	a, err := c.QueryText(`(from PERSON (where (= id "per00000000001")))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("y", cellWidth+10)
+	a.Resources["PERSON"]["per00000000001"]["vc_bio"] = long
+	out := &strings.Builder{}
+	show(out, a, []string{"id", "vc_bio"})
+	if !strings.Contains(out.String(), long) {
+		t.Errorf("the chosen column is cut short:\n%s", out)
+	}
+	if strings.Contains(out.String(), "name_long") {
+		t.Errorf("a column not chosen is shown:\n%s", out)
 	}
 }
 
