@@ -382,6 +382,33 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	}
 }
 
+func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	tidePools := "Bring boots for the tide pools. We meet at the north end of the beach at nine, walk the rocks with the ranger, count the anemones, sea stars and crabs in each pool, sketch what we find in our field journals, eat lunch on the bluff above the cove and walk back to the bus by one. Pack water, a hat, sunscreen and a change of socks in case a wave comes over the rocks."
+	bodies := []string{tidePools + " See you Friday.", tidePools + " See you Monday.", "Rain boots are on sale at the book fair this week, in every size from toddler to adult, with half the money going to the library."}
+	extracts := []string{}
+	for i, body := range bodies {
+		root := uploadMail(t, s, pics, fmt.Sprintf("From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:0%d +0000\r\nSubject: Field trip %d\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>%s</p>\r\n", i, i, body))
+		made(t, s, "DOCUMENT", root, "extracted")
+		part := children(s, root)[0]
+		made(t, s, "DOCUMENT", part["id"], "extracted")
+		extracts = append(extracts, children(s, part["id"])[0]["id"])
+	}
+	madeAll(t, s, x)
+	got := hitIDs(x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots"))
+	copies := 0
+	for _, id := range extracts[:2] {
+		if slices.Contains(got, id) {
+			copies++
+		}
+	}
+	if copies != 1 || !slices.Contains(got, extracts[2]) {
+		t.Fatalf("the search for boots found %d of the two near copies, and the sale %v: %v", copies, slices.Contains(got, extracts[2]), got)
+	}
+}
+
 func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)

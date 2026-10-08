@@ -762,6 +762,8 @@ const PolicySource = `
 (delete ALIAS (and (system "import") (exists GROUP (= id @old.target) (in kind "event" "day" "day_part"))))
 ; add a version of the school's year calendar
 (insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
+; a version of the school's year calendar's title
+(set DOCUMENT.name (and (system "import") (= @old.kind "calendar")))
 ; add a file the school or HCA shared, such as a slide deck
 (insert DOCUMENT (and (system "import") (= @new.kind "file")))
 ; store the bytes of a shared file: a PDF, such as a version of the year calendar or a slide deck, or a page

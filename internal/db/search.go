@@ -43,6 +43,7 @@ const (
 	searchShortest = 20
 	searchRecent   = 0.05
 	searchHalfLife = 365.0
+	searchSame     = 0.985
 )
 
 const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or one part of an email the community received, its body or an attachment, read as text and headed by the email it came in. You are given what everyone who can see it can read.
@@ -558,6 +559,17 @@ func (x *Searcher) make() {
 	}
 }
 
+func (e *SearchEntry) mean() []float32 {
+	out := make([]float32, len(e.Chunks[0].Vector))
+	for _, c := range e.Chunks {
+		for i, f := range c.Vector {
+			out[i] += f
+		}
+	}
+	normalize(out)
+	return out
+}
+
 func (e *SearchEntry) unfinished() bool {
 	return e.Summary == "" && e.Failures < searchAttempts
 }
@@ -668,6 +680,7 @@ type scored struct {
 	id      string
 	summary string
 	score   float64
+	entry   *SearchEntry
 }
 
 func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []SearchHit {
@@ -730,7 +743,7 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 		if c.entry != nil {
 			summary = c.entry.Summary
 		}
-		hits = append(hits, scored{id: c.id, summary: summary, score: score})
+		hits = append(hits, scored{id: c.id, summary: summary, score: score, entry: c.entry})
 	}
 	tables := map[string]string{}
 	for _, h := range hits {
@@ -748,6 +761,7 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 	})
 	out := []SearchHit{}
 	shown := map[string]bool{}
+	kept := [][]float32{}
 	for _, h := range hits {
 		if len(out) == searchResults {
 			break
@@ -762,6 +776,13 @@ func (x *Searcher) rank(m *Model, env Env, words string, vector []float32) []Sea
 				continue
 			}
 			shown[row["content"]] = true
+			if h.entry != nil && len(h.entry.Chunks) > 0 {
+				mean := h.entry.mean()
+				if slices.ContainsFunc(kept, func(k []float32) bool { return dot(mean, k) >= searchSame }) {
+					continue
+				}
+				kept = append(kept, mean)
+			}
 		}
 		out = append(out, SearchHit{ID: h.id, Summary: h.summary})
 	}
