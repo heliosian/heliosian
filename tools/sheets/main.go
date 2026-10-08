@@ -330,37 +330,52 @@ func matching(all [][]string, keyIndex int, keyCol, key string) []int {
 }
 
 func set(args []string) {
-	var tab, keyCol, key, col, value *string
+	var tab, keyCol, col, value *string
 	var apply *bool
+	keys := keyList{}
 	source := parse("set", args, func(fs *flag.FlagSet) {
 		tab = fs.String("tab", "", "tab title")
 		keyCol = fs.String("keycol", "", "column whose value picks the row")
-		key = fs.String("key", "", "value of --keycol in the row to set")
+		fs.Var(&keys, "key", "value of --keycol in the row to set; repeat for several")
 		col = fs.String("col", "", "column to write")
 		value = fs.String("value", "", "value to write")
 		apply = fs.Bool("apply", false, "write the cell; without it the run only reports it")
 	}, "tab", "keycol", "key", "col")
 	all := raw(source, *tab)
 	keyIndex, colIndex := column(all, *tab, *keyCol), column(all, *tab, *col)
-	found := matching(all, keyIndex, *keyCol, *key)
-	for _, i := range found {
-		from := ""
-		if colIndex < len(all[i]) {
-			from = all[i][colIndex]
+	present := map[string]map[string]string{}
+	absent := []string{}
+	for _, key := range keys {
+		found := matching(all, keyIndex, *keyCol, key)
+		for _, i := range found {
+			from := ""
+			if colIndex < len(all[i]) {
+				from = all[i][colIndex]
+			}
+			log.Printf("  row %d %s: %q -> %q", i+1, *col, from, *value)
 		}
-		log.Printf("  row %d %s: %q -> %q", i+1, *col, from, *value)
-	}
-	if len(found) == 0 {
-		log.Printf("no row has %s = %q, so a row is appended", *keyCol, *key)
+		if len(found) == 0 {
+			log.Printf("no row has %s = %q, so a row is appended", *keyCol, key)
+			absent = append(absent, key)
+			continue
+		}
+		present[key] = map[string]string{*col: *value}
 	}
 	if !*apply {
 		log.Printf("reporting only, pass --apply to write")
 		return
 	}
-	if err := source.Upsert("sheet", *tab, map[string]string{*keyCol: *key}, map[string]string{*col: *value}); err != nil {
-		log.Fatalf("set %s[%s=%s].%s: %v", *tab, *keyCol, *key, *col, err)
+	if len(present) > 0 {
+		if err := source.SetMany("sheet", *tab, *keyCol, present); err != nil {
+			log.Fatalf("set %s.%s where %s in %q: %v", *tab, *col, *keyCol, keys, err)
+		}
 	}
-	log.Printf("set %s[%s=%s].%s = %q", *tab, *keyCol, *key, *col, *value)
+	for _, key := range absent {
+		if err := source.Upsert("sheet", *tab, map[string]string{*keyCol: key}, map[string]string{*col: *value}); err != nil {
+			log.Fatalf("set %s[%s=%s].%s: %v", *tab, *keyCol, key, *col, err)
+		}
+	}
+	log.Printf("set %s.%s = %q where %s in %q", *tab, *col, *value, *keyCol, keys)
 }
 
 type keyList []string
