@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -326,19 +327,42 @@ func (c call) names(ids []string) (map[string]named, error) {
 	return out, nil
 }
 
+func (c call) terminals(ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		out[id] = id
+		if table, _ := db.TableOf(id); table != "DOCUMENT" {
+			continue
+		}
+		q, err := db.Parse(fmt.Sprintf(`(from DOCUMENT @t (where (not (blank kind)) (exists DOCUMENT @d (= id %q) (in @t.id (ancestors @d)) (not (exists DOCUMENT @b (not (blank kind)) (!= id @t.id) (in id (ancestors @d)) (in @t.id (ancestors @b)))))))`, id))
+		if err != nil {
+			return nil, fmt.Errorf("a built-in query was refused: %w", err)
+		}
+		for _, row := range c.m.Run(c.ctx, q, c.env).Rows() {
+			out[id] = row["id"]
+		}
+	}
+	return out, nil
+}
+
 func (c call) hits(found []db.SearchHit) ([]hit, error) {
 	ids := []string{}
 	for _, h := range found {
 		ids = append(ids, h.ID)
 	}
-	names, err := c.names(ids)
+	terminals, err := c.terminals(ids)
+	if err != nil {
+		return nil, err
+	}
+	names, err := c.names(slices.Collect(maps.Values(terminals)))
 	if err != nil {
 		return nil, err
 	}
 	out := []hit{}
 	for _, h := range found {
 		table, _ := db.TableOf(h.ID)
-		out = append(out, hit{ID: h.ID, Table: table, Name: names[h.ID].Name, Href: names[h.ID].Href, Summary: h.Summary})
+		n := names[terminals[h.ID]]
+		out = append(out, hit{ID: h.ID, Table: table, Name: n.Name, Href: n.Href, Summary: h.Summary})
 	}
 	return out, nil
 }

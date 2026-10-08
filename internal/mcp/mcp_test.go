@@ -435,6 +435,23 @@ func TestSearchNamesEachHit(t *testing.T) {
 	}
 }
 
+func TestDocumentHitIsNamedByItsTerminal(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	s, err := db.NewStore(dir, dir, store.NewQueue(), db.NewSearchIndex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := s.Model()
+	c := call{ctx: context.Background(), m: m, env: db.Env{Viewer: m.SignedIn(rowan), Now: time.Now()}, s: &Server{deps: Deps{Domain: "heliosian.com"}}}
+	got, err := c.hits([]db.SearchHit{{ID: "doc00000000109"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != "doc00000000109" || got[0].Name != "Camping Trips" || got[0].Href != "https://wiki.heliosian.com/p/Activities/Camping-Trips" {
+		t.Fatalf("the side card's hit is %+v", got)
+	}
+}
+
 func TestEveryToolSaysItIsHelios(t *testing.T) {
 	f := setup(t)
 	listed, err := f.connect(t, f.token(t)).ListTools(context.Background(), nil)
