@@ -187,6 +187,38 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 	}
 }
 
+func TestTheImportSendsADocumentBackToBeRead(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "application/pdf", "size": "100"}),
+		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/markdown", "size": "20"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001", "name": "Updates", "extracted": "2026-02-12 01:48:03"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "extract", "parent": "doc00000000010", "content": "cnt00000000002"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	docs := s.Model().Table("DOCUMENT")
+	extract, _ := docs.Get("doc00000000011")
+	file, _ := docs.Get("doc00000000010")
+	for _, c := range []struct {
+		name   string
+		system string
+		change Change
+		ok     bool
+	}{
+		{"remove an extract", "import", Change{Table: "DOCUMENT", Old: extract}, true},
+		{"remove a file", "import", Change{Table: "DOCUMENT", Old: file}, false},
+		{"remove an extract as another system", "extract", Change{Table: "DOCUMENT", Old: extract}, false},
+		{"mark a file still to read", "import", change(t, s, "DOCUMENT", []string{"doc00000000010"}, store.Row{"extracted": ""}), true},
+		{"mark a file read", "import", change(t, s, "DOCUMENT", []string{"doc00000000010"}, store.Row{"extracted": "2026-02-13 01:48:03"}), false},
+	} {
+		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+}
+
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,

@@ -786,6 +786,10 @@ const PolicySource = `
 (insert DOCUMENT (and (system "import") (= @new.kind "wiki") (blank @new.author) (wiki_content @new.content)))
 ; add a side card to a wiki page
 (insert DOCUMENT (and (system "import") (= @new.relation "side") (= @new.parent.kind "wiki") (wiki_content @new.content)))
+; remove a text read out of a document, so that it can be read again
+(delete DOCUMENT (and (system "import") (= @old.relation "extract")))
+; mark a document as still to read, so the extractor reads it again
+(set DOCUMENT.extracted (and (system "import") (blank @new.extracted)))
 
 ;; System: import, the sync from the old sheets, until the cutover
 
