@@ -344,7 +344,7 @@ func (x *Searcher) follow() {
 		unknown := []string{}
 		for _, r := range rows {
 			wanted[r.Object] = true
-			if x.entries[r.Object] == nil && !x.missing[r.Object] && !slices.Contains(unknown, r.Object) {
+			if x.entries[r.Object] == nil && !x.missing[r.Object] && !x.dropped[r.Object] && !slices.Contains(unknown, r.Object) {
 				unknown = append(unknown, r.Object)
 			}
 		}

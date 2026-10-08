@@ -172,6 +172,43 @@ func TestDeletingASearchEntryBuildsItAgain(t *testing.T) {
 	}
 }
 
+func TestDeletingEverySearchEntryAtOnceBuildsEveryOneAgain(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	madeAll(t, s, x)
+	intercept.Install(intercept.ClaudeHost, claudeReplying(func(string) string {
+		return `{"summary": "a thing in the sample, built again", "keywords": ["outing"]}`
+	}))
+	rows := runAs(t, s.Model(), "", `(from SEARCH)`).Rows()
+	b := Batch{}
+	for _, row := range rows {
+		b.Batch = append(b.Batch, Edit{Delete: row["id"]})
+	}
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		left := 0
+		x.mu.RLock()
+		for _, row := range rows {
+			if e := x.entries[row["object"]]; e == nil || e.Summary != "a thing in the sample, built again" {
+				left++
+			}
+		}
+		x.mu.RUnlock()
+		if left == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%d of %d deleted entries were never built again", left, len(rows))
+		}
+	}
+	for _, row := range rows {
+		if raw, _, err := bucket.Get(context.Background(), row["object"]); err != nil || !strings.Contains(string(raw), "built again") {
+			t.Fatalf("the bucket holds %.80s for %s, %v", raw, row["target"], err)
+		}
+	}
+}
+
 func madeAll(t *testing.T, s *Store, x *Searcher) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
