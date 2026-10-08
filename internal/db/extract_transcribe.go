@@ -55,52 +55,29 @@ If the image is only a logo, wordmark, banner or decoration, answer with exactly
 ` + peopleRule
 
 func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content store.Row) ([]extracted, bool, error) {
-	for _, other := range m.Table("DOCUMENT").Referencing("content", content["id"]) {
+	docs := m.Table("DOCUMENT")
+	for _, other := range docs.Referencing("content", content["id"]) {
 		if other["id"] == id || other["extracted"] == "" {
 			continue
 		}
-		text, err := x.textOf(ctx, m, other)
-		if err != nil {
-			return nil, true, err
-		}
-		if len(text) == 0 {
-			return nil, true, nil
-		}
-		return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, true, nil
-	}
-	return nil, false, nil
-}
-
-func (x *Extractor) textOf(ctx context.Context, m *Model, doc store.Row) ([]byte, error) {
-	if doc["extracted"] == "" {
-		return nil, errNotYet
-	}
-	children := m.Table("DOCUMENT").Referencing("parent", doc["id"])
-	for _, child := range children {
-		if child["relation"] != "extract" {
+		children := docs.Referencing("parent", other["id"])
+		if slices.ContainsFunc(children, func(child store.Row) bool { return child["relation"] == "pages" }) {
 			continue
 		}
-		c, _ := m.Table("CONTENT").Get(child["content"])
-		text, _, err := x.bucket.Get(ctx, c["blob"])
-		return text, err
-	}
-	pages := slices.DeleteFunc(slices.Clone(children), func(child store.Row) bool { return child["relation"] != "pages" })
-	slices.SortFunc(pages, func(a, b store.Row) int {
-		first, _ := pageSpan(a["name"])
-		other, _ := pageSpan(b["name"])
-		return first - other
-	})
-	parts := [][]byte{}
-	for _, page := range pages {
-		text, err := x.textOf(ctx, m, page)
-		if err != nil {
-			return nil, err
+		for _, child := range children {
+			if child["relation"] != "extract" {
+				continue
+			}
+			c, _ := m.Table("CONTENT").Get(child["content"])
+			text, _, err := x.bucket.Get(ctx, c["blob"])
+			if err != nil {
+				return nil, true, err
+			}
+			return []extracted{{relation: "extract", body: text, mime: "text/markdown"}}, true, nil
 		}
-		if len(text) > 0 {
-			parts = append(parts, text)
-		}
+		return nil, true, nil
 	}
-	return bytes.Join(parts, []byte("\n\n")), nil
+	return nil, false, nil
 }
 
 func transcribed(id, text string, err error) ([]extracted, error) {
@@ -168,11 +145,16 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 		if pages.total == 1 {
 			return nil, fmt.Errorf("a one-page pdf of %d bytes is larger than claude reads, %d", len(raw), pdfRangeBytes)
 		}
-		return x.splitPDF(ctx, doc, pages, pdfRangePages)
+		ranges, err := pages.ranges(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return pageChildren(pages, ranges), nil
 	}
 	ask := "Transcribe this document."
 	if doc["relation"] == "pages" {
-		ask = "This PDF is " + doc["name"] + " of " + pdfTitle(m, doc) + ". Transcribe these pages."
+		whole, _ := m.Table("DOCUMENT").Get(doc["parent"])
+		ask = "This PDF is " + doc["name"] + " of " + pdfTitle(whole) + ". Transcribe these pages."
 	}
 	text, err := claude.Text(ctx, x.client, anthropic.MessageNewParams{
 		Model:     claude.ExtractPDFModel,
@@ -184,30 +166,10 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 		)},
 		OutputConfig: anthropic.OutputConfigParam{Effort: claude.ExtractPDFEffort},
 	})
-	if errors.Is(err, claude.ErrCutShort) && pages.total > 1 {
-		slog.Info("extract: pdf answer cut short, reading it in halves", "document", doc["id"], "pages", pages.total)
-		return x.splitPDF(ctx, doc, pages, (pages.total+1)/2)
-	}
 	return transcribed(doc["id"], text, err)
 }
 
-func (x *Extractor) splitPDF(ctx context.Context, doc store.Row, pages pdfPages, most int) ([]extracted, error) {
-	ranges, err := pages.ranges(ctx, most)
-	if err != nil {
-		return nil, err
-	}
-	return pageChildren(doc, pages, ranges), nil
-}
-
-func pdfTitle(m *Model, doc store.Row) string {
-	docs := m.Table("DOCUMENT")
-	for doc["relation"] == "pages" {
-		parent, ok := docs.Get(doc["parent"])
-		if !ok {
-			break
-		}
-		doc = parent
-	}
+func pdfTitle(doc store.Row) string {
 	if doc["name"] != "" {
 		return "the document titled " + strconv.Quote(doc["name"])
 	}

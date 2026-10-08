@@ -9,8 +9,6 @@ import (
 	"testing"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
-
-	"heliosian/internal/store"
 )
 
 func pdfOfPages(t *testing.T, n int) []byte {
@@ -32,24 +30,23 @@ func pdfOfPages(t *testing.T, n int) []byte {
 	return out.Bytes()
 }
 
-func spans(t *testing.T, doc store.Row, raw []byte, most int) []string {
+func spans(t *testing.T, raw []byte) []string {
 	t.Helper()
 	p, err := readPDFPages(t.Context(), raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ranges, err := p.ranges(t.Context(), most)
+	ranges, err := p.ranges(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
 	out := []string{}
-	for _, child := range pageChildren(doc, p, ranges) {
+	for _, child := range pageChildren(p, ranges) {
 		pages, err := readPDFPages(t.Context(), child.body)
 		if err != nil {
 			t.Fatalf("%s: %v", child.title, err)
 		}
-		first, total := pageSpan(child.title)
-		if child.relation != "pages" || child.mime != pdfType || total == 0 || first < 1 {
+		if child.relation != "pages" || child.mime != pdfType {
 			t.Fatalf("child %+v", child)
 		}
 		out = append(out, child.title+" has "+spanName(1, pages.total, pages.total))
@@ -58,25 +55,8 @@ func spans(t *testing.T, doc store.Row, raw []byte, most int) []string {
 }
 
 func TestALongPDFSplitsIntoRunsOfPages(t *testing.T) {
-	raw := pdfOfPages(t, 25)
-	equalLines(t, "runs", spans(t, store.Row{"relation": "part"}, raw, pdfRangePages), []string{
+	equalLines(t, "runs", spans(t, pdfOfPages(t, 25)), []string{
 		"pages 1–20 of 25 has pages 1–20 of 20",
 		"pages 21–25 of 25 has pages 1–5 of 5",
-	})
-	equalLines(t, "halves", spans(t, store.Row{"relation": "part"}, raw, 13), []string{
-		"pages 1–13 of 25 has pages 1–13 of 13",
-		"pages 14–25 of 25 has pages 1–12 of 12",
-	})
-}
-
-func TestARunSplitAgainKeepsTheWholeDocumentsPageNumbers(t *testing.T) {
-	raw := pdfOfPages(t, 5)
-	equalLines(t, "runs", spans(t, store.Row{"relation": "pages", "name": "pages 21–25 of 25"}, raw, 3), []string{
-		"pages 21–23 of 25 has pages 1–3 of 3",
-		"pages 24–25 of 25 has pages 1–2 of 2",
-	})
-	equalLines(t, "single pages", spans(t, store.Row{"relation": "pages", "name": "pages 24–25 of 25"}, pdfOfPages(t, 2), 1), []string{
-		"page 24 of 25 has page 1 of 1",
-		"page 25 of 25 has page 1 of 1",
 	})
 }

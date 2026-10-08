@@ -8,8 +8,6 @@ import (
 	"github.com/pdfcpu/pdfcpu/pkg/api"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu"
 	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
-
-	"heliosian/internal/store"
 )
 
 const (
@@ -59,10 +57,10 @@ func (p pdfPages) write(c context.Context, first, last int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (p pdfPages) ranges(c context.Context, most int) ([]pageRange, error) {
+func (p pdfPages) ranges(c context.Context) ([]pageRange, error) {
 	out := []pageRange{}
 	for first := 1; first <= p.total; {
-		n := min(most, p.total-first+1)
+		n := min(pdfRangePages, p.total-first+1)
 		for {
 			body, err := p.write(c, first, first+n-1)
 			if err != nil {
@@ -79,17 +77,6 @@ func (p pdfPages) ranges(c context.Context, most int) ([]pageRange, error) {
 	return out, nil
 }
 
-func pageSpan(name string) (first, total int) {
-	var last int
-	if _, err := fmt.Sscanf(name, "pages %d–%d of %d", &first, &last, &total); err == nil {
-		return first, total
-	}
-	if _, err := fmt.Sscanf(name, "page %d of %d", &first, &total); err == nil {
-		return first, total
-	}
-	return 1, 0
-}
-
 func spanName(first, last, total int) string {
 	if first == last {
 		return fmt.Sprintf("page %d of %d", first, total)
@@ -97,14 +84,10 @@ func spanName(first, last, total int) string {
 	return fmt.Sprintf("pages %d–%d of %d", first, last, total)
 }
 
-func pageChildren(doc store.Row, p pdfPages, ranges []pageRange) []extracted {
-	offset, total := pageSpan(doc["name"])
-	if doc["relation"] != "pages" || total == 0 {
-		offset, total = 1, p.total
-	}
+func pageChildren(p pdfPages, ranges []pageRange) []extracted {
 	out := []extracted{}
 	for _, r := range ranges {
-		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(offset+r.first-1, offset+r.last-1, total)})
+		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(r.first, r.last, p.total)})
 	}
 	return out
 }
