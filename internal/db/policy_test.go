@@ -79,7 +79,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 
 func TestBirthdaysShowToTheGroupTheAppIsOpenTo(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "birthday", "visible_to": "grp00000000020", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "birthday", "name": "Helios Birthday Team", "visible_to": "grp00000000020", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	for i, viewer := range []string{nobody, student, parent, staff, guest} {
@@ -258,7 +258,7 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000070", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000070"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000070", "key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000070"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := commit(s, DocumentsSheet, store.Insert("CONTENT", store.Row{"id": "cnt00000000005", "hash": "e5", "blob": "content/e5", "mime": "message/rfc822", "size": "50"})); err != nil {
@@ -341,7 +341,7 @@ func TestAnAppsAdminsAppointManagers(t *testing.T) {
 	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000005", "person": staff})); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	write := func(viewer string, edits ...Edit) error {
@@ -696,7 +696,7 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 0 {
 		t.Fatal("a pending event is visible to someone neither host nor When admin")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(as(t, s, staff, q)); n != 1 {
@@ -786,7 +786,7 @@ func TestAuthorize(t *testing.T) {
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
 		t.Fatal("someone neither super admin nor When admin may change an event's status")
 	}
-	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
+	if err := commit(s, ConfigSheet, store.Insert("APP", store.Row{"id": "app00000000002", "key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err != nil {

@@ -1,3 +1,9 @@
+import {copyGlyph} from '/datagrid.js';
+
 const address = location.origin + '/';
-document.getElementById('address').textContent = address;
-document.getElementById('command').textContent = 'claude mcp add --transport http helios ' + address;
+const command = 'claude mcp add --transport http helios ' + address;
+for (const [id, text] of [['address', address], ['command', command]]) {
+  const code = document.getElementById(id);
+  code.textContent = text;
+  code.after(copyGlyph(text));
+}

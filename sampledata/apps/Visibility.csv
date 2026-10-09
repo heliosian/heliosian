@@ -1,11 +1,11 @@
 App,Visibility,Emails,Tagline,Name,Order
-who,everyone,,,,2
-team,everyone,,HCA Volunteer Portal,,4
-celebrate,list,"jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org",,,6
-when,everyone,,,,a
-loop,everyone,,,,c
-ask,everyone,,,,e
-birthday,list,jordan.whitfield@heliosschool.org,,,8
-admin,list,jordan.whitfield@heliosschool.org,,,g
-wiki,everyone,,,,h
-mcp,everyone,,,,i
+who,everyone,,,Helios Who?,2
+team,everyone,,HCA Volunteer Portal,HCA-Team,4
+celebrate,list,"jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org",,Helios Celebrate,6
+when,everyone,,,Helios Calendar,a
+loop,everyone,,,Helios Loop,c
+ask,everyone,,,Helios Ask,e
+birthday,list,jordan.whitfield@heliosschool.org,,Helios Birthday Team,8
+admin,list,jordan.whitfield@heliosschool.org,,Helios Admin,g
+wiki,everyone,,,Helios Wiki,h
+mcp,everyone,,,Helios MCP,i

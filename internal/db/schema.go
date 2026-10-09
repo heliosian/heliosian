@@ -713,7 +713,7 @@ var Tables = []Table{
 		Columns: []Column{
 			ident(AppPrefix),
 			enum("key", apps...).required().about("Which app."),
-			col("name", Text).about("What the switch and the front page call it."),
+			col("name", Text).required().about("What the switch and the front page call it."),
 			col("subtitle", Text).about("The line under its name."),
 			ref("admins", "GROUP").about("Its admins group; the super admins are admins of every app."),
 			ref("visible_to", "GROUP").required().about("The group whose effective members see it; everyone for all."),

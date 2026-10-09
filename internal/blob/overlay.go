@@ -3,8 +3,7 @@ package blob
 import (
 	"context"
 	"errors"
-	"slices"
-	"strings"
+	"maps"
 	"sync"
 	"time"
 )
@@ -63,18 +62,17 @@ func (o *overlay) remove(ctx context.Context, name string) error {
 	return o.top.remove(ctx, name)
 }
 
-func (o *overlay) list(ctx context.Context, prefix string) ([]string, error) {
-	base, err := o.base.list(ctx, prefix)
+func (o *overlay) list(ctx context.Context, prefix string) (map[string]int64, error) {
+	out, err := o.base.list(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
 	top, _ := o.top.list(ctx, prefix)
-	out := []string{}
-	for _, name := range append(base, top...) {
-		if !o.removed(name) && strings.HasPrefix(name, prefix) {
-			out = append(out, name)
+	maps.Copy(out, top)
+	for name := range out {
+		if o.removed(name) {
+			delete(out, name)
 		}
 	}
-	slices.Sort(out)
-	return slices.Compact(out), nil
+	return out, nil
 }
