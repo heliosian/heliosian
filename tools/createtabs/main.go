@@ -45,12 +45,6 @@ var layouts = map[string][]tab{
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Directory": withChangeLog(model.DirectoryTabs),
-	"Invite List Builder": {
-		{"Services", model.ServiceColumns},
-		{"Templates", model.TemplateColumns},
-		{"Greetings", model.GreetingColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
 	"Apps": {
 		{"Categories", model.HomeCategoryColumns},
 		{"Links", model.HomeLinkColumns},

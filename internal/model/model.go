@@ -18,7 +18,6 @@ import (
 type Model struct {
 	Config     *Config
 	Directory  *Directory
-	Invites    *InviteTemplates
 	Calendar   *Calendar
 	Parties    *Parties
 	Activities *Activities
@@ -75,16 +74,6 @@ func parts(deps Deps, documents *documentObjects) []store.Part[Model] {
 			Loaded: func(m *Model, d time.Duration) {
 				slog.Info("loaded directory model", "people", len(m.Directory.People), "families", len(m.Directory.Families),
 					"classrooms", len(m.Directory.Classrooms), "crews", len(m.Directory.Crews), "unlocated", len(m.Directory.unlocated), "took", took(d))
-			},
-		},
-		{
-			App: invitesApp, Tabs: invitesTabs,
-			Build: func(_ context.Context, tables store.Tables, m *Model) (err error) {
-				m.Invites, err = buildInvites(tables)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				slog.Info("loaded invites", "systems", len(m.Invites.Systems), "greetings", len(m.Invites.Greetings), "took", took(d))
 			},
 		},
 		{

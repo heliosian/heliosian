@@ -133,7 +133,6 @@ func main() {
 		fmt.Printf("  %s: %d\n", band, len(directory.RoomParents[band]))
 	}
 	fmt.Println("departments:", directory.Departments)
-	fmt.Printf("invites: %d systems, %d greetings\n", len(m.Invites.Systems), len(m.Invites.Greetings))
 	fmt.Println("grades:")
 	for _, g := range directory.Grades {
 		fmt.Printf("  %s -> %s (%s -> %s)\n", g.Name, g.NextName, g.Band, g.NextBand)

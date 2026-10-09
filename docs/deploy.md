@@ -61,7 +61,6 @@ Plain environment variables:
 
 - `DIRECTORY_SHEET` — the production spreadsheet id: the `Directory` sheet living in the community shared drive.
 - `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
-- `INVITES_SHEET` — the `Invite List Builder` spreadsheet id. Powers the Invites page (`/greenvelope`).
 - `APPS_SHEET` — the `Apps` spreadsheet id: Heliosian's categories, links, and admins (`docs/home/data.md`).
 - `EVENTS_SHEET` — the `Events` spreadsheet id: the volunteer portal's activities, roles, sign-ups, and admins (`docs/team/data.md`).
 - `BIRTHDAY_SHEET` — the `Birthdays` spreadsheet id: the birthday team's staff birthdays, pipeline progress, charities, and admins (`docs/birthday/data.md`).

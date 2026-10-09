@@ -126,30 +126,6 @@ func TestTheWhoAdminListIsACommit(t *testing.T) {
 	logged(t, s.changeLog(t), jordan+"|insert|Admins|Email="+abena+"||")
 }
 
-func TestRemovingATagsLastMemberRemovesTheTag(t *testing.T) {
-	s := newServer(t)
-	for _, person := range []string{"daniel.park@heliosschool.org", "elena.torres@heliosschool.org", "anders.lindqvist@heliosschool.org"} {
-		if err := s.store.Commit(context.Background(), access.Actor{Email: abena}, DirectoryApp, store.Delete(tagsTable, store.Row{tagID: bookClub, tagPerson: person})); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, ok := s.directory().Tag(bookClub); ok {
-		t.Fatal("the emptied tag is still in memory")
-	}
-	if shared := s.directory().SharedTags(jordan); len(shared) != 0 {
-		t.Fatalf("the emptied tag is still shared: %+v", shared)
-	}
-	for _, tab := range []string{tagListTable, tagsTable, managersTable} {
-		if n := s.count(t, tab, store.Row{tagID: bookClub}); n != 0 {
-			t.Errorf("the emptied tag left %d rows in %s", n, tab)
-		}
-	}
-	logged(t, s.changeLog(t),
-		abena+"|delete|Tag List|Tag ID="+bookClub+"|Tag|Book Club",
-		abena+"|delete|Tag Managers|Tag ID="+bookClub+"; Manager Email="+jordan+"|Manager Email|"+jordan,
-	)
-}
-
 func TestTagRowsMustHangTogether(t *testing.T) {
 	if _, err := BuildDirectory(context.Background(), sampleTables(t), nil, testkit.None, testKey); err != nil {
 		t.Fatal(err)

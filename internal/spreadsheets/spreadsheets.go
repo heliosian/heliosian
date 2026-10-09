@@ -11,7 +11,6 @@ type Spreadsheet struct {
 var All = []Spreadsheet{
 	{"directory", "DIRECTORY_SHEET", "Directory"},
 	{"preferences", "PREFERENCES_SHEET", "Preferences"},
-	{"invites", "INVITES_SHEET", "Invite List Builder"},
 	{"apps", "APPS_SHEET", "Apps"},
 	{"events", "EVENTS_SHEET", "Events"},
 	{"birthdays", "BIRTHDAY_SHEET", "Birthdays"},

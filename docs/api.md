@@ -49,7 +49,7 @@ An action is built with `api.Do(can, do)` and a create with `api.Make(do)`, wher
 
 `web/common/data.js`: `query(path)` and `batch({name: path})` each answer a result of their own, holding that read's `result` and `now` and `get(id)`, `all(type)` and `follow(resource, relation)` over that read's `resources` only. There is no page-wide store: a page keeps its read's result and replaces it when it reads again, and a picker keeps its own, so no read ever disturbs another. `act`, `create` and `remove` write, and `actAll` sends a batch to `/api/act`, after which the page reads again; `me()` is `/api/me`.
 
-`web/common/directory.js` is the directory every picker and Spoof Mode read: `directory()` reads `/api/people?listed` with each person's `partners`, `children`, `parents` and `siblings` once per page, `listed()` is those people, and `contactLine` is the line under a name (a student's grade and classroom, a parent's children, anyone else's `words`).
+`web/common/directory.js` is the directory every picker, the person window and Spoof Mode read, in every app, from the data model rather than these types: `directory()` reads, once per page, through `/api/q`, everyone in the `everyone` group who is not hidden, their primary addresses, their ready photos, family memberships, the students, parents and staff role groups' effective members, and the grade, classroom and department groups. `listed()` is those `PERSON` rows as they are; `known(email)` and `personByEmail` find one by address, `emailOf`, `photoOf` (their own photo, else their family's), `gradeOf`, `placeOf` and `wordsOf` read one, `isStudent`, `isParent` and `isStaff` place them, `relativesOf(p, parents|children|partners|siblings)` reads their families, `profileLink` is their Who? page (by `slug`, else ID), and `contactLine` is the line under a name (a student's grade and classroom, a parent's children, anyone else's words).
 
 ## Staff Birthdays
 
@@ -67,15 +67,9 @@ A family carries `veracrossAddress` and `veracrossPhone`, how Veracross shows it
 
 ## Helios Who?
 
-Who?'s pages read the directory types above in one batch, with `who-settings` and `/api/me`; `internal/model/who_resources.go` holds the writes and Who?'s own types.
+Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`internal/who/who.go`).
 
-- **People and families** carry `can` from `mayEdit` (`docs/who/directory.md`, Who may edit what). A person's actions are `edit` (partial: `preferredName`, `pronouns`, `facts`), `add-photo`, `order-photos` (`names`, in order; a photo left out is removed), `crop-photo` (`name` of the photo and `crop`) and `pronunciation` (an empty `name` clears it); a family's are `edit` (partial: `photoCaption`), `photo`, `crop-photo` and `pronunciation`.
-- **Uploads** are bytes first: `POST /api/directory/media`, a form with `kind` (`photo` or `pronunciation`) and `file`, stores the file and answers its content-addressed `name`, which the action then names. An action refuses a name that is not one.
-- **Tags**: `POST /api/tags` with a `name` and a `person` tags them with the viewer's tag of that name, making it if there is none, and answers its ID. `add` and `remove` (a `person`) are the owner's and the managers', as is `copy` (a `name`, answering the copy's ID); `rename`, `share`, `unshare` and `delete` are the owner's; `leave` is a manager's.
-- **`classrooms` and `grades`** take an admin's `image`.
-- **`person-records`** are an admin's (`who.administer`; anyone else lists none): one per person in the directory's sheets, hidden people included, with the Overrides and Veracross values the admin page compares and relation `person`. Creating one adds a person by hand. `edit` is partial, and each field is accepted only for the people it applies to: names for anyone, facts, department, job title and grade band for staff, grade for students, classroom and crew for staff and students, phone, room parent and address for parents, and the address and roles of a person added by hand. `hide`, `unhide`, and `delete` for a person added by hand.
-- **`who-settings`**, one for every viewer, carries the Maps key, the update thresholds, the privacy links and the colours from the Config sheet (`docs/config.md`), and relation `viewer`; `stale-years`, `privacy-links` and `color` are the configure allowance's.
-- **`greetings`** are the built-in ones (each with its `role`) and the viewer's own, which they create, `edit` and `delete`; **`invite-services`** are the invite export's services and their columns.
+The directory types above are the old directory, read-only and frozen since Who? moved: nothing writes their sheet but the geocoder and the Who? admin list. The apps still on the old model read them - Loop and Heliosian's rule editors `classrooms`, `grades?enrolled` and `tags`, Staff Birthdays `departments` - and `people` and `families` are reached as relations of other apps' types.
 
 ## Magic Tags
 
