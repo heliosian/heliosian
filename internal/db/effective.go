@@ -54,6 +54,22 @@ func (m *Model) generated(t *Table) *generatedSet {
 	return set
 }
 
+func StartWarmer(s *Store, queue *store.Queue) {
+	poke := make(chan struct{}, 1)
+	effective, _ := Lookup("EFFECTIVE_MEMBER")
+	go func() {
+		for range poke {
+			s.Model().generated(effective)
+		}
+	}()
+	queue.OnSwap(func() {
+		select {
+		case poke <- struct{}{}:
+		default:
+		}
+	})
+}
+
 func (m *Model) searchRow(id string) (store.Row, bool) {
 	t, _ := Lookup("SEARCH")
 	c, _ := t.Column("id")

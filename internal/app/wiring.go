@@ -401,6 +401,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	server := Server(domain, core.Handlers(func(key string, next http.Handler) http.Handler {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
+	db.StartWarmer(core.Data, core.Queue)
 	if os.Getenv("K_SERVICE") != "" {
 		debug.SetMemoryLimit(memoryLimit)
 		go logMemory()

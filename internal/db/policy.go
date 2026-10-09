@@ -16,8 +16,8 @@ const PolicySource = `
 
 ; the viewer is an effective member of the group that manages @g or a group above it
 (define (manages @g)
-  (exists EFFECTIVE_MEMBER @e (= person @viewer)
-    (exists GROUP (= managed_by @e.group) (in id (ancestors @g)))))
+  (exists GROUP (in id (ancestors @g))
+    (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))))
 
 ; @g is a plain group, neither a role group nor a mail list, that manages a group of kind k and nothing else but itself
 (define (managers_for @g k)
