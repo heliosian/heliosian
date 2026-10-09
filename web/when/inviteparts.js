@@ -1,7 +1,7 @@
 import {me, answer} from './state.js';
 import {el, svg, toast} from '/elements.js';
 import {act} from '/data.js';
-import {listed} from '/directory.js';
+import {listed, emailOf} from '/directory.js';
 import {rulesEditor} from '/rules.js';
 
 export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
@@ -100,7 +100,7 @@ const names = new Map();
 
 export function setNames(people) {
   for (const p of people) {
-    names.set(p.email, p.fullName);
+    names.set(emailOf(p), p.name_show);
   }
 }
 

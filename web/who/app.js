@@ -1,4 +1,4 @@
-import {state, loadModel, tagKey} from './state.js';
+import {state, model, loadModel, tagKey, listKey, tags, lists} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {startApp, notFound} from '/router.js';
@@ -11,8 +11,7 @@ import {peoplePage} from './pages/people.js';
 import {listPage} from './pages/list.js';
 import {invitesPage} from './pages/invites.js';
 import {personPage} from './pages/person.js';
-import {guestPage} from './pages/guest.js';
-import {familyPage} from './pages/family.js';
+import {familyPage, myFamilyPage} from './pages/family.js';
 import {classroomsPage, gradePage, classroomPage} from './pages/classrooms.js';
 import {staffPage} from './pages/staff.js';
 import {privacyPage} from './pages/privacy.js';
@@ -38,17 +37,17 @@ function resetTagFilter() {
 }
 
 function people(parts) {
-  if (parts[1] && parts[1].startsWith('guest:')) {
-    return guestPage(parts[1].slice('guest:'.length));
-  }
   if (parts[1]) {
     return personPage(parts[1]);
   }
   const params = new URLSearchParams(location.search);
-  const tagParam = params.get('tag') ? tagKey(params.get('tag')) : params.get('list') || '';
-  if (tagParam) {
-    state.filterTags = new Set([tagParam]);
-    state.filterTagRelations = loadTagRelations(tagParam);
+  const key = params.get('tag') ? tagKey(params.get('tag')) : params.get('list') ? listKey(params.get('list')) : '';
+  if (key) {
+    if (!tags[key] && !lists[key]) {
+      return notFound('That tag');
+    }
+    state.filterTags = new Set([key]);
+    state.filterTagRelations = loadTagRelations(key);
     state.tagListView = 'faces';
     return listPage();
   }
@@ -60,6 +59,7 @@ const routes = {
   admin: () => adminPage(),
   people,
   families: parts => parts[1] ? familyPage(parts[1]) : notFound('That family'),
+  'my-family': () => myFamilyPage(),
   classrooms: parts => {
     if (parts[1]) {
       state.rosterTab = tabParam('students');
@@ -92,9 +92,9 @@ const routes = {
   'my-privacy': () => privacyPage(),
 };
 
-async function model() {
+async function load() {
   await loadModel();
-  state.everyoneOrder = shuffled(state.model.people);
+  state.everyoneOrder = shuffled(model.people);
   state.familyOrder = shuffled(familyEntries());
   renderUserChrome();
 }
@@ -102,8 +102,9 @@ async function model() {
 initChrome();
 initSearch();
 startApp({
-  model,
+  model: load,
   routes,
+  redirect: () => model.moved,
   missing: 'is not in the directory.',
   prepare: () => preparePage(sectionTitles[segments()[0]] || 'Helios Who?'),
   show: showPage,

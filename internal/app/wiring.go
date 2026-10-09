@@ -158,7 +158,7 @@ func NewCore(cfg Config) *Core {
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
-	who.Register(mux, models, whoAbout)
+	who.Register(mux, whoAbout, cfg.BrowserKey)
 	model.RegisterDirectoryMedia(mux, cfg.Store)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
@@ -241,7 +241,6 @@ func NewCore(cfg Config) *Core {
 		Tools:    shared,
 		Key:      cfg.MCPKey,
 		Sessions: models,
-		Member:   models.Member,
 		Now:      schoolNow,
 	})
 	apps := []appSpec{
@@ -300,10 +299,14 @@ func NewCore(cfg Config) *Core {
 	})
 	return &Core{
 		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue,
-		Spoof:   &auth.Spoof{Allowed: models.IsSuperAdmin, Person: spoofPerson(models)},
+		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
 	}
+}
+
+func (c *Core) SignedIn(email string) bool {
+	return c.Data.Model().SignedIn(email) != ""
 }
 
 func (c *Core) Muxes() map[string]*http.ServeMux {
@@ -389,7 +392,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	client := env.Required("GOOGLE_CLIENT_ID")
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
-		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.Store.Member, []string{OptInPath}, core.Store)
+		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.SignedIn, []string{OptInPath}, core.Store)
 		gate.Spoof = core.Spoof
 		gate.Preview = a.Preview
 		gate.Register(a.Mux)

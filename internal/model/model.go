@@ -300,8 +300,3 @@ func (s *Store) SignOut(ctx context.Context, email string) error {
 	actor := access.Actor{Email: mail.Normalize(email)}
 	return s.Commit(ctx, actor, ConfigApp, signedOut(actor.Email)...)
 }
-
-func (s *Store) Member(email string) bool {
-	d := s.Model().Directory
-	return d.Member(d.Resolve(mail.Normalize(email)))
-}

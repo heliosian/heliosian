@@ -332,7 +332,7 @@ func (s *Server) verify(_ context.Context, token string, _ *http.Request) (*sdka
 	if out, ok := s.deps.Sessions.SignedOut(a.Email); ok && a.Issued <= out.Unix() {
 		return nil, errSignedOut
 	}
-	if !s.deps.Member(a.Email) || s.deps.Data.Model().SignedIn(a.Email) == "" {
+	if s.deps.Data.Model().SignedIn(a.Email) == "" {
 		return nil, errSignedOut
 	}
 	return &sdkauth.TokenInfo{UserID: a.Email, Expiration: expires}, nil

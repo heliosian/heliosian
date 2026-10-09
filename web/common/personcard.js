@@ -1,22 +1,20 @@
 import {el, svg, avatar, toast} from '/elements.js';
 import {openModal, closeModal} from '/modal.js';
 import {tabbedFields} from '/tabs.js';
-import {directory} from '/directory.js';
-import {whoLink} from '/appswitch.js';
+import {personByEmail, emailOf, photoOf, placeOf, wordsOf, gradeOf, isStudent, relativesOf, profileLink} from '/directory.js';
 
 export async function openPersonCard(person, tabs = [], options = {}) {
-  const dir = await directory();
-  const info = person.email ? dir.result.map(dir.get).find(p => p.email === person.email) || null : null;
+  const info = person.email ? await personByEmail(person.email) : null;
   const head = cardHead(person, info);
   if (!tabs.length) {
     const done = el('button', 'button button-secondary', 'Done');
     done.type = 'button';
     done.addEventListener('click', closeModal);
-    openModal('', [head, cardContact(dir, person, info), cardFoot(person, info, done)], {...options, actions: false, wide: 'person'});
+    openModal('', [head, cardContact(person, info), cardFoot(info, done)], {...options, actions: false, wide: 'person'});
     return;
   }
   const panels = tabbedFields([
-    {label: 'Contact', icon: svg('people'), fields: [cardContact(dir, person, info), cardFoot(person, info, options.actions === false ? doneButton() : null)]},
+    {label: 'Contact', icon: svg('people'), fields: [cardContact(person, info), cardFoot(info, options.actions === false ? doneButton() : null)]},
     ...tabs,
   ]);
   openModal('', [head, panels], {...options, wide: 'person'});
@@ -24,18 +22,14 @@ export async function openPersonCard(person, tabs = [], options = {}) {
 
 function cardHead(person, info) {
   const head = el('div', 'who-head');
-  const name = (info && info.fullName) || person.name || person.email;
-  const face = avatar({name, email: person.email, photoUrl: (info && info.heroPhotoUrl) || person.photoUrl}, 'who-face');
+  const name = (info && info.name_show) || person.name || person.email;
+  const face = avatar({name, email: person.email, photoUrl: (info && photoOf(info)) || person.photoUrl}, 'who-face');
   const names = el('div', 'who-names');
   names.append(el('div', 'who-name', name));
   if (info && info.pronouns) {
     names.append(el('div', 'who-sub', info.pronouns));
   }
-  const place = info
-    ? info.isStudent
-      ? [info.grade, info.classroom].filter(Boolean).join(' · ')
-      : [info.jobTitle, info.department].filter(Boolean).join(' · ') || info.words
-    : person.line || (person.email ? '' : 'Guest');
+  const place = info ? placeOf(info) || wordsOf(info) : person.line || (person.email ? '' : 'Guest');
   if (place) {
     names.append(el('div', 'who-sub', place));
   }
@@ -65,7 +59,7 @@ function cardHead(person, info) {
   return head;
 }
 
-function cardContact(dir, person, info) {
+function cardContact(person, info) {
   const card = el('div', 'who-rows');
   let group = null;
   const row = (icon, label, value, links = []) => {
@@ -99,16 +93,16 @@ function cardContact(dir, person, info) {
   const chips = list => {
     const wrap = el('div', 'who-card-chips');
     for (const p of list) {
-      const chip = el('button', 'who-card-chip', p.grade ? `${p.fullName} (${p.grade})` : p.fullName);
+      const chip = el('button', 'who-card-chip', gradeOf(p) ? `${p.name_show} (${gradeOf(p)})` : p.name_show);
       chip.type = 'button';
-      chip.addEventListener('click', () => openPersonCard({email: p.email, name: p.fullName, photoUrl: p.heroPhotoUrl}));
+      chip.addEventListener('click', () => openPersonCard({email: emailOf(p), name: p.name_show, photoUrl: photoOf(p)}));
       wrap.append(chip);
     }
     return wrap;
   };
-  const partners = info ? dir.follow(info, 'partners').filter(Boolean) : [];
-  const children = info ? dir.follow(info, 'children').filter(Boolean) : [];
-  const parents = info && info.isStudent ? info.parentContactEmails || [] : [];
+  const partners = info ? relativesOf(info, 'partners') : [];
+  const children = info ? relativesOf(info, 'children') : [];
+  const parents = info && isStudent(info) ? relativesOf(info, 'parents').map(emailOf).filter(Boolean) : [];
   if (partners.length || children.length || parents.length) {
     group = null;
   }
@@ -140,12 +134,12 @@ export function doneButton() {
   return done;
 }
 
-function cardFoot(person, info, done) {
+function cardFoot(info, done) {
   const foot = el('div', 'who-foot');
   if (info) {
     const profile = el('a', 'button', '');
     profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = whoLink(person.email);
+    profile.href = profileLink(info);
     profile.target = '_blank';
     profile.rel = 'noopener';
     foot.append(profile);

@@ -1,7 +1,7 @@
 import {state, me, allows, settingsId, household, billable, admits, inAudience, audienceWords, ticketFor, myTickets, money, currentCelebration, partyPath, party} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
-import {directory, listed} from '/directory.js';
+import {listed, known, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {act, create, remove} from '/data.js';
 import {el, svg, toast, button} from '/elements.js';
@@ -349,13 +349,15 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
       kinds.push('a student');
     }
     const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
-    picker = peoplePicker({placeholder: label, allow: person => inAudience(p, person), onPick: person => {
-      chosen = {email: person.email, name: person.fullName || person.email, photoUrl: person.heroPhotoUrl, title: person.words};
+    picker = peoplePicker({placeholder: label, allow: person => inAudience(p, person), onPick: (email, person) => {
+      chosen = {email, name: person ? person.name_show : email, photoUrl: person ? photoOf(person) : '', title: person ? wordsOf(person) : ''};
       if (!opts.hold) {
         submit();
         return;
       }
-      picker.set(person);
+      if (person) {
+        picker.set(person);
+      }
       opts.onChoose(person);
     }});
     picker.input.addEventListener('input', () => {
@@ -513,23 +515,22 @@ export function openAddTicket(p) {
   let paid = Boolean(p.price);
   const box = el('div', 'ticket-kind');
   const lead = el('p', 'form-lead');
-  const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
+  const guestOf = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !isStudent(person)});
   const guestOfField = field('Guest of', guestOf.mount, 'Optional - who is bringing them. They get the note, and the ticket sits with their family to pass on. Blank means you.');
   const raise = p.capacity ? checkbox('Raise the capacity by one', true, `So this ticket takes none of the ${p.capacity} paid places.`) : null;
   const paidPanel = el('div');
-  const invoice = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !person.isStudent});
+  const invoice = peoplePicker({placeholder: 'Search for an adult\u2026', allow: person => !isStudent(person)});
   paidPanel.append(field('Invoice', invoice.mount, 'Who pays for it, and is emailed the ticket: the ticket holder, or a student\u2019s parent, unless you pick someone else. Blank, for a guest by name, bills you.'));
   const billTo = async person => {
     if (!person) {
       invoice.reset();
       return;
     }
-    if (!person.isStudent) {
+    if (!isStudent(person)) {
       invoice.set(person);
       return;
     }
-    const dir = await directory();
-    const parent = dir.follow(person, 'parents').find(adult => adult && !adult.isStudent);
+    const parent = relativesOf(person, 'parents')[0];
     if (!parent) {
       invoice.reset();
       return;
@@ -566,8 +567,8 @@ export function openAddTicket(p) {
       await load();
       const host = person.guest && guestOf.person;
       const billed = invoice.person;
-      toast(paid ? (billed ? `${person.name} has a ticket, invoiced to ${billed.fullName}` : `${person.name} has a ticket`)
-        : host ? `${person.name} has a free ticket as ${host.fullName}'s guest` : `${person.name} has a free ticket`);
+      toast(paid ? (billed ? `${person.name} has a ticket, invoiced to ${billed.name_show}` : `${person.name} has a ticket`)
+        : host ? `${person.name} has a free ticket as ${host.name_show}'s guest` : `${person.name} has a free ticket`);
     } catch (err) {
       toast(err.message);
     }
@@ -663,8 +664,8 @@ function hostChips(initial) {
     if (!email || hosts.some(h => h.email === email)) {
       return;
     }
-    const person = picker.person || {};
-    hosts.push({email, name: person.fullName || email, photoUrl: person.heroPhotoUrl});
+    const person = picker.person;
+    hosts.push({email, name: person ? person.name_show : email, photoUrl: person ? photoOf(person) : ''});
     picker.reset();
     paint();
   });
@@ -928,14 +929,13 @@ export async function setPartyStatus(p, status) {
 }
 
 export async function openContacts(p) {
-  const dir = await directory();
-  const byEmail = new Map(dir.result.map(dir.get).map(q => [q.email, q]));
+  await listed();
   const signUps = [...p.attendees, ...p.waitlisted].map(a => ({a, relation: ''}));
   const relations = new Set();
   const firstName = a => (a.name || a.email).split(' ')[0];
   const follows = {Parents: ['parents', 'Parent'], Children: ['children', 'Child'], Siblings: ['siblings', 'Sibling']};
-  const relativesOf = r => {
-    const info = byEmail.get(r.a.email);
+  const familyOf = r => {
+    const info = known(r.a.email);
     if (!info) {
       return [];
     }
@@ -944,21 +944,21 @@ export async function openContacts(p) {
       if (!relations.has(relation)) {
         continue;
       }
-      for (const q of dir.follow(info, path).filter(q => q && q.email)) {
-        out.push({a: {email: q.email, name: q.fullName}, relation: `${as} of ${firstName(r.a)}`});
+      for (const q of relativesOf(info, path).filter(emailOf)) {
+        out.push({a: {email: emailOf(q), name: q.name_show}, relation: `${as} of ${firstName(r.a)}`});
       }
     }
     return out;
   };
   const titleOf = r => {
-    const info = byEmail.get(r.a.email);
+    const info = known(r.a.email);
     if (!info) {
       return r.relation ? '' : 'Guest';
     }
-    if (info.isStudent) {
-      return info.grade || 'Student';
+    if (isStudent(info)) {
+      return gradeOf(info) || 'Student';
     }
-    return [info.isParent ? 'Parent' : '', info.isStaff ? 'Staff' : ''].filter(Boolean).join(', ');
+    return [isParent(info) ? 'Parent' : '', isStaff(info) ? 'Staff' : ''].filter(Boolean).join(', ');
   };
   const mailLink = e => {
     const link = el('a', 'contact-email', e);
@@ -991,7 +991,7 @@ export async function openContacts(p) {
     const seen = new Set(signUps.map(r => r.a.email).filter(Boolean));
     const rows = [...signUps];
     for (const r of signUps) {
-      for (const k of relativesOf(r)) {
+      for (const k of familyOf(r)) {
         if (!seen.has(k.a.email)) {
           seen.add(k.a.email);
           rows.push(k);

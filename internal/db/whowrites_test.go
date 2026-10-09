@@ -77,9 +77,6 @@ func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 
 func TestWhoWrites(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Insert("PERSON", store.Row{"id": "per00000000099", "source": "manual", "vc_name_long": "Sam Added", "consent": "listed"})); err != nil {
-		t.Fatal(err)
-	}
 	if err := commit(s, ConfigSheet, store.Insert("SETTING", store.Row{"id": "set00000000099", "app": "platform", "key": "Staff Color", "value": "#000000"})); err != nil {
 		t.Fatal(err)
 	}
@@ -111,14 +108,9 @@ func TestWhoWrites(t *testing.T) {
 		{"a parent adds a greeting", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": parent}), true},
 		{"a parent adds a greeting as someone else", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": staff}), false},
 		{"a guest adds a greeting", guest, insert("GREETING", store.Row{"name": "Hi", "added_by": guest}), false},
-		{"Who?'s admin adds someone by hand", staff, insert("PERSON", store.Row{"source": "manual"}), true},
-		{"Who?'s admin adds a Veracross person", staff, insert("PERSON", store.Row{"source": "veracross"}), false},
-		{"a parent adds someone by hand", parent, insert("PERSON", store.Row{"source": "manual"}), false},
-		{"Who?'s admin makes someone added by hand staff", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": "per00000000099", "member": "yes"}), true},
-		{"Who?'s admin puts someone added by hand in everyone", staff, insert("MEMBER", store.Row{"group": "grp00000000004", "person": "per00000000099", "member": "yes"}), false},
-		{"Who?'s admin makes a Veracross person staff", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), false},
-		{"Who?'s admin deactivates someone added by hand", staff, change(t, s, "PERSON", []string{"per00000000099"}, store.Row{"deactivated": "2026-10-01 12:00"}), true},
-		{"Who?'s admin deactivates a Veracross person", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), false},
+		{"Who?'s admin adds someone by hand", staff, insert("PERSON", store.Row{"source": "manual"}), false},
+		{"Who?'s admin makes someone staff", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), false},
+		{"Who?'s admin deactivates someone", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), false},
 		{"Who?'s admin makes a room parent", staff, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), true},
 		{"a parent makes a room parent", parent, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), false},
 		{"Who?'s admin sets the staff color", staff, change(t, s, "SETTING", []string{"set00000000099"}, store.Row{"value": "#111111"}), true},

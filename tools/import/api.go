@@ -74,6 +74,9 @@ func (c client) read() (*state, error) {
 	if st.rules, _, err = c.table("RULE", or(in("group.kind", "band"), gradeParentsGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
+	if st.aliases, _, err = c.table("ALIAS"); err != nil {
+		return nil, err
+	}
 	return st, nil
 }
 

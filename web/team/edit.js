@@ -6,7 +6,7 @@ import {familyDropdown} from '/rules.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
-import {directory, listed} from '/directory.js';
+import {listed, known, emailOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {act, create, remove} from '/data.js';
@@ -1077,8 +1077,7 @@ export function openVolunteerSettings(node, replace) {
 }
 
 export async function openVolunteerGrid(root, nodes, pathOf) {
-  const dir = await directory();
-  const byEmail = new Map(dir.result.map(dir.get).map(p => [p.email, p]));
+  await listed();
   const signUps = [];
   for (const node of nodes) {
     for (const v of node.volunteers) {
@@ -1087,8 +1086,8 @@ export async function openVolunteerGrid(root, nodes, pathOf) {
   }
   const firstName = v => (v.name || v.email).split(' ')[0];
   const follows = {Parents: ['parents', 'Parent'], Children: ['children', 'Child'], Siblings: ['siblings', 'Sibling']};
-  const relativesOf = r => {
-    const info = byEmail.get(r.v.email);
+  const familyOf = r => {
+    const info = known(r.v.email);
     if (!info) {
       return [];
     }
@@ -1097,8 +1096,8 @@ export async function openVolunteerGrid(root, nodes, pathOf) {
       if (!relations.has(relation)) {
         continue;
       }
-      for (const p of dir.follow(info, path).filter(p => p && p.email)) {
-        out.push({node: r.node, v: {email: p.email, name: p.fullName, position: `${as} of ${firstName(r.v)}`}});
+      for (const p of relativesOf(info, path).filter(emailOf)) {
+        out.push({node: r.node, v: {email: emailOf(p), name: p.name_show, position: `${as} of ${firstName(r.v)}`}});
       }
     }
     return out;
@@ -1106,14 +1105,14 @@ export async function openVolunteerGrid(root, nodes, pathOf) {
   const relations = new Set();
   let ids = new Set(nodes.map(n => n.id));
   const titleOf = r => {
-    const info = byEmail.get(r.v.email);
+    const info = known(r.v.email);
     if (!info) {
       return '';
     }
-    if (info.isStudent) {
-      return info.grade || 'Student';
+    if (isStudent(info)) {
+      return gradeOf(info) || 'Student';
     }
-    return [info.isParent ? 'Parent' : '', info.isStaff ? 'Staff' : ''].filter(Boolean).join(', ');
+    return [isParent(info) ? 'Parent' : '', isStaff(info) ? 'Staff' : ''].filter(Boolean).join(', ');
   };
   const columns = [
     {label: 'Volunteer', get: r => r.v.name || r.v.email},
@@ -1129,7 +1128,7 @@ export async function openVolunteerGrid(root, nodes, pathOf) {
     const seen = new Set(signUps.map(r => r.v.email));
     const rows = [...signUps];
     for (const r of signUps) {
-      for (const k of relativesOf(r)) {
+      for (const k of familyOf(r)) {
         if (!seen.has(k.v.email)) {
           seen.add(k.v.email);
           rows.push(k);

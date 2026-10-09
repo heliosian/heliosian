@@ -190,6 +190,30 @@ func TestInLiteralsMatchOr(t *testing.T) {
 	}
 }
 
+func TestInAConstantSelectProbes(t *testing.T) {
+	m := sample(t).Model()
+	for _, c := range []struct {
+		src    string
+		probes bool
+	}{
+		{`(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (= slug "everyone")))))`, true},
+		{`(from MEMBER (where (in group (select GROUP.id (= kind "family")))))`, true},
+		{`(from GROUP @g (where (in id (select MEMBER.group (= group @g)))))`, false},
+	} {
+		q := mustParse(t, c.src)
+		if probes := q.scan.probeSet != nil; probes != c.probes {
+			t.Errorf("%s probes %v, want %v", c.src, probes, c.probes)
+		}
+	}
+	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {
+		probed := ids(runAs(t, m, viewer, `(from MEMBER (where (in group (select GROUP.id (= kind "family")))))`).Rows(), "id")
+		scanned := ids(runAs(t, m, viewer, `(from MEMBER (where (= group.kind "family")))`).Rows(), "id")
+		if len(scanned) == 0 || !slices.Equal(probed, scanned) {
+			t.Errorf("as %q: family memberships through a select %v, through a path %v", viewer, probed, scanned)
+		}
+	}
+}
+
 func TestCorrelatedSelectsAreNotShared(t *testing.T) {
 	m := sample(t).Model()
 	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {

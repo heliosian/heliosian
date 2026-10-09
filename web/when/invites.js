@@ -17,7 +17,7 @@ import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 import {countList} from '/countlist.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
-import {directory} from '/directory.js';
+import {listed, emailOf, photoOf, wordsOf, gradeOf, isStudent} from '/directory.js';
 import {tabbedFields} from '/tabs.js';
 
 export async function startParty(e) {
@@ -422,7 +422,7 @@ function openAddHost(e, view, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', 'A co-host builds and sends the list, reads every answer and hears replies, as you do.'));
   const mount = el('div', 'cohost-picker cohost-add');
-  const picker = createPersonPicker(mount, {people: pickerPeople(p => !view.hosts.some(h => h.email === p.email))});
+  const picker = createPersonPicker(mount, {people: pickerPeople(p => !view.hosts.some(h => h.email === emailOf(p)))});
   form.append(mount);
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
@@ -600,10 +600,10 @@ export function guestListSection(e, view, refresh) {
 export async function openGuestSettings(e, view, refresh) {
   let people = null;
   try {
-    const [options, dir] = await Promise.all([api('GET', '/api/when/invites/options'), directory()]);
+    const [options, everyone] = await Promise.all([api('GET', '/api/when/invites/options'), listed()]);
     setRuleOptions(options);
-    people = new Map(dir.result.map(dir.get).map(p => [p.email, p]));
-    setNames(people.values());
+    people = new Map(everyone.map(p => [emailOf(p), p]));
+    setNames(everyone);
   } catch (err) {
     toast('Couldn’t load the guest list’s rules: ' + err.message);
     return;
@@ -664,7 +664,7 @@ function guestView(r, items, people) {
   if (!p) {
     return {email: r.email, name: r.name, key: r.key, words: 'Outside the directory', outside: true, reasons};
   }
-  return {email: p.email, name: p.fullName, key: r.key, photoUrl: p.heroPhotoUrl, words: p.words, grade: p.isStudent ? p.grade : '', reasons};
+  return {email: emailOf(p), name: p.name_show, key: r.key, photoUrl: photoOf(p), words: wordsOf(p), grade: isStudent(p) ? gradeOf(p) : '', reasons};
 }
 
 function paintGuests(e, view, people, panel, again) {

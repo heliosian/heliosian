@@ -4,7 +4,7 @@ import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
-import {listed} from '/directory.js';
+import {listed, emailOf} from '/directory.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
 import {act, create, remove} from '/data.js';
@@ -263,7 +263,7 @@ async function openAppEditor(app) {
 }
 
 function renderAppPeople() {
-  const byEmail = new Map(everyone.map(p => [p.email, p.fullName]));
+  const byEmail = new Map(everyone.map(p => [emailOf(p), p.name_show]));
   const list = document.querySelector('#app-people');
   list.replaceChildren();
   for (const email of appEmails) {

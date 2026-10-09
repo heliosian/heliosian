@@ -156,7 +156,7 @@ const PolicySource = `
 ; every column of a person but what the form shares
 (read PERSON
   (id source vc_name vc_legal_name vc_name_long name_long_override name_long
-   vc_name_short name_short_override name_short vc_name_sort name_sort_override name_sort name_show
+   vc_name_short name_short_override name_short vc_name_sort name_sort_override name_sort name_show slug
    vc_grade grade_override grade vc_classroom classroom_override classroom vc_crew crew_override crew
    vc_department department_override department vc_job_title job_title_override job_title
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
@@ -458,6 +458,8 @@ const PolicySource = `
 (read RULE (and (admin_of "who") (= group.kind "group")))
 ; every person's emails, hidden or deactivated too
 (read PERSON_EMAIL (admin_of "who"))
+; every picture's re-encode and crop, to crop it
+(read PHOTO (reencode crop) (admin_of "who"))
 ; override anyone's grade
 (set PERSON.grade_override (admin_of "who"))
 ; override anyone's classroom
@@ -482,20 +484,6 @@ const PolicySource = `
 (set PERSON.photo_updated (admin_of "who"))
 ; take anyone out of the directory and sign-in, or put them back
 (set PERSON.hidden (admin_of "who"))
-; add someone the school's records don't carry
-(insert PERSON (and (admin_of "who") (= @new.source "manual")))
-; deactivate someone added by hand, or bring them back
-(set PERSON.deactivated (and (admin_of "who") (= @old.source "manual")))
-; give someone an address by hand
-(insert PERSON_EMAIL (and (admin_of "who") (= @new.source "manual")))
-; change an address given by hand
-(set PERSON_EMAIL.address (and (admin_of "who") (= @old.source "manual")))
-; remove an address given by hand
-(delete PERSON_EMAIL (and (admin_of "who") (= @old.source "manual")))
-; make someone added by hand a student, parent, staff member or adult
-(insert MEMBER (and (admin_of "who") (role_group @new.group) (!= @new.group.slug "everyone") (= @new.person.source "manual")))
-; take someone added by hand out of a role group
-(delete MEMBER (and (admin_of "who") (role_group @old.group) (!= @old.group.slug "everyone") (= @old.person.source "manual")))
 ; make someone a band's room parent
 (insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "band") (= @new.member "yes")))
 ; stop someone being a band's room parent
@@ -726,6 +714,12 @@ const PolicySource = `
 
 ; old IDs and the rows they now name
 (read ALIAS (super_admin))
+; an old name of a person the viewer may see, so an old link still finds their page
+(read ALIAS (exists PERSON @p (= id @row.target) (person_visible @p)))
+; an old name of a group the viewer may see, so an old link still finds its page
+(read ALIAS (exists GROUP @g (= id @row.target) (visible @g)))
+; an old ticket ID of a guest the viewer may see, so an old guest link still finds them
+(read ALIAS (exists MEMBER @m (= id @row.target) (person_visible @m.person)))
 ; every column of an alias
 (read ALIAS (id alias target) true)
 ; old paths and where they now go
@@ -787,6 +781,12 @@ const PolicySource = `
 (read PERSON (deactivated) (system "import"))
 ; deactivate a Veracross person gone from the export, or bring one back
 (set PERSON.deactivated (and (system "import") (= @old.source "veracross")))
+; a person's address in Who?, from their primary email; a guest has none
+(set PERSON.slug (and (system "import") (!= @old.source "guest")))
+; every person's alias, to skip one already written
+(read ALIAS (and (system "import") (exists PERSON (= id @row.target))))
+; a person's old address in Who?, when their slug changes
+(insert ALIAS (and (system "import") (exists PERSON (= id @new.target))))
 ; whether the opt-in form lists a person
 (set PERSON.consent (system "import"))
 ; whether the opt-in form shares a person's address
@@ -817,6 +817,8 @@ const PolicySource = `
 (delete RULE (and (system "import") (grade_parents @old.group)))
 ; put a classroom under the band of its students' grades
 (set GROUP.parent (and (system "import") (= @old.kind "classroom")))
+; a classroom's address in Who?, its name in lower case
+(set GROUP.slug (and (system "import") (= @old.kind "classroom")))
 ; every band's rules, to compare with the grades and classrooms under it
 (read RULE (and (system "import") (= group.kind "band")))
 ; make a band take in a grade or classroom under it

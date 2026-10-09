@@ -87,14 +87,6 @@ export function shuffled(items) {
   return copy;
 }
 
-export function thumbUrl(url) {
-  return url ? url + '?thumb=1' : url;
-}
-
-export function slugify(name) {
-  return name.toLowerCase().replaceAll(' ', '-');
-}
-
 export function ordinal(gradeName) {
   const n = Number(gradeName.split(' ')[1]);
   return n + ({1: 'st', 2: 'nd', 3: 'rd'}[n] || 'th');

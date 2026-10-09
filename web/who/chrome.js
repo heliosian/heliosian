@@ -1,10 +1,10 @@
-import {state, tagKey, viewer} from './state.js';
+import {state, model, tagKey, listKey, viewer, familyOf} from './state.js';
 import {segments, hue, firstName, trimMiddle} from './dom.js';
 import {el, svg} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
-import {familyOf, myFamilyKey} from './families.js';
+import {myFamily} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagKeys, tagLabel, listKeys, listLabel, listApp, sharedKeys, sharedOf, managersOf, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagKeys, tagLabel, listKeys, listApp, sharedTag, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
@@ -29,10 +29,15 @@ const mobileNavSections = [
   {path: 'email-list', label: 'Lists', isListsTab: true},
 ];
 
+function onMyFamily(seg) {
+  const family = myFamily();
+  return seg[0] === 'my-family' || (seg[0] === 'families' && Boolean(family) && seg[1] === family.id);
+}
+
 function activeSection() {
   const seg = segments();
   if (seg[0] === 'families') {
-    return seg[1] === myFamilyKey() ? 'my-family' : 'people';
+    return onMyFamily(seg) ? 'my-family' : 'people';
   }
   if (seg[0] === 'grades') {
     return 'classrooms';
@@ -81,7 +86,7 @@ export function showPage(node) {
       wrap.append(privacyMismatchCard(warnings));
     }
   }
-  const onOwnFamilyPage = seg[0] === 'families' && seg[1] === myFamilyKey();
+  const onOwnFamilyPage = onMyFamily(seg);
   const familyIds = new Set(familyNavPeople().map(fp => fp.id));
   const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
   const onOwnFamilyMemberPage = !!segPerson && familyIds.has(segPerson.id);
@@ -106,12 +111,12 @@ function familyMemberRow(p, meId, activeId) {
   if (p.id === activeId) {
     a.className = 'nav-family-link active';
   }
-  a.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'nav-family-avatar'));
-  a.append(el('span', 'nav-family-name', p.id === meId ? 'Me' : firstName(p.fullName)));
+  a.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'nav-family-avatar'));
+  a.append(el('span', 'nav-family-name', p.id === meId ? 'Me' : firstName(p.name_show)));
   const count = personTodoCount(p);
   if (count) {
     const badge = navBadge(count);
-    badge.title = `${p.id === meId ? 'You have' : `${firstName(p.fullName)} has`} ${count} thing${count === 1 ? '' : 's'} to update`;
+    badge.title = `${p.id === meId ? 'You have' : `${firstName(p.name_show)} has`} ${count} thing${count === 1 ? '' : 's'} to update`;
     a.append(badge);
   }
   return a;
@@ -249,13 +254,13 @@ function fillNav(nav) {
       toolsBody.append(sharedTagsHeading('nav-subheading'));
     }
     for (const entry of shared) {
-      listLink(entry.href, sharedTagIcon(whiteIcon('families'), entry.mine), entry.name, entry.active(params), entry.title);
+      listLink(entry.href, sharedTagIcon(whiteIcon('families')), entry.name, entry.active(params), entry.title);
     }
     if (listKeys().length) {
       toolsBody.append(magicTagsHeading('nav-subheading'));
     }
     for (const key of listKeys()) {
-      listLink('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
+      listLink(tagHref(key), magicTagIcon(key), tagLabel(key), listActive(params, key));
     }
   }
 }
@@ -333,35 +338,29 @@ function magicTagsHeading(className) {
   return heading;
 }
 
+function listActive(params, key) {
+  return params.has('list') && listKey(params.get('list')) === key;
+}
+
 function groupedTags() {
-  const entry = (key, mine, title) => ({
+  const entry = (key, title) => ({
     name: tagLabel(key),
-    mine,
     href: tagHref(key),
     title,
     active: params => params.has('tag') && tagKey(params.get('tag')) === key,
   });
-  const own = tagKeys().filter(key => !managersOf(key).length).map(key => entry(key, true, tagLabel(key)));
-  const shared = [
-    ...tagKeys().filter(key => managersOf(key).length).map(key => entry(key, true, `${tagLabel(key)} - your tag, shared with others`)),
-    ...sharedKeys().map(key => entry(key, false, `${tagLabel(key)} - ${sharedOf(key).ownerName}'s tag, shared with you`)),
-  ].sort((a, b) => a.name.localeCompare(b.name));
+  const own = tagKeys().filter(key => !sharedTag(key)).map(key => entry(key, tagLabel(key)));
+  const shared = tagKeys().filter(sharedTag).map(key => entry(key, `${tagLabel(key)} - shared with others`));
   return {own, shared};
 }
 
-function sharedTagIcon(icon, mine) {
+function sharedTagIcon(icon) {
   const wrap = el('span', 'magic-tag-icon');
   wrap.append(icon);
-  if (!mine) {
-    return wrap;
-  }
-  const star = svg('star');
-  star.classList.add('owner-star');
-  wrap.append(star);
   return wrap;
 }
 
-const sharedTagsTip = 'Tags more than one person manages. A star marks yours.';
+const sharedTagsTip = 'Tags more than one person manages.';
 
 function sharedTagsHeading(className) {
   const heading = el('div', className);
@@ -405,13 +404,13 @@ function renderMobileListsMenu() {
   for (const entry of shared) {
     const icon = svg('families');
     icon.style.color = `hsl(${hue(entry.name)}, 65%, 40%)`;
-    listItem(entry.href, sharedTagIcon(icon, entry.mine), entry.name, entry.active(params));
+    listItem(entry.href, sharedTagIcon(icon), entry.name, entry.active(params));
   }
   if (listKeys().length) {
     body.append(magicTagsHeading('mobile-lists-subheading'));
   }
   for (const key of listKeys()) {
-    listItem('/people?list=' + encodeURIComponent(key), magicTagIcon(key), listLabel(key), params.get('list') === key);
+    listItem(tagHref(key), magicTagIcon(key), tagLabel(key), listActive(params, key));
   }
 }
 
@@ -423,7 +422,8 @@ privacyRow.append(privacyAlert);
 
 function me() {
   const person = viewer();
-  return {...state.model.user, photoUrl: person && personPhotoUrl(person)};
+  const name = person ? person.name_show : model.email;
+  return {email: model.email, name, initial: (name[0] || '').toUpperCase(), photoUrl: person && personPhotoUrl(person)};
 }
 
 function alerts() {

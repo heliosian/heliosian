@@ -1,5 +1,6 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {batch, query, me as whoAmI} from '/data.js';
+import {isStudent, isParent, isStaff} from '/directory.js';
 
 export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
@@ -143,7 +144,7 @@ export function admits(p, person) {
 }
 
 export function inAudience(p, person) {
-  return ((person.isParent || person.isStaff) && p.adults) || (person.isStudent && p.students);
+  return ((isParent(person) || isStaff(person)) && p.adults) || (isStudent(person) && p.students);
 }
 
 export function audienceWords(p) {

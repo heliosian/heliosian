@@ -29,9 +29,8 @@ type Spoof struct {
 }
 
 type Person struct {
-	Email    string `json:"email"`
-	FullName string `json:"fullName"`
-	Words    string `json:"words,omitempty"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
 }
 
 type identity struct {

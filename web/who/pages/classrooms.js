@@ -1,51 +1,44 @@
-import {state, colors, peopleOf} from '../state.js';
-import {withFrom, slugify, ordinal, thumbUrl, firstName, listSub, paletteColor} from '../dom.js';
+import {state, model, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, membersOf, photosOf, photoUrl, thumbOf, gradeOf, classroomOf, groupById, roomParentsOf, gradeByKey, classroomByKey, gradePath, classroomPath} from '../state.js';
+import {withFrom, ordinal, firstName, listSub, paletteColor} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
-import {familyOf, familiesOf} from '../families.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
-import {render} from '/router.js';
+import {render, notFound} from '/router.js';
+
+function gradesOf(band) {
+  return model.grades.filter(g => g.parent === band.id);
+}
 
 function bandGroups() {
-  const groups = [];
-  for (const g of state.model.grades) {
-    if (!g.band || g.band === 'Eggs' || g.band === 'Alum' || g.name === 'PreK' || g.name === 'Grade 9') {
-      continue;
-    }
-    let group = groups.find(x => x.band === g.band);
-    if (!group) {
-      group = {band: g.band, grades: []};
-      groups.push(group);
-    }
-    group.grades.push(g.name);
-  }
+  const groups = model.bands
+    .map(band => ({band, grades: gradesOf(band)}))
+    .filter(group => group.grades.length)
+    .sort((a, b) => model.grades.indexOf(a.grades[0]) - model.grades.indexOf(b.grades[0]));
   for (const group of groups) {
-    group.label = group.band === 'Hummingbirds' ? 'K' : group.grades.map(ordinal).join(' / ');
+    group.label = group.grades.map(g => g.slug === 'grade-k' ? 'K' : ordinal(g.name)).join(' / ');
   }
   return groups;
 }
 
-export function gradeImage(gradeName) {
-  const grade = state.model.grades.find(g => g.name === gradeName);
-  if (grade && grade.imageUrl) {
-    return grade.imageUrl;
+export function gradeImage(g) {
+  const photo = photosOf(g.id)[0];
+  if (photo) {
+    return photoUrl(photo);
   }
-  const suffix = gradeName === 'Kindergarten' ? 'k' : gradeName.split(' ')[1];
-  return '/brand/classrooms/grade-' + suffix + '.jpg';
+  return '/brand/classrooms/' + g.slug + '.jpg';
+}
+
+export function classroomImage(c) {
+  const photo = photosOf(c.id)[0];
+  if (photo) {
+    return photoUrl(photo);
+  }
+  return '/brand/classrooms/classroom-' + c.name.toLowerCase() + '.jpg';
 }
 
 function studentsOf(filter) {
-  return state.model.people.filter(p => p.isStudent && filter(p));
-}
-
-function classroomBand(name) {
-  const student = state.model.people.find(p => p.isStudent && p.classroom === name);
-  if (!student) {
-    return '';
-  }
-  const grade = state.model.grades.find(g => g.name === student.grade);
-  return grade ? grade.band : '';
+  return model.people.filter(p => isStudent(p) && filter(p));
 }
 
 function listRow(image, label, title, sub, href) {
@@ -99,12 +92,16 @@ const classroomsTabs = [
   {key: 'room-parents', label: 'Room Parents', heading: ''},
 ];
 
+function counted(n) {
+  return `${n} student${n === 1 ? '' : 's'}`;
+}
+
 function renderClassroomsList(list) {
   const q = state.q;
   let count = 0;
   for (const group of bandGroups()) {
-    const rows = state.model.classrooms
-      .filter(c => classroomBand(c.name) === group.band)
+    const rows = model.classrooms
+      .filter(c => c.parent === group.band.id)
       .filter(c => c.name.toLowerCase().includes(q));
     if (!rows.length) {
       continue;
@@ -112,9 +109,8 @@ function renderClassroomsList(list) {
     list.append(el('h2', 'staff-section', group.label));
     const grid = el('div', 'people-grid autofit classroom-grid');
     for (const c of rows) {
-      const students = studentsOf(p => p.classroom === c.name).length;
-      grid.append(badgeCard(c.imageUrl, `${students} student${students === 1 ? '' : 's'}`, c.name,
-        withFrom('/classrooms/' + slugify(c.name)), colors.classrooms[c.name]));
+      const students = studentsOf(p => p.classroom === c.id).length;
+      grid.append(badgeCard(thumbOf(photosOf(c.id)[0]) || classroomImage(c), counted(students), c.name, withFrom(classroomPath(c)), c.color));
       count++;
     }
     list.append(grid);
@@ -126,16 +122,15 @@ function renderGradesList(list) {
   const q = state.q;
   let count = 0;
   for (const group of bandGroups()) {
-    const rows = group.grades.filter(name => name.toLowerCase().includes(q));
+    const rows = group.grades.filter(g => g.name.toLowerCase().includes(q));
     if (!rows.length) {
       continue;
     }
     list.append(el('h2', 'staff-section', group.label));
     const grid = el('div', 'people-grid autofit classroom-grid');
-    for (const name of rows) {
-      const students = studentsOf(p => p.grade === name).length;
-      grid.append(badgeCard(gradeImage(name), `${students} student${students === 1 ? '' : 's'}`, name,
-        withFrom('/grades/' + slugify(name)), colors.grades[name]));
+    for (const g of rows) {
+      const students = studentsOf(p => gradeOf(p) === g).length;
+      grid.append(badgeCard(gradeImage(g), counted(students), g.name, withFrom(gradePath(g)), g.color));
       count++;
     }
     list.append(grid);
@@ -143,12 +138,11 @@ function renderGradesList(list) {
   return count;
 }
 
-function abbreviateGrade(name) {
-  if (name === 'Kindergarten') {
-    return 'K';
+function abbreviateGrade(g) {
+  if (!g) {
+    return '';
   }
-  const match = /^Grade (\d+)$/.exec(name || '');
-  return match ? match[1] : name;
+  return g.slug === 'grade-k' ? 'K' : g.slug.replace('grade-', '');
 }
 
 function kidsSummary(parent) {
@@ -156,8 +150,8 @@ function kidsSummary(parent) {
   if (!family) {
     return '';
   }
-  return peopleOf(family.kids)
-    .map(k => `${firstName(k.fullName)} (${[k.classroom, abbreviateGrade(k.grade)].filter(Boolean).join(' - ')})`)
+  return kidsOf(family)
+    .map(k => `${firstName(k.name_show)} (${[(classroomOf(k) || {}).name, abbreviateGrade(gradeOf(k))].filter(Boolean).join(' - ')})`)
     .join(' • ');
 }
 
@@ -165,9 +159,7 @@ function renderRoomParents(list) {
   const q = state.q;
   let count = 0;
   for (const group of bandGroups()) {
-    const grades = state.model.grades.filter(g => g.band === group.band);
-    const parents = peopleOf([...new Set(grades.flatMap(g => g['room-parents']))])
-      .filter(p => p.fullName.toLowerCase().includes(q));
+    const parents = roomParentsOf(group.band).filter(p => p.name_show.toLowerCase().includes(q));
     if (!parents.length) {
       continue;
     }
@@ -176,8 +168,8 @@ function renderRoomParents(list) {
     for (const p of parents) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id));
-      card.append(el('div', 'person-name', p.fullName));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id));
+      card.append(el('div', 'person-name', p.name_show));
       card.append(el('div', 'person-sub', kidsSummary(p)));
       grid.append(card);
       count++;
@@ -243,27 +235,32 @@ export function classroomsPage() {
 }
 
 function parentsOf(students) {
-  const ids = [];
+  const out = new Map();
   for (const s of students) {
     for (const family of familiesOf(s)) {
-      ids.push(...family.adults);
+      for (const a of adultsOf(family)) {
+        out.set(a.id, a);
+      }
     }
   }
-  return peopleOf([...new Set(ids)]);
+  return [...out.values()];
 }
 
-function teachersOf(classroomNames) {
-  const rooms = state.model.classrooms.filter(c => classroomNames.includes(c.name)).map(c => c.id);
-  const ids = state.model.crews.filter(crew => rooms.includes(crew.classroom)).flatMap(crew => crew.teachers);
-  return peopleOf([...new Set(ids)]);
+function teachersOf(classrooms) {
+  const rooms = new Set(classrooms.map(c => c.id));
+  return model.people.filter(p => isStaff(p) && rooms.has(p.classroom));
 }
 
-function otherFamilyMembers(student) {
-  const ids = [];
-  for (const family of familiesOf(student)) {
-    ids.push(...family.kids, ...family.adults);
+function otherFamilyMembers(person) {
+  const out = new Map();
+  for (const family of familiesOf(person)) {
+    for (const m of membersOf(family)) {
+      if (m.id !== person.id) {
+        out.set(m.id, m);
+      }
+    }
   }
-  return peopleOf([...new Set(ids)].filter(id => id !== student.id)).map(p => p.fullName).join(', ');
+  return [...out.values()].map(p => p.name_show).join(', ');
 }
 
 function sectionFilterBar(groups, rerender, colorFor) {
@@ -298,7 +295,7 @@ function sectionFilterBar(groups, rerender, colorFor) {
   return bar;
 }
 
-function rosterPage(title, image, groups, backLabel, sectionColorFor) {
+function rosterPage(title, image, groups, sectionColorFor) {
   const page = document.createDocumentFragment();
   const from = fromURL();
   const back = from && from.pathname === '/classrooms' ? from.pathname + from.search : '/classrooms';
@@ -319,7 +316,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
   header.append(headWrap);
 
   const allStudents = groups.flatMap(g => g.students);
-  const teachers = teachersOf([...new Set(allStudents.map(s => s.classroom).filter(Boolean))]);
+  const teachers = teachersOf([...new Map(allStudents.map(classroomOf).filter(Boolean).map(c => [c.id, c])).values()]);
   const parents = parentsOf(allStudents);
   const memberTabs = [
     {key: 'students', label: 'Students', icon: svg('students'), count: allStudents.length},
@@ -338,6 +335,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
 
   const content = el('div', 'container detail-content');
   const list = el('div');
+  const row = p => listRow(thumbOf(photosOf(p.id)[0]), otherFamilyMembers(p).toUpperCase(), p.name_show, p.facts || '', personLink(p));
   if (state.rosterTab === 'students') {
     const headingRow = el('div', 'roster-heading-row');
     headingRow.append(el('h2', 'roster-heading', `${allStudents.length} Students`));
@@ -353,7 +351,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
         listBody.append(el('h2', 'group-header', group.header));
       }
       for (const s of sortPeople(group.students)) {
-        listBody.append(listRow(thumbUrl(s.photoUrl), otherFamilyMembers(s).toUpperCase(), s.fullName, s.facts || '', personLink(s)));
+        listBody.append(row(s));
       }
     }
     list.append(listBody);
@@ -361,7 +359,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
     list.append(el('h2', 'roster-heading', `${teachers.length} Staff`));
     const listBody = el('div', 'roster-list grid');
     for (const person of sortPeople(teachers)) {
-      listBody.append(listRow(thumbUrl(person.photoUrl), (person.jobTitle || '').toUpperCase(), person.fullName, person.facts || '', personLink(person)));
+      listBody.append(listRow(thumbOf(photosOf(person.id)[0]), (person.job_title || '').toUpperCase(), person.name_show, person.facts || '', personLink(person)));
     }
     list.append(listBody);
   } else {
@@ -380,7 +378,7 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
         listBody.append(el('h2', 'group-header', group.header));
       }
       for (const p of sortPeople(group.parents)) {
-        listBody.append(listRow(thumbUrl(p.photoUrl), otherFamilyMembers(p).toUpperCase(), p.fullName, p.facts || '', personLink(p)));
+        listBody.append(row(p));
       }
     }
     list.append(listBody);
@@ -390,28 +388,28 @@ function rosterPage(title, image, groups, backLabel, sectionColorFor) {
   return page;
 }
 
-export function gradePage(slug) {
-  const grade = state.model.grades.find(g => slugify(g.name) === slug);
+export function gradePage(key) {
+  const grade = gradeByKey(key);
   if (!grade) {
-    return el('div', 'empty', 'Not found.');
+    return notFound('That grade');
   }
-  const students = studentsOf(p => p.grade === grade.name);
-  const classrooms = [...new Set(students.map(s => s.classroom).filter(Boolean))].sort();
+  const students = studentsOf(p => gradeOf(p) === grade);
+  const classrooms = [...new Map(students.map(classroomOf).filter(Boolean).map(c => [c.id, c])).values()].sort((a, b) => a.name.localeCompare(b.name));
   const groups = classrooms.length
-    ? classrooms.map(name => ({header: name, students: students.filter(s => s.classroom === name)}))
+    ? classrooms.map(c => ({header: c.name, students: students.filter(s => s.classroom === c.id)}))
     : [{header: '', students}];
-  return rosterPage(grade.name, gradeImage(grade.name), groups, undefined, name => colors.classrooms[name]);
+  return rosterPage(grade.name, gradeImage(grade), groups, name => (model.classrooms.find(c => c.name === name) || {}).color);
 }
 
-export function classroomPage(slug) {
-  const classroom = state.model.classrooms.find(c => slugify(c.name) === slug);
+export function classroomPage(key) {
+  const classroom = classroomByKey(key);
   if (!classroom) {
-    return el('div', 'empty', 'Not found.');
+    return notFound('That classroom');
   }
-  const students = studentsOf(p => p.classroom === classroom.name);
-  const crews = [...new Set(students.map(s => s.crew).filter(Boolean))].sort();
+  const students = studentsOf(p => p.classroom === classroom.id);
+  const crews = [...new Map(students.map(s => groupById[s.crew]).filter(Boolean).map(c => [c.id, c])).values()].sort((a, b) => a.name.localeCompare(b.name));
   const groups = crews.length
-    ? crews.map(name => ({header: `${name} ${classroom.name}`, chipLabel: name, students: students.filter(s => s.crew === name)}))
+    ? crews.map(crew => ({header: `${crew.name} ${classroom.name}`, chipLabel: crew.name, students: students.filter(s => s.crew === crew.id)}))
     : [{header: '', students}];
-  return rosterPage(classroom.name, classroom.imageUrl, groups);
+  return rosterPage(classroom.name, classroomImage(classroom), groups);
 }

@@ -18,7 +18,6 @@ type Deps struct {
 	Tools    *tools.Set
 	Key      []byte
 	Sessions auth.Sessions
-	Member   func(email string) bool
 	Now      func() time.Time
 }
 

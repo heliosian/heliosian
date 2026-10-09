@@ -1,27 +1,26 @@
-import {state, peopleOf} from '../state.js';
-import {firstName, lastName, hue, slugify, csvField} from '../dom.js';
+import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId, q, rowsOf, write} from '../state.js';
+import {firstName, lastName, hue, csvField} from '../dom.js';
 import {dataGrid} from '/datagrid.js';
 import {el, svg} from '/elements.js';
-import {familyOf, familyLink, familySearchText} from '../families.js';
+import {familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, gradeOptions, tagRelationOptionsFor} from '../filters.js';
+import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, tagRelationOptionsFor} from '../filters.js';
 import {facetDropdown, clampFilterPanel} from '/rules.js';
 import {render} from '/router.js';
 import {openLayer} from '/modal.js';
-import {batch, act, create, remove} from '/data.js';
 
 function joinFamilyNames(people) {
   if (!people.length) {
     return '';
   }
   if (people.length === 1) {
-    return people[0].fullName;
+    return people[0].name_show;
   }
-  const surname = lastName(people[0].fullName);
-  const shared = surname && people.every(p => lastName(p.fullName) === surname);
-  const names = people.map(p => shared ? firstName(p.fullName) : p.fullName);
+  const surname = lastName(people[0].name_show);
+  const shared = surname && people.every(p => lastName(p.name_show) === surname);
+  const names = people.map(p => shared ? firstName(p.name_show) : p.name_show);
   const line = names.length === 2 ? names.join(' & ') : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
   return shared ? `${line} ${surname}` : line;
 }
@@ -30,38 +29,30 @@ function joinFirstNames(people) {
   if (!people.length) {
     return '';
   }
-  const names = people.map(p => firstName(p.fullName));
+  const names = people.map(p => firstName(p.name_show));
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} & ${names[names.length - 1]}`;
 }
 
-let GREETING_WHOLE_FAMILY = '';
-let GREETING_KIDS = '';
-let GREETING_ADULTS = '';
-let GREETING_FULL_NAME = '';
-let GREETING_FIRST_NAME = '';
-
-function refreshGreetingPhrases() {
-  const phraseOf = role => builtinGreeting(role).format;
-  GREETING_WHOLE_FAMILY = phraseOf('wholeFamily');
-  GREETING_KIDS = phraseOf('kids');
-  GREETING_ADULTS = phraseOf('adults');
-  GREETING_FULL_NAME = phraseOf('fullName');
-  GREETING_FIRST_NAME = phraseOf('firstName');
-}
+const GREETING_WHOLE_FAMILY = 'Ali, Bo, Pat & Quinn Ender';
+const GREETING_KIDS = 'Ali & Bo Ender';
+const GREETING_ADULTS = 'Pat & Quinn Ender';
+const GREETING_FULL_NAME = 'Pat Ender';
+const GREETING_FIRST_NAME = 'Pat';
+const GREETING_DEFAULT = 'Family of Ali & Bo Ender';
 
 function greetingSurname({kids, adults, person}) {
   if (person) {
-    return lastName(person.fullName);
+    return lastName(person.name_show);
   }
   const primary = adults[0] || kids[0];
-  return primary ? lastName(primary.fullName) : '';
+  return primary ? lastName(primary.name_show) : '';
 }
 
 function splitLastFirst(people) {
   if (!people.length) {
     return {rest: '', last: ''};
   }
-  const names = people.map(p => firstName(p.fullName));
+  const names = people.map(p => firstName(p.name_show));
   return {rest: names.slice(0, -1).join(', '), last: names[names.length - 1]};
 }
 
@@ -120,30 +111,26 @@ function buildInviteParams(addressee, addresseeContact, greeting, members) {
   const params = {
     greeting,
     primary_email: addresseeContact,
-    primary_first_name: firstName(addressee.fullName),
-    primary_last_name: lastName(addressee.fullName),
-    primary_phone: addressee.phoneMasked ? '' : (addressee.phone || ''),
+    primary_first_name: firstName(addressee.name_show),
+    primary_last_name: lastName(addressee.name_show),
+    primary_phone: addressee.phone || '',
   };
   members.forEach((m, i) => {
     params[`member_${i + 1}`] = m.contact ? `${m.name} <${m.contact}>` : m.name;
   });
   return {
     greeting,
-    people: [{name: addressee.fullName, contact: addresseeContact}, ...members],
+    people: [{name: addressee.name_show, contact: addresseeContact}, ...members],
     params,
   };
 }
 
 function kidContact(kid) {
-  return state.gvKidEmail && kid.email ? kid.email : '';
-}
-
-function parentContactsOf(adultIds) {
-  return peopleOf([...new Set(adultIds)]).filter(a => a.email);
+  return state.gvKidEmail ? emailOf(kid) : '';
 }
 
 function invitedKids(family) {
-  const kids = peopleOf(family.kids);
+  const kids = kidsOf(family);
   if (state.gvSiblings) {
     return kids;
   }
@@ -151,11 +138,11 @@ function invitedKids(family) {
     return [];
   }
   return kids.filter(k => matchesFilters(k) &&
-    (!state.q || k.fullName.toLowerCase().includes(state.q) || (k.email || '').toLowerCase().includes(state.q)));
+    (!state.q || k.name_show.toLowerCase().includes(state.q) || emailOf(k).toLowerCase().includes(state.q)));
 }
 
 function familyInviteParams(family) {
-  const adults = peopleOf(family.adults).filter(p => p.email);
+  const adults = adultsOf(family).filter(emailOf);
   if (!adults.length) {
     return null;
   }
@@ -163,33 +150,33 @@ function familyInviteParams(family) {
   const [primary, ...otherAdults] = adults;
   const format = inviteGreetings.find(g => g.id === state.gvGreeting) || greetingFormatsFor('group', true)[0];
   const greeting = format ? buildGreeting(format.format, {kids, adults}) : '';
-  const members = otherAdults.map(a => ({name: a.fullName, contact: a.email}))
-    .concat(kids.map(k => ({name: k.fullName, contact: kidContact(k)})));
+  const members = otherAdults.map(a => ({name: a.name_show, contact: emailOf(a)}))
+    .concat(kids.map(k => ({name: k.name_show, contact: kidContact(k)})));
   const anchor = kids[0] || primary;
   return {
-    ...buildInviteParams(primary, primary.email, greeting, members),
-    linkHref: familyLink(family.id),
-    sortKey: lastName(anchor.fullName) + ' ' + firstName(anchor.fullName),
+    ...buildInviteParams(primary, emailOf(primary), greeting, members),
+    linkHref: familyLink(family),
+    sortKey: lastName(anchor.name_show) + ' ' + firstName(anchor.name_show),
   };
 }
 
 function individualCandidates(p) {
-  if (!p.isStudent) {
-    return p.email ? [{contact: p.email, person: p}] : [];
+  if (!isStudent(p)) {
+    return emailOf(p) ? [{contact: emailOf(p), person: p}] : [];
   }
   const family = familyOf(p);
   let kids = [p];
   if (state.gvSiblings && family) {
     kids = invitedKids(family);
   }
-  const parents = family ? parentContactsOf(family.adults) : [];
+  const parents = family ? adultsOf(family).filter(emailOf) : [];
   if (!parents.length) {
     return kids.map(kid => ({contact: '', person: kid}));
   }
   const candidates = [];
   for (const parent of parents) {
     for (const kid of kids) {
-      candidates.push({contact: parent.email, person: kid});
+      candidates.push({contact: emailOf(parent), person: kid});
     }
   }
   return candidates;
@@ -202,7 +189,7 @@ function buildMergedEntry(people, contact) {
   return {
     ...buildInviteParams(addressee, contact, greeting, []),
     linkHref: personLink(addressee),
-    sortKey: lastName(addressee.fullName) + ' ' + firstName(addressee.fullName),
+    sortKey: lastName(addressee.name_show) + ' ' + firstName(addressee.name_show),
   };
 }
 
@@ -231,17 +218,17 @@ function mergeCandidates(candidates) {
 function invitesEntries() {
   const rows = [];
   if (state.gvInviteBy === 'individual') {
-    const matches = p => matchesFilters(p) && (p.fullName.toLowerCase().includes(state.q) || (p.email || '').toLowerCase().includes(state.q));
+    const matches = p => matchesFilters(p) && (p.name_show.toLowerCase().includes(state.q) || emailOf(p).toLowerCase().includes(state.q));
     const candidates = [];
     // Adults go first so a merged row is addressed to the adult, not their kid.
-    for (const p of state.model.people) {
-      if (!p.isStudent && matches(p)) {
+    for (const p of model.people) {
+      if (!isStudent(p) && matches(p)) {
         candidates.push(...individualCandidates(p));
       }
     }
     const mergedFamilies = new Set();
-    for (const p of state.model.people) {
-      if (!p.isStudent || !matches(p)) {
+    for (const p of model.people) {
+      if (!isStudent(p) || !matches(p)) {
         continue;
       }
       if (state.gvSiblings) {
@@ -257,8 +244,8 @@ function invitesEntries() {
     }
     rows.push(...mergeCandidates(candidates));
   } else {
-    for (const family of Object.values(state.model.families)) {
-      if (!familyMatchesFilters(family.id) || !familySearchText(family).includes(state.q)) {
+    for (const family of model.families) {
+      if (!familyMatchesFilters(family) || !familySearchText(family).includes(state.q)) {
         continue;
       }
       const entry = familyInviteParams(family);
@@ -307,9 +294,7 @@ let inviteSystems = null;
 let inviteGreetings = [];
 let inviteLoadError = '';
 
-function builtinGreeting(role) {
-  return inviteGreetings.find(g => g.role === role);
-}
+const yes = cell => cell === 'Yes';
 
 async function loadInviteSystems() {
   if (inviteSystems) {
@@ -319,16 +304,36 @@ async function loadInviteSystems() {
   inviteSystems = [];
   inviteGreetings = [];
   try {
-    const read = await batch({services: '/api/invite-services', greetings: '/api/greetings'});
-    inviteSystems = read.result.services.map(read.get);
-    inviteGreetings = read.result.greetings.map(read.get);
+    const [services, templates, greetings] = await Promise.all([
+      q('(from INVITE_SERVICE (order name asc))'),
+      q('(from INVITE_TEMPLATE (order order asc))'),
+      q('(from GREETING (order name asc))'),
+    ]);
+    const columns = rowsOf(templates, 'INVITE_TEMPLATE');
+    inviteSystems = rowsOf(services, 'INVITE_SERVICE').map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description || '',
+      headerRow: yes(s.header_row),
+      supportsGroups: yes(s.grouped),
+      columns: columns.filter(c => c.service === s.id).map(c => ({name: c.column || '', template: c.template || ''})),
+    }));
+    inviteGreetings = rowsOf(greetings, 'GREETING').map(g => ({
+      id: g.id,
+      name: g.name,
+      format: g.format || '',
+      grouped: yes(g.grouped),
+      individual: yes(g.individual),
+      mine: Boolean(g.added_by) && g.added_by === viewerId(),
+    }));
   } catch (err) {
     inviteLoadError = err.message;
   }
-  if (!inviteLoadError) {
-    refreshGreetingPhrases();
-  }
   return inviteSystems;
+}
+
+function defaultGreeting() {
+  return inviteGreetings.find(g => !g.mine && g.format === GREETING_DEFAULT) || inviteGreetings[0];
 }
 
 export function invitesPage() {
@@ -355,14 +360,14 @@ export function invitesPage() {
       content.replaceChildren();
       settings.append(el('div', 'gv-setting-group', inviteLoadError
         ? `Couldn't load invite templates: ${inviteLoadError}`
-        : 'No invite templates are set up yet - add one to the Invite List Builder sheet\'s Services and Templates tabs.'));
+        : 'No invite services are set up yet - add one as an INVITE_SERVICE row with its INVITE_TEMPLATE columns.'));
       return;
     }
     if (!systems.some(s => s.id === state.gvSystem)) {
       state.gvSystem = systems[0].id;
     }
     if (!inviteGreetings.some(g => g.id === state.gvGreeting)) {
-      state.gvGreeting = builtinGreeting('default').id;
+      state.gvGreeting = defaultGreeting().id;
     }
     renderInvites(systems, settings, content);
   });
@@ -398,7 +403,7 @@ function invitesControls(view, again, paint) {
   search.append(input);
   controls.append(
     facetDropdown('Grade', null, gradeOptions(), state.filterGrades, paint),
-    facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, paint),
+    facetDropdown('Classroom', null, classroomOptions(), state.filterClassrooms, paint),
   );
   if (tagFacetOptions().length) {
     controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, again));
@@ -430,7 +435,7 @@ function renderInviteGrid(view, again) {
     csvLines.unshift(header.map(csvField).join(','));
   }
   download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvLines.join('\n'));
-  download.download = slugify(system.name) + '.csv';
+  download.download = system.name.toLowerCase().replaceAll(' ', '-') + '.csv';
   if (!rows.length) {
     grid.append(el('div', 'empty', 'No matches.'));
     return;
@@ -461,7 +466,7 @@ function appendGreetingOptions(parent, list) {
 function greetingHeadSelect(system, again) {
   const headSelect = el('select', 'gv-select gv-th-select');
   const formats = greetingFormatsFor(state.gvInviteBy, system.supportsGroups);
-  const mine = formats.filter(f => f.me.mine);
+  const mine = formats.filter(f => f.mine);
   if (mine.length) {
     const mineGroup = el('optgroup');
     mineGroup.label = 'Yours';
@@ -543,8 +548,8 @@ function defaultGreetingFormat() {
 }
 
 const GREETING_PREVIEW_FAMILY = {
-  kids: [{fullName: 'Nora Rivera'}, {fullName: 'Theo Rivera'}],
-  adults: [{fullName: 'Sam Rivera'}, {fullName: 'Jamie Rivera'}],
+  kids: [{name_show: 'Nora Rivera'}, {name_show: 'Theo Rivera'}],
+  adults: [{name_show: 'Sam Rivera'}, {name_show: 'Jamie Rivera'}],
 };
 
 function openGreetingDialog(onSaved) {
@@ -618,7 +623,7 @@ function greetingForm(dialog) {
   const {formatInput, editorSection} = dialog;
   const form = el('form', 'gv-new-greeting-form');
   formatInput.addEventListener('input', () => updateGreetingPreview(dialog));
-  const mine = inviteGreetings.filter(g => g.me.mine);
+  const mine = inviteGreetings.filter(g => g.mine);
   if (mine.length) {
     form.append(greetingList(dialog, mine));
     editorSection.append(el('div', 'gv-greeting-divider'));
@@ -712,7 +717,7 @@ async function deleteGreeting(dialog, g, deleteBtn) {
   error.hidden = true;
   deleteBtn.disabled = true;
   try {
-    await remove('greetings', g.id);
+    await write([{delete: g.id}]);
     inviteSystems = null;
     dialog.close();
     dialog.onSaved();
@@ -732,12 +737,12 @@ async function saveGreeting(dialog, save) {
   error.hidden = true;
   save.disabled = true;
   try {
-    const body = {format, grouped: state.gvInviteBy === 'group', individual: state.gvInviteBy !== 'group'};
+    const cells = {name: format, format, grouped: state.gvInviteBy === 'group', individual: state.gvInviteBy !== 'group'};
     if (dialog.editing) {
-      await act('greetings', dialog.editing, 'edit', body);
+      await write([{set: dialog.editing, cells}]);
       state.gvGreeting = dialog.editing;
     } else {
-      state.gvGreeting = (await create('greetings', body)).id;
+      state.gvGreeting = (await write([{insert: 'GREETING', row: {...cells, added_by: viewerId()}}])).result[0];
     }
     inviteSystems = null;
     dialog.close();

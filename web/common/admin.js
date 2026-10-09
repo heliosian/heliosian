@@ -1,7 +1,7 @@
 import {el} from '/elements.js';
 import {query, act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
-import {listed} from '/directory.js';
+import {listed, emailOf} from '/directory.js';
 
 let remembered = '';
 
@@ -151,7 +151,7 @@ export function adminsCard({hint, title = 'Admins', load, save}) {
     }
   };
   const mount = el('div');
-  const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !list.includes(p.email))});
+  const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !list.includes(emailOf(p)))});
   const addOne = () => {
     const email = picker.value;
     if (!email) {
@@ -182,7 +182,7 @@ export function adminsCard({hint, title = 'Admins', load, save}) {
   card.append(rows, bar);
   Promise.all([load(), listed()]).then(([admins, everyone]) => {
     list = admins;
-    names = new Map(everyone.map(p => [p.email, p.fullName]));
+    names = new Map(everyone.map(p => [emailOf(p), p.name_show]));
     render();
   }).catch(err => say(`Failed to load the list: ${err.message}`, true));
   return card;

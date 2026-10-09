@@ -1,14 +1,17 @@
 import {batch, me as whoAmI} from '/data.js';
-import {directory, contactLine} from '/directory.js';
+import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent} from '/directory.js';
 
-export const state = {model: null, people: [], dir: null};
+export const state = {model: null, people: []};
 
 const byName = new Map();
 const byEmail = new Map();
 
 export function personView(p) {
-  const known = state.dir.get(p.id) || p;
-  return {email: known.email, name: known.fullName, photoUrl: known.heroPhotoUrl, words: known.words, grade: known.isStudent ? known.grade : '', context: contactLine(state.dir, known)};
+  const row = known(p.email);
+  if (!row) {
+    return {email: p.email, name: p.fullName, photoUrl: p.heroPhotoUrl, words: p.words, grade: p.isStudent ? p.grade : '', context: p.words};
+  }
+  return {email: emailOf(row), name: row.name_show, photoUrl: photoOf(row), words: wordsOf(row), grade: isStudent(row) ? gradeOf(row) : '', context: contactLine(row)};
 }
 
 export function memberView(m, person) {
@@ -35,7 +38,7 @@ function groupView(read, g) {
 }
 
 export async function loadModel() {
-  const [read, viewer, dir] = await Promise.all([batch({
+  const [read, viewer, people] = await Promise.all([batch({
     settings: '/api/loop-settings?include=viewer',
     lists: '/api/email-lists?include=managers,members.person',
     suggestions: '/api/email-list-suggestions?include=managers',
@@ -43,8 +46,7 @@ export async function loadModel() {
     grades: '/api/grades?enrolled',
     tags: '/api/tags',
     magicTags: '/api/magic-tags?include=parent',
-  }), whoAmI(), directory()]);
-  state.dir = dir;
+  }), whoAmI(), listed()]);
   const s = read.get(read.result.settings[0]);
   const person = read.follow(s, 'viewer') || {};
   const name = person.fullName || viewer.email;
@@ -66,14 +68,14 @@ export async function loadModel() {
     groups: read.result.lists.map(id => groupView(read, read.get(id))),
     suggestions: read.result.suggestions.map(id => read.get(id)).map(sg => ({key: sg.key, name: sg.name, kind: sg.kind, mine: sg.mine, managers: read.follow(sg, 'managers').map(personView)})),
   };
-  state.people = dir.result.map(dir.get);
+  state.people = people;
   byName.clear();
   for (const g of state.model.groups) {
     byName.set(g.name, g);
   }
   byEmail.clear();
   for (const p of state.people) {
-    byEmail.set(p.email, p);
+    byEmail.set(emailOf(p), p);
   }
 }
 

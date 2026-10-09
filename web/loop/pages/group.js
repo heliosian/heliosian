@@ -15,10 +15,11 @@ import {personCard} from '/people.js';
 import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from '/members.js';
+import {emailOf, photoOf, wordsOf} from '/directory.js';
 
 const {rulesCard, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
   options,
-  personName: email => (person(email) || {}).fullName || '',
+  personName: email => (person(email) || {}).name_show || '',
 });
 
 const visibilityNotes = {
@@ -314,7 +315,7 @@ function managersEditor(draft) {
   card.append(el('h2', '', 'Managers'), el('div', 'hint', 'Managers can edit or delete the email list.'));
   const rows = el('div');
   const mount = el('div');
-  const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !draft.managers.includes(p.email))});
+  const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !draft.managers.includes(emailOf(p)))});
   const addManager = () => {
     const email = picker.value;
     if (!email || draft.managers.includes(email)) {
@@ -341,7 +342,7 @@ function renderManagerRows(draft, rows) {
   rows.replaceChildren();
   for (const email of draft.managers) {
     const known = person(email);
-    const shown = known ? {email, name: known.fullName, photoUrl: known.heroPhotoUrl, words: known.words} : {email, name: email};
+    const shown = known ? {email, name: known.name_show, photoUrl: photoOf(known), words: wordsOf(known)} : {email, name: email};
     const remove = el('button', 'link-button danger', 'Remove');
     remove.type = 'button';
     remove.disabled = draft.managers.length === 1;
@@ -871,7 +872,7 @@ function managersCard(g, canEdit) {
   card.append(row);
   if (editing) {
     const mount = el('div');
-    const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !g.managers.some(m => m.email === p.email))});
+    const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !g.managers.some(m => m.email === emailOf(p)))});
     const add = () => {
       if (picker.value) {
         save([...g.managers.map(m => m.email), picker.value]);
@@ -987,7 +988,7 @@ function messageRow(m) {
     toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
   }
   toggle.append(svg('chevron-down'));
-  row.append(personRow(known ? {name: known.fullName, email: known.email, photoUrl: known.heroPhotoUrl} : m.from, {
+  row.append(personRow(known ? {name: known.name_show, email: emailOf(known), photoUrl: photoOf(known)} : m.from, {
     name: m.subject || '(no subject)',
     open: Boolean(known),
     lines: [[m.from.name, stamp(m.received)].filter(Boolean).join(' · ')],
@@ -1012,7 +1013,7 @@ function messageRow(m) {
 function copyRow(c) {
   const known = person(c.email);
   const words = [stateWords[c.state], stamp(c.when)].filter(Boolean).join(' · ');
-  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? known.heroPhotoUrl : ''}, {
+  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? photoOf(known) : ''}, {
     className: 'copy-row',
     open: Boolean(known),
     lines: [[words, c.email].filter(Boolean).join(' · ')],

@@ -88,7 +88,6 @@ func setup(t *testing.T) fixture {
 		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Origin: model.Origin("heliosian.com"), Now: time.Now}),
 		Key:      []byte("test"),
 		Sessions: signed,
-		Member:   func(string) bool { return true },
 		Now:      time.Now,
 	})
 	server := httptest.NewServer(auth.Fixed(rowan, mux))

@@ -72,7 +72,7 @@ function guestForm(e, of, onDone) {
         return;
       }
       body.email = picker.value;
-      body.name = picker.person.fullName;
+      body.name = picker.person.name_show;
     } else {
       if (!name.value.trim()) {
         status.textContent = 'A name, please.';

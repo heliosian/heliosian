@@ -155,7 +155,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 }
 
 func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
-	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.Store.Member, []string{app.OptInPath}, core.Store)
+	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.SignedIn, []string{app.OptInPath}, core.Store)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

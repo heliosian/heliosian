@@ -1,7 +1,7 @@
 import {state, me, isAdmin, settings, charityName} from '../state.js';
 import {el, button} from '/elements.js';
 import {createPersonPicker} from '/picker.js';
-import {listed} from '/directory.js';
+import {listed, emailOf} from '/directory.js';
 import {actAll, create, remove} from '/data.js';
 import {load} from '/router.js';
 import {openSettings} from '../edit.js';
@@ -38,7 +38,7 @@ function teamCard() {
     const add = el('div', 'add-row');
     const mount = el('div');
     const members = state.model.team.filter(m => m.role === role);
-    const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !members.some(m => m.email === p.email))});
+    const picker = createPersonPicker(mount, {address: true, people: async () => (await listed()).filter(p => !members.some(m => m.email === emailOf(p)))});
     if (!members.length) {
       rows.append(el('div', 'hint', 'Nobody yet.'));
     }

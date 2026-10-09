@@ -1,6 +1,6 @@
 import {offerQuan} from '/mode.js';
 import {api} from '/api.js';
-import {listed} from '/directory.js';
+import {listed, emailOf, wordsOf} from '/directory.js';
 import {el, toast} from '/elements.js';
 import {hoverMenu, hoverClick, closeBarMenus} from '/appswitch.js';
 import {fitAlerts} from '/alerts.js';
@@ -68,11 +68,11 @@ function spoofPill(spoofing) {
   }
   wrap.classList.add('is-on');
   const as = el('span', 'spoof-as');
-  as.append(el('span', 'spoof-as-lead', 'Viewing as '), el('b', '', spoofing.fullName));
+  as.append(el('span', 'spoof-as-lead', 'Viewing as '), el('b', '', spoofing.name));
   button.append(as);
   const stop = el('button', 'spoof-stop', '×');
   stop.type = 'button';
-  stop.title = 'Stop viewing as ' + spoofing.fullName;
+  stop.title = 'Stop viewing as ' + spoofing.name;
   stop.setAttribute('aria-label', stop.title);
   stop.addEventListener('click', () => setSpoof(''));
   pill.append(stop);
@@ -81,7 +81,7 @@ function spoofPill(spoofing) {
 
 function spoofHead(spoofing) {
   const head = el('div', 'spoof-head');
-  head.append(el('span', '', 'Viewing as '), el('b', '', spoofing.fullName));
+  head.append(el('span', '', 'Viewing as '), el('b', '', spoofing.name));
   const stop = el('button', 'spoof-head-stop', 'Stop');
   stop.type = 'button';
   stop.addEventListener('click', () => setSpoof(''));
@@ -95,7 +95,7 @@ function spoofRecent(state) {
   }
   return [
     el('div', 'spoof-section', 'Recent'),
-    ...state.recent.map(p => spoofRow(p, state.spoofing && p.email === state.spoofing.email)),
+    ...state.recent.map(p => spoofRow(p.name, p.email, '', state.spoofing && p.email === state.spoofing.email)),
   ];
 }
 
@@ -123,7 +123,7 @@ function spoofSearch() {
       people = await listed();
     } catch (err) {
       failure = err.message;
-      noteError('/api/people: ' + err.message);
+      noteError('/api/q: ' + err.message);
     }
     loading = false;
     filter();
@@ -143,13 +143,13 @@ function spoofSearch() {
       results.append(el('div', 'spoof-empty', 'Loading…'));
       return;
     }
-    const found = people.filter(p => p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q) || (p.words || '').toLowerCase().includes(q)).slice(0, 8);
+    const found = people.filter(p => [p.name_show, emailOf(p), wordsOf(p)].some(v => v.toLowerCase().includes(q))).slice(0, 8);
     if (!found.length) {
       results.append(el('div', 'spoof-empty', 'Nobody matches.'));
       return;
     }
     for (const p of found) {
-      results.append(spoofRow(p, false));
+      results.append(spoofRow(p.name_show, emailOf(p), wordsOf(p), false));
     }
   };
   const setActive = index => {
@@ -210,11 +210,11 @@ function wireSpoofMenu(pill, button, menu, load) {
   });
 }
 
-function spoofRow(p, isCurrent) {
+function spoofRow(name, email, words, isCurrent) {
   const row = el('button', 'spoof-row' + (isCurrent ? ' is-current' : ''));
   row.type = 'button';
-  row.append(el('span', 'spoof-row-name', p.fullName), el('span', 'spoof-row-words', p.words || p.email));
-  row.addEventListener('click', () => setSpoof(p.email));
+  row.append(el('span', 'spoof-row-name', name), el('span', 'spoof-row-words', words || email));
+  row.addEventListener('click', () => setSpoof(email));
   return row;
 }
 

@@ -1,13 +1,10 @@
-import {staleYears, viewer, peopleOf} from './state.js';
+import {staleYears, viewer, isStudent, isStaff, isParent, familyOf, adultsOf, kidsOf, photosOf, canEditFamily} from './state.js';
 import {withFrom, firstName, infoBanner} from './dom.js';
 import {el, svg} from '/elements.js';
-import {familyOf} from './families.js';
-import {submitMedia} from './edit.js';
+import {personPath} from './people.js';
+import {uploadPhoto} from './edit.js';
 
-function agedPast(present, updated, years) {
-  if (!present) {
-    return false;
-  }
+function agedPast(updated, years) {
   const when = Date.parse(updated);
   return Number.isNaN(when) || Date.now() - when > years * 365.25 * 24 * 60 * 60 * 1000;
 }
@@ -21,15 +18,15 @@ export function monthYear(dateStr) {
 }
 
 export function photoNeedsUpdate(p) {
-  return p.isStudent && (!p.photoUrl || agedPast(p.photoUrl, p.photoUpdated, staleYears.photo));
+  return isStudent(p) && (!photosOf(p.id).length || agedPast(p.photo_updated, staleYears().photo));
 }
 
 export function factsNeedUpdate(p) {
-  return p.isStudent && (!p.facts || agedPast(p.facts, p.factsUpdated, staleYears.facts));
+  return isStudent(p) && (!p.facts || agedPast(p.facts_updated, staleYears().facts));
 }
 
 export function familyPhotoNeedsUpdate(family) {
-  return !family.photoUrl || agedPast(family.photoUrl, family.photoUpdated, staleYears.familyPhoto);
+  return !photosOf(family.id).length;
 }
 
 export function staleItems() {
@@ -40,17 +37,17 @@ export function staleItems() {
   const family = familyOf(me);
   const items = [];
   for (const p of familyNavPeople()) {
-    const whose = p.id === me.id ? 'your' : `${p.fullName}'s`;
-    const shortWhose = p.id === me.id ? 'your' : `${firstName(p.fullName)}'s`;
+    const whose = p.id === me.id ? 'your' : `${p.name_show}'s`;
+    const shortWhose = p.id === me.id ? 'your' : `${firstName(p.name_show)}'s`;
     if (photoNeedsUpdate(p)) {
-      items.push({type: 'photo', target: 'person', key: p.id, text: `Update ${whose} photo for new year`, label: `${shortWhose} photo`, person: p});
+      items.push({type: 'photo', target: {person: p.id}, text: `Update ${whose} photo for new year`, label: `${shortWhose} photo`, person: p});
     }
     if (factsNeedUpdate(p)) {
-      items.push({type: 'facts', target: 'person', key: p.id, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
+      items.push({type: 'facts', target: {person: p.id}, text: `Update ${whose} facts for new year`, label: `${shortWhose} facts`, person: p});
     }
   }
-  if (family && family.can.photo && familyPhotoNeedsUpdate(family)) {
-    items.push({type: 'photo', target: 'family', key: family.id, text: 'Update your family photo for new year', label: 'your family photo'});
+  if (family && canEditFamily(family) && familyPhotoNeedsUpdate(family)) {
+    items.push({type: 'photo', target: {group: family.id}, family: true, text: 'Update your family photo for new year', label: 'your family photo'});
   }
   return items;
 }
@@ -74,7 +71,7 @@ function todoPhotoRow(item) {
   input.addEventListener('change', () => {
     if (input.files.length) {
       row.classList.add('todo-row-busy');
-      submitMedia(item.target, item.key, 'photo', input.files[0], input.files[0].name, status);
+      uploadPhoto(item.target, input.files[0], status);
     }
   });
   row.append(input, status);
@@ -86,7 +83,7 @@ function todoPhotoRow(item) {
 
 function todoFactsRow(item) {
   const row = el('a', 'todo-row');
-  row.href = withFrom(`${item.person.path}?edit=1&focus=facts`);
+  row.href = withFrom(`${personPath(item.person)}?edit=1&focus=facts`);
   row.append(el('div', 'todo-mark'));
   row.append(el('div', 'todo-text', item.text));
   const chev = el('div', 'todo-chevron');
@@ -106,12 +103,12 @@ export function todoChecklist(items) {
 
 export function familyNavPeople() {
   const me = viewer();
-  if (!me || (me.isStaff && !me.isParent)) {
+  if (!me || (isStaff(me) && !isParent(me))) {
     return [];
   }
   const family = familyOf(me);
-  const ids = [me.id, ...((family && family.adults) || []), ...((family && family.kids) || [])];
-  return peopleOf([...new Set(ids)]);
+  const people = [me, ...(family ? adultsOf(family) : []), ...(family ? kidsOf(family) : [])];
+  return [...new Map(people.map(p => [p.id, p])).values()];
 }
 
 export function personTodoCount(p) {

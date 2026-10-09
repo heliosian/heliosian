@@ -1,6 +1,6 @@
 import {el, svg, button, iconButton} from '/elements.js';
 import {text as textInput} from '/form.js';
-import {directory, contactLine} from '/directory.js';
+import {listed, contactLine, emailOf, photoOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {chipToggle, familyDropdown} from '/rules.js';
 import {personRow} from '/personrow.js';
 import {popup} from '/modal.js';
@@ -150,16 +150,16 @@ export function memberAdders(person, outside) {
   return {buttons};
 }
 
-const roleTests = {student: p => p.isStudent, parent: p => p.isParent, staff: p => p.isStaff};
+const roleTests = {student: isStudent, parent: isParent, staff: isStaff};
 
 const relations = ['Parents', 'Children', 'Siblings'];
 
-const firstName = p => (p.fullName || p.email || '').split(' ')[0];
+const firstName = p => p.name_show.split(' ')[0];
 
 export function personAdder({isOn, onAdd, gradeColors}) {
   const wrap = el('div', 'person-adder');
   const pick = {
-    dir: null,
+    loaded: false,
     people: [],
     picked: new Map(),
     family: new Set(),
@@ -172,14 +172,14 @@ export function personAdder({isOn, onAdd, gradeColors}) {
   pick.search.placeholder = 'Search by name or email';
   pick.add.type = 'button';
   const status = el('span', 'save-status');
-  const relativesOf = p => {
+  const familyOf = p => {
     const out = [];
     for (const relation of relations) {
       if (!pick.family.has(relation)) {
         continue;
       }
-      for (const r of pick.dir.follow(p, relation.toLowerCase())) {
-        if (r && r.email && !isOn(r.email) && !out.includes(r)) {
+      for (const r of relativesOf(p, relation.toLowerCase())) {
+        if (emailOf(r) && !isOn(emailOf(r)) && !out.includes(r)) {
           out.push(r);
         }
       }
@@ -189,10 +189,10 @@ export function personAdder({isOn, onAdd, gradeColors}) {
   const everyone = () => {
     const out = new Map();
     for (const p of pick.picked.values()) {
-      out.set(p.email, {email: p.email, name: p.fullName, via: 'search'});
-      for (const r of relativesOf(p)) {
-        if (!out.has(r.email)) {
-          out.set(r.email, {email: r.email, name: r.fullName, via: 'family'});
+      out.set(emailOf(p), {email: emailOf(p), name: p.name_show, via: 'search'});
+      for (const r of familyOf(p)) {
+        if (!out.has(emailOf(r))) {
+          out.set(emailOf(r), {email: emailOf(r), name: r.name_show, via: 'family'});
         }
       }
     }
@@ -204,39 +204,40 @@ export function personAdder({isOn, onAdd, gradeColors}) {
     pick.add.disabled = !n;
   };
   const choice = p => {
-    const on = isOn(p.email);
+    const email = emailOf(p);
+    const on = isOn(email);
     const mark = el('span', 'picker-check');
     mark.append(svg('check'));
-    const along = relativesOf(p).map(firstName);
-    const line = [on ? 'On the list' : contactLine(pick.dir, p), along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
-    const row = personRow({name: p.fullName || p.email, email: p.email, photoUrl: p.heroPhotoUrl && p.heroPhotoUrl + '?thumb=1', grade: p.grade}, {
+    const along = familyOf(p).map(firstName);
+    const line = [on ? 'On the list' : contactLine(p), along.length ? 'with ' + along.join(', ') : ''].filter(Boolean).join(' · ');
+    const row = personRow({name: p.name_show, email, photoUrl: photoOf(p), grade: gradeOf(p)}, {
       button: true,
-      className: 'picker-person' + (on ? ' is-on' : pick.picked.has(p.email) ? ' is-picked' : ''),
+      className: 'picker-person' + (on ? ' is-on' : pick.picked.has(email) ? ' is-picked' : ''),
       before: [mark],
       lines: [line ? el('div', 'person-row-line' + (along.length ? ' has-family' : ''), line) : null],
       gradeColors,
     });
     row.disabled = on;
     row.addEventListener('click', () => {
-      if (pick.picked.has(p.email)) {
-        pick.picked.delete(p.email);
+      if (pick.picked.has(email)) {
+        pick.picked.delete(email);
       } else {
-        pick.picked.set(p.email, p);
+        pick.picked.set(email, p);
       }
-      row.classList.toggle('is-picked', pick.picked.has(p.email));
+      row.classList.toggle('is-picked', pick.picked.has(email));
       paintButton();
     });
     return row;
   };
   const paintList = () => {
     pick.list.replaceChildren();
-    if (!pick.dir) {
+    if (!pick.loaded) {
       pick.list.append(el('div', 'picker-note', 'Loading the directory…'));
       return;
     }
     const q = pick.search.value.trim().toLowerCase();
     const tests = [...pick.roles].map(role => roleTests[role]);
-    const found = pick.people.filter(p => (!q || p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q)) && (!tests.length || tests.some(t => t(p))));
+    const found = pick.people.filter(p => emailOf(p) && (!q || p.name_show.toLowerCase().includes(q) || emailOf(p).includes(q)) && (!tests.length || tests.some(t => t(p))));
     if (!found.length) {
       pick.list.append(el('div', 'picker-note', 'Nobody by that name. Someone outside Helios goes on Add Non-Helios.'));
     }
@@ -285,9 +286,9 @@ export function personAdder({isOn, onAdd, gradeColors}) {
   wrap.focus = () => pick.search.focus();
   paintList();
   paintButton();
-  directory().then(dir => {
-    pick.dir = dir;
-    pick.people = dir.result.map(dir.get);
+  listed().then(people => {
+    pick.loaded = true;
+    pick.people = people;
     paintList();
   }).catch(err => {
     status.textContent = 'Couldn’t load the directory: ' + err.message;

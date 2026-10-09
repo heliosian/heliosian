@@ -1,9 +1,8 @@
-import {state, tags, shared, lists, byId, tagKey} from './state.js';
+import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
-import {act, create, remove} from '/data.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
 
@@ -11,44 +10,36 @@ export function tagKeys() {
   return Object.keys(tags).sort((a, b) => tags[a].name.localeCompare(tags[b].name));
 }
 
-export function sharedKeys() {
-  return Object.keys(shared).sort((a, b) => shared[a].name.localeCompare(shared[b].name) || shared[a].ownerName.localeCompare(shared[b].ownerName));
+export function tagOf(key) {
+  return tags[key];
 }
 
-export function sharedOf(key) {
-  return shared[key];
+export function sharedTag(key) {
+  return Boolean(tags[key]) && tagManagers(tags[key]).length > 1;
 }
 
-function tagOf(key) {
-  return tags[key] || shared[key];
-}
-
-export function managersOf(key) {
-  return tagOf(key) ? tagOf(key).managers : [];
+export function otherManagers(key) {
+  return tags[key] ? tagManagers(tags[key]).filter(id => id !== viewerId()) : [];
 }
 
 export function tagLabel(key) {
-  if (tagOf(key)) {
-    return tagOf(key).name;
+  if (tags[key]) {
+    return tags[key].name;
   }
   return lists[key] ? lists[key].name : key;
 }
 
 export function tagHref(key) {
-  if (tagOf(key)) {
-    return '/people?tag=' + encodeURIComponent(tagOf(key).id);
+  if (tags[key]) {
+    return '/people?tag=' + encodeURIComponent(tags[key].id);
   }
-  return '/people?list=' + encodeURIComponent(key);
+  return '/people?list=' + encodeURIComponent(lists[key].id);
 }
 
 const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
 
 export function listKeys() {
-  return Object.keys(lists).filter(key => !lists[key].archived).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
-}
-
-export function listLabel(key) {
-  return tagLabel(key);
+  return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
 }
 
 export function listIcon(key) {
@@ -56,8 +47,8 @@ export function listIcon(key) {
 }
 
 const listSources = {
-  party: {app: 'celebrate', name: 'Celebrate', path: '/parties/', thing: 'party'},
-  activity: {app: 'team', name: 'HCA-Team', path: '/activities/', thing: 'activity'},
+  party: {app: 'celebrate', name: 'Celebrate', path: '/p/', thing: 'party'},
+  activity: {app: 'team', name: 'HCA-Team', path: '/v/', thing: 'activity'},
   group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
 };
 
@@ -66,18 +57,17 @@ export function listSource(key) {
   if (!source) {
     return null;
   }
-  const page = lists[key].kind === 'group' ? lists[key].slug : key.slice(key.indexOf(':') + 1);
-  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(page)};
+  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(lists[key].slug)};
 }
 
 export function listApp(key) {
   const kind = lists[key] && lists[key].kind;
-  return kind === 'room' ? 'who' : listSources[kind] ? listSources[kind].app : 'who';
+  return listSources[kind] ? listSources[kind].app : 'who';
 }
 
 export function members(key) {
-  if (tagOf(key)) {
-    return tagOf(key).people;
+  if (tags[key]) {
+    return tagPeople(tags[key]);
   }
   return lists[key] ? lists[key].people : [];
 }
@@ -87,16 +77,15 @@ export function selectedGuests() {
     return [];
   }
   const list = lists[[...state.filterTags][0]];
-  if (!list || (list.kind !== 'party' && list.kind !== 'group')) {
+  if (!list) {
     return [];
   }
-  return list.guests.filter(g => g.name.toLowerCase().includes(state.q) || (g.email || '').toLowerCase().includes(state.q));
+  return list.guests.filter(g => g.name_show.toLowerCase().includes(state.q));
 }
 
 export function tagFacetOptions() {
   return [
-    ...tagKeys().map(key => ({value: key, label: tags[key].name})),
-    ...sharedKeys().map(key => ({value: key, label: shared[key].name, icon: 'families'})),
+    ...tagKeys().map(key => ({value: key, label: tags[key].name, icon: sharedTag(key) ? 'families' : undefined})),
     ...listKeys().map(key => ({value: key, label: lists[key].name, icon: listIcon(key)})),
   ];
 }
@@ -112,49 +101,72 @@ export function onTagsChangeChrome(fn) {
   chromeChanged = fn;
 }
 
+function changed() {
+  chromeChanged();
+  pageChanged();
+}
+
+function closing(t) {
+  const out = [{set: t.id, cells: {status: 'closed'}}];
+  if (t.ownManagers) {
+    out.push({set: t.managersGroup, cells: {status: 'closed'}});
+  }
+  return out;
+}
+
 export async function deleteTag(key) {
   try {
-    await remove('tags', tags[key].id);
+    await write(closing(tags[key]));
   } catch (err) {
     alert(err.message);
     return false;
   }
   delete tags[key];
-  chromeChanged();
-  pageChanged();
+  changed();
   return true;
 }
 
 export async function renameTag(key, to) {
   try {
-    await act('tags', tags[key].id, 'rename', {name: to});
+    await write([{set: tags[key].id, cells: {name: to}}]);
   } catch (err) {
     alert(err.message);
     return false;
   }
   tags[key].name = to;
-  chromeChanged();
-  pageChanged();
+  changed();
   return true;
 }
 
-function ownTag(id, name, people) {
-  const me = state.model.user;
-  return {id, owner: me.id, ownerName: me.name, name, people, managers: [], me: {mine: true}};
+async function makeTag(name, people) {
+  const me = viewerId();
+  const batch = [
+    {insert: 'GROUP', as: 'managers', row: {kind: 'group', name: `${name} Managers`, status: 'open', listed: true, added_by: me}},
+    {set: '@managers', cells: {managed_by: '@managers'}},
+    {insert: 'MEMBER', row: {group: '@managers', person: me, member: 'yes'}},
+    {insert: 'GROUP', as: 'tag', row: {kind: 'group', name, status: 'open', listed: true, managed_by: '@managers', added_by: me}},
+    ...people.map(person => ({insert: 'MEMBER', row: {group: '@tag', person, member: 'yes'}})),
+  ];
+  const {result} = await write(batch);
+  const memberRows = {};
+  people.forEach((person, i) => {
+    memberRows[person] = result[5 + i];
+  });
+  const key = tagKey(result[3]);
+  tags[key] = {id: result[3], name, memberRows, managerRows: {[me]: result[2]}, managersGroup: result[0], ownManagers: true};
+  return key;
 }
 
 export async function copyTag(key, to) {
-  let saved;
+  let made;
   try {
-    saved = await act('tags', tagOf(key).id, 'copy', {name: to});
+    made = await makeTag(to, [...members(key)]);
   } catch (err) {
     alert(err.message);
     return null;
   }
-  tags[tagKey(saved.id)] = ownTag(saved.id, to, [...members(key)]);
-  chromeChanged();
-  pageChanged();
-  return saved.id;
+  changed();
+  return made;
 }
 
 function tagKeysByRecency() {
@@ -163,7 +175,7 @@ function tagKeysByRecency() {
 }
 
 export function tagsOf(id) {
-  return [...tagKeys(), ...sharedKeys()].filter(key => tagOf(key).people.includes(id));
+  return tagKeys().filter(key => tags[key].memberRows[id]);
 }
 
 function isTagged(id) {
@@ -171,64 +183,75 @@ function isTagged(id) {
 }
 
 async function setTag(id, key, on) {
-  const t = tagOf(key);
-  t.people = on ? (t.people.includes(id) ? t.people : [...t.people, id]) : t.people.filter(e => e !== id);
-  if (!t.people.length) {
-    delete tags[key];
-    delete shared[key];
-  }
+  const t = tags[key];
   if (on) {
     saveLastTag(key);
     recordTagUsage(key);
   }
-  chromeChanged();
-  pageChanged();
   try {
-    await act('tags', t.id, on ? 'add' : 'remove', {person: id});
+    if (on && !t.memberRows[id]) {
+      const {result} = await write([{insert: 'MEMBER', row: {group: t.id, person: id, member: 'yes'}}]);
+      t.memberRows[id] = result[0];
+    } else if (!on && t.memberRows[id]) {
+      const last = tagPeople(t).length === 1;
+      await write([{delete: t.memberRows[id]}, ...(last ? closing(t) : [])]);
+      delete t.memberRows[id];
+      if (last) {
+        delete tags[key];
+      }
+    }
   } catch (err) {
     alert(err.message);
   }
+  changed();
 }
 
 async function addToNewTag(id, name) {
-  let saved;
+  let key;
   try {
-    saved = await create('tags', {name, person: id});
+    key = await makeTag(name, [id]);
   } catch (err) {
     alert(err.message);
     return null;
   }
-  const key = tagKey(saved.id);
-  if (tags[key]) {
-    tags[key].people = tags[key].people.includes(id) ? tags[key].people : [...tags[key].people, id];
-  } else {
-    tags[key] = ownTag(saved.id, name, [id]);
-  }
   saveLastTag(key);
   recordTagUsage(key);
-  chromeChanged();
-  pageChanged();
+  changed();
   return key;
 }
 
 export async function shareTag(key, manager, on) {
+  const t = tags[key];
   try {
-    await act('tags', tags[key].id, on ? 'share' : 'unshare', {person: manager});
+    if (on) {
+      const {result} = await write([{insert: 'MEMBER', row: {group: t.managersGroup, person: manager, member: 'yes'}}]);
+      t.managerRows[manager] = result[0];
+    } else {
+      await write([{delete: t.managerRows[manager]}]);
+      delete t.managerRows[manager];
+    }
   } catch (err) {
     alert(err.message);
     return false;
   }
-  const current = tags[key].managers.filter(e => e !== manager);
-  if (on) {
-    current.push(manager);
+  return true;
+}
+
+export async function leaveTag(key) {
+  const t = tags[key];
+  try {
+    await write([{delete: t.managerRows[viewerId()]}]);
+  } catch (err) {
+    alert(err.message);
+    return false;
   }
-  tags[key].managers = current;
+  delete tags[key];
+  changed();
   return true;
 }
 
 export function manageControl(key, onManagersChange) {
-  const isShared = !!shared[key];
-  const name = tagOf(key).name;
+  const name = tags[key].name;
   const wrap = el('div', 'filter-wrap');
   const button = el('button', 'filter-button facet-button tag-manage');
   button.type = 'button';
@@ -259,54 +282,47 @@ export function manageControl(key, onManagersChange) {
     menu.append(row);
     return row;
   };
-  if (!isShared) {
-    item('edit', 'Edit name', 'Give this tag a new name', async () => {
-      open(null);
-      const to = (prompt('New name for the tag', name) || '').trim().slice(0, 40);
-      if (!to || to === name) {
-        return;
-      }
-      if (await renameTag(key, to)) {
-        location.href = tagHref(key);
-      }
-    });
-  }
-  item('copy', 'Duplicate', 'Make a new tag of your own with the same people', async () => {
+  item('edit', 'Edit name', 'Give this tag a new name', async () => {
     open(null);
-    const suggested = isShared && !tagKeys().some(k => tags[k].name === name) ? name : `${name} copy`;
-    const to = (prompt('Name for the copy', suggested) || '').trim().slice(0, 40);
-    if (!to || (!isShared && to === name)) {
+    const to = (prompt('New name for the tag', name) || '').trim().slice(0, 40);
+    if (!to || to === name) {
+      return;
+    }
+    if (await renameTag(key, to)) {
+      location.href = tagHref(key);
+    }
+  });
+  item('copy', 'Duplicate', 'Make a new tag with the same people', async () => {
+    open(null);
+    const to = (prompt('Name for the copy', `${name} copy`) || '').trim().slice(0, 40);
+    if (!to) {
       return;
     }
     const made = await copyTag(key, to);
     if (made) {
-      location.href = tagHref(tagKey(made));
+      location.href = tagHref(made);
     }
   });
-  let shareItem = null;
-  if (isShared) {
-    const t = shared[key];
-    item('close', 'Leave', `Stop managing this tag - it stays ${t.ownerName}'s`, async () => {
+  const shareItem = item('families', 'Share', 'Let others manage this tag with you', () => {
+    open(share);
+    input.focus();
+  });
+  if (sharedTag(key)) {
+    item('close', 'Leave', 'Stop managing this tag - the others keep it', async () => {
       open(null);
-      if (!confirm(`Leave "${name}"? You'll no longer see or manage it unless ${t.ownerName} shares it again.`)) {
+      if (!confirm(`Leave "${name}"? You'll no longer see or manage it unless someone shares it with you again.`)) {
         return;
       }
       if (await leaveTag(key)) {
         location.href = '/people';
       }
     }).classList.add('manage-item-danger');
-    wrap.append(button, menu);
-    return wrap;
   }
-  shareItem = item('families', 'Share', 'Let others manage this tag with you', () => {
-    open(share);
-    input.focus();
-  });
   item('trash', 'Delete tag', 'Delete this tag - nobody is removed from the directory, just untagged', async () => {
     open(null);
     const count = members(key).length;
     const who = count === 1 ? 'the one person' : `all ${count} people`;
-    if (!confirm(`Delete the tag "${name}"? It comes off ${who} in it. This can't be undone.`)) {
+    if (!confirm(`Delete the tag "${name}"? It comes off ${who} in it, for everyone who manages it.`)) {
       return;
     }
     if (await deleteTag(key)) {
@@ -318,7 +334,7 @@ export function manageControl(key, onManagersChange) {
   head.append(svg('families'));
   const text = el('div');
   text.append(el('div', 'family-title', 'Share this tag'),
-    el('div', 'family-desc', 'Anyone you add can tag and untag people on it, just as you can. It stays yours to delete.'));
+    el('div', 'family-desc', 'Anyone you add can tag and untag people, rename, share and delete it, just as you can.'));
   head.append(text);
   share.append(head);
 
@@ -332,21 +348,21 @@ export function manageControl(key, onManagersChange) {
   share.append(managers, searchBox);
 
   const updateLabel = () => {
-    const n = managersOf(key).length;
+    const n = otherManagers(key).length;
     shareItem.querySelector('span').textContent = n ? `Share (${n})` : 'Share';
   };
   const paintManagers = () => {
     managers.replaceChildren();
-    for (const id of managersOf(key)) {
+    for (const id of otherManagers(key)) {
       const p = byId[id];
       if (!p) {
         continue;
       }
       const row = el('div', 'share-manager');
-      row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'share-avatar'), el('span', '', p.fullName));
+      row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'share-avatar'), el('span', '', p.name_show));
       const remove = el('button', 'share-remove');
       remove.type = 'button';
-      remove.title = `Stop ${firstName(p.fullName)} managing this tag`;
+      remove.title = `Stop ${firstName(p.name_show)} managing this tag`;
       remove.append(svg('close'));
       remove.addEventListener('click', async () => {
         if (await shareTag(key, id, false)) {
@@ -366,10 +382,10 @@ export function manageControl(key, onManagersChange) {
     if (!q) {
       return;
     }
-    const me = state.model.user.id;
-    const matches = state.model.people
-      .filter(p => p.id !== me && !managersOf(key).includes(p.id))
-      .filter(p => p.fullName.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
+    const managing = tagManagers(tags[key]);
+    const matches = model.people
+      .filter(p => !managing.includes(p.id))
+      .filter(p => p.name_show.toLowerCase().includes(q))
       .slice(0, 6);
     if (!matches.length) {
       results.append(el('div', 'share-empty', 'No one by that name.'));
@@ -378,7 +394,7 @@ export function manageControl(key, onManagersChange) {
     for (const p of matches) {
       const row = el('button', 'share-result');
       row.type = 'button';
-      row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'share-avatar'), el('span', '', p.fullName), svg('plus'));
+      row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'share-avatar'), el('span', '', p.name_show), svg('plus'));
       row.addEventListener('click', async () => {
         if (await shareTag(key, p.id, true)) {
           input.value = '';
@@ -399,19 +415,6 @@ export function manageControl(key, onManagersChange) {
   return wrap;
 }
 
-export async function leaveTag(key) {
-  try {
-    await act('tags', shared[key].id, 'leave');
-  } catch (err) {
-    alert(err.message);
-    return false;
-  }
-  delete shared[key];
-  chromeChanged();
-  pageChanged();
-  return true;
-}
-
 function tagMenu(id, onChange) {
   const menu = el('div', 'card-menu tag-menu');
   menu.hidden = true;
@@ -421,30 +424,24 @@ function tagMenu(id, onChange) {
   const render = () => {
     const typed = menu.querySelector('.tag-new input')?.value || '';
     menu.replaceChildren();
-    const option = (key, label, note) => {
+    for (const key of tagKeysByRecency()) {
       const row = el('label', 'tag-option');
       const box = el('input');
       box.type = 'checkbox';
       box.dataset.tagKey = key;
-      box.checked = members(key).includes(id);
+      box.checked = Boolean(tags[key].memberRows[id]);
       box.addEventListener('change', async () => {
         await setTag(id, key, box.checked);
         render();
         onChange();
         menu.focusTag(key);
       });
-      const text = el('span', '', label);
-      if (note) {
-        text.append(el('small', 'tag-option-note', note));
+      const text = el('span', '', tags[key].name);
+      if (sharedTag(key)) {
+        text.append(el('small', 'tag-option-note', 'shared'));
       }
       row.append(text, box);
       menu.append(row);
-    };
-    for (const key of tagKeysByRecency()) {
-      option(key, tags[key].name, '');
-    }
-    for (const key of sharedKeys()) {
-      option(key, shared[key].name, `${firstName(shared[key].ownerName)}'s`);
     }
     const form = el('form', 'tag-new');
     const input = el('input');
@@ -492,7 +489,7 @@ function tagMenu(id, onChange) {
 }
 
 function mostRecentTag() {
-  const existing = [...tagKeys(), ...sharedKeys()];
+  const existing = tagKeys();
   const last = loadLastTag();
   return existing.includes(last) ? last : existing[0];
 }

@@ -1,17 +1,19 @@
-import {state, peopleOf} from './state.js';
+import {state, model, peopleOf, isStudent, isParent, isStaff, familyOf, familiesOf, kidsOf, adultsOf, membersOf, gradeName, classroomName} from './state.js';
 import {segments} from './dom.js';
 import {el} from '/elements.js';
 import {chipToggle, filterControl} from '/rules.js';
-import {familyOf, familiesOf} from './families.js';
 import {members, tagFacetOptions} from './tags.js';
 
+const facets = {grade: gradeName, classroom: classroomName};
+
 function personFacets(p, field) {
-  if (p.isStudent) {
-    return p[field] ? [p[field]] : [];
+  const of = facets[field];
+  if (isStudent(p)) {
+    return of(p) ? [of(p)] : [];
   }
-  if (p.isParent) {
+  if (isParent(p)) {
     const family = familyOf(p);
-    return (family ? peopleOf(family.kids) : []).map(k => k[field]).filter(Boolean);
+    return (family ? kidsOf(family) : []).map(of).filter(Boolean);
   }
   return [];
 }
@@ -28,7 +30,7 @@ function cityOf(p) {
 export function anyFiltersActive() {
   return Boolean(state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size ||
     state.filterRoleExcluded.size || state.filterCities.size || state.filterPronouns.size ||
-    state.filterTags.size || state.filterNew);
+    state.filterTags.size);
 }
 
 function roleChipsVisible() {
@@ -44,8 +46,8 @@ function roleChipsVisible() {
 
 export function tagRelationOptionsFor(tag) {
   const tagged = peopleOf(members(tag));
-  const hasKids = tagged.some(p => p.isStudent);
-  const hasParents = tagged.some(p => p.isParent);
+  const hasKids = tagged.some(isStudent);
+  const hasParents = tagged.some(isParent);
   const options = [];
   if (hasKids) {
     options.push('Parents');
@@ -70,17 +72,15 @@ function tagRelatedMatch(p) {
   }
   const [tag] = state.filterTags;
   const tagged = members(tag);
+  const has = list => list.some(x => tagged.includes(x.id));
   for (const family of familiesOf(p)) {
-    if (state.filterTagRelations.has('Parents') && p.isParent &&
-      family.kids.some(id => tagged.includes(id))) {
+    if (state.filterTagRelations.has('Parents') && isParent(p) && has(kidsOf(family))) {
       return true;
     }
-    if (state.filterTagRelations.has('Children') && p.isStudent &&
-      family.adults.some(id => tagged.includes(id))) {
+    if (state.filterTagRelations.has('Children') && isStudent(p) && has(adultsOf(family))) {
       return true;
     }
-    if (state.filterTagRelations.has('Siblings') && p.isStudent &&
-      family.kids.some(id => id !== p.id && tagged.includes(id))) {
+    if (state.filterTagRelations.has('Siblings') && isStudent(p) && has(kidsOf(family).filter(k => k.id !== p.id))) {
       return true;
     }
   }
@@ -91,40 +91,38 @@ export function matchesFilters(p) {
   const gradeOK = !state.filterGrades.size || personFacets(p, 'grade').some(g => state.filterGrades.has(g));
   const classOK = !state.filterClassrooms.size || personFacets(p, 'classroom').some(c => state.filterClassrooms.has(c));
   const roleOK = (!state.filterRoles.size ||
-    (state.filterRoles.has('Student') && p.isStudent) ||
-    (state.filterRoles.has('Parent') && p.isParent) ||
-    (state.filterRoles.has('Staff') && p.isStaff)) &&
+    (state.filterRoles.has('Student') && isStudent(p)) ||
+    (state.filterRoles.has('Parent') && isParent(p)) ||
+    (state.filterRoles.has('Staff') && isStaff(p))) &&
     (!roleChipsVisible() ||
-    (p.isStudent && !state.filterRoleExcluded.has('Student')) ||
-    (p.isParent && !state.filterRoleExcluded.has('Parent')) ||
-    (p.isStaff && !state.filterRoleExcluded.has('Staff')));
+    (isStudent(p) && !state.filterRoleExcluded.has('Student')) ||
+    (isParent(p) && !state.filterRoleExcluded.has('Parent')) ||
+    (isStaff(p) && !state.filterRoleExcluded.has('Staff')));
   const cityOK = !state.filterCities.size || state.filterCities.has(cityOf(p));
   const pronounsOK = !state.filterPronouns.size || (p.pronouns && state.filterPronouns.has(p.pronouns.toLowerCase()));
-  const newOK = !state.filterNew || p.isNew;
   const tagOK = !state.filterTags.size || [...state.filterTags].some(k => members(k).includes(p.id)) || tagRelatedMatch(p);
-  return gradeOK && classOK && roleOK && cityOK && pronounsOK && newOK && tagOK;
+  return gradeOK && classOK && roleOK && cityOK && pronounsOK && tagOK;
 }
 
-export function familyMatchesFilters(key) {
-  const family = state.model.families[key];
-  if (!family) {
-    return !anyFiltersActive();
-  }
-  const members = peopleOf([...family.kids, ...family.adults]);
-  return !anyFiltersActive() || members.some(matchesFilters);
+export function familyMatchesFilters(family) {
+  return !anyFiltersActive() || membersOf(family).some(matchesFilters);
 }
 
 export function gradeOptions() {
-  const present = new Set(state.model.people.filter(p => p.isStudent).map(p => p.grade).filter(Boolean));
-  return state.model.grades.map(g => g.name).filter(n => present.has(n));
+  const present = new Set(model.people.filter(isStudent).map(gradeName).filter(Boolean));
+  return model.grades.map(g => g.name).filter(n => present.has(n));
+}
+
+export function classroomOptions() {
+  return model.classrooms.map(c => c.name);
 }
 
 function cityOptions() {
-  return [...new Set(state.model.people.map(cityOf).filter(Boolean))].sort();
+  return [...new Set(model.people.map(cityOf).filter(Boolean))].sort();
 }
 
 function pronounOptions() {
-  return [...new Set(state.model.people.map(p => p.pronouns).filter(Boolean).map(p => p.toLowerCase()))].sort();
+  return [...new Set(model.people.map(p => p.pronouns).filter(Boolean).map(p => p.toLowerCase()))].sort();
 }
 
 const roleChipFacets = [
@@ -154,7 +152,7 @@ export function directoryFilter(rerender, options = {}) {
     sections.push({label: 'Role', values: ['Student', 'Parent', 'Staff'], chosen: state.filterRoles});
   }
   if (options.classroom !== false) {
-    sections.push({label: 'Classroom', values: state.model.classrooms.map(c => c.name), chosen: state.filterClassrooms});
+    sections.push({label: 'Classroom', values: classroomOptions(), chosen: state.filterClassrooms});
   }
   if (options.grade !== false) {
     sections.push({label: 'Grade', values: gradeOptions(), chosen: state.filterGrades});
@@ -168,12 +166,5 @@ export function directoryFilter(rerender, options = {}) {
   if (options.tags !== false && tagFacetOptions().length) {
     sections.push({label: 'Tags', values: tagFacetOptions(), chosen: state.filterTags});
   }
-  const toggles = [];
-  if (options.newToHelios !== false) {
-    toggles.push({label: 'New to Helios', on: state.filterNew, onChange: on => {
-      state.filterNew = on;
-      rerender();
-    }});
-  }
-  return filterControl(sections, rerender, toggles);
+  return filterControl(sections, rerender, []);
 }

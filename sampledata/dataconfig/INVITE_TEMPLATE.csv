@@ -1,1 +1,25 @@
 id,service,order,column,template
+itp00000000001,isv00000000001,1,Couple / Family Greeting,{{ greeting }}
+itp00000000002,isv00000000001,2,Email,{{ primary_email }}
+itp00000000003,isv00000000001,3,First Name,{{ primary_first_name }}
+itp00000000004,isv00000000001,4,Last Name,{{ primary_last_name }}
+itp00000000005,isv00000000001,5,Couple / Family Member 1,{{ member_1 }}
+itp00000000006,isv00000000001,6,Couple / Family Member 2,{{ member_2 }}
+itp00000000007,isv00000000001,7,Couple / Family Member 3,{{ member_3 }}
+itp00000000008,isv00000000001,8,Couple / Family Member 4,{{ member_4 }}
+itp00000000009,isv00000000001,9,Couple / Family Member 5,{{ member_5 }}
+itp00000000010,isv00000000001,a,Couple / Family Member 5,{{ member_6 }}
+itp00000000011,isv00000000002,1,Name,{{ greeting }}
+itp00000000012,isv00000000002,2,Email,{{ primary_email }}
+itp00000000013,isv00000000002,3,Phone,{{ primary_phone }}
+itp00000000014,isv00000000003,1,Name,{{ member_name }}
+itp00000000015,isv00000000003,2,Group Name,{{ greeting }}
+itp00000000016,isv00000000003,3,Email or Phone,{{ member_contact }}
+itp00000000017,isv00000000003,4,Total Invited,
+itp00000000018,isv00000000003,5,Message,
+itp00000000019,isv00000000004,1,First Name,{{ greeting }}
+itp00000000020,isv00000000004,2,Last Name,
+itp00000000021,isv00000000004,3,E-mail Address,{{ primary_email }}
+itp00000000022,isv00000000004,4,Phone Number,{{ primary_phone }}
+itp00000000023,isv00000000005,1,Name,{{ greeting }}
+itp00000000024,isv00000000005,2,Email,{{ primary_email }}

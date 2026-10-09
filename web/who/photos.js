@@ -1,19 +1,13 @@
-import {thumbUrl} from './dom.js';
+import {photoUrl, thumbOf, fullOf} from './state.js';
 import {el, svg} from '/elements.js';
-import {submitMedia, submitPhotoOrder, submitCrop} from './edit.js';
+import {uploadPhoto, movePhoto, removePhoto, cropPhoto} from './edit.js';
 import {openLayer} from '/modal.js';
 
-const photoLabels = {
-  veracross: 'School portrait',
-  website: 'Staff page headshot',
-  upload: 'Uploaded photo',
-};
+export const maxPhotos = 5;
 
-const photoRemoveWarnings = {
-  veracross: 'This is the school portrait from Veracross. Remove it anyway?',
-  website: 'This is the headshot from the school website. Remove it anyway?',
-  upload: 'Remove this photo?',
-};
+export function cropped(photo) {
+  return Boolean(photo && photo.crop_width);
+}
 
 export function openPhotoLightbox(url) {
   const overlay = el('div', 'photo-lightbox');
@@ -62,14 +56,13 @@ export function cropBadge() {
   return badge;
 }
 
-export function photoMenu(p, getPhoto, editing, status) {
+export function photoMenu(photos, getPhoto, editing, status) {
   const menu = el('div', 'photo-menu');
   menu.hidden = true;
   menu.rebuild = () => {
     menu.replaceChildren();
     const photo = getPhoto();
-    const photos = p.photos || [];
-    const isPrimary = !photos.length || photo.name === photos[0].name;
+    const at = photos.findIndex(ph => ph.id === photo.id);
     const item = (iconName, label, action) => {
       const btn = el('button', 'photo-menu-item');
       btn.type = 'button';
@@ -81,31 +74,26 @@ export function photoMenu(p, getPhoto, editing, status) {
       });
       menu.append(btn);
     };
-    item('eye', 'View photo', () => openPhotoLightbox(photo.originalUrl));
-    if (!isPrimary) {
-      item('star', 'Set as primary', () => {
-        const order = [photo.name, ...photos.map(ph => ph.name).filter(n => n !== photo.name)];
-        submitPhotoOrder(p.id, order, status);
-      });
+    item('eye', 'View photo', () => openPhotoLightbox(fullOf(photo)));
+    if (at > 0) {
+      item('star', 'Set as primary', () => movePhoto(photos, at, 0, status));
     }
     if (editing) {
       item('trash', 'Delete photo', () => {
-        if (!confirm(photoRemoveWarnings[photo.source])) {
-          return;
+        if (confirm('Remove this photo?')) {
+          removePhoto(photo, status);
         }
-        status.textContent = 'Removing…';
-        const order = photos.map(ph => ph.name).filter(name => name !== photo.name);
-        submitPhotoOrder(p.id, order, status);
       });
     }
-    item('crop', 'Crop photo', () => openCropTool(photo.originalUrl, true,
-      blob => submitCrop('person', p.id, photo.name, blob, status)));
+    if (photo.reencode) {
+      item('crop', 'Crop photo', () => openCropTool(fullOf(photo), true, box => cropPhoto(photo, box, status)));
+    }
   };
   menu.rebuild();
   return menu;
 }
 
-export function familyPhotoMenu(family, status) {
+export function familyPhotoMenu(photo, status) {
   const menu = el('div', 'photo-menu');
   menu.hidden = true;
   // togglePhotoMenu calls rebuild on every open; a family's items never change.
@@ -121,9 +109,10 @@ export function familyPhotoMenu(family, status) {
     });
     menu.append(btn);
   };
-  item('eye', 'View photo', () => openPhotoLightbox(family.originalPhotoUrl || family.photoUrl));
-  item('crop', 'Crop photo', () => openCropTool(family.originalPhotoUrl || family.photoUrl, false,
-    blob => submitCrop('family', family.id, '', blob, status)));
+  item('eye', 'View photo', () => openPhotoLightbox(fullOf(photo)));
+  if (photo.reencode) {
+    item('crop', 'Crop photo', () => openCropTool(fullOf(photo), false, box => cropPhoto(photo, box, status)));
+  }
   return menu;
 }
 
@@ -304,67 +293,46 @@ function openCropTool(imageUrl, square, onSave) {
     });
   }
 
-  save.addEventListener('click', () => {
+  save.addEventListener('click', async () => {
     const stageRect = stage.getBoundingClientRect();
     const scaleX = img.naturalWidth / stageRect.width;
     const scaleY = img.naturalHeight / stageRect.height;
-    const sx = left * scaleX;
-    const sy = top * scaleY;
-    const sWidth = width * scaleX;
-    const sHeight = height * scaleY;
-    const maxOut = 1600;
-    const shrink = Math.max(sWidth, sHeight) > maxOut ? maxOut / Math.max(sWidth, sHeight) : 1;
-    const outWidth = Math.max(1, Math.round(sWidth * shrink));
-    const outHeight = Math.max(1, Math.round(sHeight * shrink));
-    const canvas = document.createElement('canvas');
-    canvas.width = outWidth;
-    canvas.height = outHeight;
-    canvas.getContext('2d').drawImage(img, sx, sy, sWidth, sHeight, 0, 0, outWidth, outHeight);
+    const box = {
+      left: Math.round(left * scaleX),
+      top: Math.round(top * scaleY),
+      width: Math.max(1, Math.round(width * scaleX)),
+      height: Math.max(1, Math.round(height * scaleY)),
+    };
     save.disabled = true;
     save.textContent = 'Saving…';
-    canvas.toBlob(async blob => {
-      if (!blob) {
-        save.disabled = false;
-        save.textContent = 'Save crop';
-        return;
-      }
-      const ok = await onSave(blob);
-      if (ok) {
-        close();
-      } else {
-        save.disabled = false;
-        save.textContent = 'Save crop';
-      }
-    }, 'image/jpeg', 0.92);
+    if (await onSave(box)) {
+      close();
+      return;
+    }
+    save.disabled = false;
+    save.textContent = 'Save crop';
   });
 }
 
-export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
+export function photoGrid(p, photos, editable, editing, heroImg, status, onPreview) {
   const grid = el('div', 'photo-grid');
 
   const previewPhoto = photo => {
     if (heroImg) {
-      heroImg.src = photo.url;
+      heroImg.src = photoUrl(photo);
     }
     if (onPreview) {
       onPreview(photo);
     }
   };
 
-  const currentOrder = () => [...grid.querySelectorAll('.photo-slot')].map(t => t.dataset.name);
+  const tileIds = () => [...grid.querySelectorAll('.photo-slot')].map(t => t.dataset.id).filter(Boolean);
 
-  const commitOrder = (revertOrder) => {
-    submitPhotoOrder(p.id, currentOrder(), status, () => {
-      const addTile = grid.querySelector('.photo-slot-add');
-      for (const name of revertOrder) {
-        grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
-      }
-    });
-  };
-
-  const deletePhoto = (photo) => {
-    status.textContent = 'Removing…';
-    submitPhotoOrder(p.id, currentOrder().filter(name => name !== photo.name), status);
+  const restore = order => {
+    const addTile = grid.querySelector('.photo-slot-add');
+    for (const id of order) {
+      grid.insertBefore(grid.querySelector(`.photo-slot[data-id="${CSS.escape(id)}"]`), addTile);
+    }
   };
 
   function wireDrag(tile, photo) {
@@ -391,7 +359,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
           return;
         }
         dragging = true;
-        startOrder = currentOrder();
+        startOrder = tileIds();
         tile.setPointerCapture(pointerId);
         tile.classList.add('dragging');
       }
@@ -413,15 +381,17 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
         }
       }
     });
-    const finish = e => {
+    const finish = async e => {
       if (pointerId !== e.pointerId) {
         return;
       }
       if (dragging) {
         tile.classList.remove('dragging');
-        const newOrder = currentOrder();
-        if (startOrder && newOrder.join(',') !== startOrder.join(',')) {
-          commitOrder(startOrder);
+        const before = startOrder;
+        const to = tileIds().indexOf(photo.id);
+        const from = before.indexOf(photo.id);
+        if (from !== to && !await movePhoto(photos, from, to, status)) {
+          restore(before);
         }
       } else {
         previewPhoto(photo);
@@ -433,10 +403,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
     tile.addEventListener('pointerup', finish);
     tile.addEventListener('pointercancel', () => {
       if (dragging && startOrder) {
-        const addTile = grid.querySelector('.photo-slot-add');
-        for (const name of startOrder) {
-          grid.insertBefore(grid.querySelector(`.photo-slot[data-name="${CSS.escape(name)}"]`), addTile);
-        }
+        restore(startOrder);
         tile.classList.remove('dragging');
       }
       pointerId = null;
@@ -455,19 +422,18 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
     input.hidden = true;
     input.addEventListener('change', () => {
       if (input.files.length) {
-        submitMedia('person', p.id, 'photo', input.files[0], input.files[0].name, status);
+        uploadPhoto({person: p.id}, input.files[0], status);
       }
     });
     tile.append(input);
     return tile;
   }
 
-  p.photos.forEach((photo, i) => {
+  photos.forEach((photo, i) => {
     const tile = el('div', 'photo-slot' + (i === 0 ? ' photo-slot-primary' : ''));
-    tile.dataset.name = photo.name;
-    tile.title = photoLabels[photo.source];
+    tile.dataset.id = photo.id;
     const face = el('img');
-    face.src = thumbUrl(photo.url);
+    face.src = thumbOf(photo);
     face.alt = '';
     face.draggable = false;
     tile.append(face);
@@ -478,10 +444,9 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
       del.addEventListener('pointerdown', e => e.stopPropagation());
       del.addEventListener('click', e => {
         e.stopPropagation();
-        if (!confirm(photoRemoveWarnings[photo.source])) {
-          return;
+        if (confirm('Remove this photo?')) {
+          removePhoto(photo, status);
         }
-        deletePhoto(photo);
       });
       tile.append(del);
     }
@@ -493,7 +458,7 @@ export function photoGrid(p, editable, editing, heroImg, status, onPreview) {
     }
     grid.append(tile);
   });
-  if (editable && p.photos.length < 5) {
+  if (editable && photos.length < maxPhotos) {
     grid.append(addTile());
   }
 

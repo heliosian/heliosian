@@ -1,11 +1,10 @@
-import {state, colors} from '../state.js';
-import {thumbUrl, firstName} from '../dom.js';
+import {state, model, familiesOf, familyOf, isStudent, thumbOf, photosOf, gradeNameColor} from '../state.js';
+import {firstName} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
-import {familiesOf, familyOf} from '../families.js';
-import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard} from '../people.js';
+import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
-import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, directoryFilter} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter} from '../filters.js';
 import {facetDropdown} from '/rules.js';
 import {render} from '/router.js';
 import {renderStaff} from './staff.js';
@@ -20,7 +19,7 @@ function everyoneMatches() {
   const q = state.q;
   return state.everyoneOrder.filter(p => {
     const familyNames = familiesOf(p).map(f => f.name).join(' ');
-    return `${p.fullName} ${familyNames}`.toLowerCase().includes(q) && matchesFilters(p);
+    return `${p.name_show} ${familyNames}`.toLowerCase().includes(q) && matchesFilters(p);
   });
 }
 
@@ -39,24 +38,24 @@ function renderEveryone(grid) {
 
 function renderStudents(grid) {
   grid.className = 'student-grid';
-  const matches = state.model.people.filter(p => p.isStudent && p.fullName.toLowerCase().includes(state.q) && matchesFilters(p));
+  const matches = model.people.filter(p => isStudent(p) && p.name_show.toLowerCase().includes(state.q) && matchesFilters(p));
   for (const p of matches) {
     const card = el('a', 'student-card');
     card.href = personLink(p);
     const head = el('div', 'student-head');
-    const family = familyOf(p);
-    if (family && family.photoUrl) {
+    const family = familyPhoto(familyOf(p));
+    if (family) {
       const bg = el('img', 'student-family-photo');
-      bg.src = thumbUrl(family.photoUrl);
+      bg.src = thumbOf(family);
       bg.loading = 'lazy';
       bg.alt = '';
       head.append(bg);
     }
-    head.append(photoOrInitials(p.photoUrl, p.fullName, 'student-photo'));
+    head.append(photoOrInitials(thumbOf(photosOf(p.id)[0]), p.name_show, 'student-photo'));
     head.append(cardMore(p.id));
     card.append(head);
-    card.append(el('div', 'student-first', firstName(p.fullName)));
-    card.append(el('div', 'student-last', p.fullName.replace(firstName(p.fullName), '').trim()));
+    card.append(el('div', 'student-first', firstName(p.name_show)));
+    card.append(el('div', 'student-last', p.name_show.replace(firstName(p.name_show), '').trim()));
     card.append(el('div', 'student-line', gradeChain(p)));
     if (p.pronouns) {
       card.append(el('div', 'student-pronouns', p.pronouns));
@@ -69,12 +68,12 @@ function renderStudents(grid) {
 function renderFamilies(grid) {
   grid.className = 'people-grid directory-grid';
   const matches = state.familyOrder.filter(f =>
-    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) && familyMatchesFilters(f.key));
+    `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) && familyMatchesFilters(f.family));
   for (const f of matches) {
     const card = el('a', 'person-card');
     card.href = f.href;
     const photo = photoOrInitials(f.photoUrl, f.name, 'person-photo');
-    const color = f.grades.length ? colors.grades[f.grades[0]] : null;
+    const color = f.grades.length ? gradeNameColor(f.grades[0]) : null;
     const wrap = el('div', 'photo-wrap photo-wrap-peek');
     if (color) {
       photo.style.setProperty('--ring-color', color);
@@ -87,7 +86,7 @@ function renderFamilies(grid) {
     if (f.grades.length) {
       const chipRow = el('div', 'chip-row chip-row-overlay');
       for (const g of f.grades) {
-        chipRow.append(familyDetailChip(g, colors.grades[g]));
+        chipRow.append(familyDetailChip(g, gradeNameColor(g)));
       }
       wrap.append(chipRow);
     }
@@ -147,7 +146,7 @@ export function peoplePage() {
   const facetFilters = el('div', 'facet-filters');
   facetFilters.append(
     facetDropdown('Grade', null, gradeOptions(), state.filterGrades, () => renderGrid()),
-    facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+    facetDropdown('Classroom', null, classroomOptions(), state.filterClassrooms, () => renderGrid()),
   );
   controls.append(facetFilters, search);
   let tagsFacet = null;
@@ -161,7 +160,7 @@ export function peoplePage() {
       tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false, tags: isEveryone});
+    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, tags: isEveryone});
     next.classList.add('mobile-filter');
     if (mobileFilter) {
       mobileFilter.replaceWith(next);

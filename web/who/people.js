@@ -1,51 +1,51 @@
-import {state, colors, peopleOf} from './state.js';
-import {withFrom, thumbUrl, hue, lastName} from './dom.js';
+import {byId, bySlug, photosOf, thumbOf, photoUrl, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeOf, gradeName, classroomName, crewName, staffColor} from './state.js';
+import {withFrom, hue} from './dom.js';
 import {el} from '/elements.js';
-import {familyOf} from './families.js';
 import {tagControl} from './tags.js';
 
 export function personByKey(key) {
-  if (!key) {
-    return undefined;
-  }
-  const lower = key.toLowerCase();
-  return state.model.people.find(p => p.email === lower) || state.model.people.find(p => p.slug.toLowerCase() === lower);
+  return key ? bySlug[key.toLowerCase()] || byId[key] : undefined;
+}
+
+export function personPath(p) {
+  return '/people/' + encodeURIComponent(p.slug || p.id);
 }
 
 export function personLink(p) {
-  if (p.guest) {
-    return withFrom('/people/' + encodeURIComponent('guest:' + p.guest.id));
-  }
-  return withFrom(p.path);
-}
-
-export function guestPerson(g) {
-  return {fullName: g.name, email: g.email || '', guest: g};
+  return withFrom(personPath(p));
 }
 
 export function guestCard(g) {
   const card = el('a', 'person-card');
-  card.href = personLink(guestPerson(g));
+  card.href = personLink(g);
   const wrap = el('div', 'photo-wrap photo-wrap-peek');
-  wrap.append(photoOrInitials('', g.name, 'person-photo'));
+  wrap.append(photoOrInitials('', g.name_show, 'person-photo'));
   card.append(wrap);
   card.append(el('div', 'role-label role-label-guest', 'Guest'));
-  card.append(el('div', 'person-name', g.name));
-  if (g.purchaserName) {
-    card.append(el('div', 'person-sub', 'Guest of ' + g.purchaserName));
-  }
+  card.append(el('div', 'person-name', g.name_show));
   return card;
 }
 
+export function familyPhoto(family) {
+  return family ? photosOf(family.id)[0] : undefined;
+}
+
+export function personPhoto(p) {
+  return photosOf(p.id)[0] || familyPhoto(familyOf(p));
+}
+
 export function personPhotoUrl(p) {
-  const family = familyOf(p);
-  return p.photoUrl || (family && family.photoUrl) || '';
+  return thumbOf(personPhoto(p));
+}
+
+export function personImageUrl(p) {
+  return photoUrl(photosOf(p.id)[0]);
 }
 
 export function photoOrInitials(url, name, className) {
   if (url) {
     const img = el('img', className);
-    img.src = thumbUrl(url);
+    img.src = url;
     img.loading = 'lazy';
     img.alt = '';
     return img;
@@ -57,22 +57,27 @@ export function photoOrInitials(url, name, className) {
   return div;
 }
 
+export function gradeColor(p) {
+  const g = gradeOf(p);
+  return g ? g.color || '' : '';
+}
+
 function ringColorFor(p) {
-  if (p.isStudent) {
-    return colors.grades[p.grade] || colors.staff || null;
+  if (isStudent(p)) {
+    return gradeColor(p) || staffColor() || null;
   }
-  if (p.isStaff) {
-    return colors.staff || null;
+  if (isStaff(p)) {
+    return staffColor() || null;
   }
   const family = familyOf(p);
-  const kids = family ? peopleOf(family.kids) : [];
+  const kids = family ? kidsOf(family) : [];
   if (kids.length) {
-    const pick = kids[hue(p.email || p.id) % kids.length];
-    if (colors.grades[pick.grade]) {
-      return colors.grades[pick.grade];
+    const pick = kids[hue(emailOf(p) || p.id) % kids.length];
+    if (gradeColor(pick)) {
+      return gradeColor(pick);
     }
   }
-  return colors.staff || null;
+  return staffColor() || null;
 }
 
 export function applyRingColor(photoEl, p) {
@@ -87,10 +92,13 @@ export function applyRingColor(photoEl, p) {
 }
 
 export function baseRole(p) {
-  if (p.isStudent) {
+  if (p.source === 'guest') {
+    return 'Guest';
+  }
+  if (isStudent(p)) {
     return 'Student';
   }
-  if (p.isStaff) {
+  if (isStaff(p)) {
     return 'Staff';
   }
   return 'Parent';
@@ -111,19 +119,19 @@ export function formatPronouns(pronouns) {
 }
 
 export function gradeChain(p) {
-  return [p.grade, p.classroom, p.crew].filter(Boolean).join(' ▶ ');
+  return [gradeName(p), classroomName(p), crewName(p)].filter(Boolean).join(' ▶ ');
 }
 
 function personContext(p) {
-  if (p.isStudent) {
-    return [p.classroom, p.crew].filter(Boolean).join(' ▶ ');
+  if (isStudent(p)) {
+    return [classroomName(p), crewName(p)].filter(Boolean).join(' ▶ ');
   }
-  if (p.isStaff && p.jobTitle) {
-    return p.jobTitle;
+  if (isStaff(p) && p.job_title) {
+    return p.job_title;
   }
   const family = familyOf(p);
   if (family) {
-    return peopleOf(family.kids).map(k => k.fullName).filter(Boolean).join(', ');
+    return kidsOf(family).map(k => k.name_show).join(', ');
   }
   return '';
 }
@@ -147,11 +155,11 @@ export function photoWithTag(photoEl, id, topLeft) {
 }
 
 function gradeBadge(p) {
-  if (!p.isStudent || !p.grade) {
+  if (!isStudent(p) || !gradeName(p)) {
     return null;
   }
-  const badge = el('div', 'grade-badge', p.grade);
-  const color = colors.grades[p.grade];
+  const badge = el('div', 'grade-badge', gradeName(p));
+  const color = gradeColor(p);
   if (color) {
     badge.style.background = `color-mix(in srgb, ${color} 65%, black)`;
   }
@@ -159,11 +167,14 @@ function gradeBadge(p) {
 }
 
 export function personCard(p) {
+  if (p.source === 'guest') {
+    return guestCard(p);
+  }
   const card = el('a', 'person-card');
   card.href = personLink(p);
-  card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id, gradeBadge(p)));
+  card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id, gradeBadge(p)));
   card.append(el('div', 'role-label role-label-' + baseRole(p).toLowerCase(), baseRole(p)));
-  card.append(el('div', 'person-name', p.fullName));
+  card.append(el('div', 'person-name', p.name_show));
   const context = personContext(p);
   if (context) {
     card.append(el('div', 'person-sub', context));
@@ -173,6 +184,6 @@ export function personCard(p) {
 
 export function sortPeople(list) {
   const copy = [...list];
-  copy.sort((a, b) => lastName(a.fullName).localeCompare(lastName(b.fullName)) || a.fullName.localeCompare(b.fullName));
+  copy.sort((a, b) => (a.name_sort || '').localeCompare(b.name_sort || '') || a.name_show.localeCompare(b.name_show));
   return copy;
 }

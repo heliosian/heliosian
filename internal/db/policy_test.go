@@ -67,7 +67,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CHARITY":          {0, 0, 0, 1, 0},
 		"APP":              {0, 2, 2, 2, 0},
-		"ALIAS":            {0, 0, 0, 1, 0},
+		"ALIAS":            {0, 1, 1, 1, 0},
 	} {
 		for i, viewer := range viewers {
 			if got := len(as(t, s, viewer, "(from "+table+")")); got != want[i] {
@@ -247,6 +247,50 @@ func TestTheImportSendsADocumentBackToBeRead(t *testing.T) {
 		if (err == nil) != c.ok {
 			t.Errorf("%s: %v", c.name, err)
 		}
+	}
+}
+
+func TestTheImportSetsAPersonsSlug(t *testing.T) {
+	s := sample(t)
+	for _, c := range []struct {
+		name   string
+		system string
+		change Change
+		ok     bool
+	}{
+		{"slug a Veracross person", "import", change(t, s, "PERSON", []string{"per00000000001"}, store.Row{"slug": "juni.ashdown"}), true},
+		{"slug a guest", "import", change(t, s, "PERSON", []string{"per00000000004"}, store.Row{"slug": "guest"}), false},
+		{"slug a person as another system", "extract", change(t, s, "PERSON", []string{"per00000000001"}, store.Row{"slug": "juni.ashdown"}), false},
+		{"alias a person's old slug", "import", Change{Table: "ALIAS", New: store.Row{"alias": "juni.a", "target": "per00000000001"}}, true},
+		{"alias a person's old slug as another system", "extract", Change{Table: "ALIAS", New: store.Row{"alias": "juni.a", "target": "per00000000001"}}, false},
+	} {
+		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
+		if (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"slug": "juni.ashdown"})); err != nil {
+		t.Fatal(err)
+	}
+	r := runAs(t, s.Model(), "per00000000003", `(from PERSON (where (= slug "juni.ashdown")))`)
+	if got := r.Resources["PERSON"]["per00000000001"]["slug"]; got != "juni.ashdown" {
+		t.Errorf("a member reads the slug as %q: %v", got, r.Resources)
+	}
+}
+
+func TestAPersonsOldSlugReadsWhileTheyDo(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000002", "alias": "maya.l", "target": "per00000000003"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := as(t, s, parent, `(from ALIAS (where (= alias "maya.l")))`); len(got) != 1 || got[0]["target"] != "per00000000003" {
+		t.Fatalf("a parent reads Maya's old slug as %v", got)
+	}
+	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000003"}, store.Row{"hidden": "Yes"})); err != nil {
+		t.Fatal(err)
+	}
+	if got := as(t, s, parent, `(from ALIAS (where (= alias "maya.l")))`); len(got) != 0 {
+		t.Fatalf("a parent reads a hidden person's old slug: %v", got)
 	}
 }
 

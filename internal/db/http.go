@@ -191,3 +191,21 @@ func (m *Model) SignedIn(email string) string {
 	}
 	return row["person"]
 }
+
+func (m *Model) SignedInAs(email string) (string, string, bool) {
+	person := m.SignedIn(email)
+	if person == "" {
+		return "", "", false
+	}
+	p, _ := m.Shown("PERSON").Get(person)
+	for _, e := range m.Table("PERSON_EMAIL").Referencing("person", person) {
+		if primary, _ := cells.YesNo(e["primary"], false); primary {
+			return e["address"], p["name_show"], true
+		}
+	}
+	return "", "", false
+}
+
+func (m *Model) SuperAdmin(email string) bool {
+	return m.superAdmin(m.SignedIn(email))
+}

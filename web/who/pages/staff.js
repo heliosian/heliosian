@@ -1,29 +1,34 @@
-import {state} from '../state.js';
+import {state, model, isStaff, departmentName} from '../state.js';
 import {paletteColor} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
 
+function departmentOrder() {
+  return model.departments.map(d => d.name);
+}
+
+function byDepartment(a, b) {
+  const departments = departmentOrder();
+  const ia = departments.indexOf(a);
+  const ib = departments.indexOf(b);
+  return (ia < 0 ? departments.length : ia) - (ib < 0 ? departments.length : ib);
+}
+
 export function renderStaff(grid, autoFit) {
   grid.className = '';
-  const staff = state.model.people.filter(p =>
-    p.isStaff && `${p.fullName} ${p.jobTitle || ''}`.toLowerCase().includes(state.q) && matchesFilters(p));
-  const departments = state.model.departments || [];
+  const staff = model.people.filter(p =>
+    isStaff(p) && `${p.name_show} ${p.job_title || ''}`.toLowerCase().includes(state.q) && matchesFilters(p));
   const groups = new Map();
   for (const p of staff) {
-    const dept = p.department || 'Staff';
+    const dept = departmentName(p) || 'Staff';
     if (!groups.has(dept)) {
       groups.set(dept, []);
     }
     groups.get(dept).push(p);
   }
-  const ordered = [...groups.keys()].sort((a, b) => {
-    const ia = departments.indexOf(a);
-    const ib = departments.indexOf(b);
-    return (ia < 0 ? departments.length : ia) - (ib < 0 ? departments.length : ib);
-  });
   let count = 0;
-  for (const dept of ordered) {
+  for (const dept of [...groups.keys()].sort(byDepartment)) {
     if (state.staffDeptExcluded.has(dept)) {
       continue;
     }
@@ -32,9 +37,9 @@ export function renderStaff(grid, autoFit) {
     for (const p of groups.get(dept)) {
       const card = el('a', 'person-card');
       card.href = personLink(p);
-      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.fullName, 'person-photo'), p), p.id));
-      card.append(el('div', 'role-label role-label-staff', p.jobTitle || 'Staff'));
-      card.append(el('div', 'person-name', p.fullName));
+      card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id));
+      card.append(el('div', 'role-label role-label-staff', p.job_title || 'Staff'));
+      card.append(el('div', 'person-name', p.name_show));
       deptGrid.append(card);
       count++;
     }
@@ -44,13 +49,8 @@ export function renderStaff(grid, autoFit) {
 }
 
 function departmentChips(rerender) {
-  const departments = state.model.departments || [];
-  const present = new Set(state.model.people.filter(p => p.isStaff).map(p => p.department || 'Staff'));
-  const ordered = [...present].sort((a, b) => {
-    const ia = departments.indexOf(a);
-    const ib = departments.indexOf(b);
-    return (ia < 0 ? departments.length : ia) - (ib < 0 ? departments.length : ib);
-  });
+  const present = new Set(model.people.filter(isStaff).map(p => departmentName(p) || 'Staff'));
+  const ordered = [...present].sort(byDepartment);
   for (const excluded of [...state.staffDeptExcluded]) {
     if (!ordered.includes(excluded)) {
       state.staffDeptExcluded.delete(excluded);

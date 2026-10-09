@@ -1,5 +1,6 @@
 import {el} from '/elements.js';
 import {personRow} from '/personrow.js';
+import {emailOf, photoOf, wordsOf} from '/directory.js';
 
 export function createPersonPicker(mountEl, {people, placeholder = 'Search by name or email…', allow, onPick, address = false}) {
   mountEl.classList.add('person-picker');
@@ -37,10 +38,10 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
   }
 
   function row(person) {
-    const option = personRow({name: person.fullName || person.email, email: person.email, photoUrl: person.heroPhotoUrl}, {
+    const option = personRow({name: person.name_show, email: emailOf(person), photoUrl: photoOf(person)}, {
       button: true,
       className: 'person-picker-option',
-      lines: [person.words || person.email],
+      lines: [wordsOf(person) || emailOf(person)],
     });
     option.tabIndex = -1;
     // mousedown, not click, so it lands before the input's blur closes the list.
@@ -80,7 +81,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
       return;
     }
     const q = input.value.trim().toLowerCase();
-    found = pool.filter(p => (!allow || allow(p)) && (!q || p.fullName.toLowerCase().includes(q) || p.email.toLowerCase().includes(q))).slice(0, 50);
+    found = pool.filter(p => (!allow || allow(p)) && (!q || p.name_show.toLowerCase().includes(q) || emailOf(p).includes(q))).slice(0, 50);
     activeIndex = -1;
     if (!found.length) {
       note(typed() ? `Nobody in the directory - “${typed()}” will be used as typed.` : 'Nobody matches.');
@@ -93,12 +94,18 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
     if (onPick) {
       input.value = '';
       close();
-      onPick(person);
+      onPick(emailOf(person), person);
       return;
     }
     selected = person;
-    input.value = person.fullName || person.email;
+    input.value = person.name_show;
     close();
+  }
+
+  function chooseTyped(address) {
+    input.value = '';
+    close();
+    onPick(address, null);
   }
 
   input.addEventListener('input', () => {
@@ -123,7 +130,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
         choose(found[activeIndex]);
       } else if (onPick && typed()) {
         e.preventDefault();
-        choose({email: typed(), fullName: typed()});
+        chooseTyped(typed());
       }
     } else if (e.key === 'Escape') {
       close();
@@ -135,7 +142,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
     mount: mountEl,
     input,
     get value() {
-      return selected ? selected.email : typed();
+      return selected ? emailOf(selected) : typed();
     },
     get person() {
       return selected;
@@ -146,7 +153,7 @@ export function createPersonPicker(mountEl, {people, placeholder = 'Search by na
     },
     set(person) {
       selected = person;
-      input.value = person.fullName || person.email;
+      input.value = person.name_show;
     },
   };
 }

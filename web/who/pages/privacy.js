@@ -1,7 +1,6 @@
-import {privacyLinks, peopleOf, viewer} from '../state.js';
+import {privacyLinks, viewer, familyOf, adultsOf} from '../state.js';
 import {infoBanner} from '../dom.js';
 import {el, svg} from '/elements.js';
-import {familyOf} from '../families.js';
 
 const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};
 const veracrossPhoneLabels = {visible: 'Visible', mixed: 'Mixed', hidden: 'Hidden'};
@@ -32,10 +31,14 @@ function privacyHeliosCell(masked) {
 }
 
 function familyShownPhone(family) {
-  return peopleOf(family.adults)
+  return adultsOf(family)
     .filter(p => p.phone)
     .map(p => p.phone)
     .join(', ');
+}
+
+function masks(me) {
+  return {address: me.address_consent !== 'shared', phone: me.phone_consent !== 'shared'};
 }
 
 function privacyRow(label, veracrossState, veracrossLabels, masked, shownValue) {
@@ -53,7 +56,7 @@ function privacyWarningBanner(label) {
     `Your ${label} is visible on Veracross but hidden here`,
     "Hiding it in the Helios Who app does not hide it on Veracross - anyone with Veracross access can still see it there. " +
       "To match what Veracross already shows, sync your Helios Who opt-in.",
-    'Sync Now', privacyLinks.heliosWhoOptIn, true);
+    'Sync Now', privacyLinks().heliosWhoOptIn, true);
 }
 
 function privacyOptinImage(src, alt) {
@@ -75,13 +78,16 @@ function privacyActionButton(iconName, label, href) {
 
 export function privacyPage() {
   const page = document.createDocumentFragment();
-  const family = familyOf(viewer());
+  const me = viewer();
+  const family = familyOf(me);
   if (!family) {
     page.append(el('div', 'container', 'No family record found for your account.'));
     return page;
   }
+  const links = privacyLinks();
+  const masked = masks(me);
 
-  const warnings = privacyWarnings(family);
+  const warnings = privacyWarnings(me);
   for (const label of warnings) {
     page.append(privacyWarningBanner(label));
   }
@@ -108,16 +114,16 @@ export function privacyPage() {
   }
   thead.append(headRow);
   const tbody = el('tbody');
-  tbody.append(privacyRow('Phone', family.veracrossPhone, veracrossPhoneLabels, family.phoneMasked, familyShownPhone(family)));
-  tbody.append(privacyRow('Address', family.veracrossAddress, veracrossAddressLabels, family.addressMasked, family.address));
+  tbody.append(privacyRow('Phone', me.vc_phone_visibility, veracrossPhoneLabels, masked.phone, familyShownPhone(family)));
+  tbody.append(privacyRow('Address', me.vc_address_visibility, veracrossAddressLabels, masked.address, family.address));
   table.append(thead, tbody);
   holder.append(table);
   content.append(holder);
 
   const actions = el('div', 'privacy-actions');
   actions.append(
-    privacyActionButton('edit', 'Update Veracross', privacyLinks.veracrossPreferences),
-    privacyActionButton('sync', 'Update Helios Who Visibility', privacyLinks.heliosWhoOptIn));
+    privacyActionButton('edit', 'Update Veracross', links.veracrossPreferences),
+    privacyActionButton('sync', 'Update Helios Who Visibility', links.heliosWhoOptIn));
   content.append(actions);
 
   if (warnings.length > 0) {
@@ -128,7 +134,7 @@ export function privacyPage() {
       'To share the same information as on Veracross, complete the ',
       (() => {
         const a = el('a', '', 'opt in form');
-        a.href = privacyLinks.heliosWhoOptIn;
+        a.href = links.heliosWhoOptIn;
         a.target = '_blank';
         a.rel = 'noopener';
         return a;
@@ -142,7 +148,7 @@ export function privacyPage() {
       privacyOptinImage('/help/optin-checkboxes.png', 'Opt-In Information: check both Home Address and Adult Phone Number.'));
     howTo.append(optinImages);
     const resolveActions = el('div', 'privacy-actions');
-    resolveActions.append(privacyActionButton('sync', 'Resolve Now', privacyLinks.heliosWhoOptIn));
+    resolveActions.append(privacyActionButton('sync', 'Resolve Now', links.heliosWhoOptIn));
     howTo.append(resolveActions);
     content.append(howTo);
   }
@@ -151,20 +157,21 @@ export function privacyPage() {
   return page;
 }
 
-function privacyWarnings(family) {
+function privacyWarnings(me) {
+  const masked = masks(me);
   const warnings = [];
-  if (family.addressMasked && family.veracrossAddress !== 'hidden') {
+  if (masked.address && me.vc_address_visibility && me.vc_address_visibility !== 'hidden') {
     warnings.push('address');
   }
-  if (family.phoneMasked && family.veracrossPhone !== 'hidden') {
+  if (masked.phone && me.vc_phone_visibility && me.vc_phone_visibility !== 'hidden') {
     warnings.push('phone number');
   }
   return warnings;
 }
 
 export function myPrivacyWarnings() {
-  const family = familyOf(viewer());
-  return family ? privacyWarnings(family) : [];
+  const me = viewer();
+  return me && familyOf(me) ? privacyWarnings(me) : [];
 }
 
 export function privacyMismatchCardDismissed() {

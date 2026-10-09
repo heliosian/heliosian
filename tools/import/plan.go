@@ -36,6 +36,7 @@ type state struct {
 	groups  table
 	members table
 	rules   table
+	aliases table
 }
 
 type write struct {
@@ -109,8 +110,8 @@ type planner struct {
 	classroomBands map[string]string
 	everyone       string
 
-	groupWrites, personWrites, emailWrites, familyWrites []write
-	memberDeletes, memberInserts, memberSets             []write
+	groupWrites, personWrites, emailWrites, slugWrites, familyWrites []write
+	memberDeletes, memberInserts, memberSets                         []write
 }
 
 func plan(x *export, st *state) (*planner, error) {
@@ -143,9 +144,10 @@ func plan(x *export, st *state) (*planner, error) {
 			return nil, err
 		}
 	}
+	p.slugs()
 	p.families(households)
 	p.roles()
-	p.batch = slices.Concat(p.groupWrites, p.personWrites, p.emailWrites, p.familyWrites, p.memberDeletes, p.memberInserts, p.memberSets)
+	p.batch = slices.Concat(p.groupWrites, p.personWrites, p.emailWrites, p.slugWrites, p.familyWrites, p.memberDeletes, p.memberInserts, p.memberSets)
 	return p, nil
 }
 
@@ -568,7 +570,12 @@ func (p *planner) classroom(name, grade string) (string, error) {
 	}
 	id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["name"], name) })
 	if id == "" {
-		id = p.newGroup(row{"kind": "classroom", "name": name, "parent": band})
+		id = p.newGroup(row{"kind": "classroom", "name": name, "parent": band, "slug": strings.ToLower(name)})
+	}
+	if current := p.groups.rows[id]; current["slug"] != strings.ToLower(current["name"]) {
+		current["slug"] = strings.ToLower(current["name"])
+		p.groupWrites = append(p.groupWrites, write{Set: id, Cells: row{"slug": current["slug"]}})
+		p.counts["classroom slugs set"]++
 	}
 	if seen, ok := p.classroomBands[id]; ok && seen != band {
 		return "", fmt.Errorf("classroom %s has students in the %s and %s bands", name, p.groups.rows[seen]["name"], p.groups.rows[band]["name"])
@@ -818,6 +825,74 @@ func (p *planner) emails(id *identity) error {
 		p.counts["emails added"]++
 	}
 	return nil
+}
+
+func (p *planner) primaries() map[string]string {
+	out := map[string]string{}
+	for _, eid := range p.st.emails.order {
+		if e := p.st.emails.rows[eid]; primary(e) {
+			out[e["person"]] = e["address"]
+		}
+	}
+	for _, w := range p.emailWrites {
+		switch {
+		case w.Insert != "" && primary(w.Row):
+			out[w.Row["person"]] = w.Row["address"]
+		case w.Set != "" && primary(p.st.emails.rows[w.Set]):
+			out[p.st.emails.rows[w.Set]["person"]] = w.Cells["address"]
+		case w.Delete != "" && primary(p.st.emails.rows[w.Delete]):
+			delete(out, p.st.emails.rows[w.Delete]["person"])
+		}
+	}
+	return out
+}
+
+func slugOf(address string) string {
+	local, _, _ := strings.Cut(address, "@")
+	return strings.ToLower(strings.TrimSpace(local))
+}
+
+func (p *planner) slugs() {
+	people := map[string]string{}
+	for _, pid := range p.st.people.order {
+		if r := p.st.people.rows[pid]; r["source"] != "guest" {
+			people[pid] = strings.TrimSpace(r["slug"])
+		}
+	}
+	for _, id := range p.ids {
+		if id.isNew {
+			people[id.person] = ""
+		}
+	}
+	addresses := p.primaries()
+	holders := map[string]int{}
+	for person := range people {
+		if s := slugOf(addresses[person]); s != "" {
+			holders[s]++
+		}
+	}
+	taken := map[string]bool{}
+	for _, aid := range p.st.aliases.order {
+		taken[p.st.aliases.rows[aid]["alias"]] = true
+	}
+	for _, person := range slices.Sorted(maps.Keys(people)) {
+		current, want := people[person], slugOf(addresses[person])
+		if holders[want] > 1 {
+			p.counts["slugs two people share"]++
+			want = ""
+		}
+		if current == want {
+			continue
+		}
+		p.slugWrites = append(p.slugWrites, write{Set: person, Cells: row{"slug": want}})
+		p.counts["slugs set"]++
+		if current == "" || taken[current] {
+			continue
+		}
+		taken[current] = true
+		p.slugWrites = append(p.slugWrites, write{Insert: "ALIAS", Row: row{"alias": current, "target": person}})
+		p.counts["old slugs aliased"]++
+	}
 }
 
 func (p *planner) managed(person string) bool {

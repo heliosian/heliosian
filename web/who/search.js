@@ -1,23 +1,22 @@
-import {state, peopleOf} from './state.js';
-import {withFrom, slugify, firstName} from './dom.js';
+import {model, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeName, gradePath, classroomPath} from './state.js';
+import {withFrom, firstName} from './dom.js';
 import {el} from '/elements.js';
-import {familyOf} from './families.js';
 import {personLink, photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
-import {gradeImage} from './pages/classrooms.js';
+import {gradeImage, classroomImage} from './pages/classrooms.js';
 import {searchInput} from '/shell.js';
 
 function personSearchSubtitle(p) {
-  if (p.isStudent) {
+  if (isStudent(p)) {
     return gradeChain(p);
   }
-  if (p.isStaff) {
-    return p.jobTitle || roleLabel(p);
+  if (isStaff(p)) {
+    return p.job_title || roleLabel(p);
   }
   const family = familyOf(p);
-  const kids = family ? peopleOf(family.kids) : [];
+  const kids = family ? kidsOf(family) : [];
   if (kids.length) {
-    const names = kids.map(k => firstName(k.fullName)).join(', ');
-    const grades = [...new Set(kids.map(k => k.grade).filter(Boolean))].join(', ');
+    const names = kids.map(k => firstName(k.name_show)).join(', ');
+    const grades = [...new Set(kids.map(gradeName).filter(Boolean))].join(', ');
     return `Parent to ${names}${grades ? ` (${grades})` : ''}`;
   }
   return roleLabel(p);
@@ -26,17 +25,17 @@ function personSearchSubtitle(p) {
 function renderGlobalSearchResults(resultsEl, query) {
   const q = query.trim().toLowerCase();
   resultsEl.replaceChildren();
-  if (!q || !state.model) {
+  if (!q || !model.people.length) {
     resultsEl.hidden = true;
     return;
   }
-  const people = state.model.people
-    .filter(p => p.fullName.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
+  const people = model.people
+    .filter(p => p.name_show.toLowerCase().includes(q) || emailOf(p).toLowerCase().includes(q))
     .slice(0, 8);
-  const grades = state.model.grades
+  const grades = model.grades
     .filter(g => g.name.toLowerCase().includes(q))
     .slice(0, 5);
-  const classrooms = state.model.classrooms
+  const classrooms = model.classrooms
     .filter(c => c.name.toLowerCase().includes(q))
     .slice(0, 5);
 
@@ -59,9 +58,9 @@ function renderGlobalSearchResults(resultsEl, query) {
   group('People', people, p => {
     const row = el('a', 'gsearch-result');
     row.href = personLink(p);
-    row.append(photoOrInitials(personPhotoUrl(p), p.fullName, 'gsearch-avatar'));
+    row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
-    info.append(el('div', 'gsearch-title', p.fullName));
+    info.append(el('div', 'gsearch-title', p.name_show));
     const sub = personSearchSubtitle(p);
     if (sub) {
       info.append(el('div', 'gsearch-sub', sub));
@@ -72,8 +71,8 @@ function renderGlobalSearchResults(resultsEl, query) {
 
   group('Grades', grades, g => {
     const row = el('a', 'gsearch-result');
-    row.href = withFrom('/grades/' + slugify(g.name));
-    row.append(photoOrInitials(gradeImage(g.name), g.name, 'gsearch-avatar'));
+    row.href = withFrom(gradePath(g));
+    row.append(photoOrInitials(gradeImage(g), g.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', g.name));
     row.append(info);
@@ -82,8 +81,8 @@ function renderGlobalSearchResults(resultsEl, query) {
 
   group('Gradebands', classrooms, c => {
     const row = el('a', 'gsearch-result');
-    row.href = withFrom('/classrooms/' + slugify(c.name));
-    row.append(photoOrInitials(c.imageUrl, c.name, 'gsearch-avatar'));
+    row.href = withFrom(classroomPath(c));
+    row.append(photoOrInitials(classroomImage(c), c.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', c.name));
     row.append(info);

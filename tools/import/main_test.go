@@ -260,7 +260,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	if wren == nil || wren["vc_name_sort"] != "Ashdown, Wren" || wren["vc_grade"] != "K" {
 		t.Fatalf("Wren reads %v", wren)
 	}
-	want := []string{"classroom:Oak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
+	want := []string{"classroom:Oakoak:member", "crew:Acorn:member", "family:Ashdown Family:member", "grade:Kindergartengrade-k:member", "group:Studentsstudents:member"}
 	if got := groupsOf(s, wren["id"]); !slices.Equal(got, want) {
 		t.Fatalf("Wren is in %v", got)
 	}
@@ -344,5 +344,35 @@ func TestImportAgainstTheSample(t *testing.T) {
 		if g, _ := m.Table("GROUP").Get(r["group"]); g["kind"] == "group" && slices.Contains([]string{"students", "parents", "staff", "adults", "everyone"}, g["slug"]) {
 			t.Fatalf("deactivated, Maya is still in the %s role group", g["slug"])
 		}
+	}
+}
+
+func TestSlugsFollowThePrimaryAddress(t *testing.T) {
+	c, s := sampleServer(t)
+	x := sampleExport(t, true)
+	importOnce(t, c, x)
+	for name, want := range map[string]string{"Sam (Samuel) Ashdown": "sam", "Ines Okafor": "ines", "Rowan Ashdown": "rowan.ashdown", "Wren (Wrennie) Ashdown": ""} {
+		if got := personNamed(s, name)["slug"]; got != want {
+			t.Fatalf("%s's slug is %q, want %q", name, got, want)
+		}
+	}
+	if guest, _ := s.Model().Table("PERSON").Get("per00000000004"); guest["slug"] != "" {
+		t.Fatalf("a guest got a slug: %v", guest)
+	}
+	for i := range x.entries {
+		if slices.Contains(x.entries[i].emails, "sam@example.org") {
+			x.entries[i].emails = []string{"samuel.ashdown@example.org"}
+		}
+	}
+	p, _ := importOnce(t, c, x)
+	sam := personNamed(s, "Sam (Samuel) Ashdown")
+	if sam["slug"] != "samuel.ashdown" || p.counts["old slugs aliased"] != 1 {
+		t.Fatalf("Sam's address changed: slug %q, %v", sam["slug"], p.counts)
+	}
+	if alias, ok := s.Model().Table("ALIAS").Find("sam"); !ok || alias["target"] != sam["id"] {
+		t.Fatalf("Sam's old slug names %v", alias)
+	}
+	if p, _ := importOnce(t, c, x); len(p.batch) != 0 {
+		t.Fatalf("a second run changed %v: %v", p.counts, p.batch)
 	}
 }

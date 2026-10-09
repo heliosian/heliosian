@@ -1,41 +1,32 @@
-import {state, familiesById, peopleOf, viewer} from './state.js';
+import {model, viewer, familyOf, membersOf, kidsOf, gradeName, familyShortName, thumbOf} from './state.js';
 import {withFrom, firstName} from './dom.js';
+import {familyPhoto} from './people.js';
 
-export function familyLink(key) {
-  return withFrom('/families/' + encodeURIComponent(key));
+export function familyPath(family) {
+  return '/families/' + encodeURIComponent(family.id);
 }
 
-export function familiesOf(p) {
-  return (p && familiesById[p.id]) || [];
+export function familyLink(family) {
+  return withFrom(familyPath(family));
 }
 
-export function familyOf(p) {
-  return familiesOf(p)[0];
-}
-
-export function myFamilyKey() {
-  const family = familyOf(viewer());
-  return (family && family.id) || '';
+export function myFamily() {
+  return familyOf(viewer());
 }
 
 export function familyEntries() {
-  return Object.values(state.model.families)
-    .filter(f => f.kids.length)
-    .map(f => {
-      const members = peopleOf([...f.kids, ...f.adults]);
-      const kidGrades = [...new Set(peopleOf(f.kids).map(k => k.grade).filter(Boolean))];
-      return {
-        key: f.id,
-        name: f.shortName || '',
-        grades: kidGrades,
-        members: members.map(p => firstName(p.fullName)).filter(Boolean),
-        photoUrl: f.photoUrl,
-        href: familyLink(f.id),
-      };
-    });
+  return model.families
+    .filter(f => kidsOf(f).length)
+    .map(f => ({
+      family: f,
+      name: familyShortName(f),
+      grades: [...new Set(kidsOf(f).map(gradeName).filter(Boolean))],
+      members: membersOf(f).map(p => firstName(p.name_show)).filter(Boolean),
+      photoUrl: thumbOf(familyPhoto(f)),
+      href: familyLink(f),
+    }));
 }
 
 export function familySearchText(family) {
-  const members = peopleOf([...family.kids, ...family.adults]).map(p => p.fullName);
-  return `${family.name || ''} ${members.join(' ')}`.toLowerCase();
+  return `${family.name || ''} ${membersOf(family).map(p => p.name_show).join(' ')}`.toLowerCase();
 }

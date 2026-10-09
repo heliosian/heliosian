@@ -1,6 +1,6 @@
 import {el} from '/elements.js';
 import {api} from '/api.js';
-import {listed} from '/directory.js';
+import {listed, emailOf, wordsOf} from '/directory.js';
 
 const pages = [['resources', '/resources'], ['query', '/query'], ['search', '/search'], ['queues', '/queues'], ['policies', '/policies'], ['erd', '/erd']];
 
@@ -58,14 +58,14 @@ async function initSpoof(box) {
   if (!state.canSpoof) {
     return;
   }
-  const open = el('button', '', state.spoofing ? `viewing as ${state.spoofing.fullName}` : 'view as…');
+  const open = el('button', '', state.spoofing ? `viewing as ${state.spoofing.name}` : 'view as…');
   open.type = 'button';
   box.append(open);
   if (state.spoofing) {
     box.classList.add('on');
     const stop = el('button', 'stop', '×');
     stop.type = 'button';
-    stop.title = 'Stop viewing as ' + state.spoofing.fullName;
+    stop.title = 'Stop viewing as ' + state.spoofing.name;
     stop.addEventListener('click', () => setSpoof(''));
     box.append(stop);
   }
@@ -77,26 +77,26 @@ async function initSpoof(box) {
   const results = el('div');
   menu.append(search, results);
   box.append(menu);
-  const row = p => {
+  const row = (name, email, words) => {
     const b = el('button', 'person');
     b.type = 'button';
-    b.append(el('span', '', p.fullName), el('span', 'words', p.words || p.email));
-    b.addEventListener('click', () => setSpoof(p.email));
+    b.append(el('span', '', name), el('span', 'words', words || email));
+    b.addEventListener('click', () => setSpoof(email));
     return b;
   };
   let people;
   const show = () => {
     const q = search.value.trim().toLowerCase();
     if (!q) {
-      results.replaceChildren(...(state.recent.length ? [el('div', 'section', 'recent'), ...state.recent.map(row)] : []));
+      results.replaceChildren(...(state.recent.length ? [el('div', 'section', 'recent'), ...state.recent.map(p => row(p.name, p.email, ''))] : []));
       return;
     }
     if (!people) {
       results.replaceChildren(el('div', 'empty', 'loading…'));
       return;
     }
-    const found = people.filter(p => [p.fullName, p.email, p.words].some(v => (v || '').toLowerCase().includes(q))).slice(0, 10);
-    results.replaceChildren(...(found.length ? found.map(row) : [el('div', 'empty', 'nobody matches')]));
+    const found = people.filter(p => [p.name_show, emailOf(p), wordsOf(p)].some(v => v.toLowerCase().includes(q))).slice(0, 10);
+    results.replaceChildren(...(found.length ? found.map(p => row(p.name_show, emailOf(p), wordsOf(p))) : [el('div', 'empty', 'nobody matches')]));
   };
   open.addEventListener('click', e => {
     e.stopPropagation();

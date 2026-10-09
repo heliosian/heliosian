@@ -185,6 +185,7 @@ var Tables = []Table{
 			col("name_sort_override", Text).about("Their sorting name as set in the app, in place of vc_name_sort."),
 			generated("name_sort").about("Their sorting name: the override, else the import's."),
 			generated("name_show").about("The name to show: name_long, else Guest for a guest, else [Missing Name]."),
+			col("slug", Text).about("Their short name in Who?'s addresses (/people/<slug>): the part of their primary address before the @, in lower case. Written by the import; a guest has none."),
 			enum("vc_grade", grades...).about("A student's grade as Veracross has it. Written by the import; grade_override overrides it."),
 			enum("grade_override", grades...).about("A student's grade as set in the app, in place of vc_grade."),
 			{Name: "grade", Kind: Enum, Values: grades, Generated: true, Description: "A student's grade: the override, else Veracross's."},

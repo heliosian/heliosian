@@ -1,8 +1,9 @@
-import {state, peopleOf} from '../state.js';
-import {thumbUrl, withFrom} from '../dom.js';
+import {state, model, membersOf, geocodeOf, photosOf, thumbOf, familyName} from '../state.js';
+import {withFrom} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {matchesFilters, familyMatchesFilters, directoryFilter} from '../filters.js';
+import {mapsKey} from '/maps.js';
 
 let mapsPromise = null;
 
@@ -11,8 +12,7 @@ function loadMaps() {
     mapsPromise = new Promise(resolve => {
       window._mapsReady = resolve;
       const script = el('script');
-      script.src = 'https://maps.googleapis.com/maps/api/js?key=' +
-        encodeURIComponent(state.model.mapsKey) + '&callback=_mapsReady';
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=' + encodeURIComponent(mapsKey) + '&callback=_mapsReady';
       script.async = true;
       document.head.append(script);
     });
@@ -27,19 +27,20 @@ const pinIcon = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
 
 function familyMapPopup(family) {
   const box = el('div', 'map-popup');
-  if (family.photoUrl) {
+  const photo = photosOf(family.id)[0];
+  if (photo) {
     const img = el('img', 'map-popup-photo');
-    img.src = thumbUrl(family.photoUrl);
+    img.src = thumbOf(photo);
     img.alt = '';
     box.append(img);
   }
   const body = el('div', 'map-popup-body');
-  body.append(el('div', 'map-popup-name', family.name));
+  body.append(el('div', 'map-popup-name', familyName(family)));
   if (family.address) {
     body.append(el('div', 'map-popup-sub', family.address));
   }
   const link = el('a', 'map-popup-link', 'See family');
-  link.href = familyLink(family.id);
+  link.href = familyLink(family);
   body.append(link);
   box.append(body);
   return box;
@@ -62,28 +63,26 @@ export function initFamilyMap(canvas, familyMatches) {
     markers = [];
     const allPeople = new Map();
     const withoutAddress = new Map();
-    for (const family of Object.values(state.model.families)) {
+    for (const family of model.families) {
       if (!familyMatches(family)) {
         continue;
       }
-      const matchingMembers = peopleOf([...family.kids, ...family.adults]).filter(matchesFilters);
+      const matchingMembers = membersOf(family).filter(matchesFilters);
       for (const p of matchingMembers) {
         allPeople.set(p.id, p);
       }
-      if (!family.address || family.veracrossAddress === 'partial') {
+      const at = geocodeOf(family.address);
+      if (!at) {
         for (const p of matchingMembers) {
           withoutAddress.set(p.id, p);
         }
         continue;
       }
-      if (!family.lat && !family.lng) {
-        continue;
-      }
       const marker = new google.maps.Marker({
         map,
-        position: {lat: family.lat, lng: family.lng},
+        position: at,
         icon: {url: pinIcon, anchor: new google.maps.Point(17, 33)},
-        title: family.name,
+        title: familyName(family),
       });
       marker.addListener('click', () => {
         info.setContent(familyMapPopup(family));
@@ -95,7 +94,7 @@ export function initFamilyMap(canvas, familyMatches) {
     if (withoutAddress.size > 10) {
       missing.textContent = `${withoutAddress.size} of ${allPeople.size} people not shown — no street address on file`;
     } else if (withoutAddress.size) {
-      const names = [...withoutAddress.values()].map(p => p.fullName).sort((a, b) => a.localeCompare(b));
+      const names = [...withoutAddress.values()].map(p => p.name_show).sort((a, b) => a.localeCompare(b));
       missing.textContent = `Not shown, no street address on file: ${names.join(', ')}`;
     }
   }
@@ -112,9 +111,10 @@ export function initFamilyMap(canvas, familyMatches) {
     info = new google.maps.InfoWindow({headerDisabled: true});
     map.addListener('click', () => info.close());
     const bounds = new google.maps.LatLngBounds();
-    for (const family of Object.values(state.model.families)) {
-      if ((family.lat || family.lng) && family.veracrossAddress !== 'partial' && familyMatches(family)) {
-        bounds.extend({lat: family.lat, lng: family.lng});
+    for (const family of model.families) {
+      const at = geocodeOf(family.address);
+      if (at && familyMatches(family)) {
+        bounds.extend(at);
       }
     }
     map.fitBounds(bounds);
@@ -157,6 +157,6 @@ export function mapPage() {
   content.append(update);
   page.append(content);
 
-  renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family.id) && familySearchText(family).includes(state.q));
+  renderPins = initFamilyMap(canvas, family => familyMatchesFilters(family) && familySearchText(family).includes(state.q));
   return page;
 }

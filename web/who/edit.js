@@ -1,27 +1,37 @@
 import {el, svg} from '/elements.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
-import {act} from '/data.js';
-
-const types = {person: 'people', family: 'families'};
-const photoActions = {person: 'add-photo', family: 'photo'};
+import {write} from './state.js';
+import {keyBetween} from '/order.js';
 
 function failed(status, err) {
   status.classList.add('error');
   status.textContent = err.message;
 }
 
-export async function submitEdit(target, id, body, status) {
+export function today() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+export async function saveCells(id, cells, status) {
   status.classList.remove('error');
   status.textContent = 'Saving…';
   try {
-    await act(types[target], id, 'edit', body);
+    await write([{set: id, cells}]);
   } catch (err) {
     failed(status, err);
     return false;
   }
   await load();
   return true;
+}
+
+export function namesFor(p, preferred) {
+  const last = (p.name_sort || '').split(',')[0].trim();
+  if (!preferred) {
+    return {name_short_override: '', name_long_override: '', name_sort_override: ''};
+  }
+  return {name_short_override: preferred, name_long_override: last ? `${preferred} ${last}` : preferred, name_sort_override: last ? `${last}, ${preferred}` : preferred};
 }
 
 export function editPencil(title) {
@@ -74,19 +84,19 @@ export function fieldEditor(anchor, pencil, opts) {
   input.focus();
 }
 
-export async function storeMedia(kind, file, name) {
-  const form = new FormData();
-  form.append('kind', kind);
-  form.append('file', file, name);
-  return (await api('POST', '/api/directory/media', form)).name;
-}
-
-export async function submitMedia(target, id, kind, file, name, status) {
+export async function uploadPhoto(target, file, status) {
   status.classList.remove('error');
   status.textContent = 'Uploading…';
+  const form = new FormData();
+  for (const [k, v] of Object.entries(target)) {
+    form.append(k, v);
+  }
+  form.append('photo', file, file.name || 'photo');
   try {
-    const stored = await storeMedia(kind, file, name);
-    await act(types[target], id, kind === 'pronunciation' ? 'pronunciation' : photoActions[target], {name: stored});
+    await api('POST', '/api/do/photo', form);
+    if (target.person) {
+      await write([{set: target.person, cells: {photo_updated: today()}}]);
+    }
   } catch (err) {
     failed(status, err);
     return;
@@ -94,27 +104,38 @@ export async function submitMedia(target, id, kind, file, name, status) {
   await load();
 }
 
-export async function submitPhotoOrder(id, order, status, onError) {
+export async function movePhoto(photos, from, to, status) {
+  const rest = photos.filter((_, i) => i !== from);
+  const key = keyBetween(rest[to - 1] && rest[to - 1].order, rest[to] && rest[to].order);
   status.classList.remove('error');
   try {
-    await act('people', id, 'order-photos', {names: order});
+    await write([{set: photos[from].id, cells: {order: key}}]);
   } catch (err) {
     failed(status, err);
-    if (onError) {
-      onError();
-    }
     return false;
   }
   await load();
   return true;
 }
 
-export async function submitCrop(target, id, name, blob, status) {
+export async function removePhoto(photo, status) {
+  status.classList.remove('error');
+  status.textContent = 'Removing…';
+  try {
+    await write([{delete: photo.id}]);
+  } catch (err) {
+    failed(status, err);
+    return false;
+  }
+  await load();
+  return true;
+}
+
+export async function cropPhoto(photo, box, status) {
   status.classList.remove('error');
   status.textContent = 'Saving crop…';
   try {
-    const crop = await storeMedia('photo', blob, 'crop.jpg');
-    await act(types[target], id, 'crop-photo', target === 'family' ? {crop} : {name, crop});
+    await write([{set: photo.id, cells: {crop_left: box.left, crop_top: box.top, crop_width: box.width, crop_height: box.height}}]);
   } catch (err) {
     failed(status, err);
     return false;
@@ -123,7 +144,24 @@ export async function submitCrop(target, id, name, blob, status) {
   return true;
 }
 
-export function uploadIcon(iconName, title, accept, target, id, kind, status) {
+async function record(target, blob, name, status) {
+  status.classList.remove('error');
+  status.textContent = 'Uploading…';
+  const form = new FormData();
+  for (const [k, v] of Object.entries(target)) {
+    form.append(k, v);
+  }
+  form.append('recording', blob, name);
+  try {
+    await api('POST', '/api/do/pronunciation', form);
+  } catch (err) {
+    failed(status, err);
+    return;
+  }
+  await load();
+}
+
+export function uploadIcon(iconName, title, accept, onFile) {
   const wrap = el('label', 'edit-icon');
   wrap.title = title;
   wrap.append(svg(iconName));
@@ -133,14 +171,14 @@ export function uploadIcon(iconName, title, accept, target, id, kind, status) {
   input.hidden = true;
   input.addEventListener('change', () => {
     if (input.files.length) {
-      submitMedia(target, id, kind, input.files[0], input.files[0].name, status);
+      onFile(input.files[0]);
     }
   });
   wrap.append(input);
   return wrap;
 }
 
-function recordIcon(target, id, status, preview) {
+function recordIcon(target, status, preview) {
   const button = el('button', 'edit-icon');
   button.title = 'Record pronunciation';
   button.append(svg('mic'));
@@ -176,7 +214,7 @@ function recordIcon(target, id, status, preview) {
       audio.controls = true;
       audio.src = URL.createObjectURL(blob);
       const save = el('button', 'media-button primary', 'Save');
-      save.addEventListener('click', () => submitMedia(target, id, 'pronunciation', blob, 'recording', status));
+      save.addEventListener('click', () => record(target, blob, 'recording', status));
       const discard = el('button', 'media-button', 'Discard');
       discard.addEventListener('click', () => preview.replaceChildren());
       preview.append(audio, save, discard);
@@ -187,22 +225,12 @@ function recordIcon(target, id, status, preview) {
   return button;
 }
 
-function deletePronunciationIcon(target, id, status) {
+function deletePronunciationIcon(id, status) {
   const button = el('button', 'edit-icon');
   button.type = 'button';
   button.title = 'Delete pronunciation';
   button.append(svg('trash'));
-  button.addEventListener('click', async () => {
-    status.classList.remove('error');
-    status.textContent = 'Saving…';
-    try {
-      await act(types[target], id, 'pronunciation', {name: ''});
-    } catch (err) {
-      failed(status, err);
-      return;
-    }
-    await load();
-  });
+  button.addEventListener('click', () => saveCells(id, {pronunciation: ''}, status));
   return button;
 }
 
@@ -211,10 +239,10 @@ export function pronounceEditor(target, id, hasPronunciation) {
   const actions = el('div', 'pronounce-actions');
   const status = el('div', 'media-status');
   const preview = el('div', 'record-preview');
-  actions.append(recordIcon(target, id, status, preview));
-  actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', target, id, 'pronunciation', status));
+  actions.append(recordIcon(target, status, preview));
+  actions.append(uploadIcon('upload', 'Upload an audio file', 'audio/*', file => record(target, file, file.name, status)));
   if (hasPronunciation) {
-    actions.append(deletePronunciationIcon(target, id, status));
+    actions.append(deletePronunciationIcon(id, status));
   }
   box.append(actions, status, preview);
   return box;

@@ -1,15 +1,16 @@
 package who
 
 import (
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 )
 
-var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "admin"}
+var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "my-family", "admin"}
 
 var legacy = map[string]string{
 	"people":   "/people",
@@ -20,41 +21,29 @@ var legacy = map[string]string{
 	"emails":   "/email-list",
 }
 
-type app struct {
-	store *model.Store
-}
-
 func OptInForm(optIn func() string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, optIn(), http.StatusFound)
 	})
 }
 
-func Register(mux *http.ServeMux, s *model.Store, about *sharecard.About) {
-	a := app{store: s}
+func Register(mux *http.ServeMux, about *sharecard.About, mapsKey string) {
 	mux.Handle("GET /open/share/about.png", about)
+	mux.HandleFunc("GET /maps.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+		fmt.Fprintf(w, "export const mapsKey = %s;\n", strconv.Quote(mapsKey))
+	})
 	for _, section := range sections {
-		mux.HandleFunc("GET /"+section, a.page)
+		mux.HandleFunc("GET /"+section, page)
 	}
-	mux.HandleFunc("GET /my-family", a.myFamily)
-	mux.HandleFunc("GET /people/{email}", a.page)
-	mux.HandleFunc("GET /families/{key}", a.page)
-	mux.HandleFunc("GET /classrooms/{name}", a.page)
-	mux.HandleFunc("GET /grades/{name}", a.page)
-	mux.HandleFunc("GET /dl/", a.legacyRedirect)
+	mux.HandleFunc("GET /people/{id}", page)
+	mux.HandleFunc("GET /families/{id}", page)
+	mux.HandleFunc("GET /classrooms/{slug}", page)
+	mux.HandleFunc("GET /grades/{slug}", page)
+	mux.HandleFunc("GET /dl/", legacyRedirect)
 }
 
-func (a app) myFamily(w http.ResponseWriter, r *http.Request) {
-	m := a.store.Model()
-	email := m.Directory.Actor(r, m.AdminList("who").Held).Email
-	if family, ok := m.Directory.FamilyOf(email); ok {
-		http.Redirect(w, r, model.FamilyPath(family.Key), http.StatusFound)
-		return
-	}
-	http.Error(w, "no family record for "+email, http.StatusNotFound)
-}
-
-func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {
+func legacyRedirect(w http.ResponseWriter, r *http.Request) {
 	first, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/dl/"), "/")
 	target, ok := legacy[first]
 	if !ok {
@@ -63,6 +52,6 @@ func (a app) legacyRedirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, target, http.StatusMovedPermanently)
 }
 
-func (a app) page(w http.ResponseWriter, r *http.Request) {
+func page(w http.ResponseWriter, r *http.Request) {
 	serve.File(w, r, "web/who/index.html")
 }

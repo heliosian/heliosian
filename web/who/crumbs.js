@@ -1,5 +1,4 @@
-import {state} from './state.js';
-import {slugify} from './dom.js';
+import {classroomByKey, gradeByKey} from './state.js';
 import {el, svg} from '/elements.js';
 import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
 import {setChrome} from './chrome.js';
@@ -25,20 +24,19 @@ export function fromCrumbs() {
   const seg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const back = from.pathname + from.search;
   if (seg[0] === 'grades' && seg[1]) {
-    const grade = state.model.grades.find(g => slugify(g.name) === seg[1]);
+    const grade = gradeByKey(seg[1]);
     if (grade) {
       return [['Gradebands', classroomsBackOf(from)], [grade.name, back]];
     }
   }
   if (seg[0] === 'classrooms' && seg[1]) {
-    const classroom = state.model.classrooms.find(c => slugify(c.name) === seg[1]);
+    const classroom = classroomByKey(seg[1]);
     if (classroom) {
       return [['Gradebands', classroomsBackOf(from)], [classroom.name, back]];
     }
   }
   if (seg[0] === 'people' && !seg[1]) {
-    const tag = new URLSearchParams(from.search).get('tag');
-    return [[tag || 'People', back]];
+    return [['People', back]];
   }
   if (seg[0] === 'classrooms') {
     return [['Gradebands', back]];

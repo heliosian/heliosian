@@ -315,7 +315,7 @@ func TestSpoofResolvesTheTargetOnlyWhenItHolds(t *testing.T) {
 		Allowed: func(email string) bool { return allowed[email] },
 		Person: func(email string) (Person, bool) {
 			if email == "parent@heliosschool.org" || email == "alias@heliosschool.org" {
-				return Person{Email: "parent@heliosschool.org", FullName: "A Parent"}, true
+				return Person{Email: "parent@heliosschool.org", Name: "A Parent"}, true
 			}
 			return Person{}, false
 		},
@@ -435,7 +435,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 		Allowed: func(email string) bool { return email == "admin@heliosschool.org" },
 		Person: func(email string) (Person, bool) {
 			if strings.HasPrefix(email, "p") {
-				return Person{Email: email, FullName: "Person " + email}, true
+				return Person{Email: email, Name: "Person " + email}, true
 			}
 			return Person{}, false
 		},

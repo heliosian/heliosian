@@ -690,8 +690,7 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {
 	switch head := s.head(); head {
 	case "select":
-		set, t, err := cx.selectSet(s, sc, x)
-		return set, t, false, err
+		return cx.selectSet(s, sc, x)
 	case "ancestors":
 		if len(s.list) != 2 {
 			return nil, typ{}, false, s.errorf("ancestors takes one row")
@@ -736,21 +735,21 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 	return nil, typ{}, false, s.errorf("in takes literals or one select")
 }
 
-func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, error) {
+func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {
 	if len(s.list) < 2 || s.list[1].isList || s.list[1].kind != atomName {
-		return nil, typ{}, s.errorf("select names TABLE.column")
+		return nil, typ{}, false, s.errorf("select names TABLE.column")
 	}
 	tableName, columnName, ok := strings.Cut(s.list[1].text, ".")
 	if !ok {
-		return nil, typ{}, s.list[1].errorf("select names TABLE.column")
+		return nil, typ{}, false, s.list[1].errorf("select names TABLE.column")
 	}
 	t, err := tableNamed(&sexp{text: tableName, pos: s.list[1].pos})
 	if err != nil {
-		return nil, typ{}, err
+		return nil, typ{}, false, err
 	}
 	c, err := columnNamed(t, columnName, s.list[1])
 	if err != nil {
-		return nil, typ{}, err
+		return nil, typ{}, false, err
 	}
 	inner := &scan{table: t, guarded: !cx.policy}
 	cx.hidden++
@@ -759,7 +758,7 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 	mark := len(cx.touched)
 	inner.conds, err = cx.conds(s.list[2:], within)
 	if err != nil {
-		return nil, typ{}, err
+		return nil, typ{}, false, err
 	}
 	inner.constant = cx.closed(mark, within)
 	inner.pickProbe()
@@ -779,7 +778,7 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 			f.run.selects[inner] = out
 		}
 		return out
-	}, ct, nil
+	}, ct, inner.constant, nil
 }
 
 func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {

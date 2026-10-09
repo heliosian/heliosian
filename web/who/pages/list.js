@@ -1,12 +1,12 @@
-import {state, byId, lists, tags, peopleOf} from '../state.js';
+import {state, model, lists, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
 import {csvField} from '../dom.js';
 import {dataGrid} from '/datagrid.js';
 import {el, svg} from '/elements.js';
-import {familiesOf, familyOf, familySearchText} from '../families.js';
-import {personCard, personLink, guestCard, guestPerson} from '../people.js';
-import {tagControl, onTagsChange, listLabel, tagFacetOptions, listSource, sharedOf, managersOf, manageControl, selectedGuests} from '../tags.js';
+import {familySearchText} from '../families.js';
+import {personCard, personLink} from '../people.js';
+import {tagControl, onTagsChange, tagLabel, tagFacetOptions, listSource, sharedTag, otherManagers, manageControl, selectedGuests} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
-import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, directoryFilter, tagRelationOptionsFor} from '../filters.js';
+import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter, tagRelationOptionsFor} from '../filters.js';
 import {facetDropdown, familyDropdown} from '/rules.js';
 import {initFamilyMap} from './map.js';
 
@@ -43,22 +43,20 @@ function renderTagMap(container) {
   const canvas = el('div', 'map-canvas');
   container.append(canvas);
   const q = state.q;
-  initFamilyMap(canvas, family => familyMatchesFilters(family.id) && familySearchText(family).includes(q));
+  initFamilyMap(canvas, family => familyMatchesFilters(family) && familySearchText(family).includes(q));
 }
 
 const emailColumns = [
-  {label: 'Full Name', get: r => r.p.fullName},
-  {label: 'Email', get: r => r.p.email},
+  {label: 'Full Name', get: r => r.p.name_show},
+  {label: 'Email', get: r => emailOf(r.p)},
   {label: 'Role', get: r => r.role},
   {label: 'Grade', get: r => r.grade},
   {label: 'Classroom', get: r => r.classroom},
 ];
 
-function kidsField(parent, field) {
+function kidsField(parent, of) {
   const family = familyOf(parent);
-  const values = (family ? peopleOf(family.kids) : [])
-    .map(k => k[field])
-    .filter(Boolean);
+  const values = (family ? kidsOf(family) : []).map(of).filter(Boolean);
   return [...new Set(values)].join(', ');
 }
 
@@ -66,27 +64,22 @@ function emailEntries() {
   const rows = [];
   const seen = new Set();
   const add = (p, role, grade, classroom) => {
-    if (!p.email || seen.has(p.id)) {
+    if (!emailOf(p) || seen.has(p.id)) {
       return;
     }
     seen.add(p.id);
     rows.push({p, role, grade, classroom});
   };
-  const students = state.model.people
-    .filter(p => p.isStudent)
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  for (const s of students) {
-    add(s, 'Student', s.grade || '', s.classroom || '');
+  const byName = (a, b) => a.name_show.localeCompare(b.name_show);
+  for (const s of model.people.filter(isStudent).sort(byName)) {
+    add(s, 'Student', gradeName(s), classroomName(s));
     for (const family of familiesOf(s)) {
-      for (const parent of peopleOf(family.adults)) {
-        add(parent, 'Parent', kidsField(parent, 'grade'), kidsField(parent, 'classroom'));
+      for (const parent of adultsOf(family)) {
+        add(parent, 'Parent', kidsField(parent, gradeName), kidsField(parent, classroomName));
       }
     }
   }
-  const staff = state.model.people
-    .filter(p => p.isStaff)
-    .sort((a, b) => a.fullName.localeCompare(b.fullName));
-  for (const s of staff) {
+  for (const s of model.people.filter(isStaff).sort(byName)) {
     add(s, 'Staff', '', '');
   }
   return rows;
@@ -95,10 +88,10 @@ function emailEntries() {
 export function listPage() {
   const page = document.createDocumentFragment();
 
-  const title = state.filterTags.size ? [...state.filterTags].map(listLabel).join(', ') : 'Everyone';
-  const smart = state.filterTags.size === 1 ? lists[[...state.filterTags][0]] : null;
-  const ownTag = state.filterTags.size === 1 && !smart && tags[[...state.filterTags][0]] ? [...state.filterTags][0] : null;
-  const sharedTag = state.filterTags.size === 1 ? sharedOf([...state.filterTags][0]) : null;
+  const title = state.filterTags.size ? [...state.filterTags].map(tagLabel).join(', ') : 'Everyone';
+  const only = state.filterTags.size === 1 ? [...state.filterTags][0] : '';
+  const smart = only && lists[only] ? lists[only] : null;
+  const ownTag = only && tags[only] ? only : '';
 
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
@@ -121,37 +114,25 @@ export function listPage() {
     titleWrap.append(line);
   }
   const chip = p => {
-    const a = el('a', 'tag-chip person-chip', p.fullName);
+    const a = el('a', 'tag-chip person-chip', p.name_show);
     a.href = personLink(p);
     return a;
-  };
-  const ownerChip = t => {
-    const owner = byId[t.owner];
-    return owner ? chip(owner) : el('a', 'tag-chip person-chip', t.ownerName);
-  };
-  const chips = (target, ids, joiner) => {
-    const people = peopleOf(ids);
-    people.forEach((p, i) => {
-      if (i) {
-        target.append(el('span', '', i === people.length - 1 ? ` ${joiner} ` : ', '));
-      }
-      target.append(chip(p));
-    });
   };
   const ownership = el('div', 'page-subtitle tag-ownership');
   const paintOwnership = () => {
     ownership.replaceChildren();
-    if (sharedTag) {
-      const others = sharedTag.managers.filter(id => id !== state.model.user.id);
-      ownership.append(svg('families'), ownerChip(sharedTag), el('span', '', "'s tag, shared with you" + (others.length ? ' and ' : '')));
-      chips(ownership, others, 'and');
-    } else if (ownTag && managersOf(ownTag).length) {
-      ownership.append(svg('families'), el('span', '', 'Managed with '));
-      chips(ownership, managersOf(ownTag), 'and');
-    } else {
+    const others = ownTag ? peopleOf(otherManagers(ownTag)) : [];
+    if (!ownTag || !sharedTag(ownTag)) {
       ownership.hidden = true;
       return;
     }
+    ownership.append(svg('families'), el('span', '', 'Managed with '));
+    others.forEach((p, i) => {
+      if (i) {
+        ownership.append(el('span', '', i === others.length - 1 ? ' and ' : ', '));
+      }
+      ownership.append(chip(p));
+    });
     ownership.hidden = false;
   };
   paintOwnership();
@@ -164,11 +145,10 @@ export function listPage() {
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
   const lead = el('div', 'controls-lead');
-  const familyOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
+  const familyOptions = only ? tagRelationOptionsFor(only) : [];
   if (familyOptions.length) {
-    const [activeTag] = state.filterTags;
     lead.append(familyDropdown(familyOptions, state.filterTagRelations, () => {
-      saveTagRelations(activeTag, state.filterTagRelations);
+      saveTagRelations(only, state.filterTagRelations);
       renderGrid();
     }));
   }
@@ -192,7 +172,7 @@ export function listPage() {
   if (!onTagPage) {
     facetFilters.append(
       facetDropdown('Grade', null, gradeOptions(), state.filterGrades, () => renderGrid()),
-      facetDropdown('Classroom', null, state.model.classrooms.map(c => c.name), state.filterClassrooms, () => renderGrid()),
+      facetDropdown('Classroom', null, classroomOptions(), state.filterClassrooms, () => renderGrid()),
     );
     controls.append(facetFilters);
   }
@@ -207,7 +187,7 @@ export function listPage() {
       tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
       facetFilters.append(tagsFacet);
     }
-    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, newToHelios: false});
+    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false});
     if (!onTagPage) {
       next.classList.add('mobile-filter');
     }
@@ -220,8 +200,8 @@ export function listPage() {
   };
   buildTagFilters();
   onTagsChange(buildTagFilters);
-  if (ownTag || sharedTag) {
-    lead.append(manageControl([...state.filterTags][0], paintOwnership));
+  if (ownTag) {
+    lead.append(manageControl(ownTag, paintOwnership));
     if (!lead.parentElement) {
       controls.classList.add('controls-spread');
       controls.prepend(lead);
@@ -240,11 +220,11 @@ export function listPage() {
 
   function renderEmailsTable(container, rows) {
     const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => {
-      const link = el('a', '', r.p.fullName);
+      const link = el('a', '', r.p.name_show);
       link.href = personLink(r.p);
       return link;
     }} : c));
-    const trailing = r => (r.p.guest ? el('span') : tagControl(r.p.id, 'tag-wrap', 'row-tag', () => {
+    const trailing = r => (r.p.source === 'guest' ? el('span') : tagControl(r.p.id, 'tag-wrap', 'row-tag', () => {
       if (state.filterTags.size) {
         renderGrid();
       }
@@ -256,8 +236,8 @@ export function listPage() {
     grid.replaceChildren();
     grid.className = '';
     const rows = emailEntries()
-      .filter(r => (r.p.fullName.toLowerCase().includes(state.q) || r.p.email.toLowerCase().includes(state.q)) && matchesFilters(r.p))
-      .concat(selectedGuests().map(g => ({p: guestPerson(g), role: 'Guest', grade: '', classroom: ''})));
+      .filter(r => (r.p.name_show.toLowerCase().includes(state.q) || emailOf(r.p).toLowerCase().includes(state.q)) && matchesFilters(r.p))
+      .concat(selectedGuests().map(g => ({p: g, role: 'Guest', grade: '', classroom: ''})));
     const csv = [emailColumns.map(c => c.label).join(',')]
       .concat(rows.map(r => emailColumns.map(c => csvField(c.get(r))).join(',')))
       .join('\n');
@@ -278,7 +258,7 @@ export function listPage() {
     }
     grid.className = 'people-grid directory-grid';
     for (const r of rows) {
-      grid.append(r.p.guest ? guestCard(r.p.guest) : personCard(r.p));
+      grid.append(personCard(r.p));
     }
   }
   renderGrid();
