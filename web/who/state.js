@@ -164,12 +164,13 @@ export async function loadModel() {
       tagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
       managed: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
       joined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
-      listMembers: `(from EFFECTIVE_MEMBER (where (or (in group (select GROUP.id @g ${listCondition})) (in group (select GROUP.rsvp_yes @g ${listCondition})))) (columns group person))`,
+      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (columns group person))`,
+      rsvpMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes @g ${listCondition}))) (columns group person))`,
       guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,
     }),
     oldTarget(name),
   ]);
-  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, listMembers, guests} = answers;
+  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, listMembers, rsvpMembers, guests} = answers;
   model.email = who.email;
   model.allowances = who.allowances;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
@@ -245,7 +246,7 @@ export async function loadModel() {
     }
   }
   loadTags(tagged, [tagMembers, tagManagers]);
-  loadLists(managed, joined, listMembers, guests);
+  loadLists(managed, joined, [listMembers, rsvpMembers], guests);
   model.moved = movedTo(name, oldId);
 }
 
@@ -319,7 +320,7 @@ function liveLists(rows, groups) {
   return live.filter(g => !ids.has(g.parent) && (!instance(g) || next[g.parent] === g));
 }
 
-function loadLists(managed, joined, members, guestRows) {
+function loadLists(managed, joined, memberAnswers, guestRows) {
   lists = {};
   const groups = {};
   for (const g of [...all(managed, 'GROUP'), ...all(joined, 'GROUP')]) {
@@ -338,7 +339,12 @@ function loadLists(managed, joined, members, guestRows) {
     byId[p.id] = byId[p.id] || p;
   }
   const people = {};
-  for (const e of rowsOf(members, 'EFFECTIVE_MEMBER')) {
+  const seen = new Set();
+  for (const e of memberAnswers.flatMap(a => rowsOf(a, 'EFFECTIVE_MEMBER'))) {
+    if (seen.has(e.id)) {
+      continue;
+    }
+    seen.add(e.id);
     (people[e.group] = people[e.group] || []).push(e.person);
   }
   for (const g of rows) {
