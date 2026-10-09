@@ -649,12 +649,14 @@ func (x *Searcher) fromBatch(toLoad []string) ([]*SearchEntry, []error, error) {
 	start := time.Now()
 	var held map[string]int64
 	var listErr error
+	var listTook time.Duration
 	listed := make(chan struct{})
 	go func() {
 		held, listErr = x.bucket.Generations(context.Background(), searchFolder+"/")
+		listTook = time.Since(start)
 		close(listed)
 	}()
-	batch, err := x.readBatch()
+	batch, getTook, decodeTook, err := x.readBatch()
 	<-listed
 	if err != nil {
 		return nil, nil, err
@@ -685,26 +687,28 @@ func (x *Searcher) fromBatch(toLoad []string) ([]*SearchEntry, []error, error) {
 			next[toLoad[i]] = batchEntry{Generation: held[toLoad[i]], Entry: got[j]}
 		}
 	}
-	slog.Info("search: read the batch", "held", len(batch), "listed", len(held), "fetched", len(fetch), "took", time.Since(start).Round(time.Millisecond))
+	slog.Info("search: read the batch", "held", len(batch), "listed", len(held), "fetched", len(fetch), "get", getTook.Round(time.Millisecond), "decode", decodeTook.Round(time.Millisecond), "list", listTook.Round(time.Millisecond), "took", time.Since(start).Round(time.Millisecond))
 	if len(fetch) > 0 || len(next) != len(batch) {
 		go x.writeBatch(next)
 	}
 	return loaded, errs, nil
 }
 
-func (x *Searcher) readBatch() (map[string]batchEntry, error) {
+func (x *Searcher) readBatch() (map[string]batchEntry, time.Duration, time.Duration, error) {
+	start := time.Now()
 	batch := map[string]batchEntry{}
 	raw, _, err := x.bucket.Get(context.Background(), searchBatch)
+	getTook := time.Since(start)
 	if errors.Is(err, blob.ErrNotFound) {
-		return batch, nil
+		return batch, getTook, 0, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, 0, err
 	}
 	if err := gob.NewDecoder(bytes.NewReader(raw)).Decode(&batch); err != nil {
-		return nil, fmt.Errorf("read %s: %w", searchBatch, err)
+		return nil, 0, 0, fmt.Errorf("read %s: %w", searchBatch, err)
 	}
-	return batch, nil
+	return batch, getTook, time.Since(start) - getTook, nil
 }
 
 func (x *Searcher) writeBatch(batch map[string]batchEntry) {
