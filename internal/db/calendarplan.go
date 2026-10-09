@@ -114,6 +114,9 @@ func (p *calendarPlan) deleteGroup(id string) {
 	if p.deleted[id] {
 		return
 	}
+	if g := p.groups[id]; g["rsvp_yes"] != "" || g["rsvp_no"] != "" {
+		p.edits = append(p.edits, Edit{Set: id, Cells: map[string]any{"rsvp_yes": "", "rsvp_no": ""}})
+	}
 	for _, child := range p.children[id] {
 		p.deleteGroup(child)
 	}

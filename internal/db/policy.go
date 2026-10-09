@@ -911,6 +911,14 @@ const PolicySource = `
 (read MEMBER (and (system "import") (calendar_kind group)))
 ; remove someone from a calendar group being removed
 (delete MEMBER (and (system "import") (calendar_kind @old.group)))
+; let go of a calendar group's Going group, to remove it with the group
+(set GROUP.rsvp_yes (and (system "import") (calendar_kind @old) (blank @new.rsvp_yes)))
+; let go of a calendar group's Not Going group, to remove it with the group
+(set GROUP.rsvp_no (and (system "import") (calendar_kind @old) (blank @new.rsvp_no)))
+; remove an answer in the Going or Not Going group of a calendar group being removed
+(delete MEMBER (and (system "import") (= @old.group.kind "group") (calendar_kind @old.group.parent)))
+; remove the Going or Not Going group of a calendar group being removed
+(delete GROUP (and (system "import") (= @old.kind "group") (calendar_kind @old.parent)))
 ; unlink a document from a calendar group being removed
 (delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
 ; the old IDs naming every calendar group, to remove them with it

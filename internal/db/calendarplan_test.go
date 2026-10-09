@@ -175,6 +175,42 @@ func TestGooglePlan(t *testing.T) {
 	}
 }
 
+func TestARemovedEventTakesItsAnswers(t *testing.T) {
+	s, queue := calendarSample(t)
+	from, to := feedWindow(testNow)
+	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
+	sync := func(feed []GoogleEvent) {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, err := NewVocabulary(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		classified := map[string]Classification{}
+		for _, it := range GoogleToClassify(rows, v, feed) {
+			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "parents"}
+		}
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified))
+	}
+	sync([]GoogleEvent{cafe})
+	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000901", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000902", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}),
+		store.Update("GROUP", store.Row{"id": event}, store.Row{"rsvp_yes": "grp00000000901", "rsvp_no": "grp00000000902"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000901", "group": "grp00000000901", "person": "per00000000002", "member": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	sync(nil)
+	m := s.Model()
+	for _, id := range []string{event, "grp00000000901", "grp00000000902", "mem00000000901"} {
+		if m.Has(id) {
+			t.Errorf("%s outlived its event leaving the feed", id)
+		}
+	}
+}
+
 func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 	s, queue := calendarSample(t)
 	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"})); err != nil {
