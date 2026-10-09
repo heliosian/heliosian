@@ -1,16 +1,12 @@
 import {el, svg} from '/elements.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
-import {write} from './state.js';
+import {write, today} from './state.js';
 import {keyBetween} from '/order.js';
 
 function failed(status, err) {
   status.classList.add('error');
   status.textContent = err.message;
-}
-
-export function today() {
-  return new Date().toLocaleDateString('en-CA');
 }
 
 export async function saveCells(id, cells, status) {

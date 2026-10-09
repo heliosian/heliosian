@@ -4,7 +4,7 @@ import {el, svg} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {myFamily} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagKeys, tagLabel, listKeys, listApp, sharedTag, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagKeys, tagLabel, listApp, listOf, listSections, sharedTag, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
@@ -229,40 +229,68 @@ function fillNav(nav) {
     for (const item of toolsNavItems) {
       renderItem(toolsBody, item);
     }
-    const params = new URLSearchParams(location.search);
-    const listLink = (href, icon, name, active, title) => {
-      const a = el('a');
-      a.href = href;
-      a.title = title || name;
-      if (seg === 'people' && active) {
-        a.className = 'active';
+    for (const group of listGroups()) {
+      if (!listsHeading(toolsBody, group, 'nav-subheading')) {
+        continue;
       }
-      a.append(icon, el('span', '', trimMiddle(name, 40)));
-      toolsBody.append(a);
-    };
-    const whiteIcon = name => {
-      const icon = svg(name);
-      icon.classList.add('nav-icon-tag');
-      icon.style.color = '#fff';
-      return icon;
-    };
-    const {own, shared} = groupedTags();
-    for (const entry of own) {
-      listLink(entry.href, whiteIcon('tag'), entry.name, entry.active(params), entry.title);
-    }
-    if (shared.length) {
-      toolsBody.append(sharedTagsHeading('nav-subheading'));
-    }
-    for (const entry of shared) {
-      listLink(entry.href, sharedTagIcon(whiteIcon('families')), entry.name, entry.active(params), entry.title);
-    }
-    if (listKeys().length) {
-      toolsBody.append(magicTagsHeading('nav-subheading'));
-    }
-    for (const key of listKeys()) {
-      listLink(tagHref(key), magicTagIcon(key), tagLabel(key), listActive(params, key));
+      for (const item of group.items) {
+        const a = el('a');
+        a.href = item.href;
+        a.title = item.title;
+        if (seg === 'people' && item.active) {
+          a.className = 'active';
+        }
+        a.append(listName(item));
+        toolsBody.append(a);
+      }
     }
   }
+}
+
+function listGroups() {
+  const params = new URLSearchParams(location.search);
+  const {own, shared} = groupedTags();
+  const {running, upcoming, joined, managing} = listSections();
+  const tagItems = [...own, ...shared].map(entry => ({href: entry.href, shared: entry.shared, name: entry.name, title: entry.title, active: entry.active(params), run: false, mail: false, start: ''}));
+  const listItems = (keys, dated) => keys.map(key => ({
+    href: tagHref(key),
+    list: key,
+    name: tagLabel(key),
+    title: tagLabel(key),
+    active: listActive(params, key),
+    run: dated && listOf(key).run,
+    mail: listOf(key).mail,
+    start: dated ? listOf(key).start : '',
+  }));
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  return [
+    {key: 'running', title: 'Running', tip: runningTip, open: true, items: [...tagItems, ...listItems(running)].sort(byName)},
+    {key: 'upcoming', title: 'Coming Up', tip: upcomingTip, open: true, items: listItems(upcoming, true)},
+    {key: 'joined', title: 'Joined', tip: joinedTip, open: true, items: listItems(joined)},
+    {key: 'managing', title: 'Managing', tip: managingTip, open: false, items: listItems(managing)},
+  ].filter(group => group.items.length);
+}
+
+const dayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
+
+function listName(item) {
+  const label = el('span', 'nav-list-label');
+  label.append(el('span', '', trimMiddle(item.name, 40)));
+  if (item.start) {
+    label.append(el('span', 'nav-list-date', dayFormat.format(new Date(item.start.slice(0, 10) + 'T00:00'))));
+  }
+  const marks = el('span', 'nav-list-marks');
+  if (item.mail) {
+    const mark = svg('mail');
+    mark.classList.add('nav-list-mail');
+    marks.append(mark);
+  }
+  if (item.run) {
+    marks.append(el('span', 'nav-list-run', '★'));
+  }
+  const row = el('span', 'nav-list-row');
+  row.append(label, marks);
+  return row;
 }
 
 function fillTabbar(bar) {
@@ -312,7 +340,10 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
-const magicTagsTip = 'Automagically created based on events, volunteering and the email lists you manage';
+const runningTip = 'Your tags, and the email lists and activities you manage';
+const upcomingTip = 'Events, parties and activities you run or are going to, soonest first. A star marks the ones you run';
+const joinedTip = 'Activities and email lists you are in';
+const managingTip = 'Activities, parties and email lists you manage but are not in';
 
 function hintIcon(text) {
   const tip = el('span', 'magic-tags-info');
@@ -332,10 +363,26 @@ function hintIcon(text) {
   return tip;
 }
 
-function magicTagsHeading(className) {
-  const heading = el('div', className);
-  heading.append(el('span', '', 'Magic Tags'), hintIcon(magicTagsTip));
-  return heading;
+function listsHeading(container, group, className) {
+  const key = 'lists-' + group.key;
+  const open = state.navOpen[key] ?? group.open;
+  const heading = el('div', className + ' nav-subheading-toggle' + (open ? ' open' : ''));
+  const chevron = el('span', 'nav-chevron');
+  chevron.append(svg('chevron-down'));
+  const tip = hintIcon(group.tip);
+  tip.addEventListener('click', e => e.stopPropagation());
+  heading.append(el('span', '', group.title), tip);
+  if (!open) {
+    heading.append(el('span', 'nav-subheading-count', String(group.items.length)));
+  }
+  heading.append(chevron);
+  heading.addEventListener('click', () => {
+    state.navOpen[key] = !open;
+    saveNavOpen(state.navOpen);
+    renderNav();
+  });
+  container.append(heading);
+  return open;
 }
 
 function listActive(params, key) {
@@ -343,14 +390,15 @@ function listActive(params, key) {
 }
 
 function groupedTags() {
-  const entry = (key, title) => ({
+  const entry = (key, title, shared) => ({
     name: tagLabel(key),
     href: tagHref(key),
     title,
+    shared,
     active: params => params.has('tag') && tagKey(params.get('tag')) === key,
   });
-  const own = tagKeys().filter(key => !sharedTag(key)).map(key => entry(key, tagLabel(key)));
-  const shared = tagKeys().filter(sharedTag).map(key => entry(key, `${tagLabel(key)} - shared with others`));
+  const own = tagKeys().filter(key => !sharedTag(key)).map(key => entry(key, tagLabel(key), false));
+  const shared = tagKeys().filter(sharedTag).map(key => entry(key, `${tagLabel(key)} - shared with others`, true));
   return {own, shared};
 }
 
@@ -358,14 +406,6 @@ function sharedTagIcon(icon) {
   const wrap = el('span', 'magic-tag-icon');
   wrap.append(icon);
   return wrap;
-}
-
-const sharedTagsTip = 'Tags more than one person manages.';
-
-function sharedTagsHeading(className) {
-  const heading = el('div', className);
-  heading.append(el('span', '', 'Shared Tags'), hintIcon(sharedTagsTip));
-  return heading;
 }
 
 function magicTagIcon(key) {
@@ -379,38 +419,30 @@ function renderMobileListsMenu() {
   const body = mobileListsMenu.querySelector('#mobile-lists-body');
   body.replaceChildren();
   const seg = activeSection();
-  const params = new URLSearchParams(location.search);
   for (const item of toolsNavItems) {
     const a = el('a', 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
     a.href = '/' + item.path;
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
-  const listItem = (href, icon, name, active) => {
-    const a = el('a', 'mobile-lists-item' + (seg === 'people' && active ? ' active' : ''));
-    a.href = href;
-    a.append(icon, el('span', '', name));
-    body.append(a);
+  const itemIcon = item => {
+    if (item.list) {
+      return magicTagIcon(item.list);
+    }
+    const icon = svg(item.shared ? 'families' : 'tag');
+    icon.style.color = `hsl(${hue(item.name)}, 65%, 40%)`;
+    return item.shared ? sharedTagIcon(icon) : icon;
   };
-  const {own, shared} = groupedTags();
-  for (const entry of own) {
-    const icon = svg('tag');
-    icon.style.color = `hsl(${hue(entry.name)}, 65%, 40%)`;
-    listItem(entry.href, icon, entry.name, entry.active(params));
-  }
-  if (shared.length) {
-    body.append(sharedTagsHeading('mobile-lists-subheading'));
-  }
-  for (const entry of shared) {
-    const icon = svg('families');
-    icon.style.color = `hsl(${hue(entry.name)}, 65%, 40%)`;
-    listItem(entry.href, sharedTagIcon(icon), entry.name, entry.active(params));
-  }
-  if (listKeys().length) {
-    body.append(magicTagsHeading('mobile-lists-subheading'));
-  }
-  for (const key of listKeys()) {
-    listItem(tagHref(key), magicTagIcon(key), tagLabel(key), listActive(params, key));
+  for (const group of listGroups()) {
+    if (!listsHeading(body, group, 'mobile-lists-subheading')) {
+      continue;
+    }
+    for (const item of group.items) {
+      const a = el('a', 'mobile-lists-item' + (seg === 'people' && item.active ? ' active' : ''));
+      a.href = item.href;
+      a.append(itemIcon(item), listName(item));
+      body.append(a);
+    }
   }
 }
 

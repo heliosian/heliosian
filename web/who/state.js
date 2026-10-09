@@ -75,8 +75,13 @@ export function listKey(id) {
   return 'list:' + id;
 }
 
-const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (manages @g)';
-const listCondition = '(!= status "closed") (or (in kind "party" "activity") mail) (manages @g)';
+const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
+const listKindCondition = '(!= status "closed") (or (in kind "party" "activity") mail (and (= kind "event") (not (blank rsvp_yes))))';
+const viewerGroups = '(select MEMBER.group (= person @viewer) (= member "yes"))';
+const runCondition = `${listKindCondition} (manages @g)`;
+const joinedCondition = `${listKindCondition} (not (manages @g)) (or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
+const listCondition = `${listKindCondition} (or (manages @g) (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
+const listIncludes = '(include parent parent.parent parent.parent.parent)';
 const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug ' +
   'grade_override grade classroom_override classroom crew_override crew department_override department job_title_override job_title ' +
   'phone phone_consent address_consent pronouns pronunciation facts facts_updated photo_updated';
@@ -157,13 +162,14 @@ export async function loadModel() {
       tagged: `(from GROUP @g (where ${tagCondition}) (include managed_by))`,
       tagMembers: `(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))) (columns group person))`,
       tagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
-      managed: `(from GROUP @g (where ${listCondition}) (order name asc))`,
-      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (columns group person))`,
+      managed: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
+      joined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
+      listMembers: `(from EFFECTIVE_MEMBER (where (or (in group (select GROUP.id @g ${listCondition})) (in group (select GROUP.rsvp_yes @g ${listCondition})))) (columns group person))`,
       guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,
     }),
     oldTarget(name),
   ]);
-  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, listMembers, guests} = answers;
+  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, listMembers, guests} = answers;
   model.email = who.email;
   model.allowances = who.allowances;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
@@ -239,7 +245,7 @@ export async function loadModel() {
     }
   }
   loadTags(tagged, [tagMembers, tagManagers]);
-  loadLists(managed, listMembers, guests);
+  loadLists(managed, joined, listMembers, guests);
   model.moved = movedTo(name, oldId);
 }
 
@@ -281,11 +287,47 @@ export function tagManagers(t) {
   return Object.keys(t.managerRows);
 }
 
-const listKinds = {party: 'party', activity: 'activity'};
+const listKinds = {party: 'party', activity: 'activity', event: 'event'};
 
-function loadLists(managed, members, guestRows) {
+export function today() {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+function datedFrom(g, groups) {
+  for (let at = g; at; at = groups[at.parent]) {
+    if (at.start) {
+      return at;
+    }
+  }
+  return null;
+}
+
+function liveLists(rows, groups) {
+  const now = today();
+  const live = rows.filter(g => {
+    const dated = datedFrom(g, groups);
+    return !dated || (dated.end || dated.start).slice(0, 10) >= now;
+  });
+  const ids = new Set(live.map(g => g.id));
+  const instance = g => g.kind === 'event' && groups[g.parent] && groups[g.parent].kind === 'event';
+  const next = {};
+  for (const g of live.filter(instance)) {
+    if (!next[g.parent] || g.start < next[g.parent].start) {
+      next[g.parent] = g;
+    }
+  }
+  return live.filter(g => !ids.has(g.parent) && (!instance(g) || next[g.parent] === g));
+}
+
+function loadLists(managed, joined, members, guestRows) {
   lists = {};
-  const rows = rowsOf(managed, 'GROUP');
+  const groups = {};
+  for (const g of [...all(managed, 'GROUP'), ...all(joined, 'GROUP')]) {
+    groups[g.id] = g;
+  }
+  const run = liveLists(rowsOf(managed, 'GROUP'), groups);
+  const rows = [...run, ...liveLists(rowsOf(joined, 'GROUP'), groups)];
+  const running = new Set(run.map(g => g.id));
   const room = model.roomParents.filter(g => (membersByGroup[g.id] || []).includes(model.viewer && model.viewer.id));
   if (!rows.length && !room.length) {
     return;
@@ -300,13 +342,18 @@ function loadLists(managed, members, guestRows) {
     (people[e.group] = people[e.group] || []).push(e.person);
   }
   for (const g of rows) {
-    const ids = people[g.id] || [];
+    const ids = people[g.kind === 'event' ? g.rsvp_yes : g.id] || [];
+    const dated = datedFrom(g, groups);
     lists[listKey(g.id)] = {
       key: listKey(g.id),
       id: g.id,
       name: g.name,
       kind: listKinds[g.kind] || 'group',
       slug: g.slug || g.id,
+      run: running.has(g.id),
+      member: (people[g.id] || []).includes(model.viewer && model.viewer.id),
+      mail: g.mail === 'Yes',
+      start: dated ? dated.start : '',
       people: ids.filter(id => !guests[id]),
       guests: ids.filter(id => guests[id]).map(id => guests[id]),
     };
@@ -323,7 +370,7 @@ function loadLists(managed, members, guestRows) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', run: true, member: true, mail: false, start: '', people: [...ids], guests: []};
   }
 }
 

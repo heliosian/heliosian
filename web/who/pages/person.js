@@ -1,10 +1,10 @@
 import {render, notFound} from '/router.js';
-import {viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, classroomPath, groupById, canEdit} from '../state.js';
+import {viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, classroomPath, groupById, canEdit, today} from '../state.js';
 import {withFrom, firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
 import {el, svg, iconLink, editToggle} from '/elements.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns, familyPhoto} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
-import {saveCells, namesFor, today, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
+import {saveCells, namesFor, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, cropped, photoMenu, togglePhotoMenu, photoGrid} from '../photos.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {familyCard} from './family.js';

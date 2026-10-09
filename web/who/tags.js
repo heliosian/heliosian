@@ -36,10 +36,26 @@ export function tagHref(key) {
   return '/people?list=' + encodeURIComponent(lists[key].id);
 }
 
-const listIcons = {party: 'party', activity: 'activity', room: 'classrooms', group: 'people'};
+const listIcons = {party: 'party', activity: 'activity', event: 'calendar', room: 'classrooms', group: 'people'};
 
 export function listKeys() {
   return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));
+}
+
+export function listOf(key) {
+  return lists[key];
+}
+
+export function listSections() {
+  const keys = listKeys();
+  const backstage = key => lists[key].run && !lists[key].member && lists[key].kind !== 'event';
+  const shown = keys.filter(key => !backstage(key));
+  return {
+    running: shown.filter(key => lists[key].run && !lists[key].start),
+    upcoming: shown.filter(key => lists[key].start).sort((a, b) => lists[a].start.localeCompare(lists[b].start)),
+    joined: shown.filter(key => !lists[key].run && !lists[key].start),
+    managing: keys.filter(backstage),
+  };
 }
 
 export function listIcon(key) {
@@ -49,6 +65,7 @@ export function listIcon(key) {
 const listSources = {
   party: {app: 'celebrate', name: 'Celebrate', path: '/p/', thing: 'party'},
   activity: {app: 'team', name: 'HCA-Team', path: '/v/', thing: 'activity'},
+  event: {app: 'when', name: 'Helios When', path: '/e/', thing: 'event'},
   group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
 };
 
