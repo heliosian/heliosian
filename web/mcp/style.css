@@ -50,8 +50,11 @@ body {
 .panel code {
   flex: 1;
   min-width: 0;
+  padding-left: 2ch;
+  text-indent: -2ch;
   font-size: 0.9375rem;
   overflow-wrap: anywhere;
+  text-wrap: balance;
   user-select: all;
 }
 
