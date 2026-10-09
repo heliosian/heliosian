@@ -1,9 +1,7 @@
 package db
 
 import (
-	"bytes"
 	"context"
-	"encoding/gob"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -151,79 +149,6 @@ func TestEveryRowIsMadeUnasked(t *testing.T) {
 	}
 	if len(held) != len(objects) {
 		t.Fatalf("the bucket holds %d entries for %d inputs", len(held), len(objects))
-	}
-}
-
-func waitBatch(t *testing.T, bucket *blob.Bucket, after int64) (map[string]batchEntry, int64) {
-	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		held, err := bucket.Generations(context.Background(), searchBatch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if held[searchBatch] <= after {
-			continue
-		}
-		raw, _, err := bucket.Get(context.Background(), searchBatch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		batch := map[string]batchEntry{}
-		if err := gob.NewDecoder(bytes.NewReader(raw)).Decode(&batch); err != nil {
-			t.Fatal(err)
-		}
-		return batch, held[searchBatch]
-	}
-	t.Fatal("the batch was never written")
-	return nil, 0
-}
-
-func TestStartupReadsTheBatchAndFetchesWhatChanged(t *testing.T) {
-	s, _, bucket, x := searcher(t)
-	rows := waitRows(t, s, x)
-	waitIndexed(t, x, rows)
-	s2, _, x2 := newSearcher(t, testkit.SearchClaude(), bucket)
-	makeAll(t, s2, x2)
-	batch, _ := waitBatch(t, bucket, 0)
-	objects := map[string]bool{}
-	for _, r := range rows {
-		objects[r.Object] = true
-	}
-	if len(batch) != len(objects) {
-		t.Fatalf("the batch holds %d entries for %d inputs", len(batch), len(objects))
-	}
-	sorted := slices.Sorted(maps.Keys(objects))
-	kept, changed := sorted[0], sorted[1]
-	batch[kept].Entry.Summary = "read from the batch"
-	buf := &bytes.Buffer{}
-	if err := gob.NewEncoder(buf).Encode(batch); err != nil {
-		t.Fatal(err)
-	}
-	if err := bucket.Put(context.Background(), searchBatch, "application/octet-stream", buf.Bytes()); err != nil {
-		t.Fatal(err)
-	}
-	entry := *batch[changed].Entry
-	entry.Summary = "read from the object"
-	raw, _ := json.Marshal(entry)
-	if err := bucket.Put(context.Background(), changed, "application/json", raw); err != nil {
-		t.Fatal(err)
-	}
-	held, err := bucket.Generations(context.Background(), searchBatch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	s3, _, x3 := newSearcher(t, testkit.SearchClaude(), bucket)
-	makeAll(t, s3, x3)
-	v := x3.snapshot()
-	if got := v.entries[kept].Summary; got != "read from the batch" {
-		t.Fatalf("an unchanged entry reads %q, want the batch's", got)
-	}
-	if got := v.entries[changed].Summary; got != "read from the object" {
-		t.Fatalf("a rewritten entry reads %q, want the object's", got)
-	}
-	batch, _ = waitBatch(t, bucket, held[searchBatch])
-	if got := batch[changed].Entry.Summary; got != "read from the object" {
-		t.Fatalf("the rewritten batch holds %q for the rewritten entry", got)
 	}
 }
 

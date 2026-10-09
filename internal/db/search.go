@@ -1,10 +1,8 @@
 package db
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/gob"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -34,7 +32,6 @@ import (
 
 const (
 	searchFolder   = "search"
-	searchBatch    = "search.gob"
 	SearchLimit    = 10
 	searchRefs     = 5
 	searchFloor    = 0.67
@@ -102,11 +99,6 @@ type SearchEntry struct {
 	Chunks      []SearchChunk `json:"chunks"`
 	Fingerprint []uint32      `json:"fingerprint,omitempty"`
 	Failures    int           `json:"failures,omitempty"`
-}
-
-type batchEntry struct {
-	Generation int64
-	Entry      *SearchEntry
 }
 
 type SearchChunk struct {
@@ -224,7 +216,6 @@ type Searcher struct {
 	pending []string
 	waiting map[string]bool
 	swept   bool
-	batched bool
 	wake    chan struct{}
 }
 
@@ -530,18 +521,7 @@ func (x *Searcher) follow() {
 			}
 		}
 		toLoad := slices.Sorted(maps.Keys(unknown))
-		var loaded []*SearchEntry
-		var errs []error
-		if x.batched {
-			loaded, errs = loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
-		} else {
-			loaded, errs, err = x.fromBatch(toLoad)
-			if err != nil {
-				slog.Error("search: read the batch", "error", err)
-				continue
-			}
-			x.batched = true
-		}
+		loaded, errs := loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
 		x.mu.Lock()
 		for i, hash := range toLoad {
 			if errs[i] != nil {
@@ -643,86 +623,6 @@ func loadAll[T any](n int, f func(i int) (T, error)) ([]T, []error) {
 	close(next)
 	wg.Wait()
 	return results, errs
-}
-
-func (x *Searcher) fromBatch(toLoad []string) ([]*SearchEntry, []error, error) {
-	start := time.Now()
-	var held map[string]int64
-	var listErr error
-	var listTook time.Duration
-	listed := make(chan struct{})
-	go func() {
-		held, listErr = x.bucket.Generations(context.Background(), searchFolder+"/")
-		listTook = time.Since(start)
-		close(listed)
-	}()
-	batch, getTook, decodeTook, err := x.readBatch()
-	<-listed
-	if err != nil {
-		return nil, nil, err
-	}
-	if listErr != nil {
-		return nil, nil, listErr
-	}
-	loaded := make([]*SearchEntry, len(toLoad))
-	errs := make([]error, len(toLoad))
-	next := map[string]batchEntry{}
-	fetch := []int{}
-	for i, hash := range toLoad {
-		generation, ok := held[hash]
-		if !ok {
-			continue
-		}
-		if b, ok := batch[hash]; ok && b.Generation == generation {
-			loaded[i] = b.Entry
-			next[hash] = b
-			continue
-		}
-		fetch = append(fetch, i)
-	}
-	got, fetchErrs := loadAll(len(fetch), func(j int) (*SearchEntry, error) { return x.load(toLoad[fetch[j]]) })
-	for j, i := range fetch {
-		loaded[i], errs[i] = got[j], fetchErrs[j]
-		if got[j] != nil {
-			next[toLoad[i]] = batchEntry{Generation: held[toLoad[i]], Entry: got[j]}
-		}
-	}
-	slog.Info("search: read the batch", "held", len(batch), "listed", len(held), "fetched", len(fetch), "get", getTook.Round(time.Millisecond), "decode", decodeTook.Round(time.Millisecond), "list", listTook.Round(time.Millisecond), "took", time.Since(start).Round(time.Millisecond))
-	if len(fetch) > 0 || len(next) != len(batch) {
-		go x.writeBatch(next)
-	}
-	return loaded, errs, nil
-}
-
-func (x *Searcher) readBatch() (map[string]batchEntry, time.Duration, time.Duration, error) {
-	start := time.Now()
-	batch := map[string]batchEntry{}
-	raw, _, err := x.bucket.Get(context.Background(), searchBatch)
-	getTook := time.Since(start)
-	if errors.Is(err, blob.ErrNotFound) {
-		return batch, getTook, 0, nil
-	}
-	if err != nil {
-		return nil, 0, 0, err
-	}
-	if err := gob.NewDecoder(bytes.NewReader(raw)).Decode(&batch); err != nil {
-		return nil, 0, 0, fmt.Errorf("read %s: %w", searchBatch, err)
-	}
-	return batch, getTook, time.Since(start) - getTook, nil
-}
-
-func (x *Searcher) writeBatch(batch map[string]batchEntry) {
-	start := time.Now()
-	buf := &bytes.Buffer{}
-	if err := gob.NewEncoder(buf).Encode(batch); err != nil {
-		slog.Error("search: encode the batch", "error", err)
-		return
-	}
-	if err := x.bucket.Put(context.Background(), searchBatch, "application/octet-stream", buf.Bytes()); err != nil {
-		slog.Error("search: write the batch", "error", err)
-		return
-	}
-	slog.Info("search: wrote the batch", "entries", len(batch), "bytes", buf.Len(), "took", time.Since(start).Round(time.Millisecond))
 }
 
 func (x *Searcher) load(hash string) (*SearchEntry, error) {

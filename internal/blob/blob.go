@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"maps"
 	"net/http"
 	"os"
 	"path"
@@ -65,7 +64,7 @@ type objects interface {
 	put(ctx context.Context, name, mimeType string, content []byte) error
 	exists(ctx context.Context, name string) (bool, error)
 	remove(ctx context.Context, name string) error
-	list(ctx context.Context, prefix string) (map[string]int64, error)
+	list(ctx context.Context, prefix string) ([]string, error)
 }
 
 type gcs struct {
@@ -125,11 +124,11 @@ func (b gcs) remove(ctx context.Context, name string) error {
 	return nil
 }
 
-func (b gcs) list(ctx context.Context, prefix string) (map[string]int64, error) {
-	out := map[string]int64{}
-	err := b.service.Objects.List(b.name).Prefix(prefix).Fields("nextPageToken", "items(name,generation)").Pages(ctx, func(page *storage.Objects) error {
+func (b gcs) list(ctx context.Context, prefix string) ([]string, error) {
+	out := []string{}
+	err := b.service.Objects.List(b.name).Prefix(prefix).Fields("nextPageToken", "items/name").Pages(ctx, func(page *storage.Objects) error {
 		for _, o := range page.Items {
-			out[o.Name] = o.Generation
+			out = append(out, o.Name)
 		}
 		return nil
 	})
@@ -208,14 +207,6 @@ func (b *Bucket) Remove(ctx context.Context, name string) error {
 }
 
 func (b *Bucket) List(ctx context.Context, prefix string) ([]string, error) {
-	held, err := b.objects.list(ctx, prefix)
-	if err != nil {
-		return nil, err
-	}
-	return slices.Sorted(maps.Keys(held)), nil
-}
-
-func (b *Bucket) Generations(ctx context.Context, prefix string) (map[string]int64, error) {
 	return b.objects.list(ctx, prefix)
 }
 
@@ -257,15 +248,16 @@ func (m *memory) remove(_ context.Context, name string) error {
 	return nil
 }
 
-func (m *memory) list(_ context.Context, prefix string) (map[string]int64, error) {
+func (m *memory) list(_ context.Context, prefix string) ([]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := map[string]int64{}
-	for name, o := range m.objects {
+	out := []string{}
+	for name := range m.objects {
 		if strings.HasPrefix(name, prefix) {
-			out[name] = o.generation
+			out = append(out, name)
 		}
 	}
+	slices.Sort(out)
 	return out, nil
 }
 
