@@ -354,16 +354,38 @@ func TestListsAdminsManagersAndSessionsAreNotSearched(t *testing.T) {
 		store.Insert("GROUP", store.Row{"id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000096", "kind": "admins", "name": "Book Club Admins", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000097", "kind": "group", "name": "Book Club Chat Viewers", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000098", "kind": "group", "name": "Book Club Chat", "status": "open", "parent": "grp00000000090", "visible_to": "grp00000000097"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093", "managed_by": "grp00000000094", "waitlist": "grp00000000095"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Club", "parent": "grp00000000091", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:45:00"}),
 	); err != nil {
 		t.Fatal(err)
 	}
 	rows := s.Model().SearchInputs(nil)
-	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false} {
+	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true} {
 		if _, got := rows[id]; got != want {
 			t.Errorf("%s searched %v, want %v", id, got, want)
 		}
+	}
+}
+
+func TestANameOnlyPersonIsFoundByWordsAlone(t *testing.T) {
+	s, _, _, x := searcher(t)
+	makeAll(t, s, x)
+	v := x.snapshot()
+	rowan, maya := v.rows["per00000000002"], v.rows["per00000000003"]
+	if !rowan.WordsOnly || maya.WordsOnly {
+		t.Fatalf("words only: Rowan %v (%q), Maya %v (%q)", rowan.WordsOnly, rowan.Input, maya.WordsOnly, maya.Input)
+	}
+	placed := v.vectors["PERSON"].placed
+	if _, ok := placed[rowan.Object]; ok {
+		t.Error("Rowan's name alone is in the vector index")
+	}
+	if _, ok := placed[maya.Object]; !ok {
+		t.Error("Maya is not in the vector index")
+	}
+	if got := hitIDs(x.Words(s.Model(), Env{Viewer: staff, Now: testNow}, "rowan", testLimits)["PERSON"]); !slices.Contains(got, "per00000000002") {
+		t.Errorf("a search for rowan found %v", got)
 	}
 }
 

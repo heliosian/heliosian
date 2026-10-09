@@ -30,6 +30,7 @@ import (
 const (
 	rowan    = "rowan@example.com"
 	rowanID  = "per00000000002"
+	mayaID   = "per00000000003"
 	picnic   = "grp00000000040"
 	camping  = "doc00000000106"
 	redirect = "http://127.0.0.1:33418/callback"
@@ -422,6 +423,9 @@ func TestSearchNamesEachHit(t *testing.T) {
 		if _, err := f.search.Make(rowanID); err != nil {
 			continue
 		}
+		if _, err := f.search.Make(mayaID); err != nil {
+			continue
+		}
 		text, _ = callTool(t, session, "helios_search", map[string]any{"words": "Rowan Ashdown"})
 		if strings.Contains(text, `"meaning":[{`) {
 			break
@@ -437,6 +441,11 @@ func TestSearchNamesEachHit(t *testing.T) {
 	}
 	if len(people.Meaning) == 0 {
 		t.Fatalf("the meaning search found nothing: %s", text)
+	}
+	for _, r := range people.Meaning {
+		if r.ID == rowanID {
+			t.Fatalf("Rowan, a name alone, was found by meaning: %s", text)
+		}
 	}
 }
 

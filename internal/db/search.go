@@ -50,6 +50,7 @@ var searchExclusions = []string{
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,
 	`(from GROUP (where (= kind "admins")))`,
 	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
+	`(from GROUP (where (or (in id (select GROUP.visible_to)) (in id (select APP.visible_to)) (in id (select WIDGET.visible_to))) (= kind "group") (blank mail) (blank parent)))`,
 }
 
 var searchFiller = map[string]bool{
@@ -141,7 +142,17 @@ type SearchResults struct {
 type SearchRow struct {
 	Table, Head, Input, Object, Name, Href, When string
 	Source, SourceLine, SourceHref, Terminal     string
+	WordsOnly                                    bool
 	named, source                                store.Row
+}
+
+func nameOnly(input string) bool {
+	for _, line := range strings.Split(input, "\n")[1:] {
+		if !strings.HasPrefix(line, "Pronouns: ") {
+			return false
+		}
+	}
+	return true
 }
 
 func (r SearchRow) body() string {
@@ -294,7 +305,7 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			if table == "PERSON" {
 				name, when = row["name_show"], ""
 			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, named: row}
+			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, WordsOnly: table == "PERSON" && nameOnly(input), named: row}
 		}
 	}
 	docs := m.Shown("DOCUMENT")
@@ -590,7 +601,9 @@ func (x *Searcher) index() {
 		for _, r := range rows {
 			if e := x.entries[r.Object]; e != nil {
 				entries[r.Object] = e
-				byTable[r.Table][r.Object] = e
+				if !r.WordsOnly {
+					byTable[r.Table][r.Object] = e
+				}
 			}
 		}
 		x.mu.RUnlock()
