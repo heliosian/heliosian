@@ -80,6 +80,7 @@ var (
 		v("admin", "the admin pages"),
 		v("home", "Heliosian, the front page"),
 		v("wiki", "Helios Wiki, parent-to-parent info"),
+		v("mcp", "Helios MCP, Helios's data for AI tools"),
 	}
 	grades = []Value{
 		v("K", "Kindergarten"),
