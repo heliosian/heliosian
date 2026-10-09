@@ -44,6 +44,19 @@ const (
 
 var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 
+var searchExclusions = []string{
+	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)))))`,
+	`(from GROUP (where (= kind "event") (= parent.kind "event")))`,
+}
+
+var searchFiller = map[string]bool{
+	"an": true, "and": true, "are": true, "as": true, "at": true, "be": true, "by": true, "did": true, "do": true, "does": true,
+	"for": true, "from": true, "had": true, "has": true, "have": true, "how": true, "in": true, "is": true, "it": true, "its": true,
+	"of": true, "on": true, "or": true, "that": true, "the": true, "their": true, "them": true, "they": true, "this": true, "to": true,
+	"was": true, "were": true, "what": true, "when": true, "where": true, "which": true, "who": true, "whom": true, "whose": true, "why": true,
+	"will": true, "with": true,
+}
+
 var terminalNames = map[string]struct{ label, of, published string }{
 	"mail":     {"Email", "email", "Sent"},
 	"file":     {"File", "file", "Updated"},
@@ -51,19 +64,37 @@ var terminalNames = map[string]struct{ label, of, published string }{
 	"wiki":     {"Wiki page", "wiki page", "Updated"},
 }
 
-const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or the text of something the community received or shared - an email's body, a file attached to it, an image it shows, a page it links to, or a shared file, year calendar or wiki page itself - read as text and headed by where it came from. You are given what everyone who can see it can read.
-
-summary: one or two plain sentences saying what it is, shown under its name in a list of search results. Say only what the text supports.
-keywords: every word and short phrase someone might type to find it: the names of the people, groups, classes, places and events it is about, its subjects, and the dates it gives, then other names for those - synonyms, related terms, likely misspellings. Search matches these keywords alone, never the text, so a term left out here cannot find it. Leave out what says nothing about it, such as greetings, sign-offs and mailing-list boilerplate. At most 100.`
+const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or the text of something the community received or shared - an email's body, a file attached to it, an image it shows, a page it links to, or a shared file, year calendar or wiki page itself - read as text and headed by where it came from. You are given what everyone who can see it can read. Search finds it by its keywords alone, never by the text, and shows its summary under its name in a list of results.`
 
 var searchSchema = map[string]any{
 	"type": "object",
-	"properties": map[string]any{
-		"summary":  map[string]any{"type": "string"},
-		"keywords": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+	// A struct, not a map, so summary is sent first and Claude writes it before a long keyword list.
+	"properties": struct {
+		Summary  map[string]any `json:"summary"`
+		Keywords map[string]any `json:"keywords"`
+	}{
+		Summary: map[string]any{
+			"type":        "string",
+			"description": "One or two plain sentences saying what it is. Say only what the text says, never what it leaves out: no \"no further details are given\". Never comment on the text itself: not what it gives, lacks or appears to be. Write one however little the text says, saying what that little is.",
+		},
+		Keywords: map[string]any{
+			"type":        "array",
+			"description": "Every term someone might type to find it: the names of the people, groups, classes, places and events it is about, its subjects and the dates it gives, then other names for those - synonyms, related terms, likely misspellings. Only terms the text itself gives or names a synonym of; no guesses about what it might be. No words that would fit almost anything here, such as event, group, person or class. A term left out here cannot find it. Leave out what says nothing about it, such as greetings, sign-offs and mailing-list boilerplate. At most 100.",
+			"items":       map[string]any{"type": "string", "description": "A name, a single word or a short noun phrase, never a sentence."},
+		},
 	},
 	"required":             []string{"summary", "keywords"},
 	"additionalProperties": false,
+}
+
+func SearchSummaryRequest(input string) anthropic.MessageNewParams {
+	return anthropic.MessageNewParams{
+		Model:        claude.SearchSummaryModel,
+		MaxTokens:    32000,
+		System:       []anthropic.TextBlockParam{{Text: searchSystem}},
+		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(input))},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
+	}
 }
 
 type SearchEntry struct {
@@ -80,13 +111,14 @@ type SearchChunk struct {
 }
 
 type SearchRef struct {
-	Extract  string `json:"extract"`
-	Document string `json:"document"`
-	Source   string `json:"source,omitempty"`
-	Href     string `json:"href,omitempty"`
-	Terminal string `json:"terminal"`
-	Name     string `json:"name"`
-	Summary  string `json:"summary"`
+	Extract  string  `json:"extract"`
+	Document string  `json:"document"`
+	Source   string  `json:"source,omitempty"`
+	Href     string  `json:"href,omitempty"`
+	Terminal string  `json:"terminal"`
+	Name     string  `json:"name"`
+	Summary  string  `json:"summary"`
+	Score    float64 `json:"score,omitempty"`
 }
 
 type SearchResult struct {
@@ -94,6 +126,7 @@ type SearchResult struct {
 	Name    string      `json:"name,omitempty"`
 	Href    string      `json:"href,omitempty"`
 	Summary string      `json:"summary,omitempty"`
+	Score   float64     `json:"score,omitempty"`
 	Refs    []SearchRef `json:"refs,omitempty"`
 }
 
@@ -231,12 +264,27 @@ func SearchObject(input string) string {
 	return searchFolder + "/" + hex.EncodeToString(sum[:]) + ".json"
 }
 
+func (m *Model) searchExcluded() map[string]bool {
+	out := map[string]bool{}
+	for _, src := range searchExclusions {
+		q, err := Parse(src)
+		if err != nil {
+			panic(fmt.Sprintf("search exclusion %s: %v", src, err))
+		}
+		for _, id := range m.Run(context.Background(), q, Env{System: importReader, Now: time.Now()}).IDs {
+			out[id] = true
+		}
+	}
+	return out
+}
+
 func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 	out := map[string]SearchRow{}
+	excluded := m.searchExcluded()
 	for _, table := range []string{"GROUP", "PERSON"} {
 		for _, row := range m.Shown(table).All() {
 			input := m.searchInput(table, row)
-			if input == "" {
+			if input == "" || excluded[row["id"]] {
 				continue
 			}
 			name, when := row["name"], row["start"]
@@ -699,19 +747,13 @@ func (x *Searcher) entry(ctx context.Context, row SearchRow, was *SearchEntry) (
 	}
 	if entry.Summary == "" {
 		answer := &SearchEntry{}
-		if _, err := claude.JSON(ctx, *x.client, anthropic.MessageNewParams{
-			Model:        claude.SearchSummaryModel,
-			MaxTokens:    32000,
-			System:       []anthropic.TextBlockParam{{Text: searchSystem}},
-			Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(row.Input))},
-			OutputConfig: anthropic.OutputConfigParam{Effort: claude.SearchSummaryEffort, Format: anthropic.JSONOutputFormatParam{Schema: searchSchema}},
-		}, answer); err != nil {
+		if _, err := claude.JSON(ctx, *x.client, SearchSummaryRequest(row.Input), answer); err != nil {
 			return entry, err
 		}
 		if utf8.RuneCountInString(strings.TrimSpace(answer.Summary)) < searchShortest {
 			return entry, fmt.Errorf("the summary is too short: %q", answer.Summary)
 		}
-		entry.Summary, entry.Keywords = answer.Summary, searchKeywords(answer.Keywords)
+		entry.Summary, entry.Keywords = strings.TrimSpace(answer.Summary), searchKeywords(answer.Keywords)
 	}
 	return entry, nil
 }
@@ -766,7 +808,7 @@ func normalize(v []float32) {
 func searchTerms(words string) []string {
 	out := []string{}
 	for _, t := range strings.FieldsFunc(strings.ToLower(words), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		if len(t) > 1 && !slices.Contains(out, t) {
+		if len(t) > 1 && !searchFiller[t] && !slices.Contains(out, t) {
 			out = append(out, t)
 		}
 	}
@@ -838,11 +880,12 @@ func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]i
 		}
 		cluster := v.group(o)
 		summary := v.entries[o].Summary
+		score := math.Round(scores[o]*1000) / 1000
 		for _, id := range v.objects[o] {
 			row := v.rows[id]
 			if row.Table != "DOCUMENT" {
 				if len(out[row.Table]) < limits[row.Table] && readable(r, row.Table, id) {
-					out[row.Table] = append(out[row.Table], SearchResult{ID: id, Name: row.Name, Href: row.Href, Summary: summary})
+					out[row.Table] = append(out[row.Table], SearchResult{ID: id, Name: row.Name, Href: row.Href, Summary: summary, Score: score})
 				}
 				continue
 			}
@@ -862,7 +905,9 @@ func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]i
 				i = len(docs) - 1
 				at[row.Terminal] = i
 			}
-			docs[i].Refs = append(docs[i].Refs, row.ref(id, summary))
+			ref := row.ref(id, summary)
+			ref.Score = score
+			docs[i].Refs = append(docs[i].Refs, ref)
 			if _, ok := clusters[cluster]; !ok {
 				clusters[cluster] = i
 			}

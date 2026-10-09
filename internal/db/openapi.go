@@ -227,12 +227,14 @@ func spec() schema {
 		"terminal": schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
 		"name":     schema{"type": "string", "description": "That email's or file's name."},
 		"summary":  schema{"type": "string", "description": "The extract's summary."},
+		"score":    schema{"type": "number", "description": "What it ranked by: by words, its share of the words' weight; by meaning, its closest chunk's cosine similarity to the words."},
 	}}
 	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
 		"id":      schema{"type": "string", "description": "The group or person."},
 		"name":    schema{"type": "string"},
 		"href":    schema{"type": "string", "description": "The page it has on the Helios apps, when it has one."},
 		"summary": schema{"type": "string"},
+		"score":   schema{"type": "number", "description": "What it ranked by: by words, its share of the words' weight; by meaning, its closest chunk's cosine similarity to the words."},
 	}}
 	schemas["SearchBundle"] = schema{"type": "object", "required": []string{"refs"}, "properties": schema{
 		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "Matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},

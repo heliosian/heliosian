@@ -340,6 +340,30 @@ func TestEveryChunkCarriesTheHeader(t *testing.T) {
 	}
 }
 
+func TestFillerWordsAreNotSearched(t *testing.T) {
+	if got := searchTerms("Who teaches the Jays? People who are going"); !slices.Equal(got, []string{"teaches", "jays", "people", "going"}) {
+		t.Fatalf("the terms are %v", got)
+	}
+}
+
+func TestRSVPListsAndSessionsAreNotSearched(t *testing.T) {
+	s := sample(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Club", "parent": "grp00000000091", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:45:00"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	rows := s.Model().SearchInputs(nil)
+	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false} {
+		if _, got := rows[id]; got != want {
+			t.Errorf("%s searched %v, want %v", id, got, want)
+		}
+	}
+}
+
 func TestTheHeaderSaysWhatTheThingIs(t *testing.T) {
 	m := sample(t).Model()
 	file := store.Row{"id": "doc1", "kind": "file", "name": "Supply list", "published": "2026-08-20 09:00:00"}
@@ -479,7 +503,7 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 	if len(results) != 1 || len(results[0].Refs) != 1 {
 		t.Fatalf("the email's result: %+v", results)
 	}
-	want := SearchRef{Extract: extract, Document: row.Source, Source: "email body, text/html", Href: row.SourceHref, Terminal: row.Terminal, Name: "Tide pools", Summary: "Sample search entry for Email: Tide pools"}
+	want := SearchRef{Extract: extract, Document: row.Source, Source: "email body, text/html", Href: row.SourceHref, Terminal: row.Terminal, Name: "Tide pools", Summary: "Sample search entry for Email: Tide pools", Score: 1}
 	if ref := results[0].Refs[0]; ref != want {
 		t.Fatalf("the email's ref: %+v, want %+v", ref, want)
 	}
