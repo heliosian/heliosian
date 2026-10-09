@@ -154,7 +154,8 @@ func TestTextAndJSONAreOneTree(t *testing.T) {
 	for _, src := range append(designQueries, picnicText,
 		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not hidden) (blank consent) true) (limit 3))`,
 		`(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75) (>= start now)))`,
-		`(from PERSON (where (< (length vc_name) 4)))`) {
+		`(from PERSON (where (< (length vc_name) 4)))`,
+		`(from MEMBER (where (in group (select GROUP.id @g (= @g.kind "family")))) (include person) (columns person member))`) {
 		q := mustParse(t, src)
 		raw, err := json.Marshal(q.Tree())
 		if err != nil {
@@ -167,6 +168,59 @@ func TestTextAndJSONAreOneTree(t *testing.T) {
 		if !q.tree.equal(back.tree) {
 			t.Fatalf("%s came back as %s", src, back.String())
 		}
+	}
+}
+
+func TestColumnsAnswerOnlyThose(t *testing.T) {
+	s := sample(t)
+	code, out, body := ask(t, s, "text/plain", "Rowan.Ashdown@example.org", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (include person) (columns person))`)
+	if code != http.StatusOK || len(out.Result) != 3 {
+		t.Fatalf("%d %s", code, body)
+	}
+	for id, row := range out.Resources["MEMBER"] {
+		if len(row) != 2 || row["id"] != id || row["person"] == "" {
+			t.Fatalf("a member answered with only person reads %v", row)
+		}
+	}
+	for _, row := range out.Resources["PERSON"] {
+		if row["source"] == "" {
+			t.Fatalf("an included person lost its columns: %v", row)
+		}
+	}
+	if code, _, body := ask(t, s, "text/plain", "Rowan.Ashdown@example.org", `(from MEMBER (columns nonsense))`); code != http.StatusBadRequest || !strings.Contains(body, "no column nonsense") {
+		t.Fatalf("an unknown column got %d %s", code, body)
+	}
+}
+
+func TestServeSeveralQueries(t *testing.T) {
+	s := sample(t)
+	body := `{"queries": {"picnic": ` + strings.ReplaceAll(picnicJSON, "\n", "") + `, "names": "(from PERSON (columns name_show))"}}`
+	rec := send(t, s, nil, "QUERY", "application/json", "Rowan.Ashdown@example.org", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%d %s", rec.Code, rec.Body.String())
+	}
+	var out answerAll
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Results["picnic"]) != 3 || len(out.Results["names"]) == 0 || out.Now != "2026-09-30 12:00:00" {
+		t.Fatalf("answer %+v", out)
+	}
+	for _, id := range out.Results["names"] {
+		row := out.Resources["PERSON"][id]
+		if row["name_show"] == "" {
+			t.Fatalf("%s lost its name: %v", id, row)
+		}
+	}
+	for _, id := range out.Results["picnic"] {
+		person := out.Resources["MEMBER"][id]["person"]
+		if out.Resources["PERSON"][person]["source"] == "" {
+			t.Fatalf("the picnic's %s, also answered by name alone, lost the rest of its row: %v", person, out.Resources["PERSON"][person])
+		}
+	}
+	rec = send(t, s, nil, "QUERY", "application/json", "Rowan.Ashdown@example.org", `{"queries": {"bad": "(from NOWHERE)"}}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "queries.bad") {
+		t.Fatalf("a bad named query got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

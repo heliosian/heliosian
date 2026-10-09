@@ -1767,9 +1767,12 @@ func (r *run) guardedCell(t *Table, row store.Row, c Column) string {
 	return raw
 }
 
-func (r *run) redact(t *Table, row store.Row) store.Row {
-	out := store.Row{}
-	for _, c := range t.Columns {
+func (r *run) redact(t *Table, row store.Row, columns []Column) store.Row {
+	if columns == nil {
+		columns = t.Columns
+	}
+	out := store.Row{"id": row["id"]}
+	for _, c := range columns {
 		if v := r.guardedCell(t, row, c); v != "" {
 			out[c.Name] = v
 		}

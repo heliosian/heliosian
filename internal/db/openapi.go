@@ -181,6 +181,25 @@ func spec() schema {
 			"order":   schema{"type": "array", "items": schema{"type": "object", "properties": schema{"path": schema{"type": "string"}, "dir": schema{"type": "string", "enum": []string{"asc", "desc"}}}}},
 			"limit":   schema{"type": "integer", "minimum": 1},
 			"include": schema{"type": "array", "items": schema{"type": "string"}, "description": "Paths whose rows are answered alongside."},
+			"columns": schema{"type": "array", "items": schema{"type": "string"}, "description": "The columns of the listed rows to answer, beside id; every column the reader may see when absent."},
+		},
+	}
+	schemas["Queries"] = schema{
+		"type":     "object",
+		"required": []string{"queries"},
+		"properties": schema{"queries": schema{
+			"type":                 "object",
+			"description":          "Queries by name, each in the language as a string or as a JSON tree, run together as one reader so they share what they work out.",
+			"additionalProperties": schema{"oneOf": []schema{{"type": "string"}, component("Query")}},
+		}},
+	}
+	schemas["Answers"] = schema{
+		"type":     "object",
+		"required": []string{"now", "results", "resources"},
+		"properties": schema{
+			"now":       schema{"type": "string", "description": "The school's time as the queries saw it."},
+			"results":   schema{"type": "object", "additionalProperties": schema{"type": "array", "items": schema{"type": "string"}}, "description": "Each query's IDs, in order, by its name."},
+			"resources": schema{"type": "object", "properties": resources, "description": "Every row any of them reached, once, by table then ID, with every column any of them answered."},
 		},
 	}
 	schemas["Batch"] = schema{
@@ -241,10 +260,10 @@ func spec() schema {
 				"operationId": "query",
 				"requestBody": schema{"required": true, "content": schema{
 					"text/plain":       schema{"schema": schema{"type": "string"}, "examples": examples},
-					"application/json": schema{"schema": component("Query")},
+					"application/json": schema{"schema": schema{"oneOf": []schema{component("Query"), component("Queries")}}},
 				}},
 				"responses": refusals(schema{
-					"200": answers("The IDs the query answers and every row it reached.", "Answer"),
+					"200": schema{"description": "The IDs the query answers and every row it reached; for several named queries, each one's IDs by name and every row once.", "content": schema{"application/json": schema{"schema": schema{"oneOf": []schema{component("Answer"), component("Answers")}}}}},
 					"400": failure("The query does not parse or check against the schema."),
 				}),
 			},

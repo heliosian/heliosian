@@ -42,6 +42,19 @@ export async function q(text) {
   return res.json();
 }
 
+async function qs(named) {
+  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  const answer = await res.json();
+  const out = {};
+  for (const name of Object.keys(named)) {
+    out[name] = {result: answer.results[name], resources: answer.resources};
+  }
+  return out;
+}
+
 export function rowsOf(answer, table) {
   return answer.result.map(id => answer.resources[table][id]);
 }
@@ -64,6 +77,9 @@ export function listKey(id) {
 
 const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (manages @g)';
 const listCondition = '(!= status "closed") (or (in kind "party" "activity") mail) (manages @g)';
+const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug ' +
+  'grade_override grade classroom_override classroom crew_override crew department_override department job_title_override job_title ' +
+  'phone phone_consent address_consent pronouns pronunciation facts facts_updated photo_updated';
 
 function oldName() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -125,25 +141,29 @@ function movedTo(name, target) {
 
 export async function loadModel() {
   const name = oldName();
-  const [who, viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, listMembers, oldId] = await Promise.all([
+  const [who, answers, oldId] = await Promise.all([
     whoAmI(),
-    q('(from PERSON (where (= id @viewer)))'),
-    q('(from PERSON (where (= id @viewer) (admin_of "who")))'),
-    q('(from PERSON (where (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id (= slug "everyone"))))) (not hidden)) (order name_sort asc))'),
-    q('(from PERSON_EMAIL (where primary))'),
-    q('(from PHOTO (where ready) (order order asc))'),
-    q('(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))'),
-    q('(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))))'),
-    q('(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band")))))) (include group))'),
-    q('(from GEOCODE)'),
-    q('(from SETTING (where (= app "platform")))'),
-    q(`(from GROUP @g (where ${tagCondition}) (include managed_by))`),
-    q(`(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))))`),
-    q(`(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))))`),
-    q(`(from GROUP @g (where ${listCondition}) (order name asc))`),
-    q(`(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (include person))`),
+    qs({
+      viewer: '(from PERSON (where (= id @viewer)))',
+      admin: '(from PERSON (where (= id @viewer) (admin_of "who")) (columns source))',
+      people: `(from PERSON (where (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id (= slug "everyone"))))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
+      addresses: '(from PERSON_EMAIL (where primary) (columns person address))',
+      pictures: '(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (in kind "family" "classroom" "grade"))))) (order order asc) (columns person group order reencode crop_left crop_top crop_width crop_height))',
+      groups: '(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))',
+      members: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns group person))',
+      effective: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band")))))) (include group) (columns group person))',
+      coords: '(from GEOCODE)',
+      settings: '(from SETTING (where (= app "platform")))',
+      tagged: `(from GROUP @g (where ${tagCondition}) (include managed_by))`,
+      tagMembers: `(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))) (columns group person))`,
+      tagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
+      managed: `(from GROUP @g (where ${listCondition}) (order name asc))`,
+      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (columns group person))`,
+      guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,
+    }),
     oldTarget(name),
   ]);
+  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, listMembers, guests} = answers;
   model.email = who.email;
   model.allowances = who.allowances;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
@@ -161,7 +181,7 @@ export async function loadModel() {
     byId[model.viewer.id] = model.viewer;
   }
   emails = {};
-  for (const e of all(addresses, 'PERSON_EMAIL')) {
+  for (const e of rowsOf(addresses, 'PERSON_EMAIL')) {
     emails[e.person] = e.address;
   }
   photos = {};
@@ -170,11 +190,11 @@ export async function loadModel() {
     (photos[of] = photos[of] || []).push(ph);
   }
   geocodes = {};
-  for (const g of all(coords, 'GEOCODE')) {
+  for (const g of rowsOf(coords, 'GEOCODE')) {
     geocodes[g.address] = {lat: Number(g.lat), lng: Number(g.lng)};
   }
   model.settings = {};
-  for (const s of all(settings, 'SETTING')) {
+  for (const s of rowsOf(settings, 'SETTING')) {
     model.settings[s.key] = s.value;
   }
   groupById = {};
@@ -192,7 +212,7 @@ export async function loadModel() {
   model.roomParents = groupRows.filter(g => g.kind === 'group');
   membersByGroup = {};
   familiesByPerson = {};
-  for (const m of all(members, 'MEMBER')) {
+  for (const m of rowsOf(members, 'MEMBER')) {
     if (!byId[m.person]) {
       continue;
     }
@@ -208,7 +228,7 @@ export async function loadModel() {
   for (const g of all(effective, 'GROUP')) {
     slugs[g.id] = g.slug;
   }
-  for (const e of all(effective, 'EFFECTIVE_MEMBER')) {
+  for (const e of rowsOf(effective, 'EFFECTIVE_MEMBER')) {
     const slug = slugs[e.group];
     if (roles[slug]) {
       roles[slug].add(e.person);
@@ -219,7 +239,7 @@ export async function loadModel() {
     }
   }
   loadTags(tagged, [tagMembers, tagManagers]);
-  loadLists(managed, listMembers);
+  loadLists(managed, listMembers, guests);
   model.moved = movedTo(name, oldId);
 }
 
@@ -234,7 +254,7 @@ function loadTags(tagged, memberAnswers) {
     included[g.id] = g;
   }
   const rowsOfGroup = {};
-  for (const m of memberAnswers.flatMap(a => all(a, 'MEMBER'))) {
+  for (const m of memberAnswers.flatMap(a => rowsOf(a, 'MEMBER'))) {
     (rowsOfGroup[m.group] = rowsOfGroup[m.group] || {})[m.person] = m.id;
   }
   for (const t of rows) {
@@ -263,7 +283,7 @@ export function tagManagers(t) {
 
 const listKinds = {party: 'party', activity: 'activity'};
 
-function loadLists(managed, members) {
+function loadLists(managed, members, guestRows) {
   lists = {};
   const rows = rowsOf(managed, 'GROUP');
   const room = model.roomParents.filter(g => (membersByGroup[g.id] || []).includes(model.viewer && model.viewer.id));
@@ -271,14 +291,12 @@ function loadLists(managed, members) {
     return;
   }
   const guests = {};
-  for (const p of all(members, 'PERSON')) {
-    if (p.source === 'guest') {
-      guests[p.id] = p;
-      byId[p.id] = byId[p.id] || p;
-    }
+  for (const p of rowsOf(guestRows, 'PERSON')) {
+    guests[p.id] = p;
+    byId[p.id] = byId[p.id] || p;
   }
   const people = {};
-  for (const e of all(members, 'EFFECTIVE_MEMBER')) {
+  for (const e of rowsOf(members, 'EFFECTIVE_MEMBER')) {
     (people[e.group] = people[e.group] || []).push(e.person);
   }
   for (const g of rows) {

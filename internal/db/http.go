@@ -2,13 +2,17 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"mime"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,6 +36,61 @@ type answer struct {
 	Tree      map[string]any                  `json:"tree,omitempty"`
 	Result    []string                        `json:"result"`
 	Resources map[string]map[string]store.Row `json:"resources"`
+}
+
+type answerAll struct {
+	Now       string                          `json:"now"`
+	Results   map[string][]string             `json:"results"`
+	Resources map[string]map[string]store.Row `json:"resources"`
+}
+
+func parseAll(kind string, raw []byte) ([]string, []*Query, bool, error) {
+	var probe map[string]json.RawMessage
+	if kind != "application/json" || json.Unmarshal(raw, &probe) != nil || probe["queries"] == nil {
+		return nil, nil, false, nil
+	}
+	if len(probe) != 1 {
+		return nil, nil, true, errors.New("a body with queries has nothing else")
+	}
+	var named map[string]json.RawMessage
+	if err := json.Unmarshal(probe["queries"], &named); err != nil || len(named) == 0 {
+		return nil, nil, true, errors.New("queries is an object naming at least one query")
+	}
+	names := slices.Sorted(maps.Keys(named))
+	qs := []*Query{}
+	for _, name := range names {
+		var text string
+		var q *Query
+		var err error
+		if json.Unmarshal(named[name], &text) == nil {
+			q, err = Parse(text)
+		} else {
+			q, err = ParseJSON(named[name])
+		}
+		if err != nil {
+			return nil, nil, true, fmt.Errorf("queries.%s: %v", name, err)
+		}
+		qs = append(qs, q)
+	}
+	return names, qs, true, nil
+}
+
+func respond(ctx context.Context, w http.ResponseWriter, r *http.Request, root *trace.Span, out any) {
+	_, encoding := trace.Start(ctx, "encode")
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(out); err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	encoding.Set("bytes", buf.Len())
+	encoding.End()
+	root.End()
+	w.Header().Set("Trace", root.Header())
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		slog.ErrorContext(r.Context(), "write response", "path", r.URL.Path, "error", err)
+	}
 }
 
 type written struct {
@@ -95,6 +154,25 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 			return
 		}
 		_, parsing := trace.Start(ctx, "parse")
+		if names, qs, ok, err := parseAll(kind, raw); ok {
+			parsing.End()
+			if err != nil {
+				serve.Error(w, r, access.Invalid("%v", err))
+				return
+			}
+			out := answerAll{Now: env.Now.Format(cells.StampFormat), Results: map[string][]string{}, Resources: map[string]map[string]store.Row{}}
+			for i, result := range m.RunAll(ctx, qs, env) {
+				slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "name", names[i], "query", qs[i].tree.flat())
+				out.Results[names[i]] = result.IDs
+				for table, rows := range result.Resources {
+					for _, row := range rows {
+						merge(out.Resources, table, row)
+					}
+				}
+			}
+			respond(ctx, w, r, root, out)
+			return
+		}
 		var q *Query
 		var err error
 		if kind == "text/plain" {
@@ -118,21 +196,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		if kind == "text/plain" {
 			out.Tree = q.Tree()
 		}
-		_, encoding := trace.Start(ctx, "encode")
-		var buf bytes.Buffer
-		if err := json.NewEncoder(&buf).Encode(out); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		encoding.Set("bytes", buf.Len())
-		encoding.End()
-		root.End()
-		w.Header().Set("Trace", root.Header())
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
-		if _, err := w.Write(buf.Bytes()); err != nil {
-			slog.ErrorContext(r.Context(), "write response", "path", r.URL.Path, "error", err)
-		}
+		respond(ctx, w, r, root, out)
 	})
 	mux.HandleFunc("POST /api/q", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())

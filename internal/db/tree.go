@@ -82,7 +82,7 @@ func scanFromJSON(head string, v any, where string) (*sexp, error) {
 	allowed := []string{"from", "as", "where"}
 	switch head {
 	case "from":
-		allowed = append(allowed, "order", "limit", "include")
+		allowed = append(allowed, "order", "limit", "include", "columns")
 	case "sum":
 		allowed = append(allowed, "path")
 	}
@@ -134,16 +134,20 @@ func scanFromJSON(head string, v any, where string) (*sexp, error) {
 		}
 		out.list = append(out.list, bracket(word("limit"), atom(atomNumber, n.String())))
 	}
-	if include, ok := m["include"]; ok {
-		paths, ok := include.([]any)
+	for _, clause := range []string{"include", "columns"} {
+		v, ok := m[clause]
 		if !ok {
-			return nil, fmt.Errorf("%s.include is not a list", where)
+			continue
 		}
-		part := bracket(word("include"))
-		for i, p := range paths {
+		names, ok := v.([]any)
+		if !ok {
+			return nil, fmt.Errorf("%s.%s is not a list", where, clause)
+		}
+		part := bracket(word(clause))
+		for i, p := range names {
 			s, ok := p.(string)
 			if !ok {
-				return nil, fmt.Errorf("%s.include[%d] is not a path", where, i)
+				return nil, fmt.Errorf("%s.%s[%d] is not a name", where, clause, i)
 			}
 			part.list = append(part.list, word(s))
 		}
@@ -307,7 +311,7 @@ func operandFromJSON(v any, where string) (*sexp, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := only(sm, at, "from", "column", "where"); err != nil {
+		if err := only(sm, at, "from", "column", "as", "where"); err != nil {
 			return nil, err
 		}
 		table, _ := sm["from"].(string)
@@ -315,11 +319,19 @@ func operandFromJSON(v any, where string) (*sexp, error) {
 		if table == "" || column == "" {
 			return nil, fmt.Errorf("%s names no table in from or no column", at)
 		}
+		head := []*sexp{word("select"), word(table + "." + column)}
+		if as, ok := sm["as"]; ok {
+			s, ok := as.(string)
+			if !ok || s == "" {
+				return nil, fmt.Errorf("%s.as is not a name", at)
+			}
+			head = append(head, atom(atomAt, s))
+		}
 		conds, err := condsFromJSON(sm["where"], at+".where")
 		if err != nil {
 			return nil, err
 		}
-		return bracket(append([]*sexp{word("select"), word(table + "." + column)}, conds...)...), nil
+		return bracket(append(head, conds...)...), nil
 	}
 	return callFromJSON(op, arg, at)
 }
@@ -354,12 +366,12 @@ func scanToJSON(s *sexp, at int) map[string]any {
 			out["order"] = keys
 		case "limit":
 			out["limit"] = json.Number(part.list[1].text)
-		case "include":
-			paths := []any{}
+		case "include", "columns":
+			names := []any{}
 			for _, p := range part.list[1:] {
-				paths = append(paths, p.text)
+				names = append(names, p.text)
 			}
-			out["include"] = paths
+			out[part.head()] = names
 		}
 	}
 	return out
@@ -412,8 +424,12 @@ func operandToJSON(s *sexp) any {
 		case "select":
 			table, column, _ := strings.Cut(s.list[1].text, ".")
 			out := map[string]any{"from": table, "column": column}
-			if len(s.list) > 2 {
-				out["where"] = condsToJSON(s.list[2:])
+			rest := s.list[2:]
+			if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
+				out["as"], rest = rest[0].text, rest[1:]
+			}
+			if len(rest) > 0 {
+				out["where"] = condsToJSON(rest)
 			}
 			return map[string]any{"select": out}
 		}

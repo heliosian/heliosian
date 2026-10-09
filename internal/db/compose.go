@@ -29,7 +29,7 @@ Read the description, then say back in a sentence or two what you understood it 
 
 const Language = `A query is one fully bracketed prefix expression, the operator first in every bracket:
 
-(from TABLE [@name] (where cond…) (order path asc|desc …) (limit N) (include path…))
+(from TABLE [@name] (where cond…) (order path asc|desc …) (limit N) (include path…) (columns column…))
 
 - A condition is (and …), (or …), (not cond), a comparison (= a b), (!= a b), (< a b), (<= a b), (> a b), (>= a b), (in x "a" "b"), (in x (select TABLE.column [@name] cond…)), (in x (ancestors @row)), (blank path), (contains path "text"), holding when the text at the path has the quoted text in it, ignoring case, (exists TABLE [@name] cond…), or a yes/no path on its own. Several conditions in one bracket are anded.
 - A value is a path, a quoted string, a number, true, false, today, now, (count TABLE [@name] cond…), (sum path TABLE [@name] cond…) or (length path), the number of characters in a text path, 0 when blank.
@@ -37,6 +37,7 @@ const Language = `A query is one fully bracketed prefix expression, the operator
 - (ancestors @row) is the row and every row above it through parent, for a table whose parent names its own table.
 - Text and enums compare ignoring case; references and IDs exactly. A date compares against a moment as that day's midnight. A blank cell equals nothing, and != holds when exactly one side is blank.
 - include brings the rows a reference path names (include parent, include person group) so their titles show beside the answer.
+- columns answers only those columns of the listed rows, beside id (columns name_show slug); without it every column the reader may see comes back.
 - The policy definitions are part of the language: (visible @g), (manages @g), (super_admin), (household @p) and the rest can be called inside a query that names its row, (from GROUP @g (where (visible @g))).`
 
 const composeExamples = `Examples:

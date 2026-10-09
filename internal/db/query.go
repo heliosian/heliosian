@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 	"strings"
@@ -21,6 +22,7 @@ type Query struct {
 	order   []orderKey
 	limit   int
 	include []*pathSpec
+	columns []Column
 }
 
 type Env struct {
@@ -191,8 +193,22 @@ func (cx *compiler) query(tree *sexp) (*Query, error) {
 				}
 				q.include = append(q.include, p)
 			}
+		case "columns":
+			if len(part.list) < 2 {
+				return nil, part.errorf("columns names at least one column")
+			}
+			for _, item := range part.list[1:] {
+				if item.isList || item.kind != atomName {
+					return nil, item.errorf("columns takes column names")
+				}
+				c, err := columnNamed(s.table, item.text, item)
+				if err != nil {
+					return nil, err
+				}
+				q.columns = append(q.columns, c)
+			}
 		default:
-			return nil, part.errorf("a query's parts are where, order, limit and include")
+			return nil, part.errorf("a query's parts are where, order, limit, include and columns")
 		}
 	}
 	s.pickProbe()
@@ -1080,9 +1096,21 @@ func (r *run) table(name string) *View {
 }
 
 func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
+	return m.runIn(ctx, m.newRun(env), q)
+}
+
+func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
+	r := m.newRun(env)
+	out := []Result{}
+	for _, q := range qs {
+		out = append(out, m.runIn(ctx, r, q))
+	}
+	return out
+}
+
+func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	_, span := trace.Start(ctx, "run")
 	defer span.End()
-	r := m.newRun(env)
 	r.policy = span.Tally("policy")
 	top := &frame{run: r}
 	scanned := span.Start("scan")
@@ -1108,19 +1136,51 @@ func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
 	redacting, including := span.Tally("redact"), span.Tally("include")
 	for _, row := range rows {
 		start := time.Now()
-		if guarded {
-			row = r.redact(q.scan.table, row)
+		answered := row
+		switch {
+		case guarded:
+			answered = r.redact(q.scan.table, row, q.columns)
+		case q.columns != nil:
+			answered = picked(row, q.columns)
 		}
 		redacting.Add(time.Since(start))
 		out.IDs = append(out.IDs, row["id"])
-		out.Resources[table][row["id"]] = row
+		merge(out.Resources, table, answered)
 		start = time.Now()
 		for _, p := range q.include {
-			r.includePath(guarded, row, p.steps, out.Resources)
+			from := row
+			if guarded {
+				from = r.redact(q.scan.table, row, p.steps[:1])
+			}
+			r.includePath(guarded, from, p.steps, out.Resources)
 		}
 		including.Add(time.Since(start))
 	}
 	span.Set("rows", len(out.IDs))
+	return out
+}
+
+func merge(into map[string]map[string]store.Row, table string, row store.Row) {
+	if into[table] == nil {
+		into[table] = map[string]store.Row{}
+	}
+	held, ok := into[table][row["id"]]
+	if !ok {
+		into[table][row["id"]] = row
+		return
+	}
+	both := maps.Clone(held)
+	maps.Copy(both, row)
+	into[table][row["id"]] = both
+}
+
+func picked(row store.Row, columns []Column) store.Row {
+	out := store.Row{"id": row["id"]}
+	for _, c := range columns {
+		if v := row[c.Name]; v != "" {
+			out[c.Name] = v
+		}
+	}
 	return out
 }
 
@@ -1178,12 +1238,9 @@ func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[
 		return
 	}
 	if guarded {
-		next = r.redact(target.Table(), next)
+		next = r.redact(target.Table(), next, nil)
 	}
-	if into[c.Target] == nil {
-		into[c.Target] = map[string]store.Row{}
-	}
-	into[c.Target][id] = next
+	merge(into, c.Target, next)
 	r.includePath(guarded, next, steps[1:], into)
 }
 
