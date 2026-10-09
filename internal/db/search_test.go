@@ -259,8 +259,8 @@ func TestEveryShownRowHasAnInput(t *testing.T) {
 	s, _, bucket, x := searcher(t)
 	makeAll(t, s, x)
 	inputs := s.Model().SearchInputs(nil)
-	if _, ok := inputs["grp00000000041"]; !ok {
-		t.Error("a managers group has no search input")
+	if _, ok := inputs["grp00000000041"]; ok {
+		t.Error("a managers group has a search input")
 	}
 	picnic := inputs["grp00000000040"]
 	if !strings.Contains(picnic.Input, "Fall Picnic") || !strings.Contains(picnic.Input, "Under: Community") {
@@ -346,18 +346,21 @@ func TestFillerWordsAreNotSearched(t *testing.T) {
 	}
 }
 
-func TestRSVPListsAndSessionsAreNotSearched(t *testing.T) {
+func TestListsAdminsManagersAndSessionsAreNotSearched(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000096", "kind": "admins", "name": "Book Club Admins", "status": "open"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093", "managed_by": "grp00000000094", "waitlist": "grp00000000095"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Club", "parent": "grp00000000091", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:45:00"}),
 	); err != nil {
 		t.Fatal(err)
 	}
 	rows := s.Model().SearchInputs(nil)
-	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false} {
+	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false} {
 		if _, got := rows[id]; got != want {
 			t.Errorf("%s searched %v, want %v", id, got, want)
 		}
@@ -812,6 +815,9 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 		}
 	}
 	s, _, _, x := searcher(t)
+	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "event", "name": "Spring Picnic", "parent": "grp00000000060", "status": "open", "visible_to": "grp00000000004", "start": "2027-04-10 12:00:00"})); err != nil {
+		t.Fatal(err)
+	}
 	makeAll(t, s, x)
 	env := Env{Viewer: parent, Now: testNow}
 	if all := x.Words(s.Model(), env, "picnic", testLimits)["GROUP"]; len(all) < 2 {

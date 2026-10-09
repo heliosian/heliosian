@@ -47,6 +47,9 @@ var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 var searchExclusions = []string{
 	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)))))`,
 	`(from GROUP (where (= kind "event") (= parent.kind "event")))`,
+	`(from GROUP (where (in id (select GROUP.waitlist))))`,
+	`(from GROUP (where (= kind "admins")))`,
+	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
 }
 
 var searchFiller = map[string]bool{
