@@ -113,6 +113,18 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-outline-item.depth-2 { padding-left: 38px; }
 
+.wiki-steps { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; padding-top: 20px; border-top: 1px solid var(--line); }
+
+.wiki-step { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; color: var(--brand); font-size: 15px; font-weight: 600; text-decoration: none; }
+
+.wiki-step:hover span { text-decoration: underline; }
+
+.wiki-step svg { flex-shrink: 0; width: 16px; height: 16px; }
+
+.wiki-step span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wiki-step-next { margin-left: auto; }
+
 .wiki-body .wiki-section { margin: 4px 0 16px; font-size: 24px; color: var(--brand); }
 
 .wiki-list { display: flex; flex-direction: column; gap: 12px; }

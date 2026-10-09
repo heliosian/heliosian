@@ -136,6 +136,36 @@ function outline(content, card) {
   card.replaceChildren(el('div', 'side-card-title', 'On this page'), list);
 }
 
+function nextPage(p) {
+  const children = childrenOf(p.id);
+  if (children.length) {
+    return children[0];
+  }
+  for (let at = p; at; at = page(at.parent)) {
+    const siblings = childrenOf(at.parent);
+    const i = siblings.indexOf(at);
+    if (i >= 0 && i + 1 < siblings.length) {
+      return siblings[i + 1];
+    }
+  }
+  return null;
+}
+
+function pageSteps(p) {
+  const steps = el('nav', 'wiki-steps');
+  const parent = page(p.parent);
+  const up = link(parent ? pagePath(parent) : '/', 'wiki-step');
+  up.append(svg('up'), el('span', '', `Back Up (${parent ? parent.name : 'Wiki'})`));
+  steps.append(up);
+  const next = nextPage(p);
+  if (next) {
+    const forward = link(pagePath(next), 'wiki-step wiki-step-next');
+    forward.append(svg('arrow'), el('span', '', `Next Page (${next.name})`));
+    steps.append(forward);
+  }
+  return steps;
+}
+
 function sectionList(children) {
   const list = el('nav', 'wiki-outline');
   list.append(...children.map(c => link(pagePath(c), 'wiki-outline-item', c.name)));
@@ -226,7 +256,7 @@ export function viewPage(id) {
   main.append(el('h1', 'detail-title', p.name));
   const content = el('article', 'wiki-body');
   content.append(el('p', 'panel-empty', 'Loading…'));
-  main.append(content);
+  main.append(content, pageSteps(p));
   const hero = el('div');
   const md = body(p);
   md.then(md => {
