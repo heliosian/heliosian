@@ -322,11 +322,12 @@ func TestFillerWordsAreNotSearched(t *testing.T) {
 	}
 }
 
-func TestListsAdminsManagersSessionsAndDayPartsAreNotSearched(t *testing.T) {
+func TestListsAdminsManagersSessionsDaysAndCategoriesAreNotSearched(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000099", "kind": "day_part", "name": "Pickup", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:15:00", "end": "2026-11-03 15:30:00"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000089", "kind": "day", "name": "No School", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
@@ -339,7 +340,7 @@ func TestListsAdminsManagersSessionsAndDayPartsAreNotSearched(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := s.Model().SearchInputs(nil)
-	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true, "grp00000000099": false} {
+	for id, want := range map[string]bool{"grp00000000089": false, "grp00000000090": false, "grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true, "grp00000000099": false} {
 		if _, got := rows[id]; got != want {
 			t.Errorf("%s searched %v, want %v", id, got, want)
 		}
@@ -474,7 +475,7 @@ func TestAHitJoinsItsOwnEmailBeforeItsCopy(t *testing.T) {
 	run := s.Model().newRun(Env{Viewer: parent, Now: testNow})
 	grouped := func(scores map[string]float64) []string {
 		got := []string{}
-		for _, r := range v.pick(run, scores, testLimits)["DOCUMENT"] {
+		for _, r := range v.pick(run, scores, nil, testLimits)["DOCUMENT"] {
 			line := []string{}
 			for _, ref := range r.Refs {
 				line = append(line, ref.Terminal+"|"+ref.Source)
@@ -607,7 +608,7 @@ func TestEachTableIsScannedUntilItAloneIsFull(t *testing.T) {
 	run := m.newRun(Env{Viewer: staff, Now: testNow})
 	limits := map[string]int{"GROUP": 1, "PERSON": 1, "DOCUMENT": 0}
 	scores, scanned, _ := v.byMeaning(run, query, limits)
-	got := v.pick(run, scores, limits)
+	got := v.pick(run, scores, nil, limits)
 	if len(got["GROUP"]) != 1 || len(got["PERSON"]) != 1 {
 		t.Fatalf("found %d groups and %d people", len(got["GROUP"]), len(got["PERSON"]))
 	}
@@ -643,24 +644,52 @@ func namedView(t *testing.T, m *Model, names map[string]string) (*searchView, []
 	return buildView(rows, entries, nil), dated
 }
 
+func byNameOf(v *searchView, run *run, words string) []string {
+	scores, exact := v.byName(words)
+	return hitIDs(v.pick(run, scores, exact, testLimits)["GROUP"])
+}
+
 func TestTheNewestOfEqualHitsComesFirst(t *testing.T) {
 	m := sample(t).Model()
 	v, dated := namedView(t, m, map[string]string{"oldest": "Rain Boots Sale", "newest": "Boots for the Tide Pools"})
-	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byName("boots"), testLimits)["GROUP"])
+	got := byNameOf(v, m.newRun(Env{Viewer: staff, Now: testNow}), "boots")
 	if !slices.Equal(got, []string{dated[2], dated[0]}) {
 		t.Fatalf("the two named boots came back %v, want newest %s then oldest %s", got, dated[2], dated[0])
+	}
+}
+
+func TestANameThatIsTheWordsComesFirst(t *testing.T) {
+	m := sample(t).Model()
+	v, dated := namedView(t, m, map[string]string{"oldest": "The Boots", "middle": "Boots for the Tide Pools", "newest": "Rain Boots Sale"})
+	got := byNameOf(v, m.newRun(Env{Viewer: staff, Now: testNow}), "Boots")
+	if !slices.Equal(got, []string{dated[0], dated[2], dated[1]}) {
+		t.Fatalf("boots found %v, want the one named boots %s, then the newest %s, then %s", got, dated[0], dated[2], dated[1])
 	}
 }
 
 func TestANameMustHoldEveryWord(t *testing.T) {
 	m := sample(t).Model()
 	v, dated := namedView(t, m, map[string]string{"oldest": "Rain Boots Sale", "middle": "Kite Day", "newest": "Boots and Kites"})
-	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byName("the boots kites"), testLimits)["GROUP"])
+	got := byNameOf(v, m.newRun(Env{Viewer: staff, Now: testNow}), "the boots kites")
 	if !slices.Equal(got, []string{dated[2]}) {
 		t.Fatalf("boots kites found %v, want only %s", got, dated[2])
 	}
-	if got := v.byName("who is the"); len(got) != 0 {
+	if got, _ := v.byName("who is the"); len(got) != 0 {
 		t.Fatalf("filler alone found %v", got)
+	}
+}
+
+func TestAResultKeepsFiveRefs(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	pics := NewPictures(s, queue, bucket)
+	NewExtractor(s, queue, bucket, "test")
+	for i := range 7 {
+		sendMail(t, s, pics, fmt.Sprintf("Tide pools %d", i), "Bring <b>boots</b> for the tide pools.")
+	}
+	makeAll(t, s, x)
+	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "tide pools", testLimits)["DOCUMENT"]
+	if len(results) != 1 || len(results[0].Refs) != searchRefs {
+		t.Fatalf("seven copies came back as %d results, the first with %d refs", len(results), len(results[0].Refs))
 	}
 }
 

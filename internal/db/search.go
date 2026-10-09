@@ -33,6 +33,7 @@ import (
 const (
 	searchFolder   = "search"
 	SearchLimit    = 10
+	searchRefs     = 5
 	searchFloor    = 0.67
 	searchChunk    = 1500
 	searchMakers   = 4
@@ -47,7 +48,7 @@ var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 var searchExclusions = []string{
 	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)))))`,
 	`(from GROUP (where (= kind "event") (= parent.kind "event")))`,
-	`(from GROUP (where (= kind "day_part")))`,
+	`(from GROUP (where (in kind "day_part" "day" "category")))`,
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,
 	`(from GROUP (where (= kind "admins")))`,
 	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
@@ -838,7 +839,7 @@ func readable(r *run, table, id string) bool {
 	return ok && r.readable(t, got)
 }
 
-func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]int) map[string][]SearchResult {
+func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bool, limits map[string]int) map[string][]SearchResult {
 	objects := slices.Collect(maps.Keys(scores))
 	when := func(o string) string {
 		return v.rows[v.objects[o][0]].When
@@ -846,6 +847,12 @@ func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]i
 	slices.SortFunc(objects, func(a, b string) int {
 		if c := cmpDesc(scores[a], scores[b]); c != 0 {
 			return c
+		}
+		if exact[a] != exact[b] {
+			if exact[a] {
+				return -1
+			}
+			return 1
 		}
 		if c := strings.Compare(when(b), when(a)); c != 0 {
 			return c
@@ -890,9 +897,11 @@ func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]i
 				i = len(docs) - 1
 				at[row.Terminal] = i
 			}
-			ref := row.ref(id, summary)
-			ref.Score = score
-			docs[i].Refs = append(docs[i].Refs, ref)
+			if len(docs[i].Refs) < searchRefs {
+				ref := row.ref(id, summary)
+				ref.Score = score
+				docs[i].Refs = append(docs[i].Refs, ref)
+			}
 			if _, ok := clusters[cluster]; !ok {
 				clusters[cluster] = i
 			}
@@ -919,7 +928,7 @@ func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (
 			batch := order[scanned[t]:min(scanned[t]+searchProbe, len(order))]
 			index.scan(query, batch, own)
 			scanned[t] += len(batch)
-			if len(v.pick(r, own, map[string]int{t: limits[t]})[t]) == limits[t] {
+			if len(v.pick(r, own, nil, map[string]int{t: limits[t]})[t]) == limits[t] {
 				break
 			}
 		}
@@ -947,7 +956,7 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 	}()
 	v := x.snapshot()
 	r := m.newRun(env)
-	scores := v.byName(words)
+	scores, exact := v.byName(words)
 	namesTook := time.Since(start)
 	e := <-done
 	if e.err != nil {
@@ -960,7 +969,7 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 			scores[o] = score
 		}
 	}
-	out := v.pick(r, scores, limits)
+	out := v.pick(r, scores, exact, limits)
 	cells := 0
 	for _, n := range scanned {
 		cells += n

@@ -27,7 +27,7 @@ A client decides whether to use a connector mostly from its tools' names and des
 
 | Tool | What it answers |
 | --- | --- |
-| `helios_search` | the Admin search's answer (`Searcher.Search`): for each of GROUP, PERSON and DOCUMENT, one list of results, the rows whose name holds every word first and then those close in meaning, a group or person with its name, summary and `href` from the search index; a document result a bundle of `refs`, matching extracts in rank order, each with its email's or file's name, its source's `href` and its own summary: one email's or file's own, and near-copies from ones that started no result |
+| `helios_search` | the Admin search's answer (`Searcher.Search`): for each of GROUP, PERSON and DOCUMENT, one list of results, the rows whose name holds every word first and then those close in meaning, a group or person with its name, summary and `href` from the search index; a document result a bundle of at most five `refs`, matching extracts in rank order, each with its email's or file's name, its source's `href` and its own summary: one email's or file's own, and near-copies from ones that started no result |
 | `helios_similar` | every near-identical copy of an email's, part's or extract's text, under any email or file (`Searcher.Similar`), those the person may read, in the same refs `helios_search` gives |
 | `helios_whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
 | `helios_events` | events starting in a range of days, two weeks from today by default |

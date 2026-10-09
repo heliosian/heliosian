@@ -74,11 +74,12 @@ func (v *searchView) group(object string) string {
 	return object
 }
 
-func (v *searchView) byName(words string) map[string]float64 {
+func (v *searchView) byName(words string) (map[string]float64, map[string]bool) {
 	scores := map[string]float64{}
+	exact := map[string]bool{}
 	terms := searchTerms(words)
 	if len(terms) == 0 {
-		return scores
+		return scores, exact
 	}
 	for _, o := range v.names[terms[0]] {
 		scores[o] = 1
@@ -94,7 +95,12 @@ func (v *searchView) byName(words string) map[string]float64 {
 			}
 		}
 	}
-	return scores
+	for o := range scores {
+		if slices.Equal(searchTerms(v.rows[v.objects[o][0]].Name), terms) {
+			exact[o] = true
+		}
+	}
+	return scores, exact
 }
 
 type chunkRef struct {

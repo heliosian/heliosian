@@ -230,7 +230,7 @@ func spec() schema {
 		"score":   schema{"type": "number", "description": "What it ranked by: 1 when its name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
 	}}
 	schemas["SearchBundle"] = schema{"type": "object", "required": []string{"refs"}, "properties": schema{
-		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "Matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},
+		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "At most five matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},
 	}}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
