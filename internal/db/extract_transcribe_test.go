@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/gif"
 	"image/jpeg"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -119,17 +120,23 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 	var mu sync.Mutex
 	asked := 0
+	photo := jpegOf(t, 300)
 	intercept.Install(intercept.ClaudeHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		asked++
-		mu.Unlock()
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		if bytes.Contains(body, []byte(base64.StdEncoding.EncodeToString(photo))) {
+			mu.Lock()
+			asked++
+			mu.Unlock()
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprintf(w, "event: message_start\ndata: %s\n\n", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`)
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", `{"type":"error","error":{"type":"invalid_request_error","message":"Output blocked by content filtering policy"}}`)
 	}))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	photo := jpegOf(t, 300)
 	if err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo); err != nil {
 		t.Fatal(err)
 	}

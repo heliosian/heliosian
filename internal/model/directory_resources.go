@@ -468,7 +468,6 @@ func familiesType() api.Type[*Model] {
 			"kids":   familyMembers(false),
 		},
 		Filters: familyFilters,
-		Rankers: map[string]api.Ranker[*Model]{"near": nearRanker},
 	}
 }
 

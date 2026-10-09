@@ -34,10 +34,11 @@ type DocumentFiler struct {
 	embedder *artifacts.Vertex
 	holder   *store.Queue
 	filing   sync.Mutex
+	mail     func(ctx context.Context, raw []byte) error
 }
 
-func RegisterDocuments(mux *http.ServeMux, s *Store, embedder *artifacts.Vertex, holder *store.Queue, mailbox artifacts.Inbox) *DocumentFiler {
-	in := &DocumentFiler{Inbox: mailbox, store: s, embedder: embedder, holder: holder}
+func RegisterDocuments(mux *http.ServeMux, s *Store, embedder *artifacts.Vertex, holder *store.Queue, mailbox artifacts.Inbox, mail func(ctx context.Context, raw []byte) error) *DocumentFiler {
+	in := &DocumentFiler{Inbox: mailbox, store: s, embedder: embedder, holder: holder, mail: mail}
 	mux.HandleFunc("POST /hooks/mail/mime", in.hook)
 	return in
 }
@@ -80,6 +81,11 @@ func (in *DocumentFiler) hook(w http.ResponseWriter, r *http.Request) {
 	}
 	in.holder.Hold()
 	defer in.holder.Release()
+	if err := in.mail(r.Context(), raw); err != nil {
+		slog.ErrorContext(r.Context(), "artifacts: mail not filed as a document", "id", m.MessageID, "subject", m.Subject, "error", err)
+		http.Error(w, "not filed", http.StatusInternalServerError)
+		return
+	}
 	if err := in.file(r.Context(), documentsMailActor, m); err != nil {
 		slog.ErrorContext(r.Context(), "artifacts: mail not imported", "id", m.MessageID, "subject", m.Subject, "error", err)
 		http.Error(w, "not imported", http.StatusInternalServerError)

@@ -24,6 +24,7 @@ import (
 	"heliosian/internal/model"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/tools"
 )
 
 const (
@@ -84,13 +85,11 @@ func setup(t *testing.T) fixture {
 	mux := http.NewServeMux()
 	Register(mux, Deps{
 		Data:     s,
-		Search:   search,
-		Bucket:   bucket,
+		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Origin: model.Origin("heliosian.com"), Now: time.Now}),
 		Key:      []byte("test"),
 		Sessions: signed,
 		Member:   func(string) bool { return true },
 		Now:      time.Now,
-		Domain:   "heliosian.com",
 	})
 	server := httptest.NewServer(auth.Fixed(rowan, mux))
 	t.Cleanup(server.Close)
@@ -230,13 +229,13 @@ func TestConnectingReadsAsThePersonWhoApproved(t *testing.T) {
 	}
 	var who struct {
 		Person struct {
-			Rows []map[string]string `json:"rows"`
+			ID string `json:"id"`
 		} `json:"person"`
 	}
 	if err := json.Unmarshal([]byte(text), &who); err != nil {
 		t.Fatal(err)
 	}
-	if len(who.Person.Rows) != 1 || who.Person.Rows[0]["id"] != rowanID {
+	if who.Person.ID != rowanID {
 		t.Fatalf("whoami answered %s", text)
 	}
 }
@@ -389,7 +388,7 @@ func TestTools(t *testing.T) {
 		{"helios_similar", map[string]any{"id": camping}, []string{"no search entry"}, true},
 		{"helios_find_people", map[string]any{"role": "parent"}, []string{rowanID}, false},
 		{"helios_find_people", nil, []string{"name at least one"}, true},
-		{"helios_events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"count"`}, false},
+		{"helios_events", map[string]any{"from": "2026-01-01", "to": "2026-12-31"}, []string{`"events"`}, false},
 		{"helios_events", map[string]any{"from": "tomorrow"}, []string{"YYYY-MM-DD"}, true},
 	} {
 		text, failed := callTool(t, session, c.tool, c.args)

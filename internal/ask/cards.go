@@ -1,11 +1,11 @@
 package ask
 
 import (
-	"encoding/json"
-	"strings"
 	"time"
 
-	"heliosian/internal/model"
+	"heliosian/internal/cells"
+	"heliosian/internal/db"
+	"heliosian/internal/store"
 )
 
 type linkCard struct {
@@ -17,56 +17,54 @@ type linkCard struct {
 	Color string `json:"color,omitempty"`
 }
 
-var cardKinds = map[string]struct{ kind, name, image string }{
-	"people":      {"person", "fullName", "heroPhotoUrl"},
-	"families":    {"family", "name", "photoUrl"},
-	"classrooms":  {"classroom", "name", "imageUrl"},
-	"events":      {"event", "title", ""},
-	"email-lists": {"group", "title", ""},
-	"activities":  {"activity", "title", "imageUrl"},
-	"parties":     {"party", "title", "imageUrl"},
-}
+var groupCards = map[string]string{"family": "family", "classroom": "classroom", "grade": "classroom", "event": "event", "activity": "activity", "party": "party"}
 
 func (t *turn) linkCard(address string) (linkCard, bool) {
-	r, ok := t.found.of(address)
+	id, ok := t.found.of(address)
 	if !ok {
 		return linkCard{}, false
 	}
-	shape, ok := cardKinds[r.typ]
-	if !ok {
+	table, ok := db.TableOf(id)
+	if !ok || (table != "PERSON" && table != "GROUP") {
 		return linkCard{}, false
 	}
-	paths := map[string]string{"it": one(r.typ, r.id, params())}
-	if r.typ == "classrooms" {
-		paths["settings"] = collection("when-settings", params())
-	}
-	env, err := t.read(paths)
-	if err != nil {
+	found, _, err := t.rows(`(from %s (where (= id %q)))`, table, id)
+	if err != nil || len(found) == 0 {
 		return linkCard{}, false
 	}
-	obj := env.Resources[r.typ][r.id]
-	card := linkCard{URL: address, Kind: shape.kind, Name: text(obj, shape.name)}
-	if shape.image != "" {
-		card.Image = text(obj, shape.image)
-		if strings.HasPrefix(card.Image, "/") {
-			card.Image = appURL(text(obj, "app"), card.Image)
+	row := found[0]
+	card := linkCard{URL: address, Kind: "person", Name: row["name_show"]}
+	if table == "GROUP" {
+		card.Name = row["name"]
+		kind, ok := groupCards[row["kind"]]
+		if mail, _ := cells.YesNo(row["mail"], false); !ok && mail {
+			kind, ok = "group", true
 		}
-	}
-	if start := text(obj, "start"); r.typ == "events" && len(start) >= len(model.DateFormat) {
-		day, err := time.ParseInLocation(model.DateFormat, start[:len(model.DateFormat)], model.Location)
-		if err != nil {
-			panic(err)
+		if !ok {
+			return linkCard{}, false
 		}
-		card.Badge = day.Format("Mon Jan 2")
-	}
-	if r.typ == "classrooms" {
-		for _, settings := range env.Resources["when-settings"] {
-			colors := map[string]string{}
-			if err := json.Unmarshal(settings["colors"], &colors); err != nil {
+		card.Kind = kind
+		card.Color = row["color"]
+		if start := row["start"]; kind == "event" && len(start) >= len(time.DateOnly) {
+			day, err := time.Parse(time.DateOnly, start[:len(time.DateOnly)])
+			if err != nil {
 				panic(err)
 			}
-			card.Color = colors[card.Name]
+			card.Badge = day.Format("Mon Jan 2")
 		}
 	}
+	card.Image = t.picture(table, row)
 	return card, true
+}
+
+func (t *turn) picture(table string, row store.Row) string {
+	column := "person"
+	if table == "GROUP" {
+		column = "group"
+	}
+	found, _, err := t.rows(`(from PHOTO (where (= %s %q) (not (blank thumbnail))) (order order asc) (limit 1))`, column, row["id"])
+	if err != nil || len(found) == 0 {
+		return ""
+	}
+	return "/api/blob/" + found[0]["id"] + "/thumbnail"
 }

@@ -145,21 +145,21 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
-		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{"grp00000000020"}},
-		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003"}},
+		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{"grp00000000020", "grp00000000512", "grp00000000513"}},
+		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003", "per00000000002"}},
 		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000040"}},
-		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040"}},
+		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
 		{"", `(from COLLECTION @c (where (exists COLLECTION_GROUP (= collection @c) (= group "grp00000000010"))))`, "token", []string{"fed00000000001"}},
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
-		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001"}},
+		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
-		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030"}},
+		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030", "grp00000000502", "grp00000000503"}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from GROUP (where (contains name "LL PICnic") (= kind "event")))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (contains description "picnic")))`, "id", nil},
-		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{"grp00000000020"}},
+		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{"grp00000000020", "grp00000000503"}},
 		{"", `(from PERSON (where (= (length vc_name) 0)))`, "id", []string{"per00000000004"}},
 		{"", `(from MEMBER (where (= (length guest_of.name_short) 5)))`, "person", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
@@ -284,14 +284,14 @@ func TestEffectiveMembers(t *testing.T) {
 	if got := effective(t, s, "grp00000000006"); !slices.Equal(got, []string{"per00000000003"}) {
 		t.Fatalf("Who? admins are %v", got)
 	}
-	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001"}) {
+	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001", "per00000000003"}) {
 		t.Fatalf("the Jayvens band, through its grades and classrooms, holds %v", got)
 	}
 	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000521"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "member": "excluded"})); err != nil {

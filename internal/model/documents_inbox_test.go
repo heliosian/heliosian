@@ -164,7 +164,7 @@ func testInbox(t *testing.T) (*DocumentFiler, *blob.Bucket, *data.Dir, *store.Qu
 	queue := store.NewQueue()
 	embedder := vertex(t)
 	s := sampleStore(t, sheet, queue, inboxDeps(objects, embedder))
-	return &DocumentFiler{Inbox: artifacts.Inbox{SigningKey: "key", Bucket: objects}, store: s, embedder: embedder, holder: queue}, objects, sheet, queue
+	return &DocumentFiler{Inbox: artifacts.Inbox{SigningKey: "key", Bucket: objects}, store: s, embedder: embedder, holder: queue, mail: func(context.Context, []byte) error { return nil }}, objects, sheet, queue
 }
 
 func inboxDeps(objects *blob.Bucket, embedder *artifacts.Vertex) Deps {
@@ -247,11 +247,19 @@ func postMail(in *DocumentFiler, key, raw string) int {
 
 func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	in, objects, sheet, queue := testInbox(t)
+	filed := []string{}
+	in.mail = func(_ context.Context, raw []byte) error {
+		filed = append(filed, string(raw))
+		return nil
+	}
 	direct := strings.NewReplacer("smtp.mailfrom=falcons.parents+bncABC@", "smtp.mailfrom=renee.park@", "<class-1@", "<class-2@").Replace(classMail)
 	for _, raw := range []string{personalMail, direct, classMail, classMail} {
 		if code := postMail(in, "key", raw); code != http.StatusOK {
 			t.Fatalf("the hook answered %d", code)
 		}
+	}
+	if len(filed) != 3 || filed[0] != personalMail || filed[1] != classMail || filed[2] != classMail {
+		t.Fatalf("the data model was handed %d messages", len(filed))
 	}
 	queue.Flush()
 	_, rows, err := sheet.Table(DocumentsApp, documentsTab)

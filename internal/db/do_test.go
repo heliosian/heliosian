@@ -459,6 +459,34 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	}
 }
 
+func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	eml := []byte("From: Maya Lindqvist <maya.lindqvist@example.org>\r\n" +
+		"Date: Thu, 12 Feb 2026 01:48:03 +0000\r\n" +
+		"Subject: Field trip\r\n" +
+		"List-Id: <hummingbirds.parents.heliosschool.org>\r\n" +
+		"\r\n" +
+		"Bring a lunch.\r\n")
+	first, err := FileMail(context.Background(), s, queue, pics, eml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := FileMail(context.Background(), s, queue, pics, eml)
+	if err != nil || again != first {
+		t.Fatalf("filed again as %q, first %q: %v", again, first, err)
+	}
+	row, ok := s.Model().Table("DOCUMENT").Get(first)
+	links := s.Model().Table("DOCUMENT_GROUP").Referencing("document", first)
+	if !ok || row["kind"] != "mail" || row["name"] != "Field trip" || len(links) != 1 || links[0]["group"] != "grp00000000030" {
+		t.Fatalf("filed %v sent to %v", row, links)
+	}
+	loop := []byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: <team.loop.heliosian.com>\r\nSubject: Ours\r\n\r\nhello\r\n")
+	if id, err := FileMail(context.Background(), s, queue, pics, loop); err != nil || id != "" {
+		t.Fatalf("loop's own mail was filed as %q: %v", id, err)
+	}
+}
+
 func TestMailIsSentToItsListsGroups(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000031", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"})); err != nil {

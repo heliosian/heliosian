@@ -37,7 +37,7 @@ const (
 	searchFloor    = 0.67
 	searchChunk    = 1500
 	searchMakers   = 4
-	searchLoaders  = 16
+	searchLoaders  = 128
 	searchTimeout  = 2 * time.Minute
 	searchAttempts = 3
 	searchShortest = 10

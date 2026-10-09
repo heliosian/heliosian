@@ -164,7 +164,7 @@ type calendarResources struct {
 
 func (h CalendarHooks) Resources() []api.Type[*Model] {
 	r := calendarResources{app: h.app}
-	return []api.Type[*Model]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings(), r.calendarTags(), r.dayTypes(), r.dayPlans()}
+	return []api.Type[*Model]{r.events(), r.guestLists(), r.inviteGroups(), r.feeds(), r.settings(), r.dayTypes()}
 }
 
 func (r calendarResources) staged(wr api.Write[*Model]) calendarApp {
@@ -415,20 +415,6 @@ func (r calendarResources) events() api.Type[*Model] {
 					return nil
 				}
 				return []string{a.guestListID(e.ID)}
-			}},
-			"calendar-tags": {Type: "calendar-tags", Many: true, List: func(m *Model, q api.Query, key string) []string {
-				a := r.app.at(m)
-				e := a.viewerEvent(q, key)
-				if e == nil {
-					return nil
-				}
-				out := []string{}
-				for _, tag := range e.Tags {
-					if a.model().Tag(tag) != nil {
-						out = append(out, tag)
-					}
-				}
-				return out
 			}},
 			"day-type": {Type: "day-types", List: func(m *Model, q api.Query, key string) []string {
 				a := r.app.at(m)

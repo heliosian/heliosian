@@ -21,31 +21,16 @@ The endpoint refuses a token once it has expired, once the person signs out of a
 
 ## Tools
 
-Every tool is read-only and runs as the person the token names, resolved for each call through the data model's own sign-in (`Model.SignedIn`). Every read goes through `Model.Run`, so the read policies and the consent step decide what each tool answers, exactly as they do for `/api/q`. The server's instructions, sent when a client connects, carry the query language from `db.Language`, the same text the Admin Query page's composer gives Claude. An answer longer than `maxOutput` is refused with a word on narrowing it.
+The tools are the shared set in `internal/tools`, the same ones Helios Ask gives its model; `docs/tools.md` lists each and what it answers. Every one is read-only and runs as the person the token names, resolved for each call through the data model's own sign-in (`Model.SignedIn`). `addTools` in `internal/mcp/tools.go` registers each with the SDK under its own name, description and input schema, and answers a tool's error as a tool result marked as an error. The server's instructions, sent when a client connects, carry the query language from `db.Language`, the same text the Admin Query page's composer gives Claude. An answer longer than `maxOutput` is refused with a word on narrowing it.
 
 A client decides whether to use a connector mostly from its tools' names and descriptions, and many never show the model the server's instructions. So every tool's name starts `helios_`, and every description says it is Helios School's, the ones a question starts from (`helios_search`, `helios_whoami`, `helios_events`) saying what questions they answer; `TestEveryToolSaysItIsHelios` holds every tool to that. The server names itself Helios School and describes the community in `about`, which the instructions open with.
-
-| Tool | What it answers |
-| --- | --- |
-| `helios_search` | the Admin search's answer (`Searcher.Search`): for each of GROUP, PERSON and DOCUMENT, one list of results, the rows whose name holds every word first and then those close in meaning, a group or person with its name, summary and `href` from the search index; a document result a bundle of at most five `refs`, matching extracts in rank order, each with its email's or file's name, its source's `href` and its own summary: one email's or file's own, and near-copies from ones that started no result |
-| `helios_similar` | every near-identical copy of an email's, part's or extract's text, under any email or file (`Searcher.Similar`), those the person may read, in the same refs `helios_search` gives |
-| `helios_whoami` | the person's row, addresses and memberships, the groups they manage (`manages`) and the apps they are an admin of (`admin_of`) |
-| `helios_events` | events starting in a range of days, two weeks from today by default |
-| `helios_find_people` | people by search words (the PERSON list `Searcher.Search` answers), role group, grade and classroom name |
-| `helios_read_document` | a document's tree of parts, links, images and extracts, and the Markdown of each extract, read from the bucket through `Model.BlobCell` |
-| `helios_get` | one row with the names of what it references, and the first few rows of each table and column that point at it |
-| `helios_group` | a group with its managers (the effective members of each `managed_by` up its parents), its effective members and their reasons, its rules and the groups under it |
-| `helios_query` | a query in the language, run as `/api/q` runs it: the canonical form, the count, the rows with their filled columns and the rows the includes brought |
-| `helios_describe_schema` | every table with its description and column names, from `db.Tables` |
-| `helios_describe_table` | one table's columns in full, from `db.DescribeTable` (the composer's description, private columns left out), and the columns elsewhere that point at it |
-| `helios_policies` | `db.PolicySource`: the definitions a query may call and every clause |
 
 ## Links
 
 Every record a tool answers that has a page on the Helios apps carries `href`, the address of that page, and the instructions and `helios_search`'s description tell the model to link a record to it whenever it names one and never to make an address up. The field is `href` because `link` and `url` are columns already (`DOCUMENT.link`, and `url` on groups and documents). The rule is `db.Link` in `internal/db/link.go`, beside the data model, so anything else that needs a record's page reads the same one: each kind's page on its app, by the record's `slug` or else its ID, under the app's host on the server's domain (`Deps.Domain`, the production domain or the dev server's with its port). A wiki page links to its page on Helios Wiki, and any other document to its own address on the web. A record of any other kind has no `href`; nothing links to Helios Admin, which is an admin's tool.
 
-Each call logs an `mcp: tool` line with the tool, the viewer's person ID, how long it took and any error.
+Each call logs a `tools: run` line with the tool, the viewer's person ID, how long it took and any error.
 
 ## Tests
 
-`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling each tool, at `/mcp` and at the root. It also covers the refusals, at both: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.
+`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling tools, at `/mcp` and at the root. What each tool answers is pinned in `internal/tools` (`docs/tools.md`). It also covers the refusals, at both: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.

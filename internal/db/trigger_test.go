@@ -35,7 +35,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		written, err = Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b)
 		return err
 	}
-	if got := schoolGroupsHeld(s, student); !slices.Equal(got, []string{"grp00000000010", "grp00000000011"}) {
+	if got := schoolGroupsHeld(s, student); !slices.Equal(got, []string{"grp00000000010", "grp00000000011", "grp00000000501"}) {
 		t.Fatalf("the sample's student is in %v", got)
 	}
 
@@ -49,7 +49,9 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		{"set": "per00000000001", "cells": {"vc_grade": "4"}}]}`); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := schoolGroupsHeld(s, student), []string{"grp00000000010", written[0]}; !slices.Equal(got, want) {
+	want := []string{"grp00000000010", "grp00000000501", written[0]}
+	slices.Sort(want)
+	if got := schoolGroupsHeld(s, student); !slices.Equal(got, want) {
 		t.Fatalf("moved up a grade, the student is in %v", got)
 	}
 

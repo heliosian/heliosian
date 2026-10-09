@@ -37,6 +37,7 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
+	"heliosian/internal/tools"
 	"heliosian/internal/who"
 )
 
@@ -201,7 +202,10 @@ func NewCore(cfg Config) *Core {
 	})
 	askMux := http.NewServeMux()
 	loopMail := cfg.Loop
-	documents := model.RegisterDocuments(askMux, models, cfg.Embedder, queue, cfg.ArtifactsMail)
+	documents := model.RegisterDocuments(askMux, models, cfg.Embedder, queue, cfg.ArtifactsMail, func(ctx context.Context, raw []byte) error {
+		_, err := db.FileMail(ctx, dataStore, queue, pictures, raw)
+		return err
+	})
 	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
 	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
@@ -230,16 +234,15 @@ func NewCore(cfg Config) *Core {
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
 	schoolNow := func() time.Time { return time.Now().In(model.Location) }
+	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: model.Origin(cfg.Domain), Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, mcp.Deps{
 		Data:     dataStore,
-		Search:   search,
-		Bucket:   cfg.Bucket,
+		Tools:    shared,
 		Key:      cfg.MCPKey,
 		Sessions: models,
 		Member:   models.Member,
 		Now:      schoolNow,
-		Domain:   cfg.Domain,
 	})
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
@@ -257,7 +260,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
 	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
-	ask.Register(askMux, ask.Sources{Registry: registry, Now: time.Now}, cfg.Asker, spend, cfg.ChatKey, askAbout)
+	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,
 		Queue:     queue,
@@ -333,7 +336,7 @@ func (c *Core) Aliased() map[string]http.Handler {
 	return out
 }
 
-func Production(domain string) (*http.Server, *store.Queue) {
+func Production(domain, site string) (*http.Server, *store.Queue) {
 	sessionKey := env.Required("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
@@ -353,11 +356,12 @@ func Production(domain string) (*http.Server, *store.Queue) {
 	mcpKey := hmac.New(sha256.New, []byte(sessionKey))
 	mcpKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
+	geocoder := geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY"))
 	core := NewCore(Config{
-		Domain:        domain,
+		Domain:        site,
 		Source:        sheet,
 		Writer:        sheet,
-		Geocoder:      geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY")),
+		Geocoder:      geocoder,
 		Bucket:        bucket,
 		Store:         store,
 		IDKey:         []byte(env.Required("ID_KEY")),
@@ -409,6 +413,7 @@ func Production(domain string) (*http.Server, *store.Queue) {
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
+			db.StartGeocoder(core.Data, core.Queue, core.Pictures, geocoder)
 		}()
 	}
 	return server, core.Queue

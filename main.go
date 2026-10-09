@@ -9,5 +9,5 @@ import (
 
 func main() {
 	slog.SetDefault(logging.Cloud())
-	app.Serve(app.Production(app.Domain))
+	app.Serve(app.Production(app.Domain, app.Domain))
 }

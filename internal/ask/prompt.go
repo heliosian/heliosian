@@ -2,107 +2,221 @@ package ask
 
 import (
 	_ "embed"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"net/http"
+	"maps"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
-	"heliosian/internal/access"
-	"heliosian/internal/model"
+	"heliosian/internal/db"
+	"heliosian/internal/store"
 )
 
 //go:embed prompt.md
 var school string
 
-const placeFields = "fullName,email,link,grade.name,classroom.name,classroom.link,classroom.teachers.fullName,crew.name,crew.teachers.fullName"
+const listDomain = "loop.heliosian.com"
 
-type document = map[string]any
+type document struct {
+	ID        string
+	Name      string
+	Published string
+	Lists     []string
+}
 
-func systemBlocks(t *turn, listed []document, l *links) ([]anthropic.BetaTextBlockParam, error) {
-	words, err := t.lingo()
+type person struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Href      string   `json:"href"`
+	Roles     []string `json:"roles"`
+	JobTitle  string   `json:"job_title"`
+	Grade     string   `json:"grade"`
+	Classroom string   `json:"classroom"`
+	Crew      string   `json:"crew"`
+	Pronouns  string   `json:"pronouns"`
+	Email     string   `json:"email"`
+}
+
+type family struct {
+	Name    string   `json:"name"`
+	Href    string   `json:"href"`
+	Members []person `json:"members"`
+}
+
+type place struct {
+	Name string `json:"name"`
+	Href string `json:"href"`
+	Kind string `json:"kind"`
+	Lead bool   `json:"lead"`
+}
+
+type viewer struct {
+	Person   person   `json:"person"`
+	Emails   []string `json:"emails"`
+	Families []family `json:"families"`
+	Groups   []place  `json:"groups"`
+	Manages  []place  `json:"manages"`
+	AdminOf  []string `json:"adminOf"`
+}
+
+func (p person) is(role string) bool {
+	return slices.Contains(p.Roles, role)
+}
+
+func (t *turn) viewer() (*viewer, error) {
+	if t.env.Viewer == "" {
+		return nil, nil
+	}
+	answer, err := t.sources.Tools.Run(t.ctx, t.m, t.env.Viewer, "helios_whoami", json.RawMessage(`{}`))
 	if err != nil {
 		return nil, err
 	}
-	viewer, err := t.viewerBlock()
-	if err != nil {
+	for href, id := range answer.Links {
+		t.found.note(href, id)
+	}
+	v := &viewer{}
+	if err := json.Unmarshal([]byte(answer.Text), v); err != nil {
 		return nil, err
 	}
-	examples, err := t.linkExamples()
-	if err != nil {
-		return nil, err
-	}
-	return []anthropic.BetaTextBlockParam{
-		{Text: l.shorten(school + "\n\n" + words), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
-		{Text: l.shorten(viewer + "\n" + recentBlock(t, listed) + "\n" + examples), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()},
-	}, nil
+	return v, nil
 }
 
-func s(m map[string]any, name string) string {
-	v, _ := m[name].(string)
-	return v
+type schoolData struct {
+	groups       map[string]store.Row
+	classrooms   []store.Row
+	teachers     map[string][]string
+	studentGrade map[string][]string
 }
 
-func list(m map[string]any, name string) []any {
-	v, _ := m[name].([]any)
-	return v
-}
-
-func obj(m map[string]any, name string) map[string]any {
-	v, _ := m[name].(map[string]any)
-	return v
-}
-
-func words(items []any) []string {
-	out := []string{}
-	for _, item := range items {
-		if w, ok := item.(string); ok {
-			out = append(out, w)
+func (s schoolData) named(kind, name string) store.Row {
+	for _, g := range s.groups {
+		if g["kind"] == kind && g["name"] == name {
+			return g
 		}
+	}
+	return nil
+}
+
+func (t *turn) school() (schoolData, error) {
+	s := schoolData{groups: map[string]store.Row{}, teachers: map[string][]string{}, studentGrade: map[string][]string{}}
+	groups, _, err := t.rows(`(from GROUP (where (in kind "band" "grade" "classroom" "crew" "department")) (order name asc))`)
+	if err != nil {
+		return s, err
+	}
+	for _, g := range groups {
+		s.groups[g["id"]] = g
+		if g["kind"] == "classroom" {
+			s.classrooms = append(s.classrooms, g)
+		}
+	}
+	staff, _, err := t.rows(`(from PERSON @p (where (or (not (blank classroom)) (not (blank crew))) (exists EFFECTIVE_MEMBER (= person @p) (= group.slug "staff") (= group.kind "group"))) (order name_sort asc))`)
+	if err != nil {
+		return s, err
+	}
+	for _, p := range staff {
+		for _, col := range []string{"classroom", "crew"} {
+			if p[col] != "" {
+				s.teachers[p[col]] = append(s.teachers[p[col]], p["name_show"])
+			}
+		}
+	}
+	students, _, err := t.rows(`(from PERSON @p (where (not (blank classroom)) (not (blank grade)) (exists EFFECTIVE_MEMBER (= person @p) (= group.slug "students") (= group.kind "group"))))`)
+	if err != nil {
+		return s, err
+	}
+	for _, p := range students {
+		if !slices.Contains(s.studentGrade[p["classroom"]], p["grade"]) {
+			s.studentGrade[p["classroom"]] = append(s.studentGrade[p["classroom"]], p["grade"])
+		}
+	}
+	for id := range s.studentGrade {
+		slices.Sort(s.studentGrade[id])
+	}
+	return s, nil
+}
+
+func promptTexts(t *turn, s schoolData, v *viewer, listed []document) ([]string, error) {
+	words, err := t.lingo(s)
+	if err != nil {
+		return nil, err
+	}
+	examples, err := t.linkExamples(s, v)
+	if err != nil {
+		return nil, err
+	}
+	return []string{school + "\n\n" + words, t.viewerBlock(s, v) + "\n" + recentBlock(t, listed) + "\n" + examples}, nil
+}
+
+func systemBlocks(texts []string, l *links) []anthropic.BetaTextBlockParam {
+	out := []anthropic.BetaTextBlockParam{}
+	for _, text := range texts {
+		out = append(out, anthropic.BetaTextBlockParam{Text: l.shorten(text), CacheControl: anthropic.NewBetaCacheControlEphemeralParam()})
 	}
 	return out
 }
 
-func (t *turn) recentDocuments() ([]document, error) {
-	since := today(t.clock()).AddDate(0, 0, -recentDays).Format(model.DateFormat)
-	out, err := t.ask(query{name: "recent", path: collection("documents", params("since", since, "limit", "60")), fields: fields("id,title,date,kind,url,emailList")})
+func dayWords(t time.Time) string {
+	return t.Format("Monday, January 2, 2006")
+}
+
+func (t *turn) documents(rows []store.Row) ([]document, error) {
+	out := []document{}
+	if len(rows) == 0 {
+		return out, nil
+	}
+	ids := []string{}
+	for _, r := range rows {
+		ids = append(ids, fmt.Sprintf("%q", r["id"]))
+	}
+	links, res, err := t.rows(`(from DOCUMENT_GROUP (where (in document %s) (= relation "sent_to") group.mail) (include group))`, strings.Join(ids, " "))
 	if err != nil {
 		return nil, err
 	}
-	recent := []document{}
-	for _, d := range list(out, "recent") {
-		if doc := d.(map[string]any); s(doc, "kind") != model.DocumentKindPortal && len(recent) < recentLimit {
-			recent = append(recent, doc)
-		}
+	lists := map[string][]string{}
+	for _, l := range links {
+		lists[l["document"]] = append(lists[l["document"]], res.Resources["GROUP"][l["group"]]["name"])
 	}
-	return recent, nil
-}
-
-func (t *turn) documentsKnown(ids []string) ([]document, error) {
-	out := []document{}
-	for _, key := range ids {
-		got, err := t.ask(query{name: "document", path: one("documents", key, params()), fields: fields("id,title,date,kind,url,emailList")})
-		var refusal *access.Refusal
-		if errors.As(err, &refusal) && refusal.Status == http.StatusNotFound {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, obj(got, "document"))
+	for _, r := range rows {
+		out = append(out, document{ID: r["id"], Name: r["name"], Published: r["published"], Lists: lists[r["id"]]})
 	}
 	return out, nil
 }
 
-func (t *turn) timing(cell string) string {
-	day, err := time.ParseInLocation(model.DateFormat, cell, model.Location)
+func (t *turn) recentDocuments() ([]document, error) {
+	since := t.today().AddDate(0, 0, -recentDays).Format(time.DateOnly)
+	rows, _, err := t.rows(`(from DOCUMENT (where (= kind "mail") (>= published %q)) (order published desc) (limit %d))`, since, recentLimit)
+	if err != nil {
+		return nil, err
+	}
+	return t.documents(rows)
+}
+
+func (t *turn) documentsKnown(ids []string) ([]document, error) {
+	quoted := []string{}
+	for _, id := range ids {
+		if table, ok := db.TableOf(id); ok && table == "DOCUMENT" {
+			quoted = append(quoted, fmt.Sprintf("%q", id))
+		}
+	}
+	if len(quoted) == 0 {
+		return []document{}, nil
+	}
+	rows, _, err := t.rows(`(from DOCUMENT (where (in id %s)) (order published desc))`, strings.Join(quoted, " "))
+	if err != nil {
+		return nil, err
+	}
+	return t.documents(rows)
+}
+
+func (t *turn) timing(moment string) string {
+	day, err := time.ParseInLocation(time.DateOnly, moment[:min(len(moment), len(time.DateOnly))], t.env.Now.Location())
 	if err != nil {
 		return ""
 	}
-	switch days := int(today(t.clock()).Sub(day).Hours() / 24); {
+	switch days := int(t.today().Sub(day).Hours() / 24); {
 	case days == 0:
 		return "today"
 	case days > 0:
@@ -116,228 +230,170 @@ func (t *turn) timing(cell string) string {
 
 func recentBlock(t *turn, recent []document) string {
 	if len(recent) == 0 {
-		return fmt.Sprintf("## Recent documents\n\nNo documents have come in over the last %d days.\n", recentDays)
+		return fmt.Sprintf("## Recent documents\n\nNo mail has come in over the last %d days.\n", recentDays)
 	}
-	return fmt.Sprintf("## Recent documents\n\nThe newest documents of the last %d days, newest first, each with its id for read_document:\n", recentDays) + documentLines(t, recent)
+	return fmt.Sprintf("## Recent documents\n\nThe newest mail of the last %d days, newest first, each with its id for helios_read_document:\n", recentDays) + documentLines(t, recent)
 }
 
 func arrivals(t *turn, fresh []document) string {
-	return "New documents have come in since this conversation began, newest first, each with its id for read_document:\n" + documentLines(t, fresh) +
-		"\nA new document can change what the calendar or the other apps say; read one that bears on what is being asked."
+	return "New mail has come in since this conversation began, newest first, each with its id for helios_read_document:\n" + documentLines(t, fresh) +
+		"\nNew mail can change what the calendar or the other apps say; read one that bears on what is being asked."
+}
+
+func newDay(t *turn, from string) string {
+	return fmt.Sprintf("Today is now %s, no longer %s, the day the prompt above was written; reckon every date from today. The school year is %s.", dayWords(t.env.Now), from, db.SchoolYear(t.env.Now.Format(time.DateOnly)))
 }
 
 func documentLines(t *turn, docs []document) string {
 	b := &strings.Builder{}
 	for _, d := range docs {
-		date := s(d, "date")
-		if day, err := time.ParseInLocation(model.DateFormat, date, model.Location); err == nil {
+		date := d.Published
+		if day, err := time.Parse(time.DateOnly, d.Published[:min(len(d.Published), len(time.DateOnly))]); err == nil {
 			date = day.Format("Monday, January 2, 2006")
 		}
-		fmt.Fprintf(b, "- %s, %s: %s (id %s", date, t.timing(s(d, "date")), s(d, "title"), s(d, "id"))
-		if url := s(d, "url"); url != "" {
-			b.WriteString(", " + url)
-		}
-		if group := s(d, "emailList"); group != "" {
-			b.WriteString(", mail to the email list " + group)
+		fmt.Fprintf(b, "- %s, %s: %s (id %s", date, t.timing(d.Published), d.Name, d.ID)
+		for _, list := range d.Lists {
+			b.WriteString(", mail to the email list " + list)
 		}
 		b.WriteString(")\n")
 	}
 	return b.String()
 }
 
-func (t *turn) lingo() (string, error) {
-	out, err := t.ask(
-		query{name: "grades", path: collection("grades", params()), fields: fields("name,band")},
-		query{name: "classrooms", path: collection("classrooms", params("include", "teachers,crews")), fields: fields("name,band,grades,link,teachers.fullName,crews.name")},
-		query{name: "departments", path: collection("departments", params()), fields: fields("name")},
-		query{name: "tags", path: collection("calendar-tags", params()), fields: fields("id,name,description,builtIn")},
-		query{name: "dayTypes", path: collection("day-types", params()), fields: fields("name,blocks.name,blocks.start,blocks.end")},
-		query{name: "settings", path: collection("when-settings", params()), fields: fields("years.label,years.firstDay,years.lastDay")},
-		query{name: "celebrations", path: collection("celebrations", params()), fields: fields("title,start,current")},
-	)
-	if err != nil {
-		return "", err
-	}
+func (t *turn) lingo(s schoolData) (string, error) {
 	b := &strings.Builder{}
 	b.WriteString("## The school as the data has it\n\nGrades and their bands:\n")
-	for _, g := range list(out, "grades") {
-		fmt.Fprintf(b, "- %s: %s\n", s(g.(map[string]any), "name"), s(g.(map[string]any), "band"))
-	}
-	bands := []string{}
-	bandGrades := map[string][]string{}
-	bandClassrooms := map[string][]string{}
-	for _, item := range list(out, "classrooms") {
-		c := item.(map[string]any)
-		band := s(c, "band")
-		if _, seen := bandClassrooms[band]; !seen {
-			bands = append(bands, band)
+	bands := []store.Row{}
+	for _, g := range sortedGroups(s.groups) {
+		switch g["kind"] {
+		case "grade":
+			fmt.Fprintf(b, "- %s: %s\n", g["name"], s.groups[g["parent"]]["name"])
+		case "band":
+			bands = append(bands, g)
 		}
-		for _, g := range words(list(c, "grades")) {
-			if !slices.Contains(bandGrades[band], g) {
-				bandGrades[band] = append(bandGrades[band], g)
+	}
+	b.WriteString("\nBands (its grades; its classrooms):\n")
+	for _, band := range bands {
+		grades, rooms := []string{}, []string{}
+		for _, g := range sortedGroups(s.groups) {
+			if g["parent"] != band["id"] {
+				continue
+			}
+			switch g["kind"] {
+			case "grade":
+				grades = append(grades, g["name"])
+			case "classroom":
+				rooms = append(rooms, g["name"])
 			}
 		}
-		bandClassrooms[band] = append(bandClassrooms[band], s(c, "name"))
+		fmt.Fprintf(b, "- %s (%s; %s)\n", band["name"], strings.Join(grades, ", "), strings.Join(rooms, ", "))
 	}
-	b.WriteString("\nBands (the grades of its students; its classrooms):\n")
-	for _, band := range bands {
-		fmt.Fprintf(b, "- %s (%s; %s)\n", band, strings.Join(bandGrades[band], ", "), strings.Join(bandClassrooms[band], ", "))
-	}
-	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews):\n")
-	for _, item := range list(out, "classrooms") {
-		c := item.(map[string]any)
-		line := fmt.Sprintf("- %s (%s; %s; %s", s(c, "name"), s(c, "link"), s(c, "band"), strings.Join(words(list(c, "grades")), ", "))
-		if teachers := words(list(c, "teachers")); len(teachers) > 0 {
+	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews and their teachers):\n")
+	for _, room := range s.classrooms {
+		line := fmt.Sprintf("- %s (%s; %s; %s", room["name"], t.href("GROUP", room), s.groups[room["parent"]]["name"], strings.Join(s.studentGrade[room["id"]], ", "))
+		if teachers := s.teachers[room["id"]]; len(teachers) > 0 {
 			line += "; teachers " + strings.Join(teachers, ", ")
 		}
-		if crews := words(list(c, "crews")); len(crews) > 0 {
+		crews := []string{}
+		for _, g := range sortedGroups(s.groups) {
+			if g["kind"] == "crew" && g["parent"] == room["id"] {
+				crew := g["name"]
+				if teachers := s.teachers[g["id"]]; len(teachers) > 0 {
+					crew += " (" + strings.Join(teachers, ", ") + ")"
+				}
+				crews = append(crews, crew)
+			}
+		}
+		if len(crews) > 0 {
 			line += "; crews " + strings.Join(crews, ", ")
 		}
 		b.WriteString(line + ")\n")
 	}
 	departments := []string{}
-	for _, d := range list(out, "departments") {
-		departments = append(departments, s(d.(map[string]any), "name"))
+	for _, g := range sortedGroups(s.groups) {
+		if g["kind"] == "department" {
+			departments = append(departments, g["name"])
+		}
 	}
 	b.WriteString("\nStaff departments: " + strings.Join(departments, "; ") + "\n")
+	categories, _, err := t.rows(`(from GROUP @c (where (= kind "category") (blank parent) (not (exists GROUP @t (= parent @c) (= kind "category") (exists GROUP (= parent @t) (= kind "day"))))) (order order asc))`)
+	if err != nil {
+		return "", err
+	}
 	b.WriteString("\nCalendar categories (what each files):\n")
-	for _, item := range list(out, "tags") {
-		tag := item.(map[string]any)
-		if tag["builtIn"] == true && s(tag, "id") != model.TagCelebrate && s(tag, "id") != model.TagHCA {
-			continue
-		}
-		fmt.Fprintf(b, "- %s: %s\n", s(tag, "name"), s(tag, "description"))
+	for _, c := range categories {
+		fmt.Fprintf(b, "- %s: %s\n", c["name"], c["description"])
 	}
-	b.WriteString("\nDay types (the school day's hours):\n")
-	for _, item := range list(out, "dayTypes") {
-		d := item.(map[string]any)
-		parts := []string{}
-		for _, block := range list(d, "blocks") {
-			bl := block.(map[string]any)
-			parts = append(parts, fmt.Sprintf("%s %s-%s", strings.ToLower(s(bl, "name")), s(bl, "start"), s(bl, "end")))
-		}
-		if len(parts) == 0 {
-			parts = []string{"no school"}
-		}
-		fmt.Fprintf(b, "- %s: %s\n", s(d, "name"), strings.Join(parts, ", "))
-	}
-	b.WriteString("\nSchool years the calendar holds:\n")
-	for _, item := range list(first(out["settings"]), "years") {
-		y := item.(map[string]any)
-		fmt.Fprintf(b, "- %s: first day %s, last day %s\n", s(y, "label"), s(y, "firstDay"), s(y, "lastDay"))
-	}
-	for _, item := range list(out, "celebrations") {
-		c := item.(map[string]any)
-		if c["current"] != true {
-			continue
-		}
-		fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s", s(c, "title"))
-		if start := s(c, "start"); start != "" {
-			fmt.Fprintf(b, " on %s", start)
-		}
-		b.WriteString(".\n")
-	}
-	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", model.ListDomain)
-	return b.String(), nil
-}
-
-func (t *turn) viewer() (map[string]any, error) {
-	email := t.reg.Actor(t.r).Email
-	includes := "grade,classroom.teachers,crew.teachers,room-parent-for,families.adults,families.kids.grade,families.kids.classroom.teachers,families.kids.crew.teachers"
-	spec := placeFields + ",heroPhotoUrl,isStaff,isParent,isStudent,pronouns,jobTitle,department,room-parent-for.name,families.name,families.link,families.adults.fullName,families.adults.email," + under("families.kids", placeFields)
-	out, err := t.ask(query{name: "me", path: one("people", email, params("include", includes)), fields: fields(spec)})
-	var refusal *access.Refusal
-	if errors.As(err, &refusal) && refusal.Status == http.StatusNotFound {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return obj(out, "me"), nil
-}
-
-func (t *turn) viewerBlock() (string, error) {
-	now := t.clock().In(model.Location)
-	b := &strings.Builder{}
-	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", now.Format("Monday, January 2, 2006"), model.SchoolYear(now))
-	p, err := t.viewer()
+	dayTypes, _, err := t.rows(`(from GROUP @c (where (= kind "category") (exists GROUP (= parent @c) (= kind "day"))) (order order asc))`)
 	if err != nil {
 		return "", err
 	}
-	if p == nil {
-		fmt.Fprintf(b, "The person signed in is %s, whom the directory does not list. Answer about the school and its apps; nothing about a family is known.\n", t.reg.Actor(t.r).Email)
-		return b.String(), nil
+	b.WriteString("\nDay types (helios_days gives a date's plan and hours):\n")
+	for _, d := range dayTypes {
+		fmt.Fprintf(b, "- %s: %s\n", d["name"], d["description"])
 	}
-	fmt.Fprintf(b, "The person signed in is %s (%s), %s.", s(p, "fullName"), s(p, "email"), roleWords(p))
-	if pronouns := s(p, "pronouns"); pronouns != "" {
-		fmt.Fprintf(b, " Pronouns %s.", pronouns)
-	}
-	if p["isStudent"] == true {
-		fmt.Fprintf(b, " %s.", placeWords(p))
-	}
-	if p["isStaff"] == true {
-		if title := s(p, "jobTitle"); title != "" {
-			fmt.Fprintf(b, " Job title: %s.", title)
-		}
-		if department := s(p, "department"); department != "" {
-			fmt.Fprintf(b, " Department: %s.", department)
-		}
-		if classroom := s(obj(p, "classroom"), "name"); classroom != "" {
-			fmt.Fprintf(b, " Teaches in %s.", classroom)
-		}
-	}
-	b.WriteString("\n")
-	for _, item := range list(p, "families") {
-		f := item.(map[string]any)
-		fmt.Fprintf(b, "\nFamily %q:\n", s(f, "name"))
-		for _, a := range list(f, "adults") {
-			fmt.Fprintf(b, "- Parent: %s (%s)\n", s(a.(map[string]any), "fullName"), s(a.(map[string]any), "email"))
-		}
-		for _, k := range list(f, "kids") {
-			fmt.Fprintf(b, "- Student: %s, %s\n", s(k.(map[string]any), "fullName"), placeWords(k.(map[string]any)))
-		}
-	}
-	if grades := words(list(p, "room-parent-for")); len(grades) > 0 {
-		fmt.Fprintf(b, "\nRoom parent for: %s.\n", strings.Join(grades, ", "))
-	}
-	out, err := t.ask(
-		query{name: "magicTags", path: collection("magic-tags", params("include", "people")), fields: fields("name,kind,archived,people.fullName")},
-		query{name: "tags", path: collection("tags", params("mine", "true", "include", "people")), fields: fields("name,link,people.fullName")},
-	)
+	markers, res, err := t.rows(`(from GROUP_SOURCE (where (not (blank marker))) (include group))`)
 	if err != nil {
 		return "", err
 	}
-	roles := []string{}
-	for _, item := range list(out, "magicTags") {
-		l := item.(map[string]any)
-		if l["archived"] != true {
-			roles = append(roles, fmt.Sprintf("- %s: %s (%d people)\n", listKind(s(l, "kind")), s(l, "name"), len(list(l, "people"))))
+	years := map[string][2]string{}
+	for _, m := range markers {
+		start := res.Resources["GROUP"][m["group"]]["start"]
+		year := db.SchoolYear(start)
+		bounds := years[year]
+		if m["marker"] == "first_day" {
+			bounds[0] = start
+		} else {
+			bounds[1] = start
+		}
+		years[year] = bounds
+	}
+	if len(years) > 0 {
+		b.WriteString("\nSchool years the calendar holds:\n")
+		for _, year := range slices.Sorted(maps.Keys(years)) {
+			fmt.Fprintf(b, "- %s: first day %s, last day %s\n", year, years[year][0], years[year][1])
 		}
 	}
-	if len(roles) > 0 {
-		b.WriteString("\nRoles in the apps (each is a Magic Tag in Helios Who?):\n" + strings.Join(roles, ""))
+	settings, _, err := t.rows(`(from SETTING (where (= app "celebrate") (= key "Current")))`)
+	if err != nil {
+		return "", err
 	}
-	tags := []string{}
-	for _, item := range list(out, "tags") {
-		tag := item.(map[string]any)
-		tags = append(tags, fmt.Sprintf("%s (%d, %s)", s(tag, "name"), len(list(tag, "people")), s(tag, "link")))
+	for _, setting := range settings {
+		if table, ok := db.TableOf(setting["value"]); !ok || table != "GROUP" {
+			continue
+		}
+		current, _, err := t.rows(`(from GROUP (where (= id %q)))`, setting["value"])
+		if err != nil {
+			return "", err
+		}
+		for _, c := range current {
+			fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s.\n", c["name"])
+		}
 	}
-	if len(tags) > 0 {
-		fmt.Fprintf(b, "\nTheir own tags in Helios Who?: %s.\n", strings.Join(tags, ", "))
-	}
+	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", listDomain)
 	return b.String(), nil
 }
 
-func roleWords(p map[string]any) string {
+func sortedGroups(groups map[string]store.Row) []store.Row {
+	out := []store.Row{}
+	for _, g := range groups {
+		out = append(out, g)
+	}
+	slices.SortFunc(out, func(a, b store.Row) int {
+		if c := strings.Compare(a["slug"], b["slug"]); a["kind"] == "grade" && b["kind"] == "grade" && c != 0 {
+			return c
+		}
+		return strings.Compare(a["name"], b["name"])
+	})
+	return out
+}
+
+func roleWords(p person) string {
 	roles := []string{}
-	if p["isStaff"] == true {
-		roles = append(roles, "a staff member")
-	}
-	if p["isParent"] == true {
-		roles = append(roles, "a parent")
-	}
-	if p["isStudent"] == true {
-		roles = append(roles, "a student")
+	for _, r := range []struct{ role, words string }{{"staff", "a staff member"}, {"parent", "a parent"}, {"student", "a student"}} {
+		if p.is(r.role) {
+			roles = append(roles, r.words)
+		}
 	}
 	if len(roles) == 0 {
 		return "a member of the community"
@@ -345,22 +401,23 @@ func roleWords(p map[string]any) string {
 	return strings.Join(roles, " and ")
 }
 
-func placeWords(p map[string]any) string {
+func placeWords(s schoolData, p person) string {
 	parts := []string{}
-	if grade := s(p, "grade"); grade != "" {
-		parts = append(parts, grade)
+	if p.Grade != "" {
+		parts = append(parts, "Grade "+p.Grade)
 	}
-	classroom := obj(p, "classroom")
-	if name := s(classroom, "name"); name != "" {
-		parts = append(parts, "in "+name)
+	if p.Classroom != "" {
+		parts = append(parts, "in "+p.Classroom)
 	}
-	crew := obj(p, "crew")
-	if name := s(crew, "name"); name != "" {
-		parts = append(parts, "crew "+name)
+	if p.Crew != "" {
+		parts = append(parts, "crew "+p.Crew)
 	}
-	teachers := words(list(crew, "teachers"))
-	if len(teachers) == 0 {
-		teachers = words(list(classroom, "teachers"))
+	teachers := []string{}
+	if crew := s.named("crew", p.Crew); crew != nil {
+		teachers = s.teachers[crew["id"]]
+	}
+	if room := s.named("classroom", p.Classroom); len(teachers) == 0 && room != nil {
+		teachers = s.teachers[room["id"]]
 	}
 	if len(teachers) > 0 {
 		parts = append(parts, "taught by "+strings.Join(teachers, " and "))
@@ -371,58 +428,106 @@ func placeWords(p map[string]any) string {
 	return strings.Join(parts, ", ")
 }
 
-func listKind(kind string) string {
-	switch kind {
-	case model.MagicTagParty:
-		return "hosts the party"
-	case model.MagicTagActivity:
-		return "co-chairs"
-	case model.MagicTagRoom:
-		return "room parent list"
-	case model.MagicTagGroup:
-		return "manages the Loop email list"
+func (t *turn) viewerBlock(s schoolData, v *viewer) string {
+	b := &strings.Builder{}
+	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", dayWords(t.env.Now), db.SchoolYear(t.env.Now.Format(time.DateOnly)))
+	if v == nil {
+		fmt.Fprintf(b, "The person signed in is %s, whom the directory does not list. Answer about the school and its apps; nothing about a family is known.\n", t.email)
+		return b.String()
 	}
-	return kind
+	p := v.Person
+	fmt.Fprintf(b, "The person signed in is %s (%s), %s.", p.Name, t.email, roleWords(p))
+	if p.Pronouns != "" {
+		fmt.Fprintf(b, " Pronouns %s.", p.Pronouns)
+	}
+	if p.is("student") {
+		fmt.Fprintf(b, " %s.", placeWords(s, p))
+	}
+	if p.is("staff") {
+		if p.JobTitle != "" {
+			fmt.Fprintf(b, " Job title: %s.", p.JobTitle)
+		}
+		if p.Classroom != "" {
+			fmt.Fprintf(b, " Teaches in %s.", p.Classroom)
+		}
+	}
+	b.WriteString("\n")
+	for _, f := range v.Families {
+		fmt.Fprintf(b, "\nFamily %q (%s):\n", f.Name, f.Href)
+		for _, m := range f.Members {
+			if m.is("student") {
+				fmt.Fprintf(b, "- Student: %s, %s\n", m.Name, placeWords(s, m))
+				continue
+			}
+			fmt.Fprintf(b, "- Parent: %s (%s)\n", m.Name, m.Email)
+		}
+	}
+	roles := []string{}
+	for _, g := range v.Groups {
+		switch g.Kind {
+		case "classroom", "crew", "grade", "band", "department":
+			continue
+		}
+		line := fmt.Sprintf("- in %s (%s", g.Name, g.Kind)
+		if g.Lead {
+			line += ", a lead"
+		}
+		roles = append(roles, line+")\n")
+	}
+	for _, g := range v.Manages {
+		roles = append(roles, fmt.Sprintf("- manages %s (%s)\n", g.Name, g.Kind))
+	}
+	if len(roles) > 0 {
+		b.WriteString("\nTheir groups and roles in the apps:\n" + strings.Join(roles, ""))
+	}
+	if len(v.AdminOf) > 0 {
+		fmt.Fprintf(b, "\nAn admin of: %s.\n", strings.Join(v.AdminOf, ", "))
+	}
+	return b.String()
 }
 
-func (t *turn) exampleLinks() ([]string, error) {
+func (t *turn) exampleLinks(s schoolData, v *viewer) ([]string, error) {
 	out := []string{}
-	p, err := t.viewer()
-	if err != nil {
-		return nil, err
-	}
-	if p != nil {
-		if families := list(p, "families"); len(families) > 0 {
-			family := families[0].(map[string]any)
-			out = append(out, s(family, "link"))
-			if kids := list(family, "kids"); len(kids) > 0 {
-				kid := kids[0].(map[string]any)
-				out = append(out, s(kid, "link"))
-				if classroom := s(obj(kid, "classroom"), "link"); classroom != "" {
-					out = append(out, classroom)
-				}
+	if v != nil && len(v.Families) > 0 {
+		f := v.Families[0]
+		out = append(out, f.Href)
+		for _, m := range f.Members {
+			if !m.is("student") {
+				continue
 			}
+			out = append(out, m.Href)
+			if room := s.named("classroom", m.Classroom); room != nil {
+				out = append(out, t.href("GROUP", room))
+			}
+			break
 		}
 	}
-	got, err := t.ask(
-		query{name: "event", path: collection("events", params("from", today(t.clock()).Format(model.DateFormat), "app", "when", "limit", "1")), fields: fields("link")},
-		query{name: "activity", path: collection("activities", params("year", "current", "limit", "1")), fields: fields("link")},
-		query{name: "party", path: collection("parties", params("past", "false", "limit", "1")), fields: fields("link")},
-		query{name: "group", path: collection("email-lists", params("limit", "1")), fields: fields("link")},
-	)
+	today := t.today().Format(time.DateOnly)
+	for _, src := range []string{
+		`(from GROUP (where (= kind "event") (>= start %q)) (order start asc) (limit 1))`,
+		`(from GROUP (where (= kind "activity") (>= start %q)) (order start asc) (limit 1))`,
+		`(from GROUP (where (= kind "party") (>= start %q)) (order start asc) (limit 1))`,
+	} {
+		found, _, err := t.rows(src, today)
+		if err != nil {
+			return nil, err
+		}
+		for _, g := range found {
+			out = append(out, t.href("GROUP", g))
+		}
+	}
+	lists, _, err := t.rows(`(from GROUP (where mail) (order name asc) (limit 1))`)
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range []string{"event", "activity", "party", "group"} {
-		if link := s(first(got[name]), "link"); link != "" {
-			out = append(out, link)
-		}
+	for _, g := range lists {
+		out = append(out, t.href("GROUP", g))
 	}
 	return out, nil
 }
 
-func (t *turn) linkExamples() (string, error) {
-	addresses, err := t.exampleLinks()
+func (t *turn) linkExamples(s schoolData, v *viewer) (string, error) {
+	addresses, err := t.exampleLinks(s, v)
 	if err != nil {
 		return "", err
 	}
@@ -445,19 +550,16 @@ func (t *turn) linkExamples() (string, error) {
 	return b.String(), nil
 }
 
-func (t *turn) starters() ([]string, error) {
+func starters(v *viewer) []string {
 	out := []string{"What's happening at school this week?", "When is the next day off?"}
-	p, err := t.viewer()
-	if err != nil {
-		return nil, err
-	}
-	for _, family := range list(p, "families") {
-		for _, item := range list(family.(map[string]any), "kids") {
-			kid := item.(map[string]any)
-			if classroom := s(obj(kid, "classroom"), "name"); classroom != "" && len(out) == 2 {
-				out = append(out, fmt.Sprintf("Who teaches %s in %s?", model.FirstWord(s(kid, "fullName")), classroom))
+	if v != nil {
+		for _, f := range v.Families {
+			for _, m := range f.Members {
+				if m.is("student") && m.Classroom != "" && len(out) == 2 {
+					out = append(out, fmt.Sprintf("Who teaches %s in %s?", strings.Fields(m.Name)[0], m.Classroom))
+				}
 			}
 		}
 	}
-	return append(out, "What can I volunteer for?", "Which parties still have tickets?"), nil
+	return append(out, "What can I volunteer for?", "Which parties still have tickets?")
 }

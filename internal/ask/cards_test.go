@@ -1,46 +1,35 @@
 package ask
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"testing"
-	"time"
-
-	"heliosian/internal/model"
 )
 
 func TestClassroomChipsWearTheirColor(t *testing.T) {
-	dir := sampleDir(t)
-	if err := dir.Update(model.ConfigApp, "Classroom Colors", map[string]string{"Classroom": "Jays"}, map[string]string{"Color": "#1f6fb2"}); err != nil {
+	tr := sampleTurn(t, rowan)
+	if _, err := tr.run(context.Background(), "helios_classroom", json.RawMessage(`{"name": "Hummingbirds"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := dir.Delete(model.ConfigApp, "Classroom Colors", map[string]string{"Classroom": "Hawks"}); err != nil {
-		t.Fatal(err)
+	card, ok := tr.linkCard("https://who.heliosian.com/classrooms/grp00000000010")
+	if !ok || card.Kind != "classroom" || card.Color != "#5b8def" || card.Name != "Hummingbirds" {
+		t.Fatalf("Hummingbirds: %+v %v", card, ok)
 	}
-	tr := sampleFrom(t, dir).turn(jordan)
-	cards := map[string]linkCard{}
-	for _, c := range items(call(t, tr, "get_classroom", `{}`)["classrooms"]) {
-		card, ok := tr.linkCard(c["link"].(string))
-		if !ok {
-			t.Fatalf("no chip for %v", c)
-		}
-		cards[card.Name] = card
-	}
-	if jays := cards["Jays"]; jays.Color != "#1f6fb2" || jays.Image == "" || jays.Kind != "classroom" {
-		t.Errorf("Jays: %+v", jays)
-	}
-	if hawks := cards["Hawks"]; hawks.Color != "" {
-		t.Errorf("Hawks has no color set, but its chip has %q", hawks.Color)
+	crew, ok := tr.linkCard("https://who.heliosian.com/people/per00000000003")
+	if !ok || crew.Kind != "person" || crew.Name != "Maya Lindqvist" || crew.Color != "" {
+		t.Fatalf("Maya: %+v %v", crew, ok)
 	}
 }
 
 func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
-	tr := sampleTurn(t, jordan)
-	tr.clock = func() time.Time { return time.Date(2026, 9, 18, 9, 0, 0, 0, model.Location) }
-	out, err := tr.linkExamples()
+	tr := sampleTurn(t, rowan)
+	s, v := promptParts(t, tr)
+	out, err := tr.linkExamples(s, v)
 	if err != nil {
 		t.Fatal(err)
 	}
-	addresses, err := tr.exampleLinks()
+	addresses, err := tr.exampleLinks(s, v)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,56 +45,32 @@ func TestLinkExamplesShowWhatTheChipsShow(t *testing.T) {
 			t.Errorf("the examples lack %s", address)
 		}
 	}
-	for _, kind := range []string{"person", "family", "classroom", "event", "activity", "group"} {
+	for _, kind := range []string{"person", "family", "classroom", "event", "activity", "party", "group"} {
 		if !kinds[kind] {
 			t.Errorf("no %s among the examples:\n%s", kind, out)
 		}
 	}
-	if !strings.Contains(out, `a badge reading "`) {
+	if !strings.Contains(out, `a badge reading "Sat Oct 10"`) {
 		t.Errorf("the event example does not show its day:\n%s", out)
 	}
 }
 
 func TestLinkCardsAreWhatTheViewerMayRead(t *testing.T) {
 	s := sampleSources(t)
-	admin := s.turn(sampleAdmin)
-	links := []string{}
-	for _, c := range []struct{ tool, input, list string }{
-		{"parties", `{"include_past":true}`, "parties"},
-		{"volunteer_opportunities", `{"include_past":true,"limit":80}`, "things"},
-		{"find_people", `{"queries":["whitfield"]}`, ""},
-	} {
-		result := call(t, admin, c.tool, c.input)
-		list := result[c.list]
-		if c.list == "" {
-			list = items(result["results"])[0]["people"]
-		}
-		for _, item := range items(list) {
-			links = append(links, item["link"].(string))
-		}
+	parent := s.turn(rowan)
+	if _, err := parent.run(context.Background(), "helios_whoami", json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
 	}
-	stranger := s.turn("nobody@heliosschool.org")
-	stranger.found = admin.found
-	shown, hidden := 0, 0
-	for _, link := range links {
-		adminCard, ok := admin.linkCard(link)
-		if !ok {
-			t.Fatalf("the admin's own link has no chip: %s", link)
-		}
-		card, ok := stranger.linkCard(link)
-		if ok {
-			shown++
-			if card != adminCard {
-				t.Errorf("%s: %+v, the admin's %+v", link, card, adminCard)
-			}
-		} else {
-			hidden++
-		}
+	family := "https://who.heliosian.com/families/grp00000000020"
+	if _, ok := parent.linkCard(family); !ok {
+		t.Fatal("the parent's own family has no chip")
 	}
-	if shown == 0 || hidden == 0 {
-		t.Fatalf("%d chips shown to a stranger, %d kept from them", shown, hidden)
+	outsider := s.turn(stranger)
+	outsider.found = parent.found
+	if card, ok := outsider.linkCard(family); ok {
+		t.Fatalf("someone outside the directory was shown %+v", card)
 	}
-	if _, ok := admin.linkCard("https://who.heliosian.com/people/nobody.here"); ok {
+	if _, ok := parent.linkCard("https://who.heliosian.com/people/per99999999999"); ok {
 		t.Fatal("a chip for a link no tool gave")
 	}
 }

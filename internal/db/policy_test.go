@@ -55,9 +55,9 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
 		"COLLECTION":       {0, 0, 1, 0, 0},
 		"COLLECTION_GROUP": {0, 0, 2, 0, 0},
-		"GROUP":            {0, 14, 15, 17, 0},
-		"MEMBER":           {0, 13, 13, 14, 1},
-		"EFFECTIVE_MEMBER": {0, 18, 18, 20, 1},
+		"GROUP":            {0, 26, 27, 29, 0},
+		"MEMBER":           {0, 21, 21, 22, 1},
+		"EFFECTIVE_MEMBER": {0, 27, 27, 29, 1},
 		"RULE":             {0, 0, 0, 4, 0},
 		"DOCUMENT":         {8, 8, 9, 9, 8},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
@@ -465,7 +465,7 @@ func TestWithheldPeopleVanish(t *testing.T) {
 			}
 		}
 	}
-	if n := len(as(t, s, staff, `(from MEMBER (where (= group "grp00000000010")))`)); n != 0 {
+	if n := len(as(t, s, staff, `(from MEMBER (where (= group "grp00000000010") (= person "per00000000001")))`)); n != 0 {
 		t.Errorf("the classroom still counts the withheld student: %d", n)
 	}
 	if _, ok := s.Model().Table("PERSON").Get(student); !ok {
@@ -631,7 +631,7 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	if n := len(as(t, s, parent, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
 		t.Fatal("a hidden person is listed")
 	}
-	if got := cellAs(t, s, parent, `(from MEMBER (where (= group "grp00000000010")))`, "person"); got != "" {
+	if got := cellAs(t, s, parent, `(from MEMBER (where (= id "mem00000000008")))`, "person"); got != "" {
 		t.Fatalf("a classroom row names a hidden person: %q", got)
 	}
 	if n := len(as(t, s, parent, `(from MEMBER (where (= person.name_short "Juni")))`)); n != 0 {

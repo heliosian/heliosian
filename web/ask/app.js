@@ -387,7 +387,7 @@ async function send(message) {
   const stopper = new AbortController();
   state.stopper = stopper;
   try {
-    const res = await signedIn(await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, context: chat.context, known: chat.known}), signal: stopper.signal}));
+    const res = await signedIn(await fetch('/api/ask/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({conversation: chat.id, message, context: chat.context, known: chat.known, prompt: chat.prompt}), signal: stopper.signal}));
     if (!res.ok) {
       const why = await res.text();
       answer.remove();
@@ -438,6 +438,7 @@ async function send(message) {
       chat.turns.push({role: 'user', text: message}, {role: 'assistant', text: finished.text, tools: finished.tools || [], segments, cards});
       chat.context.push(...finished.messages);
       chat.known = finished.known;
+      chat.prompt = finished.prompt;
       chat.updated = Date.now();
       saveChats();
       renderChats();

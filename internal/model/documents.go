@@ -150,20 +150,16 @@ func (d *Document) normalize() error {
 }
 
 type Documents struct {
-	Documents  []*Document
-	Fetched    int
-	Summary    map[string]string
-	Points     map[string][]string
-	Audience   map[string]string
-	Read       map[string]string
-	Repeats    map[string]map[int]string
-	ToDos      []*ToDo
-	byKey      map[string]*Document
-	toDoIDs    map[string]*ToDo
-	ids        map[string]*Document
-	idOf       map[*Document]string
-	passages   map[string]documentPassage
-	passageIDs map[documentPassage]string
+	Documents []*Document
+	Fetched   int
+	Summary   map[string]string
+	Points    map[string][]string
+	Audience  map[string]string
+	Read      map[string]string
+	Repeats   map[string]map[int]string
+	ToDos     []*ToDo
+	byKey     map[string]*Document
+	toDoIDs   map[string]*ToDo
 }
 
 type documentObjects struct {

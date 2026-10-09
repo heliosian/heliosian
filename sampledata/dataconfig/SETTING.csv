@@ -1,1 +1,6 @@
 id,app,key,value
+set00000000001,team,Intro,Plenty of hands make light work: pick something that fits your week.
+set00000000002,team,Expense Form URL,https://example.com/expenses
+set00000000003,celebrate,Current,grp00000000520
+set00000000004,celebrate,Parties Intro,Every party raises money for the school.
+set00000000005,celebrate,Ticket Note,You'll be invoiced after signing up.

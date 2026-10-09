@@ -698,6 +698,15 @@ const PolicySource = `
 ; remove a family or role group membership gone from the export
 (delete MEMBER (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
 
+;; System: import, the geocoder
+
+; every placed address, to look up only those not yet placed
+(read GEOCODE (system "import"))
+; place a family's shared address on the map
+(insert GEOCODE (system "import"))
+; remove a pin for an address with no street number, which places only a city
+(delete GEOCODE (system "import"))
+
 ;; System: import, the calendar
 
 ; every event, day and day part, to compare with the school's calendars
@@ -889,10 +898,6 @@ const PolicySource = `
 (insert SETTING (system "import"))
 ; change an app setting to what the old sheets hold
 (set SETTING.value (system "import"))
-; every geocoded address, to skip those already held
-(read GEOCODE (system "import"))
-; add an address the old directory had geocoded
-(insert GEOCODE (system "import"))
 ; add an invite list service the old Invites sheet held
 (insert INVITE_SERVICE (system "import"))
 ; whether a service's list has a header row, as the old sheet has it

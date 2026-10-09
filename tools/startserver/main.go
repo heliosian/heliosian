@@ -69,7 +69,7 @@ func main() {
 		app.Serve(snapshotServer(*email))
 	case *real:
 		devcache.Install()
-		app.Serve(localTLS(app.Production(app.DevDomain)))
+		app.Serve(localTLS(app.Production(app.DevDomain, app.DevDomain+":"+app.Port())))
 	case *detach:
 		detachReal()
 	case *capturePath != "":

@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -121,7 +123,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		document, hash, err := storeRoot(r, s, queue, pics, actor, env, content, mimeType, root, sentTo)
+		document, hash, err := storeRoot(r.Context(), s, queue, pics, actor, env, content, mimeType, root, sentTo)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -259,7 +261,7 @@ func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
 	return root, nil
 }
 
-func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
+func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
 	m := s.Model()
@@ -285,7 +287,7 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 				}
 			}
 			if len(edits) > 0 {
-				if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
+				if _, err := Write(ctx, s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
 					return "", "", err
 				}
 			}
@@ -299,7 +301,7 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
 			return "", "", err
 		}
-		if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
+		if err := pics.bucket.Put(ctx, name, mimeType, content); err != nil {
 			return "", "", err
 		}
 		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
@@ -310,7 +312,7 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 	for _, group := range sentTo {
 		edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@document", "group": group, "relation": "sent_to"}})
 	}
-	ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: edits})
+	ids, err := Write(ctx, s, queue, pics, actor, env, Batch{Batch: edits})
 	if err != nil {
 		if !found {
 			dropUnheld(s, pics.bucket, []string{contentFolder + "/" + hash})
@@ -318,6 +320,23 @@ func storeRoot(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 		return "", "", err
 	}
 	return ids[at], hash, nil
+}
+
+func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, raw []byte) (string, error) {
+	root, sentTo, err := s.Model().mailRoot(raw)
+	if errors.Is(err, errLoopMail) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	env := Env{System: importReader, Now: time.Now()}
+	document, hash, err := storeRoot(ctx, s, queue, pics, access.System(importReader), env, raw, "message/rfc822", root, sentTo)
+	if err != nil {
+		return "", err
+	}
+	slog.InfoContext(ctx, "filed mail", "document", document, "hash", hash, "groups", len(sentTo))
+	return document, nil
 }
 
 type upload struct {

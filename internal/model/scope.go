@@ -24,14 +24,8 @@ type scope struct {
 	answerOnce sync.Once
 	responses  map[string]*Responses
 
-	nearFrom *Family
-
 	mailOnce     sync.Once
 	mailReadable map[string]bool
-
-	dayPlansOnce sync.Once
-	dayPlanOrder []string
-	dayPlans     map[string]dayPlanKey
 
 	partiesOnce sync.Once
 	partyKeys   map[string]*Party

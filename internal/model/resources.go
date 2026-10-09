@@ -19,7 +19,7 @@ func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties P
 		Staged: s.In,
 		Scope:  (*Model).at,
 	})
-	types := slices.Concat(DirectoryResources(s), WhoResources(s, mapsKey), BirthdayResources(s), EmailListResources(s, documents), calendar.Resources(), parties.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources(), DocumentResources(documents))
+	types := slices.Concat(DirectoryResources(s), WhoResources(s, mapsKey), BirthdayResources(s), EmailListResources(s, documents), calendar.Resources(), parties.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources())
 	for _, t := range types {
 		reg.Add(t)
 	}
