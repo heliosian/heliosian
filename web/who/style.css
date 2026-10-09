@@ -1019,9 +1019,6 @@ main {
   margin-top: 6px;
 }
 
-/* The "Magic Tag from Celebrate - open this party" line under a smart list's
-   title (see listPage): sparkle, then the source app's mark and a link
-   back to the thing the list mirrors. */
 .magic-source {
   display: flex;
   align-items: center;

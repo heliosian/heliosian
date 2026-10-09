@@ -1,7 +1,7 @@
 import {staleYears, viewer, isStudent, isStaff, isParent, familyOf, adultsOf, kidsOf, photosOf, canEditFamily} from './state.js';
-import {withFrom, firstName, infoBanner} from './dom.js';
-import {el, svg} from '/elements.js';
-import {personPath} from './people.js';
+import {firstName, infoBanner} from './dom.js';
+import {el, svg, link} from '/elements.js';
+import {personLink} from './people.js';
 import {uploadPhoto} from './edit.js';
 
 function agedPast(updated, years) {
@@ -82,8 +82,7 @@ function todoPhotoRow(item) {
 }
 
 function todoFactsRow(item) {
-  const row = el('a', 'todo-row');
-  row.href = withFrom(`${personPath(item.person)}?edit=1&focus=facts`);
+  const row = link(`${personLink(item.person)}?edit=1&focus=facts`, 'todo-row');
   row.append(el('div', 'todo-mark'));
   row.append(el('div', 'todo-text', item.text));
   const chev = el('div', 'todo-chevron');

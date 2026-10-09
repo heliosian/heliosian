@@ -1,7 +1,7 @@
 import {state, model, lists, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
 import {csvField} from '../dom.js';
 import {dataGrid} from '/datagrid.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
 import {tagControl, onTagsChange, tagLabel, tagFacetOptions, listSource, sharedTag, otherManagers, manageControl, selectedGuests} from '../tags.js';
@@ -100,24 +100,20 @@ export function listPage() {
     const line = el('div', 'page-subtitle magic-source');
     const source = listSource(smart.key);
     if (source) {
-      line.append(svg('sparkle'), el('span', '', 'Magic Tag from '));
-      const link = el('a');
-      link.href = source.href;
+      line.append(svg('sparkle'), el('span', '', 'From '));
+      const open = el('a');
+      open.href = source.href;
       const mark = el('img');
       mark.src = `/brand/apps/${source.app}.png`;
       mark.alt = '';
-      link.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
-      line.append(link);
+      open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
+      line.append(open);
     } else {
-      line.append(svg('sparkle'), el('span', '', 'Magic Tag from the directory - the families of the grades you are a room parent for'));
+      line.append(svg('sparkle'), el('span', '', 'The families of the grades you are a room parent for'));
     }
     titleWrap.append(line);
   }
-  const chip = p => {
-    const a = el('a', 'tag-chip person-chip', p.name_show);
-    a.href = personLink(p);
-    return a;
-  };
+  const chip = p => link(personLink(p), 'tag-chip person-chip', p.name_show);
   const ownership = el('div', 'page-subtitle tag-ownership');
   const paintOwnership = () => {
     ownership.replaceChildren();
@@ -219,11 +215,7 @@ export function listPage() {
   page.append(content);
 
   function renderEmailsTable(container, rows) {
-    const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => {
-      const link = el('a', '', r.p.name_show);
-      link.href = personLink(r.p);
-      return link;
-    }} : c));
+    const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => link(personLink(r.p), '', r.p.name_show)} : c));
     const trailing = r => (r.p.source === 'guest' ? el('span') : tagControl(r.p.id, 'tag-wrap', 'row-tag', () => {
       if (state.filterTags.size) {
         renderGrid();

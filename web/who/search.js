@@ -1,6 +1,7 @@
 import {model, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeName, gradePath, classroomPath} from './state.js';
-import {withFrom, firstName} from './dom.js';
-import {el} from '/elements.js';
+import {firstName} from './dom.js';
+import {el, link} from '/elements.js';
+import {navigate} from '/router.js';
 import {personLink, photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
 import {gradeImage, classroomImage} from './pages/classrooms.js';
 import {searchInput} from '/shell.js';
@@ -56,8 +57,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   }
 
   group('People', people, p => {
-    const row = el('a', 'gsearch-result');
-    row.href = personLink(p);
+    const row = link(personLink(p), 'gsearch-result');
     row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', p.name_show));
@@ -70,8 +70,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   });
 
   group('Grades', grades, g => {
-    const row = el('a', 'gsearch-result');
-    row.href = withFrom(gradePath(g));
+    const row = link(gradePath(g), 'gsearch-result');
     row.append(photoOrInitials(gradeImage(g), g.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', g.name));
@@ -80,8 +79,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   });
 
   group('Gradebands', classrooms, c => {
-    const row = el('a', 'gsearch-result');
-    row.href = withFrom(classroomPath(c));
+    const row = link(classroomPath(c), 'gsearch-result');
     row.append(photoOrInitials(classroomImage(c), c.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', c.name));
@@ -100,7 +98,7 @@ function renderGlobalSearchResults(resultsEl, query) {
 function goToActiveResult(resultsEl) {
   const active = resultsEl.querySelector('.gsearch-result.active');
   if (active) {
-    location.href = active.href;
+    navigate(active.getAttribute('href'));
   }
 }
 

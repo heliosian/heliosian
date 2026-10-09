@@ -1,7 +1,7 @@
 import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId, q, rowsOf, write} from '../state.js';
 import {firstName, lastName, hue, csvField} from '../dom.js';
 import {dataGrid} from '/datagrid.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
 import {tagFacetOptions} from '../tags.js';
@@ -450,9 +450,7 @@ function renderInviteGrid(view, again) {
 }
 
 function inviteLink(r) {
-  const link = el('a', '', r.cells[0]);
-  link.href = r.entry.linkHref;
-  return link;
+  return link(r.entry.linkHref, '', r.cells[0]);
 }
 
 function appendGreetingOptions(parent, list) {

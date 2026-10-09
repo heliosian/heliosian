@@ -1,6 +1,6 @@
-import {state, model, tagKey, listKey, viewer, familyOf} from './state.js';
+import {state, model, tagKey, listKey, viewer, familyOf, resetPageState} from './state.js';
 import {segments, hue, firstName, trimMiddle} from './dom.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
 import {myFamily} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
@@ -66,7 +66,13 @@ function updateMobileTitleInset() {
   document.documentElement.style.setProperty('--mobile-title-inset', leftWidth + 'px');
 }
 
-export function preparePage(title) {
+export function preparePage(title, entered) {
+  if (entered) {
+    resetPageState();
+    searchInput().value = '';
+    searchResults().hidden = true;
+    setMobileListsMenu(false);
+  }
   renderNav();
   setChrome(title, null);
   onTagsChange(() => {});
@@ -106,8 +112,7 @@ function navBadge(count) {
 }
 
 function familyMemberRow(p, meId, activeId) {
-  const a = el('a', 'nav-family-link');
-  a.href = personLink(p);
+  const a = link(personLink(p), 'nav-family-link');
   if (p.id === activeId) {
     a.className = 'nav-family-link active';
   }
@@ -151,8 +156,7 @@ function fillNav(nav) {
   const onFamilyMember = !!rawSegPerson && familyIds.has(rawSegPerson.id);
 
   function renderItem(container, item, indicator) {
-    const a = el('a');
-    a.href = '/' + item.path;
+    const a = link('/' + item.path);
     if (item.path === seg && !(item.path === 'people' && onFamilyMember)) {
       a.className = 'active';
     }
@@ -234,8 +238,7 @@ function fillNav(nav) {
         continue;
       }
       for (const item of group.items) {
-        const a = el('a');
-        a.href = item.href;
+        const a = link(item.href);
         a.title = item.title;
         if (seg === 'people' && item.active) {
           a.className = 'active';
@@ -300,8 +303,7 @@ function fillTabbar(bar) {
     if (item.path === 'my-family' && !familyPeople.length) {
       continue;
     }
-    const a = el('a', item.path === seg ? 'active' : '');
-    a.href = '/' + item.path;
+    const a = link('/' + item.path, item.path === seg ? 'active' : '');
     a.append(svg(item.isListsTab ? 'list' : item.path), el('span', '', item.label));
     if (item.isListsTab) {
       a.addEventListener('click', e => {
@@ -395,8 +397,7 @@ function renderMobileListsMenu() {
   body.replaceChildren();
   const seg = activeSection();
   for (const item of toolsNavItems) {
-    const a = el('a', 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
-    a.href = '/' + item.path;
+    const a = link('/' + item.path, 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
@@ -413,16 +414,14 @@ function renderMobileListsMenu() {
       continue;
     }
     for (const item of group.items) {
-      const a = el('a', 'mobile-lists-item' + (seg === 'people' && item.active ? ' active' : ''));
-      a.href = item.href;
+      const a = link(item.href, 'mobile-lists-item' + (seg === 'people' && item.active ? ' active' : ''));
       a.append(itemIcon(item), listName(item));
       body.append(a);
     }
   }
 }
 
-const privacyRow = el('a', 'user-menu-privacy', 'My Privacy');
-privacyRow.href = '/my-privacy';
+const privacyRow = link('/my-privacy', 'user-menu-privacy', 'My Privacy');
 const privacyAlert = el('span', 'user-menu-alert');
 privacyAlert.hidden = true;
 privacyRow.append(privacyAlert);

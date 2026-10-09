@@ -8,7 +8,7 @@ export function startApp(config) {
   app = config;
   document.addEventListener('click', e => {
     const a = e.target.closest('a[data-link]');
-    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) {
+    if (!a || e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) {
       return;
     }
     e.preventDefault();
@@ -16,7 +16,8 @@ export function startApp(config) {
   });
   window.addEventListener('popstate', () => {
     closeLayers();
-    render();
+    draw(true);
+    main().scrollTo(0, (history.state && history.state.scroll) || 0);
   });
   return load();
 }
@@ -26,11 +27,32 @@ export async function load() {
   render();
 }
 
+function main() {
+  return document.querySelector('#main');
+}
+
+function here() {
+  return location.pathname + location.search;
+}
+
+export function trail() {
+  return (history.state && history.state.trail) || [];
+}
+
+function trailTo(path) {
+  const at = trail().indexOf(path);
+  if (at >= 0) {
+    return trail().slice(at + 1);
+  }
+  return [here(), ...trail()].slice(0, 3);
+}
+
 export function navigate(path) {
   closeLayers();
-  history.pushState(null, '', path);
-  render();
-  document.querySelector('#main').scrollTo(0, 0);
+  history.replaceState({...history.state, scroll: main().scrollTop}, '');
+  history.pushState({trail: trailTo(path)}, '', path);
+  draw(true);
+  main().scrollTo(0, 0);
 }
 
 export function setPath(path) {
@@ -57,7 +79,11 @@ function route() {
 }
 
 export function render() {
-  app.prepare();
+  draw(false);
+}
+
+function draw(entered) {
+  app.prepare(entered);
   const node = route();
   document.body.classList.toggle('is-admin', location.pathname === '/admin');
   app.show(node);

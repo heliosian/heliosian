@@ -1,6 +1,5 @@
 import {state, model, membersOf, geocodeOf, photosOf, thumbOf, familyName} from '../state.js';
-import {withFrom} from '../dom.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {matchesFilters, familyMatchesFilters, directoryFilter} from '../filters.js';
 import {mapsKey} from '/maps.js';
@@ -39,9 +38,7 @@ function familyMapPopup(family) {
   if (family.address) {
     body.append(el('div', 'map-popup-sub', family.address));
   }
-  const link = el('a', 'map-popup-link', 'See family');
-  link.href = familyLink(family);
-  body.append(link);
+  body.append(link(familyLink(family), 'map-popup-link', 'See family'));
   box.append(body);
   return box;
 }
@@ -150,8 +147,7 @@ export function mapPage() {
   content.append(canvas);
 
   const update = el('div', 'map-update');
-  const action = el('a', 'map-update-link');
-  action.href = withFrom('/my-privacy');
+  const action = link('/my-privacy', 'map-update-link');
   action.append(svg('bolt'), el('span', '', 'Update My Address'));
   update.append(action);
   content.append(update);

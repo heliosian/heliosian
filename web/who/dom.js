@@ -4,11 +4,6 @@ export function segments() {
   return location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
 }
 
-export function withFrom(href) {
-  const from = encodeURIComponent(location.pathname + location.search);
-  return href + (href.includes('?') ? '&' : '?') + 'from=' + from;
-}
-
 export function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref, external, onDismiss) {
   const wrap = el('div', 'container infobanner-wrap');
   const card = el('div', `infobanner infobanner-${kind}`);
@@ -28,6 +23,8 @@ export function infoBanner(kind, iconName, title, desc, buttonLabel, buttonHref,
   if (external) {
     action.target = '_blank';
     action.rel = 'noopener';
+  } else {
+    action.setAttribute('data-link', '');
   }
   action.append(el('span', '', buttonLabel), svg('chevron-right'));
   card.append(action);

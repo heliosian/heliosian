@@ -1,6 +1,6 @@
 import {state, model, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, membersOf, photosOf, photoUrl, thumbOf, gradeOf, classroomOf, groupById, roomParentsOf, gradeByKey, classroomByKey, gradePath, classroomPath} from '../state.js';
-import {withFrom, ordinal, firstName, listSub, paletteColor} from '../dom.js';
-import {el, svg} from '/elements.js';
+import {ordinal, firstName, listSub, paletteColor} from '../dom.js';
+import {el, svg, link} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
@@ -42,8 +42,7 @@ function studentsOf(filter) {
 }
 
 function listRow(image, label, title, sub, href) {
-  const row = el('a', 'list-row');
-  row.href = href;
+  const row = link(href, 'list-row');
   if (image) {
     const img = el('img', 'list-tile');
     img.src = image;
@@ -66,8 +65,7 @@ function listRow(image, label, title, sub, href) {
 }
 
 function badgeCard(imageUrl, label, name, href, color) {
-  const card = el('a', 'person-card');
-  card.href = href;
+  const card = link(href, 'person-card');
   const photo = imageUrl ? el('img', 'person-photo') : el('div', 'person-photo');
   if (imageUrl) {
     photo.src = imageUrl;
@@ -110,7 +108,7 @@ function renderClassroomsList(list) {
     const grid = el('div', 'people-grid autofit classroom-grid');
     for (const c of rows) {
       const students = studentsOf(p => p.classroom === c.id).length;
-      grid.append(badgeCard(thumbOf(photosOf(c.id)[0]) || classroomImage(c), counted(students), c.name, withFrom(classroomPath(c)), c.color));
+      grid.append(badgeCard(thumbOf(photosOf(c.id)[0]) || classroomImage(c), counted(students), c.name, classroomPath(c), c.color));
       count++;
     }
     list.append(grid);
@@ -130,7 +128,7 @@ function renderGradesList(list) {
     const grid = el('div', 'people-grid autofit classroom-grid');
     for (const g of rows) {
       const students = studentsOf(p => gradeOf(p) === g).length;
-      grid.append(badgeCard(gradeImage(g), counted(students), g.name, withFrom(gradePath(g)), g.color));
+      grid.append(badgeCard(gradeImage(g), counted(students), g.name, gradePath(g), g.color));
       count++;
     }
     list.append(grid);
@@ -166,8 +164,7 @@ function renderRoomParents(list) {
     list.append(el('h2', 'staff-section', group.label));
     const grid = el('div', 'people-grid autofit classroom-grid');
     for (const p of parents) {
-      const card = el('a', 'person-card');
-      card.href = personLink(p);
+      const card = link(personLink(p), 'person-card');
       card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id));
       card.append(el('div', 'person-name', p.name_show));
       card.append(el('div', 'person-sub', kidsSummary(p)));
@@ -195,7 +192,7 @@ export function classroomsPage() {
   const strip = tabStrip(classroomsTabs, state.classTab, 1, key => {
     state.classTab = key;
     state.q = '';
-    history.replaceState(null, '', tabHref(key));
+    history.replaceState(history.state, '', tabHref(key));
     render();
   });
   strip.classList.add('container');
@@ -326,7 +323,7 @@ function rosterPage(title, image, groups, sectionColorFor) {
 
   const strip = tabStrip(memberTabs, state.rosterTab, 2, key => {
     state.rosterTab = key;
-    history.replaceState(null, '', tabHref(key));
+    history.replaceState(history.state, '', tabHref(key));
     render();
   });
   strip.classList.add('container', 'roster-tabs');

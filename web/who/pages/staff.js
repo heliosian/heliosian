@@ -1,6 +1,6 @@
 import {state, model, isStaff, departmentName} from '../state.js';
 import {paletteColor} from '../dom.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {personLink, photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
 
@@ -35,8 +35,7 @@ export function renderStaff(grid, autoFit) {
     grid.append(el('h2', 'staff-section', dept));
     const deptGrid = el('div', 'people-grid directory-grid' + (autoFit ? ' autofit' : ''));
     for (const p of groups.get(dept)) {
-      const card = el('a', 'person-card');
-      card.href = personLink(p);
+      const card = link(personLink(p), 'person-card');
       card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id));
       card.append(el('div', 'role-label role-label-staff', p.job_title || 'Staff'));
       card.append(el('div', 'person-name', p.name_show));

@@ -1,23 +1,18 @@
 import {byId, bySlug, photosOf, thumbOf, photoUrl, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeOf, gradeName, classroomName, crewName, staffColor} from './state.js';
-import {withFrom, hue} from './dom.js';
-import {el} from '/elements.js';
+import {hue} from './dom.js';
+import {el, link} from '/elements.js';
 import {tagControl} from './tags.js';
 
 export function personByKey(key) {
   return key ? bySlug[key.toLowerCase()] || byId[key] : undefined;
 }
 
-export function personPath(p) {
+export function personLink(p) {
   return '/people/' + encodeURIComponent(p.slug || p.id);
 }
 
-export function personLink(p) {
-  return withFrom(personPath(p));
-}
-
 export function guestCard(g) {
-  const card = el('a', 'person-card');
-  card.href = personLink(g);
+  const card = link(personLink(g), 'person-card');
   const wrap = el('div', 'photo-wrap photo-wrap-peek');
   wrap.append(photoOrInitials('', g.name_show, 'person-photo'));
   card.append(wrap);
@@ -170,8 +165,7 @@ export function personCard(p) {
   if (p.source === 'guest') {
     return guestCard(p);
   }
-  const card = el('a', 'person-card');
-  card.href = personLink(p);
+  const card = link(personLink(p), 'person-card');
   card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id, gradeBadge(p)));
   card.append(el('div', 'role-label role-label-' + baseRole(p).toLowerCase(), baseRole(p)));
   card.append(el('div', 'person-name', p.name_show));

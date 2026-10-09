@@ -2,7 +2,15 @@ import {api, signedIn} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {loadNavOpen} from './storage.js';
 
-export const state = {everyoneOrder: [], familyOrder: [], tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), staffDeptExcluded: new Set(), tagListView: 'faces', navOpen: loadNavOpen(), gvGreeting: '', gvSiblings: true, gvKidEmail: false, gvInviteBy: 'group', gvSystem: ''};
+function pageState() {
+  return {editing: '', tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), staffDeptExcluded: new Set(), tagListView: 'faces', gvGreeting: '', gvSiblings: true, gvKidEmail: false, gvInviteBy: 'group', gvSystem: ''};
+}
+
+export const state = {everyoneOrder: [], familyOrder: [], navOpen: loadNavOpen(), ...pageState()};
+
+export function resetPageState() {
+  Object.assign(state, pageState());
+}
 
 export const model = {
   viewer: null,
@@ -19,6 +27,7 @@ export const model = {
   roomParents: [],
   settings: {},
   moved: '',
+  movedFrom: '',
 };
 
 export let byId = {};
@@ -248,6 +257,7 @@ export async function loadModel() {
   loadTags(tagged, [tagMembers, tagManagers]);
   loadLists(managed, joined, [listMembers, rsvpMembers], guests);
   model.moved = movedTo(name, oldId);
+  model.movedFrom = location.pathname + location.search;
 }
 
 function loadTags(tagged, memberAnswers) {

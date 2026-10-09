@@ -1,19 +1,30 @@
-import {classroomByKey, gradeByKey} from './state.js';
-import {el, svg} from '/elements.js';
+import {classroomByKey, gradeByKey, tags, lists, tagKey, listKey} from './state.js';
+import {el, svg, link} from '/elements.js';
+import {trail} from '/router.js';
 import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
 import {setChrome} from './chrome.js';
 
 export function fromURL() {
-  const raw = new URLSearchParams(location.search).get('from');
+  const raw = trail()[0];
   if (!raw) {
     return null;
   }
   return new URL(raw, location.origin);
 }
 
-function classroomsBackOf(from) {
-  const parent = new URLSearchParams(from.search).get('from');
+function classroomsBack() {
+  const parent = trail()[1];
   return parent && parent.startsWith('/classrooms') ? parent : '/classrooms';
+}
+
+export function peopleCrumbs(from) {
+  const back = from.pathname + from.search;
+  const params = new URLSearchParams(from.search);
+  const key = params.get('tag') ? tagKey(params.get('tag')) : params.get('list') ? listKey(params.get('list')) : '';
+  if (!tags[key] && !lists[key]) {
+    return [['People', back]];
+  }
+  return [['People', '/people'], [tagLabel(key), back]];
 }
 
 export function fromCrumbs() {
@@ -26,17 +37,17 @@ export function fromCrumbs() {
   if (seg[0] === 'grades' && seg[1]) {
     const grade = gradeByKey(seg[1]);
     if (grade) {
-      return [['Gradebands', classroomsBackOf(from)], [grade.name, back]];
+      return [['Gradebands', classroomsBack()], [grade.name, back]];
     }
   }
   if (seg[0] === 'classrooms' && seg[1]) {
     const classroom = classroomByKey(seg[1]);
     if (classroom) {
-      return [['Gradebands', classroomsBackOf(from)], [classroom.name, back]];
+      return [['Gradebands', classroomsBack()], [classroom.name, back]];
     }
   }
   if (seg[0] === 'people' && !seg[1]) {
-    return [['People', back]];
+    return peopleCrumbs(from);
   }
   if (seg[0] === 'classrooms') {
     return [['Gradebands', back]];
@@ -55,8 +66,7 @@ export function breadcrumbs(parts, tagPerson, action) {
   setChrome(parts[parts.length - 1][0], parent ? parent[1] : '/people');
   const top = el('div', 'detail-top container');
   const crumbs = el('div', 'crumbs');
-  const back = el('a', 'crumb-back');
-  back.href = parent ? parent[1] : '/people';
+  const back = link(parent ? parent[1] : '/people', 'crumb-back');
   back.append(svg('chevron-left'));
   crumbs.append(back);
   parts.forEach(([label, href], i) => {
@@ -64,9 +74,7 @@ export function breadcrumbs(parts, tagPerson, action) {
       crumbs.append(el('span', 'crumb-sep', '/'));
     }
     if (href) {
-      const a = el('a', 'crumb', label);
-      a.href = href;
-      crumbs.append(a);
+      crumbs.append(link(href, 'crumb', label));
     } else {
       crumbs.append(el('span', 'crumb current', label));
     }
@@ -79,8 +87,7 @@ export function breadcrumbs(parts, tagPerson, action) {
     const renderTagList = () => {
       tagList.replaceChildren();
       for (const key of tagsOf(tagPerson)) {
-        const chip = el('a', 'tag-chip', tagLabel(key));
-        chip.href = tagHref(key);
+        const chip = link(tagHref(key), 'tag-chip', tagLabel(key));
         chip.title = `See everyone tagged "${tagLabel(key)}"`;
         tagList.append(chip);
       }

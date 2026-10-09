@@ -5,6 +5,7 @@ import {el, svg} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
+import {navigate, render as renderPage} from '/router.js';
 
 export function tagKeys() {
   return Object.keys(tags).sort((a, b) => tags[a].name.localeCompare(tags[b].name));
@@ -306,7 +307,7 @@ export function manageControl(key, onManagersChange) {
       return;
     }
     if (await renameTag(key, to)) {
-      location.href = tagHref(key);
+      renderPage();
     }
   });
   item('copy', 'Duplicate', 'Make a new tag with the same people', async () => {
@@ -317,7 +318,7 @@ export function manageControl(key, onManagersChange) {
     }
     const made = await copyTag(key, to);
     if (made) {
-      location.href = tagHref(made);
+      navigate(tagHref(made));
     }
   });
   const shareItem = item('families', 'Share', 'Let others manage this tag with you', () => {
@@ -331,7 +332,7 @@ export function manageControl(key, onManagersChange) {
         return;
       }
       if (await leaveTag(key)) {
-        location.href = '/people';
+        navigate('/people');
       }
     }).classList.add('manage-item-danger');
   }
@@ -343,7 +344,7 @@ export function manageControl(key, onManagersChange) {
       return;
     }
     if (await deleteTag(key)) {
-      location.href = '/people';
+      navigate('/people');
     }
   }).classList.add('manage-item-danger');
 

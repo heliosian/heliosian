@@ -104,8 +104,8 @@ initSearch();
 startApp({
   model: load,
   routes,
-  redirect: () => model.moved,
+  redirect: () => location.pathname + location.search === model.movedFrom ? model.moved : '',
   missing: 'is not in the directory.',
-  prepare: () => preparePage(sectionTitles[segments()[0]] || 'Helios Who?'),
+  prepare: entered => preparePage(sectionTitles[segments()[0]] || 'Helios Who?', entered),
   show: showPage,
 }).then(maybeShowInstallPrompt);

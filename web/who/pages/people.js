@@ -1,6 +1,6 @@
 import {state, model, familiesOf, familyOf, isStudent, thumbOf, photosOf, gradeNameColor} from '../state.js';
 import {firstName} from '../dom.js';
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
@@ -40,8 +40,7 @@ function renderStudents(grid) {
   grid.className = 'student-grid';
   const matches = model.people.filter(p => isStudent(p) && p.name_show.toLowerCase().includes(state.q) && matchesFilters(p));
   for (const p of matches) {
-    const card = el('a', 'student-card');
-    card.href = personLink(p);
+    const card = link(personLink(p), 'student-card');
     const head = el('div', 'student-head');
     const family = familyPhoto(familyOf(p));
     if (family) {
@@ -70,8 +69,7 @@ function renderFamilies(grid) {
   const matches = state.familyOrder.filter(f =>
     `${f.name} ${f.members.join(' ')}`.toLowerCase().includes(state.q) && familyMatchesFilters(f.family));
   for (const f of matches) {
-    const card = el('a', 'person-card');
-    card.href = f.href;
+    const card = link(f.href, 'person-card');
     const photo = photoOrInitials(f.photoUrl, f.name, 'person-photo');
     const color = f.grades.length ? gradeNameColor(f.grades[0]) : null;
     const wrap = el('div', 'photo-wrap photo-wrap-peek');
@@ -120,7 +118,7 @@ export function peoplePage() {
     state.tab = key;
     state.q = '';
     state.filterTags.clear();
-    history.replaceState(null, '', tabHref(key));
+    history.replaceState(history.state, '', tabHref(key));
     render();
   });
   strip.classList.add('container');

@@ -1,7 +1,7 @@
 import {render, notFound} from '/router.js';
-import {viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, classroomPath, groupById, canEdit, today} from '../state.js';
-import {withFrom, firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
-import {el, svg, iconLink, editToggle} from '/elements.js';
+import {state, viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, classroomPath, groupById, canEdit, today} from '../state.js';
+import {firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
+import {el, svg, link, iconLink, editToggle} from '/elements.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns, familyPhoto} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
 import {saveCells, namesFor, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
@@ -42,8 +42,6 @@ function legalNameLine(p) {
   return p.vc_legal_name;
 }
 
-let personEdit = null;
-
 export function personPage(key) {
   const page = document.createDocumentFragment();
   const p = personByKey(key);
@@ -56,15 +54,15 @@ export function personPage(key) {
     params.delete('edit');
     params.delete('focus');
     const query = params.toString();
-    history.replaceState(null, '', location.pathname + (query ? '?' + query : ''));
-    personEdit = p.id;
+    history.replaceState(history.state, '', location.pathname + (query ? '?' + query : ''));
+    state.editing = p.id;
   }
   const editable = canEdit(p);
-  const editing = editable && personEdit === p.id;
+  const editing = editable && state.editing === p.id;
   let toggle = null;
   if (editable) {
     toggle = editToggle('Edit Person', editing, () => {
-      personEdit = editing ? null : p.id;
+      state.editing = editing ? '' : p.id;
       render();
     });
   }
@@ -151,20 +149,17 @@ export function personPage(key) {
   const right = el('div');
   const topRow = el('div', 'detail-top');
   const role = baseRole(p);
-  const roleRow = el('a', 'role-label role-label-' + role.toLowerCase(), role);
-  roleRow.href = withFrom(role === 'Staff' ? '/staff' : '/people');
+  const roleRow = link(role === 'Staff' ? '/staff' : '/people', 'role-label role-label-' + role.toLowerCase(), role);
   topRow.append(roleRow);
   const topRight = el('div', 'detail-top-right');
   const classroom = classroomOf(p);
   if ((isStaff(p) || isStudent(p)) && classroom) {
-    const classroomChip = el('a', 'tag-chip', classroom.name);
-    classroomChip.href = withFrom(classroomPath(classroom));
+    const classroomChip = link(classroomPath(classroom), 'tag-chip', classroom.name);
     tintChip(classroomChip, classroom.color);
     topRight.append(classroomChip);
     const crew = groupById[p.crew];
     if (crew) {
-      const crewChip = el('a', 'tag-chip', crew.name);
-      crewChip.href = withFrom(classroomPath(classroom));
+      const crewChip = link(classroomPath(classroom), 'tag-chip', crew.name);
       tintChip(crewChip, paletteColor(crew.name));
       topRight.append(crewChip);
     }
