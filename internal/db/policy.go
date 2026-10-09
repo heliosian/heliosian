@@ -934,6 +934,8 @@ const PolicySource = `
 (set GROUP.description (and (system "import") (= @old.kind "group")))
 ; who sees a Loop list, as the old sheet has it
 (set GROUP.visible_to (and (system "import") (in @old.kind "group" "admins")))
+; who sees an admins group's members, which a new admins group sets to itself
+(set GROUP.members_visible_to (and (system "import") (= @old.kind "admins")))
 ; who may post to a Loop list, as the old sheet has it
 (set GROUP.posting (and (system "import") (= @old.kind "group")))
 ; who may reply on a Loop list, as the old sheet has it
