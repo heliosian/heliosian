@@ -264,10 +264,10 @@ function listGroups() {
   }));
   const byName = (a, b) => a.name.localeCompare(b.name);
   return [
-    {key: 'running', title: 'Running', tip: runningTip, open: true, items: [...tagItems, ...listItems(running)].sort(byName)},
-    {key: 'upcoming', title: 'Coming Up', tip: upcomingTip, open: true, items: listItems(upcoming, true)},
-    {key: 'joined', title: 'Joined', tip: joinedTip, open: true, items: listItems(joined)},
-    {key: 'managing', title: 'Managing', tip: managingTip, open: false, items: listItems(managing)},
+    {key: 'running', title: 'Running', open: true, items: [...tagItems, ...listItems(running)].sort(byName)},
+    {key: 'upcoming', title: 'Coming Up', open: true, items: listItems(upcoming, true)},
+    {key: 'joined', title: 'Joined', open: true, items: listItems(joined)},
+    {key: 'managing', title: 'Managing', open: false, items: listItems(managing)},
   ].filter(group => group.items.length);
 }
 
@@ -340,38 +340,13 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
-const runningTip = 'Your tags, and the email lists and activities you manage';
-const upcomingTip = 'Events, parties and activities you run or are going to, soonest first. A star marks the ones you run';
-const joinedTip = 'Activities and email lists you are in';
-const managingTip = 'Activities, parties and email lists you manage but are not in';
-
-function hintIcon(text) {
-  const tip = el('span', 'magic-tags-info');
-  tip.append(svg('info'));
-  let box = null;
-  tip.addEventListener('mouseenter', () => {
-    box = el('div', 'hint-box', text);
-    document.body.append(box);
-    const at = tip.getBoundingClientRect();
-    box.style.left = `${at.right + 8}px`;
-    box.style.top = `${at.top + at.height / 2 - box.offsetHeight / 2}px`;
-  });
-  tip.addEventListener('mouseleave', () => {
-    box?.remove();
-    box = null;
-  });
-  return tip;
-}
-
 function listsHeading(container, group, className) {
   const key = 'lists-' + group.key;
   const open = state.navOpen[key] ?? group.open;
   const heading = el('div', className + ' nav-subheading-toggle' + (open ? ' open' : ''));
   const chevron = el('span', 'nav-chevron');
   chevron.append(svg('chevron-down'));
-  const tip = hintIcon(group.tip);
-  tip.addEventListener('click', e => e.stopPropagation());
-  heading.append(el('span', '', group.title), tip);
+  heading.append(el('span', '', group.title));
   if (!open) {
     heading.append(el('span', 'nav-subheading-count', String(group.items.length)));
   }
