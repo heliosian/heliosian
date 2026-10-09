@@ -8,7 +8,7 @@ const form = document.getElementById('ask');
 const words = document.getElementById('words');
 const summary = document.getElementById('summary');
 const button = document.getElementById('run');
-const lists = {words: document.getElementById('by-words'), meaning: document.getElementById('by-meaning')};
+const list = document.getElementById('results');
 const tables = ['GROUP', 'PERSON', 'DOCUMENT'];
 const sheetOf = {GROUP: 'datagroups', PERSON: 'datapeople', DOCUMENT: 'datadocuments'};
 
@@ -22,12 +22,12 @@ function ref(r) {
   const line = el('div', 'ref', '');
   const name = link(r.name || r.terminal, r.terminal);
   name.className = 'name';
-  line.append(name, link(r.source || 'itself', r.document), link('extract', r.extract), el('div', 'about', r.summary));
+  line.append(name, link(r.source || 'itself', r.document), link('extract', r.extract), el('span', 'score', r.score), el('div', 'about', r.summary));
   return line;
 }
 
-function show(kind, results) {
-  lists[kind].replaceChildren(...tables.flatMap(table => results[table][kind].map(r => {
+function show(results) {
+  list.replaceChildren(...tables.flatMap(table => results[table].map(r => {
     const item = el('li', '');
     item.dataset.sheet = sheetOf[table];
     if (r.refs) {
@@ -36,7 +36,7 @@ function show(kind, results) {
     }
     const name = el('a', 'name', r.name || r.id);
     name.href = `/resources#${table}/${r.id}`;
-    item.append(name, el('span', 'kind', table.toLowerCase()), el('div', 'about', r.summary));
+    item.append(name, el('span', 'kind', table.toLowerCase()), el('span', 'score', r.score), el('div', 'about', r.summary));
     return item;
   })));
 }
@@ -49,20 +49,16 @@ async function run() {
   const url = new URL(location.href);
   url.searchParams.set('q', text);
   history.replaceState(null, '', url);
-  for (const kind of ['words', 'meaning']) {
-    lists[kind].replaceChildren();
-  }
+  list.replaceChildren();
   summary.textContent = '';
   const started = performance.now();
   const res = await signedIn(await fetch('/api/do/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({words: text})}));
   if (!res.ok) {
     summary.textContent = `${res.status}`;
-    lists.words.replaceChildren(el('li', 'error', await res.text()));
+    list.replaceChildren(el('li', 'error', await res.text()));
     return;
   }
-  const results = await res.json();
-  show('words', results);
-  show('meaning', results);
+  show(await res.json());
   summary.textContent = `done in ${Math.round(performance.now() - started)} ms`;
 }
 
@@ -74,7 +70,7 @@ form.addEventListener('submit', e => {
   button.ariaBusy = 'true';
   run().catch(err => {
     summary.textContent = 'failed';
-    lists.words.replaceChildren(el('li', 'error', err.message));
+    list.replaceChildren(el('li', 'error', err.message));
   }).finally(() => {
     button.ariaBusy = 'false';
   });

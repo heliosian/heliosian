@@ -31,15 +31,15 @@ import (
 )
 
 const (
-	searchFolder    = "search"
-	SearchLimit     = 10
-	searchWordShare = 0.5
-	searchChunk     = 1500
-	searchMakers    = 4
-	searchLoaders   = 16
-	searchTimeout   = 2 * time.Minute
-	searchAttempts  = 3
-	searchShortest  = 10
+	searchFolder   = "search"
+	SearchLimit    = 10
+	searchFloor    = 0.67
+	searchChunk    = 1500
+	searchMakers   = 4
+	searchLoaders  = 16
+	searchTimeout  = 2 * time.Minute
+	searchAttempts = 3
+	searchShortest = 10
 )
 
 var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
@@ -47,6 +47,7 @@ var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 var searchExclusions = []string{
 	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)))))`,
 	`(from GROUP (where (= kind "event") (= parent.kind "event")))`,
+	`(from GROUP (where (= kind "day_part")))`,
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,
 	`(from GROUP (where (= kind "admins")))`,
 	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
@@ -68,26 +69,17 @@ var terminalNames = map[string]struct{ label, of, published string }{
 	"wiki":     {"Wiki page", "wiki page", "Updated"},
 }
 
-const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or the text of something the community received or shared - an email's body, a file attached to it, an image it shows, a page it links to, or a shared file, year calendar or wiki page itself - read as text and headed by where it came from. You are given what everyone who can see it can read. Search finds it by its keywords alone, never by the text, and shows its summary under its name in a list of results.`
+const searchSystem = `You write the search entry for one thing in Helios, the apps of a small K-8 school community: a person, a group - a family, a classroom, an event, a volunteer activity, a party, an email list, a category and the like - or the text of something the community received or shared - an email's body, a file attached to it, an image it shows, a page it links to, or a shared file, year calendar or wiki page itself - read as text and headed by where it came from. You are given what everyone who can see it can read. Search shows its summary under its name in a list of results.`
 
 var searchSchema = map[string]any{
 	"type": "object",
-	// A struct, not a map, so summary is sent first and Claude writes it before a long keyword list.
-	"properties": struct {
-		Summary  map[string]any `json:"summary"`
-		Keywords map[string]any `json:"keywords"`
-	}{
-		Summary: map[string]any{
+	"properties": map[string]any{
+		"summary": map[string]any{
 			"type":        "string",
 			"description": "One or two plain sentences saying what it is. Say only what the text says, never what it leaves out: no \"no further details are given\". Never comment on the text itself: not what it gives, lacks or appears to be. Write one however little the text says, saying what that little is.",
 		},
-		Keywords: map[string]any{
-			"type":        "array",
-			"description": "Every term someone might type to find it: the names of the people, groups, classes, places and events it is about, its subjects and the dates it gives, then other names for those - synonyms, related terms, likely misspellings. Only terms the text itself gives or names a synonym of; no guesses about what it might be. No words that would fit almost anything here, such as event, group, person or class. A term left out here cannot find it. Leave out what says nothing about it, such as greetings, sign-offs and mailing-list boilerplate. At most 100.",
-			"items":       map[string]any{"type": "string", "description": "A name, a single word or a short noun phrase, never a sentence."},
-		},
 	},
-	"required":             []string{"summary", "keywords"},
+	"required":             []string{"summary"},
 	"additionalProperties": false,
 }
 
@@ -103,7 +95,6 @@ func SearchSummaryRequest(input string) anthropic.MessageNewParams {
 
 type SearchEntry struct {
 	Summary     string        `json:"summary"`
-	Keywords    []string      `json:"keywords"`
 	Chunks      []SearchChunk `json:"chunks"`
 	Fingerprint []uint32      `json:"fingerprint,omitempty"`
 	Failures    int           `json:"failures,omitempty"`
@@ -134,15 +125,10 @@ type SearchResult struct {
 	Refs    []SearchRef `json:"refs,omitempty"`
 }
 
-type SearchResults struct {
-	Words   []SearchResult `json:"words"`
-	Meaning []SearchResult `json:"meaning"`
-}
-
 type SearchRow struct {
 	Table, Head, Input, Object, Name, Href, When string
 	Source, SourceLine, SourceHref, Terminal     string
-	WordsOnly                                    bool
+	NameOnly                                     bool
 	named, source                                store.Row
 }
 
@@ -211,7 +197,7 @@ func (x *SearchIndex) generatedRows() ([]store.Row, int) {
 		r := x.rows[id]
 		row := store.Row{"id": Derive(SearchPrefix, id), "target": id, "input": r.Input, "object": r.Object, "made": "No", "source": r.Source, "terminal": r.Terminal}
 		if e := x.entries[r.Object]; e != nil {
-			row["summary"], row["keywords"], row["chunks"], row["failures"], row["made"] = e.Summary, strings.Join(e.Keywords, ", "), strconv.Itoa(len(e.Chunks)), strconv.Itoa(e.Failures), "Yes"
+			row["summary"], row["chunks"], row["failures"], row["made"] = e.Summary, strconv.Itoa(len(e.Chunks)), strconv.Itoa(e.Failures), "Yes"
 		}
 		out = append(out, row)
 	}
@@ -291,7 +277,7 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 			if table == "PERSON" {
 				name, when = row["name_show"], ""
 			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, WordsOnly: table == "PERSON" && nameOnly(input), named: row}
+			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, NameOnly: table == "PERSON" && nameOnly(input), named: row}
 		}
 	}
 	docs := m.Shown("DOCUMENT")
@@ -594,7 +580,7 @@ func (x *Searcher) index() {
 		for _, r := range rows {
 			if e := x.entries[r.Object]; e != nil {
 				entries[r.Object] = e
-				if !r.WordsOnly {
+				if !r.NameOnly {
 					byTable[r.Table][r.Object] = e
 				}
 			}
@@ -611,7 +597,7 @@ func (x *Searcher) index() {
 		x.mu.Lock()
 		x.view = view
 		x.mu.Unlock()
-		slog.Info("search: indexed", "entries", len(entries), "words", len(view.words), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
+		slog.Info("search: indexed", "entries", len(entries), "names", len(view.names), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
 	}
 }
 
@@ -739,7 +725,7 @@ func (e *SearchEntry) unfinished() bool {
 }
 
 func (x *Searcher) entry(ctx context.Context, row SearchRow, was *SearchEntry) (*SearchEntry, error) {
-	entry := &SearchEntry{Summary: was.Summary, Keywords: was.Keywords, Chunks: was.Chunks, Fingerprint: was.Fingerprint, Failures: was.Failures}
+	entry := &SearchEntry{Summary: was.Summary, Chunks: was.Chunks, Fingerprint: was.Fingerprint, Failures: was.Failures}
 	if row.Table == "DOCUMENT" && entry.Fingerprint == nil {
 		entry.Fingerprint = fingerprint(row.body())
 	}
@@ -762,19 +748,9 @@ func (x *Searcher) entry(ctx context.Context, row SearchRow, was *SearchEntry) (
 		if utf8.RuneCountInString(strings.TrimSpace(answer.Summary)) < searchShortest {
 			return entry, fmt.Errorf("the summary is too short: %q", answer.Summary)
 		}
-		entry.Summary, entry.Keywords = strings.TrimSpace(answer.Summary), searchKeywords(answer.Keywords)
+		entry.Summary = strings.TrimSpace(answer.Summary)
 	}
 	return entry, nil
-}
-
-func searchKeywords(keywords []string) []string {
-	out := []string{}
-	for _, k := range keywords {
-		if k = strings.ToLower(strings.TrimSpace(k)); k != "" && !slices.Contains(out, k) {
-			out = append(out, k)
-		}
-	}
-	return out
 }
 
 func searchChunks(head, body string) []string {
@@ -927,7 +903,7 @@ func (v *searchView) pick(r *run, scores map[string]float64, limits map[string]i
 	return out
 }
 
-func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (map[string][]SearchResult, map[string]int, int) {
+func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (map[string]float64, map[string]int, int) {
 	scores := map[string]float64{}
 	scanned := map[string]int{}
 	of := 0
@@ -949,15 +925,10 @@ func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (
 		}
 		maps.Copy(scores, own)
 	}
-	return v.pick(r, scores, limits), scanned, of
+	return scores, scanned, of
 }
 
-func (x *Searcher) Words(m *Model, env Env, words string, limits map[string]int) map[string][]SearchResult {
-	v := x.snapshot()
-	return v.pick(m.newRun(env), v.byWords(words), limits)
-}
-
-func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, limits map[string]int) (map[string]*SearchResults, error) {
+func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, limits map[string]int) (map[string][]SearchResult, error) {
 	start := time.Now()
 	type embedded struct {
 		vector []float32
@@ -976,23 +947,25 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 	}()
 	v := x.snapshot()
 	r := m.newRun(env)
-	byWords := v.pick(r, v.byWords(words), limits)
-	wordsTook := time.Since(start)
+	scores := v.byName(words)
+	namesTook := time.Since(start)
 	e := <-done
 	if e.err != nil {
 		return nil, fmt.Errorf("embed the words: %w", e.err)
 	}
 	waited := time.Since(start)
-	byMeaning, scanned, of := v.byMeaning(r, e.vector, limits)
+	near, scanned, of := v.byMeaning(r, e.vector, limits)
+	for o, score := range near {
+		if _, named := scores[o]; !named {
+			scores[o] = score
+		}
+	}
+	out := v.pick(r, scores, limits)
 	cells := 0
 	for _, n := range scanned {
 		cells += n
 	}
-	out := map[string]*SearchResults{}
-	for _, t := range searchTables {
-		out[t] = &SearchResults{Words: byWords[t], Meaning: byMeaning[t]}
-	}
-	slog.InfoContext(ctx, "search", "viewer", env.Viewer, "system", env.System, "words_took", wordsTook.Round(time.Millisecond), "embed_took", e.took.Round(time.Millisecond), "meaning_took", (time.Since(start) - waited).Round(time.Millisecond), "cells", cells, "of", of, "cells_group", scanned["GROUP"], "cells_person", scanned["PERSON"], "cells_document", scanned["DOCUMENT"], "took", time.Since(start).Round(time.Millisecond))
+	slog.InfoContext(ctx, "search", "viewer", env.Viewer, "system", env.System, "names_took", namesTook.Round(time.Millisecond), "embed_took", e.took.Round(time.Millisecond), "meaning_took", (time.Since(start) - waited).Round(time.Millisecond), "cells", cells, "of", of, "cells_group", scanned["GROUP"], "cells_person", scanned["PERSON"], "cells_document", scanned["DOCUMENT"], "took", time.Since(start).Round(time.Millisecond))
 	return out, nil
 }
 

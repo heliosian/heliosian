@@ -26,18 +26,6 @@
   font-weight: 700;
 }
 
-.results {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 18px;
-}
-
-.results h3 {
-  margin: 0 0 6px;
-  font-size: 13px;
-  color: var(--k);
-}
-
 .results ol {
   margin: 0;
   padding: 0;
@@ -55,7 +43,8 @@
   text-decoration: none;
 }
 
-.results li .kind {
+.results li .kind,
+.results li .score {
   margin-left: 8px;
   color: var(--faint);
   font-size: 12px;

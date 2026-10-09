@@ -194,9 +194,9 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 		defer mu.Unlock()
 		asked[request]++
 		if asked[request] == 1 {
-			return `{"summary": "x", "keywords": ["outing"]}`
+			return `{"summary": "x"}`
 		}
-		return `{"summary": "a thing in the sample, asked twice", "keywords": ["outing"]}`
+		return `{"summary": "a thing in the sample, asked twice"}`
 	}), blob.NewMemoryBucket())
 	waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
@@ -257,18 +257,13 @@ func TestEveryShownRowHasAnInput(t *testing.T) {
 	}
 }
 
-func TestKeywordsAreLowercased(t *testing.T) {
-	s, _, x := newSearcher(t, testkit.ClaudeReplying(func(string) string {
-		return `{"summary": "a thing in the sample, shouted", "keywords": ["Fall Picnic", "fall picnic", " PICNIC "]}`
-	}), blob.NewMemoryBucket())
-	makeAll(t, s, x)
-	x.mu.RLock()
-	defer x.mu.RUnlock()
-	for _, e := range x.entries {
-		if !slices.Equal(e.Keywords, []string{"fall picnic", "picnic"}) {
-			t.Fatalf("keywords %q", e.Keywords)
-		}
+func found(t *testing.T, x *Searcher, m *Model, env Env, words string, limits map[string]int) map[string][]SearchResult {
+	t.Helper()
+	results, err := x.Search(context.Background(), m, env, words, limits)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return results
 }
 
 func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
@@ -289,10 +284,10 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 		t.Errorf("the extract is named %q", row.Name)
 	}
 	m := s.Model()
-	if got := extractsOf(x.Words(m, Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]); !slices.Contains(got, extract) {
-		t.Errorf("the Hummingbirds parent's search for boots found %v", got)
+	if got := extractsOf(found(t, x, m, Env{Viewer: parent, Now: testNow}, "tide pools", testLimits)["DOCUMENT"]); !slices.Contains(got, extract) {
+		t.Errorf("the Hummingbirds parent's search for tide pools found %v", got)
 	}
-	if got := extractsOf(x.Words(m, Env{Viewer: student, Now: testNow}, "boots", testLimits)["DOCUMENT"]); slices.Contains(got, extract) {
+	if got := extractsOf(found(t, x, m, Env{Viewer: student, Now: testNow}, "tide pools", testLimits)["DOCUMENT"]); slices.Contains(got, extract) {
 		t.Errorf("a student the email was not sent to found it: %v", got)
 	}
 }
@@ -327,10 +322,11 @@ func TestFillerWordsAreNotSearched(t *testing.T) {
 	}
 }
 
-func TestListsAdminsManagersAndSessionsAreNotSearched(t *testing.T) {
+func TestListsAdminsManagersSessionsAndDayPartsAreNotSearched(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"id": "grp00000000099", "kind": "day_part", "name": "Pickup", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:15:00", "end": "2026-11-03 15:30:00"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
 		store.Insert("GROUP", store.Row{"id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
@@ -343,20 +339,20 @@ func TestListsAdminsManagersAndSessionsAreNotSearched(t *testing.T) {
 		t.Fatal(err)
 	}
 	rows := s.Model().SearchInputs(nil)
-	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true} {
+	for id, want := range map[string]bool{"grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true, "grp00000000099": false} {
 		if _, got := rows[id]; got != want {
 			t.Errorf("%s searched %v, want %v", id, got, want)
 		}
 	}
 }
 
-func TestANameOnlyPersonIsFoundByWordsAlone(t *testing.T) {
+func TestANameOnlyPersonIsFoundByNameAlone(t *testing.T) {
 	s, _, _, x := searcher(t)
 	makeAll(t, s, x)
 	v := x.snapshot()
 	rowan, maya := v.rows["per00000000002"], v.rows["per00000000003"]
-	if !rowan.WordsOnly || maya.WordsOnly {
-		t.Fatalf("words only: Rowan %v (%q), Maya %v (%q)", rowan.WordsOnly, rowan.Input, maya.WordsOnly, maya.Input)
+	if !rowan.NameOnly || maya.NameOnly {
+		t.Fatalf("name only: Rowan %v (%q), Maya %v (%q)", rowan.NameOnly, rowan.Input, maya.NameOnly, maya.Input)
 	}
 	placed := v.vectors["PERSON"].placed
 	if _, ok := placed[rowan.Object]; ok {
@@ -365,8 +361,9 @@ func TestANameOnlyPersonIsFoundByWordsAlone(t *testing.T) {
 	if _, ok := placed[maya.Object]; !ok {
 		t.Error("Maya is not in the vector index")
 	}
-	if got := hitIDs(x.Words(s.Model(), Env{Viewer: staff, Now: testNow}, "rowan", testLimits)["PERSON"]); !slices.Contains(got, "per00000000002") {
-		t.Errorf("a search for rowan found %v", got)
+	got := found(t, x, s.Model(), Env{Viewer: staff, Now: testNow}, "rowan", testLimits)["PERSON"]
+	if len(got) == 0 || got[0].ID != "per00000000002" || got[0].Score != 1 {
+		t.Errorf("a search for rowan found %+v", got)
 	}
 }
 
@@ -404,7 +401,7 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 	makeAll(t, s, x)
 	m := s.Model()
 	env := Env{Viewer: parent, Now: testNow}
-	results := x.Words(m, env, "boots", testLimits)["DOCUMENT"]
+	results := found(t, x, m, env, "tide pools", testLimits)["DOCUMENT"]
 	if len(results) != 1 || len(results[0].Refs) != 2 || !slices.Equal(slices.Sorted(slices.Values(extractsOf(results))), slices.Sorted(slices.Values(extracts))) {
 		t.Fatalf("the two copies are not one result with two refs: %+v", results)
 	}
@@ -434,7 +431,7 @@ func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
 		extracts = append(extracts, sendMail(t, s, pics, fmt.Sprintf("Field trip %d", i), body))
 	}
 	makeAll(t, s, x)
-	results := x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]
+	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "field trip", testLimits)["DOCUMENT"]
 	together := slices.IndexFunc(results, func(r SearchResult) bool {
 		got := extractsOf([]SearchResult{r})
 		return slices.Contains(got, extracts[0]) && slices.Contains(got, extracts[1])
@@ -505,7 +502,7 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 	x.mu.RLock()
 	row := x.rows[extract]
 	x.mu.RUnlock()
-	results := x.Words(s.Model(), Env{Viewer: parent, Now: testNow}, "boots", testLimits)["DOCUMENT"]
+	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "tide pools", testLimits)["DOCUMENT"]
 	if len(results) != 1 || len(results[0].Refs) != 1 {
 		t.Fatalf("the email's result: %+v", results)
 	}
@@ -593,7 +590,7 @@ func TestEachTableIsScannedUntilItAloneIsFull(t *testing.T) {
 				e.Chunks = append(e.Chunks, SearchChunk{Vector: near(1)})
 			}
 		case "PERSON":
-			e.Chunks = []SearchChunk{{Vector: near(-1)}}
+			e.Chunks = []SearchChunk{{Vector: near(1)}}
 		}
 		entries[r.Object] = e
 		byTable[r.Table][r.Object] = e
@@ -607,7 +604,10 @@ func TestEachTableIsScannedUntilItAloneIsFull(t *testing.T) {
 	}
 	v := buildView(rows, entries, vectors)
 	query := near(1)
-	got, scanned, _ := v.byMeaning(m.newRun(Env{Viewer: staff, Now: testNow}), query, map[string]int{"GROUP": 1, "PERSON": 1, "DOCUMENT": 0})
+	run := m.newRun(Env{Viewer: staff, Now: testNow})
+	limits := map[string]int{"GROUP": 1, "PERSON": 1, "DOCUMENT": 0}
+	scores, scanned, _ := v.byMeaning(run, query, limits)
+	got := v.pick(run, scores, limits)
 	if len(got["GROUP"]) != 1 || len(got["PERSON"]) != 1 {
 		t.Fatalf("found %d groups and %d people", len(got["GROUP"]), len(got["PERSON"]))
 	}
@@ -616,7 +616,7 @@ func TestEachTableIsScannedUntilItAloneIsFull(t *testing.T) {
 	}
 }
 
-func keywordView(t *testing.T, m *Model, keywords map[string][]string) (*searchView, []string) {
+func namedView(t *testing.T, m *Model, names map[string]string) (*searchView, []string) {
 	t.Helper()
 	rows := m.SearchInputs(nil)
 	dated := []string{}
@@ -631,31 +631,36 @@ func keywordView(t *testing.T, m *Model, keywords map[string][]string) (*searchV
 		r.When = fmt.Sprintf("2026-0%d-01 09:00:00", i+1)
 		rows[id] = r
 	}
+	for name, title := range names {
+		r := rows[at[name]]
+		r.Name = title
+		rows[at[name]] = r
+	}
 	entries := map[string]*SearchEntry{}
 	for _, r := range rows {
-		entries[r.Object] = &SearchEntry{Summary: "made", Keywords: []string{"filler"}}
-	}
-	for name, words := range keywords {
-		entries[rows[at[name]].Object].Keywords = words
+		entries[r.Object] = &SearchEntry{Summary: "made"}
 	}
 	return buildView(rows, entries, nil), dated
 }
 
 func TestTheNewestOfEqualHitsComesFirst(t *testing.T) {
 	m := sample(t).Model()
-	v, dated := keywordView(t, m, map[string][]string{"oldest": {"boots"}, "newest": {"boots"}})
-	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byWords("boots"), testLimits)["GROUP"])
+	v, dated := namedView(t, m, map[string]string{"oldest": "Rain Boots Sale", "newest": "Boots for the Tide Pools"})
+	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byName("boots"), testLimits)["GROUP"])
 	if !slices.Equal(got, []string{dated[2], dated[0]}) {
-		t.Fatalf("the two holders of boots came back %v, want newest %s then oldest %s", got, dated[2], dated[0])
+		t.Fatalf("the two named boots came back %v, want newest %s then oldest %s", got, dated[2], dated[0])
 	}
 }
 
-func TestAWeakerWordIsKeptWhenNothingHoldsBoth(t *testing.T) {
+func TestANameMustHoldEveryWord(t *testing.T) {
 	m := sample(t).Model()
-	v, dated := keywordView(t, m, map[string][]string{"oldest": {"boots"}, "middle": {"kite"}, "newest": {"kite"}})
-	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byWords("boots kite"), testLimits)["GROUP"])
-	if !slices.Equal(got, []string{dated[0], dated[2], dated[1]}) {
-		t.Fatalf("boots kite found %v, want the rarer boots %s, then the kites %s and %s", got, dated[0], dated[2], dated[1])
+	v, dated := namedView(t, m, map[string]string{"oldest": "Rain Boots Sale", "middle": "Kite Day", "newest": "Boots and Kites"})
+	got := hitIDs(v.pick(m.newRun(Env{Viewer: staff, Now: testNow}), v.byName("the boots kites"), testLimits)["GROUP"])
+	if !slices.Equal(got, []string{dated[2]}) {
+		t.Fatalf("boots kites found %v, want only %s", got, dated[2])
+	}
+	if got := v.byName("who is the"); len(got) != 0 {
+		t.Fatalf("filler alone found %v", got)
 	}
 }
 
@@ -688,18 +693,28 @@ func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 	s, _, _, x := searcher(t)
 	makeAll(t, s, x)
 	m := s.Model()
-	if got := hitIDs(x.Words(m, Env{Viewer: parent, Now: testNow}, "picnic", testLimits)["GROUP"]); !slices.Contains(got, "grp00000000040") {
-		t.Errorf("the parent's word search for picnic found %v", got)
+	if got := hitIDs(found(t, x, m, Env{Viewer: parent, Now: testNow}, "picnic", testLimits)["GROUP"]); !slices.Contains(got, "grp00000000040") {
+		t.Errorf("the parent's search for picnic found %v", got)
 	}
-	if got := hitIDs(x.Words(m, Env{Viewer: guest, Now: testNow}, "picnic", testLimits)["GROUP"]); slices.Contains(got, "grp00000000040") {
-		t.Errorf("a guest's word search found the picnic they can't see: %v", got)
+	if got := hitIDs(found(t, x, m, Env{Viewer: guest, Now: testNow}, "picnic", testLimits)["GROUP"]); slices.Contains(got, "grp00000000040") {
+		t.Errorf("a guest's search found the picnic they can't see: %v", got)
 	}
-	results, err := x.Search(context.Background(), m, Env{Viewer: parent, Now: testNow}, "fall picnic", testLimits)
-	if err != nil {
-		t.Fatal(err)
+}
+
+func TestMeaningStopsAtTheFloor(t *testing.T) {
+	s, _, _, x := searcher(t)
+	makeAll(t, s, x)
+	v := x.snapshot()
+	picnic := v.rows["grp00000000040"]
+	near := v.entries[picnic.Object].Chunks[0].Vector
+	far := make([]float32, len(near))
+	far[len(far)-1] = 1
+	run := s.Model().newRun(Env{Viewer: staff, Now: testNow})
+	if scores, _, _ := v.byMeaning(run, near, testLimits); scores[picnic.Object] < searchFloor {
+		t.Errorf("the picnic's own vector scores %v", scores[picnic.Object])
 	}
-	if got := hitIDs(results["GROUP"].Meaning); !slices.Contains(got, "grp00000000040") {
-		t.Errorf("the parent's search by meaning for fall picnic found %v", got)
+	if scores, _, _ := v.byMeaning(run, far, testLimits); len(scores) != 0 {
+		t.Errorf("a vector near nothing found %d entries", len(scores))
 	}
 }
 
@@ -792,15 +807,15 @@ func TestSearchAnswersOnceByTable(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+testImportKey)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
-	var got map[string]SearchResults
+	var got map[string][]SearchResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
 		t.Fatalf("%d %s: %v", rec.Code, rec.Body, err)
 	}
-	if len(got) != len(searchTables) || got["DOCUMENT"].Words == nil || got["PERSON"].Meaning == nil {
+	if len(got) != len(searchTables) || got["DOCUMENT"] == nil || got["PERSON"] == nil {
 		t.Fatalf("the answer's tables: %s", rec.Body)
 	}
-	i := slices.IndexFunc(got["GROUP"].Words, func(h SearchResult) bool { return h.ID == "grp00000000040" })
-	if i < 0 || got["GROUP"].Words[i].Name != "Fall Picnic" || got["GROUP"].Words[i].Href == "" || got["GROUP"].Words[i].Summary == "" {
+	i := slices.IndexFunc(got["GROUP"], func(h SearchResult) bool { return h.ID == "grp00000000040" })
+	if i < 0 || got["GROUP"][i].Name != "Fall Picnic" || got["GROUP"][i].Href == "" || got["GROUP"][i].Summary == "" || got["GROUP"][i].Score != 1 {
 		t.Fatalf("the picnic's hit: %s", rec.Body)
 	}
 }
@@ -820,11 +835,11 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 	}
 	makeAll(t, s, x)
 	env := Env{Viewer: parent, Now: testNow}
-	if all := x.Words(s.Model(), env, "picnic", testLimits)["GROUP"]; len(all) < 2 {
+	if all := found(t, x, s.Model(), env, "picnic", testLimits)["GROUP"]; len(all) < 2 {
 		t.Fatalf("the picnic search found %d groups; the test needs two", len(all))
 	}
 	one, _ := SearchLimits(map[string]int{"GROUP": 1, "PERSON": 0})
-	got := x.Words(s.Model(), env, "picnic", one)
+	got := found(t, x, s.Model(), env, "picnic", one)
 	if len(got["GROUP"]) != 1 || len(got["PERSON"]) != 0 {
 		t.Fatalf("limited to one group and no people, the search found %d and %d", len(got["GROUP"]), len(got["PERSON"]))
 	}
@@ -839,8 +854,8 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 		return rec
 	}
 	rec := ask(`{"words": "picnic", "limits": {"GROUP": 1}}`)
-	var answer map[string]SearchResults
-	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || rec.Code != http.StatusOK || len(answer["GROUP"].Words) != 1 {
+	var answer map[string][]SearchResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil || rec.Code != http.StatusOK || len(answer["GROUP"]) != 1 {
 		t.Fatalf("%d %s: %v", rec.Code, rec.Body, err)
 	}
 	if rec := ask(`{"words": "picnic", "limits": {"FAMILY": 1}}`); rec.Code != http.StatusBadRequest {

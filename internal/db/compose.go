@@ -31,7 +31,7 @@ const Language = `A query is one fully bracketed prefix expression, the operator
 
 (from TABLE [@name] (where cond…) (order path asc|desc …) (limit N) (include path…))
 
-- A condition is (and …), (or …), (not cond), a comparison (= a b), (!= a b), (< a b), (<= a b), (> a b), (>= a b), (in x "a" "b"), (in x (select TABLE.column cond…)), (in x (ancestors @row)), (blank path), (exists TABLE [@name] cond…), or a yes/no path on its own. Several conditions in one bracket are anded.
+- A condition is (and …), (or …), (not cond), a comparison (= a b), (!= a b), (< a b), (<= a b), (> a b), (>= a b), (in x "a" "b"), (in x (select TABLE.column cond…)), (in x (ancestors @row)), (blank path), (contains path "text"), holding when the text at the path has the quoted text in it, ignoring case, (exists TABLE [@name] cond…), or a yes/no path on its own. Several conditions in one bracket are anded.
 - A value is a path, a quoted string, a number, true, false, today, now, (count TABLE [@name] cond…), (sum path TABLE [@name] cond…) or (length path), the number of characters in a text path, 0 when blank.
 - Upper-case names are tables. A path is columns joined by dots, each but the last a reference followed to the row it names (group.kind, person.name_show). A path starts at the innermost row being matched, or at a named one (@g.visible_to), or at @viewer, the person running the query.
 - (ancestors @row) is the row and every row above it through parent, for a table whose parent names its own table.

@@ -30,7 +30,7 @@ The grid on this page and Resources' is `web/admin/grid.js` and `grid.css`: the 
 
 ## Search
 
-`/search` (`web/admin/search/`) runs `POST /api/do/search` (`docs/datamodel.md`, Search) as the signed-in person, or whoever they view as: the word results in one column, the meaning results in the other, each grouped by table, with how long the search took. A group or person result is its row's name, linking to the row under Resources, its table and its summary; a document result is a line per ref, in rank order - the ref's email or file name, its `Source:` line linking to the document it was read from, and `extract` linking to the extract that matched, each under Resources, then the extract's summary. The words ride in the address as `?q=`, so a link reruns the search. The entries themselves are the generated `SEARCH` table under Resources, which a super admin reads.
+`/search` (`web/admin/search/`) runs `POST /api/do/search` (`docs/datamodel.md`, Search) as the signed-in person, or whoever they view as: one list of results grouped by table, with how long the search took. A group or person result is its row's name, linking to the row under Resources, its table, its score and its summary; a document result is a line per ref, in rank order - the ref's email or file name, its `Source:` line linking to the document it was read from, and `extract` linking to the extract that matched, each under Resources, then the ref's score and the extract's summary. The words ride in the address as `?q=`, so a link reruns the search. The entries themselves are the generated `SEARCH` table under Resources, which a super admin reads.
 
 ## Queues
 

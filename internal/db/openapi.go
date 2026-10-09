@@ -136,13 +136,6 @@ func answers(description, name string) schema {
 	return schema{"description": description, "content": schema{"application/json": schema{"schema": component(name)}}}
 }
 
-func searchLists(item string) schema {
-	return schema{"type": "object", "required": []string{"words", "meaning"}, "properties": schema{
-		"words":   schema{"type": "array", "items": component(item)},
-		"meaning": schema{"type": "array", "items": component(item)},
-	}}
-}
-
 func failure(description string) schema {
 	return schema{"description": description, "content": schema{"text/plain": schema{"schema": schema{"type": "string"}}}}
 }
@@ -227,14 +220,14 @@ func spec() schema {
 		"terminal": schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
 		"name":     schema{"type": "string", "description": "That email's or file's name."},
 		"summary":  schema{"type": "string", "description": "The extract's summary."},
-		"score":    schema{"type": "number", "description": "What it ranked by: by words, its share of the words' weight; by meaning, its closest chunk's cosine similarity to the words."},
+		"score":    schema{"type": "number", "description": "What it ranked by: 1 when its email's or file's name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
 	}}
 	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
 		"id":      schema{"type": "string", "description": "The group or person."},
 		"name":    schema{"type": "string"},
 		"href":    schema{"type": "string", "description": "The page it has on the Helios apps, when it has one."},
 		"summary": schema{"type": "string"},
-		"score":   schema{"type": "number", "description": "What it ranked by: by words, its share of the words' weight; by meaning, its closest chunk's cosine similarity to the words."},
+		"score":   schema{"type": "number", "description": "What it ranked by: 1 when its name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
 	}}
 	schemas["SearchBundle"] = schema{"type": "object", "required": []string{"refs"}, "properties": schema{
 		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "Matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},
@@ -322,7 +315,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Search groups, people and documents",
-				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first by words - the rows whose keywords hold the most of the words, the rarer words weighing more - and by meaning - the rows whose embedded chunks lie closest to the words'. A document result is a bundle of refs, best first: a hit joins the result its own email or file started, else the result holding a near-identical copy of it, else starts one. Words leave out what scores well under the best; equal scores come newest first.",
+				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first: first the rows whose name holds every word, then the rows an embedded chunk of which lies close enough in meaning to the words. A document result is a bundle of refs, best first: a hit joins the result its own email or file started, else the result holding a near-identical copy of it, else starts one. Equal scores come newest first.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":     "object",
 					"required": []string{"words"},
@@ -340,9 +333,9 @@ func spec() schema {
 					"200": schema{"description": "The hits by table.", "content": schema{"application/json": schema{"schema": schema{
 						"type": "object",
 						"properties": schema{
-							"GROUP":    searchLists("SearchHit"),
-							"PERSON":   searchLists("SearchHit"),
-							"DOCUMENT": searchLists("SearchBundle"),
+							"GROUP":    schema{"type": "array", "items": component("SearchHit")},
+							"PERSON":   schema{"type": "array", "items": component("SearchHit")},
+							"DOCUMENT": schema{"type": "array", "items": component("SearchBundle")},
 						},
 					}}}},
 					"400": failure("No words, or a limit naming a table search does not answer, or under 0."),

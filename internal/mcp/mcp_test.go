@@ -420,25 +420,17 @@ func TestSearchNamesEachHit(t *testing.T) {
 	text := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
 		text, _ = callTool(t, session, "helios_search", map[string]any{"words": "Rowan Ashdown"})
-		if strings.Contains(text, `"meaning":[{`) {
+		if strings.Contains(text, `"PERSON":[{`) {
 			break
 		}
 	}
-	var found map[string]db.SearchResults
+	var found map[string][]db.SearchResult
 	if err := json.Unmarshal([]byte(text), &found); err != nil {
 		t.Fatalf("%v: %s", err, text)
 	}
 	people := found["PERSON"]
-	if len(people.Words) == 0 || people.Words[0].ID != rowanID || people.Words[0].Name == "" || people.Words[0].Href != "https://who.heliosian.com/people/"+rowanID {
-		t.Fatalf("the word search answered %s", text)
-	}
-	if len(people.Meaning) == 0 {
-		t.Fatalf("the meaning search found nothing: %s", text)
-	}
-	for _, r := range people.Meaning {
-		if r.ID == rowanID {
-			t.Fatalf("Rowan, a name alone, was found by meaning: %s", text)
-		}
+	if len(people) == 0 || people[0].ID != rowanID || people[0].Score != 1 || people[0].Name == "" || people[0].Href != "https://who.heliosian.com/people/"+rowanID {
+		t.Fatalf("the search answered %s", text)
 	}
 }
 

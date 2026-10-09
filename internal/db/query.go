@@ -435,6 +435,22 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			return cond{}, err
 		}
 		return cond{eval: func(f *frame) bool { return p.eval(f).blank }, cheap: p.cheap}, nil
+	case "contains":
+		if len(args) != 2 || args[1].isList || args[1].kind != atomString {
+			return cond{}, s.errorf("contains takes a path and a quoted string")
+		}
+		p, err := cx.path(args[0], sc)
+		if err != nil {
+			return cond{}, err
+		}
+		if p.t.class != classText {
+			return cond{}, args[0].errorf("contains looks in text, and %s is %s", args[0].flat(), p.t)
+		}
+		needle := strings.ToLower(args[1].text)
+		return cond{eval: func(f *frame) bool {
+			v := p.eval(f)
+			return !v.blank && strings.Contains(strings.ToLower(v.s), needle)
+		}, cheap: p.cheap}, nil
 	case "exists":
 		inner, err := cx.scan(s, 1, sc)
 		if err != nil {

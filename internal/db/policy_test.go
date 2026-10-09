@@ -822,7 +822,7 @@ func TestClientsGetThePolicyLanguage(t *testing.T) {
 }
 
 func TestTheJSONFormCarriesDefinitionsAndAncestors(t *testing.T) {
-	text := `(from GROUP @g (where (in parent (ancestors @g)) (visible @g) (exists MEMBER (= group @g) (in person (household @viewer))) (system "import")))`
+	text := `(from GROUP @g (where (in parent (ancestors @g)) (visible @g) (contains name "picnic") (exists MEMBER (= group @g) (in person (household @viewer))) (system "import")))`
 	q, err := Parse(text)
 	if err != nil {
 		t.Fatal(err)

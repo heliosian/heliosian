@@ -98,6 +98,8 @@ func TestParseRefuses(t *testing.T) {
 		`(from PERSON @p (where (in id (ancestors @p))))`:     "PERSON has no parent to follow",
 		`(from GROUP (where (> (length capacity) 1)))`:        "counts the characters of text",
 		`(from GROUP (where (> (length name kind) 1)))`:       "length takes one path",
+		`(from GROUP (where (contains capacity "1")))`:        "looks in text",
+		`(from GROUP (where (contains name kind)))`:           "contains takes a path and a quoted string",
 	} {
 		_, err := Parse(src)
 		if err == nil || !strings.Contains(err.Error(), want) {
@@ -155,6 +157,9 @@ func TestRun(t *testing.T) {
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
 		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030"}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
+		{"", `(from GROUP (where (contains name "LL PICnic") (= kind "event")))`, "id", []string{"grp00000000040"}},
+		{"", `(from GROUP (where (contains description "picnic")))`, "id", nil},
+		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{"grp00000000020"}},
 		{"", `(from PERSON (where (= (length vc_name) 0)))`, "id", []string{"per00000000004"}},
 		{"", `(from MEMBER (where (= (length guest_of.name_short) 5)))`, "person", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},

@@ -25,7 +25,7 @@ type searchView struct {
 	rows    map[string]SearchRow
 	objects map[string][]string
 	entries map[string]*SearchEntry
-	words   map[string][]string
+	names   map[string][]string
 	vectors map[string]*vectorIndex
 	groups  map[string]string
 	members map[string][]string
@@ -36,29 +36,30 @@ func emptyView() *searchView {
 	for _, t := range searchTables {
 		vectors[t] = &vectorIndex{}
 	}
-	return &searchView{rows: map[string]SearchRow{}, objects: map[string][]string{}, entries: map[string]*SearchEntry{}, words: map[string][]string{}, vectors: vectors, groups: map[string]string{}, members: map[string][]string{}}
+	return &searchView{rows: map[string]SearchRow{}, objects: map[string][]string{}, entries: map[string]*SearchEntry{}, names: map[string][]string{}, vectors: vectors, groups: map[string]string{}, members: map[string][]string{}}
 }
 
 func buildView(rows map[string]SearchRow, entries map[string]*SearchEntry, vectors map[string]*vectorIndex) *searchView {
-	v := &searchView{rows: rows, objects: map[string][]string{}, entries: entries, words: map[string][]string{}, vectors: vectors}
+	v := &searchView{rows: rows, objects: map[string][]string{}, entries: entries, names: map[string][]string{}, vectors: vectors}
 	for _, id := range slices.Sorted(maps.Keys(rows)) {
 		if o := rows[id].Object; entries[o] != nil {
 			v.objects[o] = append(v.objects[o], id)
 		}
 	}
-	prints := map[string][]uint32{}
-	for _, o := range slices.Sorted(maps.Keys(entries)) {
-		e := entries[o]
+	for _, o := range slices.Sorted(maps.Keys(v.objects)) {
 		seen := map[string]bool{}
-		for _, k := range e.Keywords {
-			for _, w := range searchTerms(k) {
+		for _, id := range v.objects[o] {
+			for _, w := range searchTerms(rows[id].Name) {
 				if !seen[w] {
 					seen[w] = true
-					v.words[w] = append(v.words[w], o)
+					v.names[w] = append(v.names[w], o)
 				}
 			}
 		}
-		if len(e.Fingerprint) == searchHashes {
+	}
+	prints := map[string][]uint32{}
+	for _, o := range slices.Sorted(maps.Keys(entries)) {
+		if e := entries[o]; len(e.Fingerprint) == searchHashes {
 			prints[o] = e.Fingerprint
 		}
 	}
@@ -73,41 +74,24 @@ func (v *searchView) group(object string) string {
 	return object
 }
 
-func wordForms(t string) []string {
-	out := []string{t, t + "s"}
-	if trimmed := strings.TrimSuffix(t, "s"); trimmed != t && len(trimmed) > 1 {
-		out = append(out, trimmed)
-	}
-	return out
-}
-
-func (v *searchView) byWords(words string) map[string]float64 {
+func (v *searchView) byName(words string) map[string]float64 {
 	scores := map[string]float64{}
-	total := 0.0
-	for _, t := range searchTerms(words) {
+	terms := searchTerms(words)
+	if len(terms) == 0 {
+		return scores
+	}
+	for _, o := range v.names[terms[0]] {
+		scores[o] = 1
+	}
+	for _, t := range terms[1:] {
 		held := map[string]bool{}
-		for _, form := range wordForms(t) {
-			for _, o := range v.words[form] {
-				held[o] = true
+		for _, o := range v.names[t] {
+			held[o] = true
+		}
+		for o := range scores {
+			if !held[o] {
+				delete(scores, o)
 			}
-		}
-		if len(held) == 0 {
-			continue
-		}
-		weight := math.Log(1 + float64(len(v.entries))/float64(len(held)))
-		total += weight
-		for o := range held {
-			scores[o] += weight
-		}
-	}
-	best := 0.0
-	for o := range scores {
-		scores[o] /= total
-		best = max(best, scores[o])
-	}
-	for o, share := range scores {
-		if share < searchWordShare*best {
-			delete(scores, o)
 		}
 	}
 	return scores
@@ -222,6 +206,9 @@ func (v *vectorIndex) scan(query []float32, cells []int, best map[string]float64
 	for _, c := range cells {
 		for _, ref := range v.cells[c] {
 			d := float64(dot(query, ref.vector))
+			if d < searchFloor {
+				continue
+			}
 			if old, ok := best[ref.object]; !ok || d > old {
 				best[ref.object] = d
 			}

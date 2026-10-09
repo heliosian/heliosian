@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-func TestASearchEntryIsAnsweredWithItsWords(t *testing.T) {
+func TestASearchEntryIsAnsweredWithItsName(t *testing.T) {
 	request := `{"model": "m", "messages": [{"content": [{"type": "text", "text": "Email: Tide pools\nKind: mail\n\nBring boots."}]}],
-		"output_config": {"format": {"schema": {"type": "object", "properties": {"summary": {"type": "string"}, "keywords": {"type": "array", "items": {"type": "string"}}}}}}}`
+		"output_config": {"format": {"schema": {"type": "object", "properties": {"summary": {"type": "string"}}}}}}`
 	rec := httptest.NewRecorder()
 	Claude().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(request)))
 	text := ""
@@ -25,13 +25,12 @@ func TestASearchEntryIsAnsweredWithItsWords(t *testing.T) {
 		}
 	}
 	var got struct {
-		Summary  string   `json:"summary"`
-		Keywords []string `json:"keywords"`
+		Summary string `json:"summary"`
 	}
 	if err := json.Unmarshal([]byte(text), &got); err != nil {
 		t.Fatalf("%v: %s", err, rec.Body)
 	}
-	if got.Summary != "Sample search entry for Email: Tide pools" || strings.Join(got.Keywords, " ") != "email tide pools kind mail bring boots" {
+	if got.Summary != "Sample search entry for Email: Tide pools" {
 		t.Fatalf("answered %+v", got)
 	}
 }

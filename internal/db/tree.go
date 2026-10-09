@@ -244,7 +244,7 @@ func condFromJSON(v any, where string) (*sexp, error) {
 		return bracket(word("blank"), p), nil
 	case op == "exists":
 		return scanFromJSON("exists", arg, at)
-	case op == "in" || slices.Contains(operators, op):
+	case op == "in" || op == "contains" || slices.Contains(operators, op):
 		args, ok := arg.([]any)
 		if !ok {
 			return nil, fmt.Errorf("%s is not a list", at)

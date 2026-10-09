@@ -43,6 +43,8 @@ var keptPages = []string{"application/pdf", "text/html"}
 
 var fetchedRelations = []string{"image", "linked"}
 
+var deadPages = []string{"the sign up was not found"}
+
 var googleExports = []string{"document", "presentation", "spreadsheets"}
 
 type Fetcher struct {
@@ -245,6 +247,11 @@ func keptBody(relation string, body []byte) (string, error) {
 	}
 	if words := len(strings.Fields(text)); words < pageLeast {
 		return "", fmt.Errorf("page text is %d words", words)
+	}
+	for _, dead := range deadPages {
+		if strings.Contains(strings.ToLower(text), dead) {
+			return "", fmt.Errorf("the page says %q", dead)
+		}
 	}
 	return mimeType, nil
 }

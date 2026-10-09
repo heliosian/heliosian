@@ -193,7 +193,7 @@ type searchIn struct {
 }
 
 type peopleIn struct {
-	Words     string `json:"words,omitempty" jsonschema:"words of a name, job title, about-me or the like, matched by the search index"`
+	Words     string `json:"words,omitempty" jsonschema:"words of a name, or of what a person's profile says, matched by the search index"`
 	Role      string `json:"role,omitempty" jsonschema:"student, parent or staff"`
 	Grade     string `json:"grade,omitempty" jsonschema:"a student's grade: K or 1 to 8"`
 	Classroom string `json:"classroom,omitempty" jsonschema:"a student's classroom, by name"`
@@ -205,7 +205,7 @@ type eventsIn struct {
 }
 
 func (s *Server) tools() {
-	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by words and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a result set for each table - GROUP, PERSON and DOCUMENT - each with results by words and by meaning, best first, each with the score it ranked by. A group or person result is its ID, name, summary and href. A document result is a bundle of refs, best first: the matching extracts of one email or file, with near-identical copies from other emails or files that had no result of their own; each ref gives the extract, the document it was read from, how that stands to its email or file (attached file, email body, image, linked page), its href, that email's or file's ID and name, and the extract's summary. helios_read_document opens any document, helios_get any other result, and helios_similar every copy. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
+	addTool(s, "helios_search", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters and school mail - by name and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a list for each table - GROUP, PERSON and DOCUMENT - best first: the rows whose name holds every word, then the rows whose text lies close in meaning, each with the score it ranked by; an empty list means nothing close enough. A group or person result is its ID, name, summary and href. A document result is a bundle of refs, best first: the matching extracts of one email or file, with near-identical copies from other emails or files that had no result of their own; each ref gives the extract, the document it was read from, how that stands to its email or file (attached file, email body, image, linked page), its href, that email's or file's ID and name, and the extract's summary. helios_read_document opens any document, helios_get any other result, and helios_similar every copy. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", search)
 	addTool(s, "helios_similar", "Every near-identical copy of a Helios School document, by the ID of an email, a part or an extract that helios_search answered - the same newsletter, PDF or page attached to or sent in other emails - each copy an extract with the document it was read from, how that stands to its email or file, its href, that email's or file's ID and name, and its summary, for when the differences between copies matter: which email carried it, when, or a copy that changed slightly.", similar)
 	addTool(s, "helios_whoami", "The person connected to Helios School's community data: their record, their addresses, their family and children, the classrooms, sign-ups, tickets and email lists they are in, the groups they manage and the Helios apps they are an admin of. Use it for questions about \"my family\", \"my kids\" or \"my classes\" at Helios.", whoami)
 	addTool(s, "helios_events", "Helios School's calendar: school and community events starting in a range of days, in order, with the category each sits under. Use it for what is coming up at Helios.", events)
@@ -585,8 +585,12 @@ var roles = map[string]string{"student": "students", "parent": "parents", "staff
 func findPeople(c call, in peopleIn) (any, error) {
 	where := []any{}
 	if words := strings.TrimSpace(in.Words); words != "" {
+		found, err := c.s.deps.Search.Search(c.ctx, c.m, c.env, words, map[string]int{"PERSON": listRows})
+		if err != nil {
+			return nil, err
+		}
 		ids := []string{}
-		for _, h := range c.s.deps.Search.Words(c.m, c.env, words, map[string]int{"PERSON": listRows})["PERSON"] {
+		for _, h := range found["PERSON"] {
 			ids = append(ids, h.ID)
 		}
 		if len(ids) == 0 {

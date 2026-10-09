@@ -102,6 +102,30 @@ func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
 	}
 }
 
+func TestALinkedPageSayingItsSignUpIsGoneIsRefused(t *testing.T) {
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`<html><body><nav>Create a Sign Up Find a Sign Up Plans Pricing Resources Help Sign In Register</nav><h1>The Sign Up Was Not Found</h1><p>The web address you entered is not a valid sign up. It may have been wrapped by your email program, or the sign up may have been deleted by its creator.</p><footer>About Us Careers Press Contact Blog Terms Privacy</footer></body></html>`))
+	}))
+	defer site.Close()
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, DocumentsSheet,
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Summer camps"}),
+		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": site.URL + "/go/camps"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	StartFetcher(s, queue, blob.NewMemoryBucket())
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		if row["fetch"] == "refused" && row["content"] == "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the not-found page was not refused: %v", row)
+		}
+	}
+}
+
 func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {
 	deck := []byte("%PDF-1.4\n% the condors deck\n")
 	intercept.Install("drive.google.com", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
