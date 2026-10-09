@@ -151,7 +151,7 @@ func Server(domain string, apps, aliased map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: secure(domain, cacheControl(route(domain, apps, aliased))), Protocols: protocols}
+	return &http.Server{Addr: ":" + Port(), Handler: compress(secure(domain, cacheControl(route(domain, apps, aliased)))), Protocols: protocols}
 }
 
 func Serve(server *http.Server, queue *store.Queue) {

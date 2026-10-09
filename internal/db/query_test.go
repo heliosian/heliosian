@@ -214,6 +214,24 @@ func TestInAConstantSelectProbes(t *testing.T) {
 	}
 }
 
+func TestASelectNamesItsRow(t *testing.T) {
+	m := sample(t).Model()
+	named := mustParse(t, `(from MEMBER (where (in group (select GROUP.id @f (= @f.kind "family")))))`)
+	if named.scan.probeSet == nil {
+		t.Error("a select naming its row no longer probes")
+	}
+	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {
+		got := ids(runAs(t, m, viewer, `(from MEMBER (where (in group (select GROUP.id @f (= @f.kind "family")))))`).Rows(), "id")
+		want := ids(runAs(t, m, viewer, `(from MEMBER (where (in group (select GROUP.id (= kind "family")))))`).Rows(), "id")
+		if len(want) == 0 || !slices.Equal(got, want) {
+			t.Errorf("as %q: through a named select %v, through an unnamed one %v", viewer, got, want)
+		}
+	}
+	if _, err := Parse(`(from MEMBER (where (in group (select GROUP.id @viewer (= kind "family")))))`); err == nil {
+		t.Error("a select named its row @viewer")
+	}
+}
+
 func TestCorrelatedSelectsAreNotShared(t *testing.T) {
 	m := sample(t).Model()
 	for _, viewer := range []string{"", "per00000000002", "per00000000003"} {

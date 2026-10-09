@@ -765,11 +765,19 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 		return nil, typ{}, false, err
 	}
 	inner := &scan{table: t, guarded: !cx.policy}
-	cx.hidden++
-	inner.name = fmt.Sprintf("_%d", cx.hidden)
+	rest := s.list[2:]
+	if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
+		if rest[0].text == "viewer" {
+			return nil, typ{}, false, rest[0].errorf("@viewer is the viewer and can't name a row")
+		}
+		inner.name, rest = rest[0].text, rest[1:]
+	} else {
+		cx.hidden++
+		inner.name = fmt.Sprintf("_%d", cx.hidden)
+	}
 	within := &scope{table: t, name: inner.name, outer: sc}
 	mark := len(cx.touched)
-	inner.conds, err = cx.conds(s.list[2:], within)
+	inner.conds, err = cx.conds(rest, within)
 	if err != nil {
 		return nil, typ{}, false, err
 	}

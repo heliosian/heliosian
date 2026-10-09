@@ -63,6 +63,7 @@ export function listKey(id) {
 }
 
 const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (manages @g)';
+const listCondition = '(!= status "closed") (or (in kind "party" "activity") mail) (manages @g)';
 
 function oldName() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -124,7 +125,7 @@ function movedTo(name, target) {
 
 export async function loadModel() {
   const name = oldName();
-  const [who, viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, managed, oldId] = await Promise.all([
+  const [who, viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, listMembers, oldId] = await Promise.all([
     whoAmI(),
     q('(from PERSON (where (= id @viewer)))'),
     q('(from PERSON (where (= id @viewer) (admin_of "who")))'),
@@ -137,7 +138,10 @@ export async function loadModel() {
     q('(from GEOCODE)'),
     q('(from SETTING (where (= app "platform")))'),
     q(`(from GROUP @g (where ${tagCondition}) (include managed_by))`),
-    q('(from GROUP @g (where (!= status "closed") (or (in kind "party" "activity") mail) (manages @g)) (order name asc))'),
+    q(`(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))))`),
+    q(`(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))))`),
+    q(`(from GROUP @g (where ${listCondition}) (order name asc))`),
+    q(`(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (include person))`),
     oldTarget(name),
   ]);
   model.email = who.email;
@@ -214,12 +218,12 @@ export async function loadModel() {
       (membersByGroup[e.group] = membersByGroup[e.group] || []).push(e.person);
     }
   }
-  await loadTags(tagged);
-  await loadLists(managed);
+  loadTags(tagged, [tagMembers, tagManagers]);
+  loadLists(managed, listMembers);
   model.moved = movedTo(name, oldId);
 }
 
-async function loadTags(tagged) {
+function loadTags(tagged, memberAnswers) {
   tags = {};
   const rows = rowsOf(tagged, 'GROUP');
   if (!rows.length) {
@@ -229,10 +233,8 @@ async function loadTags(tagged) {
   for (const g of all(tagged, 'GROUP')) {
     included[g.id] = g;
   }
-  const ids = [...new Set(rows.flatMap(t => [t.id, t.managed_by]))].map(id => JSON.stringify(id)).join(' ');
-  const members = await q(`(from MEMBER (where (= member "yes") (in group ${ids})))`);
   const rowsOfGroup = {};
-  for (const m of all(members, 'MEMBER')) {
+  for (const m of memberAnswers.flatMap(a => all(a, 'MEMBER'))) {
     (rowsOfGroup[m.group] = rowsOfGroup[m.group] || {})[m.person] = m.id;
   }
   for (const t of rows) {
@@ -261,15 +263,13 @@ export function tagManagers(t) {
 
 const listKinds = {party: 'party', activity: 'activity'};
 
-async function loadLists(managed) {
+function loadLists(managed, members) {
   lists = {};
   const rows = rowsOf(managed, 'GROUP');
   const room = model.roomParents.filter(g => (membersByGroup[g.id] || []).includes(model.viewer && model.viewer.id));
   if (!rows.length && !room.length) {
     return;
   }
-  const ids = rows.map(g => JSON.stringify(g.id)).join(' ');
-  const members = rows.length ? await q(`(from EFFECTIVE_MEMBER (where (in group ${ids})) (include person))`) : {resources: {}};
   const guests = {};
   for (const p of all(members, 'PERSON')) {
     if (p.source === 'guest') {
