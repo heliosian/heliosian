@@ -320,7 +320,7 @@ func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
 func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 	sum := sha256.Sum256(got.body)
 	hash := hex.EncodeToString(sum[:])
-	name := contentFolder + "/" + hash
+	name := "content/" + hash
 	stored := false
 	if _, held := f.s.Model().Table("CONTENT").Find(hash, got.mime); !held {
 		if err := f.bucket.Put(ctx, name, got.mime, got.body); err != nil {

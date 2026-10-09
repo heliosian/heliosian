@@ -4,7 +4,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"heliosian/internal/access"
@@ -14,17 +13,6 @@ import (
 )
 
 const maxPhotos = 5
-
-var audioExtensions = map[string]string{
-	"audio/webm":  "webm",
-	"video/webm":  "webm",
-	"audio/mp4":   "m4a",
-	"video/mp4":   "m4a",
-	"audio/x-m4a": "m4a",
-	"audio/mpeg":  "mp3",
-	"audio/ogg":   "ogg",
-	"audio/wav":   "wav",
-}
 
 type storedMedia struct {
 	Name string `json:"name"`
@@ -115,14 +103,9 @@ func mediaType(kind string, content []byte, declared string) (string, string, er
 		}
 		return sniffed, ext, nil
 	}
-	base, _, _ := strings.Cut(declared, ";")
-	base = strings.TrimSpace(strings.ToLower(base))
-	ext, ok := audioExtensions[base]
+	mimeType, ext, ok := blob.AudioType(declared)
 	if !ok {
 		return "", "", access.Invalid("unsupported audio type %s", declared)
 	}
-	if strings.HasPrefix(base, "video/") {
-		base = "audio/" + strings.TrimPrefix(base, "video/")
-	}
-	return base, ext, nil
+	return mimeType, ext, nil
 }

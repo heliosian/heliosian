@@ -75,7 +75,7 @@ type markdown struct {
 }
 
 func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
-	mux.HandleFunc("POST "+doPrefix+"wiki", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/wiki", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
@@ -144,13 +144,13 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		content := []byte(body)
 		sum := sha256.Sum256(content)
 		md := markdown{hash: hex.EncodeToString(sum[:]), size: len(content)}
-		if _, held := s.Model().Table("CONTENT").Find(md.hash, wikiMime); held || slices.Contains(stored, contentFolder+"/"+md.hash) {
+		if _, held := s.Model().Table("CONTENT").Find(md.hash, wikiMime); held || slices.Contains(stored, "content/"+md.hash) {
 			return md, nil
 		}
-		if err := pics.bucket.Put(ctx, contentFolder+"/"+md.hash, wikiMime, content); err != nil {
+		if err := pics.bucket.Put(ctx, "content/"+md.hash, wikiMime, content); err != nil {
 			return md, err
 		}
-		stored = append(stored, contentFolder+"/"+md.hash)
+		stored = append(stored, "content/"+md.hash)
 		return md, nil
 	}
 	main, err := keep(page.Body)

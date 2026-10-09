@@ -1017,7 +1017,7 @@ func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchRef, error) {
 }
 
 func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, importKey []byte, now func() time.Time) {
-	mux.HandleFunc("POST "+doPrefix+"search", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/search", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, importKey, now())
 		if !ok {

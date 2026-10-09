@@ -129,7 +129,7 @@ func (c *Composer) Compose(ctx context.Context, words string, today time.Time) (
 }
 
 func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, importKey []byte, now func() time.Time) {
-	mux.HandleFunc("POST "+doPrefix+"compose", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/compose", func(w http.ResponseWriter, r *http.Request) {
 		at := now()
 		env, _, ok := caller(w, r, s.Model(), importKey, at)
 		if !ok {

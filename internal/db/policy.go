@@ -113,6 +113,15 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
+; the viewer may change @ph: a picture of themselves or someone in their family, or of a family they manage
+(define (edits_photo @ph)
+  (or (and (not (blank @ph.person)) (self_or_household @ph.person))
+      (and (not (blank @ph.group)) (= @ph.group.kind "family") (manages @ph.group))))
+
+; @g is a plain group someone may make and run: no mail, under nothing, linking nowhere, and seen by its managers alone
+(define (own_group @g)
+  (and (= @g.kind "group") (not @g.mail) (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
+
 ; the viewer manages @g, or is in it and it is not hidden from all but its managers
 (define (sees_mail @g)
   (or (manages @g)
@@ -165,6 +174,16 @@ const PolicySource = `
 (set PERSON.name_short_override (self_or_household @old))
 ; a person or someone in their family overrides their sort name
 (set PERSON.name_sort_override (self_or_household @old))
+; a person or someone in their family writes their pronouns
+(set PERSON.pronouns (self_or_household @old))
+; a person or someone in their family records how their name is said
+(set PERSON.pronunciation (self_or_household @old))
+; a person or someone in their family writes their about-me words
+(set PERSON.facts (self_or_household @old))
+; a person or someone in their family dates their about-me words
+(set PERSON.facts_updated (self_or_household @old))
+; a person or someone in their family dates their picture
+(set PERSON.photo_updated (self_or_household @old))
 ; the emails of people the viewer may see
 (read PERSON_EMAIL (person_visible person))
 ; every column of an email
@@ -179,6 +198,20 @@ const PolicySource = `
 (read PHOTO (reencode crop)
   (or (and (not (blank person)) (self_or_household person))
       (and (not (blank group)) (manages group))))
+; add a picture of oneself, someone in one's family, or a family one manages
+(insert PHOTO (edits_photo @new))
+; move such a picture among its person's or family's
+(set PHOTO.order (edits_photo @old))
+; crop such a picture: the box's left edge
+(set PHOTO.crop_left (edits_photo @old))
+; crop such a picture: the box's top edge
+(set PHOTO.crop_top (edits_photo @old))
+; crop such a picture: the box's width
+(set PHOTO.crop_width (edits_photo @old))
+; crop such a picture: the box's height
+(set PHOTO.crop_height (edits_photo @old))
+; remove such a picture
+(delete PHOTO (edits_photo @old))
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
 ; every column of an app setting
@@ -223,6 +256,32 @@ const PolicySource = `
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
+; a family's managers override its address
+(set GROUP.address_override (and (= @old.kind "family") (manages @old)))
+; a family's managers override its phone
+(set GROUP.phone_override (and (= @old.kind "family") (manages @old)))
+; a family's managers write the words under its photo
+(set GROUP.description (and (= @old.kind "family") (manages @old)))
+; a family's managers record how its name is said
+(set GROUP.pronunciation (and (= @old.kind "family") (manages @old)))
+; anyone but a guest makes a plain group of their own, a tag, run by a group they are in or, until they name one, by nobody
+(insert GROUP
+  (and (own_group @new) (= @new.status "open") (= @new.added_by @viewer) (!= @viewer.source "guest")
+       (or (blank @new.managed_by) (exists EFFECTIVE_MEMBER (= group @new.managed_by) (= person @viewer)))))
+; whoever made a plain group nobody runs makes it run itself, as a tag's managers group does
+(set GROUP.managed_by (and (own_group @old) (= @old.added_by @viewer) (blank @old.managed_by) (= @new.managed_by @old.id)))
+; whoever made a plain group that runs itself is the first in it
+(insert MEMBER
+  (and (own_group @new.group) (= @new.group.added_by @viewer) (= @new.group.managed_by @new.group)
+       (= @new.person @viewer) (= @new.member "yes") (not (exists MEMBER (= group @new.group)))))
+; a plain group's managers rename it
+(set GROUP.name (and (own_group @old) (manages @old)))
+; a plain group's managers close it, or open it again
+(set GROUP.status (and (own_group @old) (manages @old) (in @new.status "open" "closed")))
+; a plain group's managers put someone in it: tag them, or share the tag through its managers group
+(insert MEMBER (and (own_group @new.group) (manages @new.group) (= @new.member "yes")))
+; a plain group's managers take someone out of it, themselves included
+(delete MEMBER (and (own_group @old.group) (manages @old.group)))
 ; where the calendar groups the viewer may see came from
 (read GROUP_SOURCE (visible group))
 ; every column of where a calendar group came from
@@ -364,6 +423,18 @@ const PolicySource = `
 (read GREETING (or (blank added_by) (= added_by @viewer)))
 ; every column of a greeting
 (read GREETING (id name format grouped individual added_by) true)
+; anyone but a guest adds a greeting of their own
+(insert GREETING (and (= @new.added_by @viewer) (!= @viewer.source "guest")))
+; a greeting's owner renames it
+(set GREETING.name (= @old.added_by @viewer))
+; a greeting's owner rewrites it
+(set GREETING.format (= @old.added_by @viewer))
+; a greeting's owner says whether it addresses a family
+(set GREETING.grouped (= @old.added_by @viewer))
+; a greeting's owner says whether it addresses one person
+(set GREETING.individual (= @old.added_by @viewer))
+; a greeting's owner removes it
+(delete GREETING (= @old.added_by @viewer))
 
 ;; Who? admins
 
@@ -385,6 +456,81 @@ const PolicySource = `
 (read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
+; every person's emails, hidden or deactivated too
+(read PERSON_EMAIL (admin_of "who"))
+; override anyone's grade
+(set PERSON.grade_override (admin_of "who"))
+; override anyone's classroom
+(set PERSON.classroom_override (admin_of "who"))
+; override anyone's crew
+(set PERSON.crew_override (admin_of "who"))
+; override anyone's department
+(set PERSON.department_override (admin_of "who"))
+; override anyone's job title
+(set PERSON.job_title_override (admin_of "who"))
+; override anyone's phone
+(set PERSON.phone_override (admin_of "who"))
+; write anyone's pronouns
+(set PERSON.pronouns (admin_of "who"))
+; record how anyone's name is said
+(set PERSON.pronunciation (admin_of "who"))
+; write anyone's about-me words
+(set PERSON.facts (admin_of "who"))
+; date anyone's about-me words
+(set PERSON.facts_updated (admin_of "who"))
+; date anyone's picture
+(set PERSON.photo_updated (admin_of "who"))
+; take anyone out of the directory and sign-in, or put them back
+(set PERSON.hidden (admin_of "who"))
+; add someone the school's records don't carry
+(insert PERSON (and (admin_of "who") (= @new.source "manual")))
+; deactivate someone added by hand, or bring them back
+(set PERSON.deactivated (and (admin_of "who") (= @old.source "manual")))
+; give someone an address by hand
+(insert PERSON_EMAIL (and (admin_of "who") (= @new.source "manual")))
+; change an address given by hand
+(set PERSON_EMAIL.address (and (admin_of "who") (= @old.source "manual")))
+; remove an address given by hand
+(delete PERSON_EMAIL (and (admin_of "who") (= @old.source "manual")))
+; make someone added by hand a student, parent, staff member or adult
+(insert MEMBER (and (admin_of "who") (role_group @new.group) (!= @new.group.slug "everyone") (= @new.person.source "manual")))
+; take someone added by hand out of a role group
+(delete MEMBER (and (admin_of "who") (role_group @old.group) (!= @old.group.slug "everyone") (= @old.person.source "manual")))
+; make someone a band's room parent
+(insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "band") (= @new.member "yes")))
+; stop someone being a band's room parent
+(delete MEMBER (and (admin_of "who") (= @old.group.kind "group") (= @old.group.parent.kind "band")))
+; override any family's address
+(set GROUP.address_override (and (admin_of "who") (= @old.kind "family")))
+; override any family's phone
+(set GROUP.phone_override (and (admin_of "who") (= @old.kind "family")))
+; write the words under any family's photo
+(set GROUP.description (and (admin_of "who") (= @old.kind "family")))
+; record how any family's name is said
+(set GROUP.pronunciation (and (admin_of "who") (= @old.kind "family")))
+; a classroom's or grade's color
+(set GROUP.color (and (admin_of "who") (in @old.kind "classroom" "grade")))
+; a classroom's or grade's place among the others
+(set GROUP.order (and (admin_of "who") (in @old.kind "classroom" "grade")))
+; add a picture of anyone, any family, or a classroom's or grade's tile
+(insert PHOTO (and (admin_of "who") (or (not (blank @new.person)) (in @new.group.kind "family" "classroom" "grade"))))
+; move any such picture among its person's or group's
+(set PHOTO.order (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; crop any such picture: the box's left edge
+(set PHOTO.crop_left (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; crop any such picture: the box's top edge
+(set PHOTO.crop_top (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; crop any such picture: the box's width
+(set PHOTO.crop_width (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; crop any such picture: the box's height
+(set PHOTO.crop_height (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; remove any such picture
+(delete PHOTO (and (admin_of "who") (or (not (blank @old.person)) (in @old.group.kind "family" "classroom" "grade"))))
+; the directory's site-wide settings: how old a picture or about-me words may get, the staff color, the privacy links
+(set SETTING.value
+  (and (admin_of "who") (= @old.app "platform")
+       (in @old.key "Facts Stale Years" "Family Photo Stale Years" "Photo Stale Years" "Staff Color"
+           "Helios Who Opt-In URL" "Veracross Preferences URL")))
 
 ;; When admins
 

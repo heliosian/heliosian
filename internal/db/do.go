@@ -23,11 +23,9 @@ import (
 )
 
 const (
-	doPrefix      = "/api/do/"
-	photoLimit    = 30 << 20
-	fileLimit     = 200 << 20
-	formMemory    = 32 << 20
-	contentFolder = "content"
+	photoLimit = 30 << 20
+	fileLimit  = 200 << 20
+	formMemory = 32 << 20
 )
 
 type stored struct {
@@ -37,7 +35,7 @@ type stored struct {
 
 func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
 	registerWiki(mux, s, queue, pics, importKey, now)
-	mux.HandleFunc("POST "+doPrefix+"photo", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
@@ -63,7 +61,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		m := s.Model()
-		row := store.Row{"person": person, "group": group, "original": pictureFolder + "/" + img.name}
+		row := store.Row{"person": person, "group": group, "original": "photos/" + img.name}
 		maps.Copy(row, box)
 		if err := m.Authorize(env, Change{Table: "PHOTO", New: row}); err != nil {
 			serve.Error(w, r, err)
@@ -87,7 +85,55 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "original", row["original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
 	})
-	mux.HandleFunc("POST "+doPrefix+"file", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
+		if err := r.ParseMultipartForm(photoLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the recording as multipart form data: %v", err))
+			return
+		}
+		person, group := r.FormValue("person"), r.FormValue("group")
+		if (person == "") == (group == "") {
+			serve.Error(w, r, access.Invalid("a recording is of a person or of a family: send one of them"))
+			return
+		}
+		id, table := person, "PERSON"
+		if group != "" {
+			id, table = group, "GROUP"
+		}
+		rec, err := readRecording(r)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		m := s.Model()
+		old, found := m.Shown(table).Get(id)
+		if !found {
+			serve.Error(w, r, access.Invalid("no %s %s", table, id))
+			return
+		}
+		updated := maps.Clone(old)
+		updated["pronunciation"] = "pronunciation/" + rec.name
+		if err := m.Authorize(env, Change{Table: table, Old: old, New: updated}); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		if err := pics.bucket.Put(r.Context(), updated["pronunciation"], rec.mimeType, rec.content); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation": updated["pronunciation"]}}}})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "system", env.System, "of", id, "name", updated["pronunciation"])
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(rec.name, "."+rec.ext)})
+	})
+	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
@@ -131,7 +177,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		slog.InfoContext(r.Context(), "added a file", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"], "mime", mimeType)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
-	mux.HandleFunc("POST "+doPrefix+"fetched", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/do/fetched", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {
 			return
@@ -192,7 +238,7 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 	}
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
-	name := contentFolder + "/" + hash
+	name := "content/" + hash
 	m := s.Model()
 	_, found := m.Table("CONTENT").Find(hash, mimeType)
 	if !found {
@@ -297,7 +343,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	edits := []Edit{}
 	root["content"] = existing["id"]
 	if !found {
-		name, size := contentFolder+"/"+hash, strconv.Itoa(len(content))
+		name, size := "content/"+hash, strconv.Itoa(len(content))
 		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
 			return "", "", err
 		}
@@ -315,7 +361,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	ids, err := Write(ctx, s, queue, pics, actor, env, Batch{Batch: edits})
 	if err != nil {
 		if !found {
-			dropUnheld(s, pics.bucket, []string{contentFolder + "/" + hash})
+			dropUnheld(s, pics.bucket, []string{"content/" + hash})
 		}
 		return "", "", err
 	}
@@ -362,6 +408,24 @@ func readImage(r *http.Request, field string) (upload, error) {
 	}
 	if err := blob.Check(content); err != nil {
 		return upload{}, access.Invalid("could not read the %s: %v", field, err)
+	}
+	return upload{content: content, mimeType: mimeType, ext: ext, name: blob.Name(content, ext)}, nil
+}
+
+func readRecording(r *http.Request) (upload, error) {
+	file, header, err := r.FormFile("recording")
+	if err != nil {
+		return upload{}, access.Invalid("the recording is required")
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil || len(content) == 0 {
+		return upload{}, access.Invalid("could not read the recording")
+	}
+	declared := header.Header.Get("Content-Type")
+	mimeType, ext, ok := blob.AudioType(declared)
+	if !ok {
+		return upload{}, access.Invalid("%s is not a supported recording", declared)
 	}
 	return upload{content: content, mimeType: mimeType, ext: ext, name: blob.Name(content, ext)}, nil
 }

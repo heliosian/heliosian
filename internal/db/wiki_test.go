@@ -324,7 +324,7 @@ func TestWikiPages(t *testing.T) {
 		t.Fatalf("a guest's page: %v", err)
 	}
 	sum := sha256.Sum256([]byte("a guest's words"))
-	if found, _ := pics.bucket.Exists(ctx, contentFolder+"/"+hex.EncodeToString(sum[:])); found {
+	if found, _ := pics.bucket.Exists(ctx, "content/"+hex.EncodeToString(sum[:])); found {
 		t.Fatal("a refused page left its bytes")
 	}
 	if _, err := save(parent, wikiPage{Name: "  ", Body: "no title"}); err == nil {

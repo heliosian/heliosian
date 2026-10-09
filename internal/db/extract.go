@@ -239,7 +239,7 @@ func stageContent(s *Store, tx *store.Tx, stage func(Edit) (string, error), held
 		held[key] = row["id"]
 		return row["id"], nil
 	}
-	id, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": contentFolder + "/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
+	id, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
 	if err != nil {
 		return "", err
 	}
@@ -298,7 +298,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		if _, held := m.Table("CONTENT").Find(hashes[i], child.mime); held || stored[hashes[i]] {
 			continue
 		}
-		if err := x.bucket.Put(ctx, contentFolder+"/"+hashes[i], child.mime, child.body); err != nil {
+		if err := x.bucket.Put(ctx, "content/"+hashes[i], child.mime, child.body); err != nil {
 			return 0, err
 		}
 		stored[hashes[i]] = true
@@ -347,7 +347,7 @@ func (x *Extractor) extract(id string) (int, error) {
 	if err != nil || !committed {
 		names := []string{}
 		for hash := range stored {
-			names = append(names, contentFolder+"/"+hash)
+			names = append(names, "content/"+hash)
 		}
 		dropUnheld(x.s, x.bucket, names)
 	}

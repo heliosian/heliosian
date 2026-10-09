@@ -16,8 +16,6 @@ import (
 	"heliosian/internal/store"
 )
 
-const pictureFolder = "photos"
-
 var (
 	cropColumns  = []string{"crop_left", "crop_top", "crop_width", "crop_height"}
 	photoInputs  = append([]string{"original"}, cropColumns...)
@@ -119,7 +117,7 @@ func cropBox(row store.Row) (image.Rectangle, bool, error) {
 }
 
 func (p *Pictures) store(ctx context.Context, content []byte) (string, error) {
-	name := pictureFolder + "/" + blob.Name(content, "jpg")
+	name := "photos/" + blob.Name(content, "jpg")
 	held, err := p.bucket.Exists(ctx, name)
 	if err != nil || held {
 		return name, err

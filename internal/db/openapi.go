@@ -259,7 +259,7 @@ func spec() schema {
 				}),
 			},
 		},
-		doPrefix + "photo": schema{
+		"/api/do/photo": schema{
 			"post": schema{
 				"tags":    []string{"do"},
 				"summary": "Add a photo of a person or a group",
@@ -275,7 +275,22 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The new PHOTO and the original's hash.", "Stored"), "400": failure("Not an image, or a bad crop box.")}),
 			},
 		},
-		doPrefix + "file": schema{
+		"/api/do/pronunciation": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Record how a person's or a family's name is said",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"recording"},
+					"properties": schema{
+						"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)}, "group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+						"recording": schema{"type": "string", "contentMediaType": "audio/*", "description": "Typed by its part's Content-Type: WebM, MP4, MP3, Ogg or WAV audio."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The PERSON or GROUP and the recording's hash.", "Stored"), "400": failure("Not a supported recording, or neither or both of person and group.")}),
+			},
+		},
+		"/api/do/file": schema{
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Add a file the community received or shared",
@@ -294,7 +309,7 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the file and its hash.", "Stored"), "400": failure("Mail that does not parse or has no readable Date, or another file with no url or published moment.")}),
 			},
 		},
-		doPrefix + "fetched": schema{
+		"/api/do/fetched": schema{
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Fill a linked document still to fetch",
@@ -311,7 +326,7 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or neither a body nor a stop.")}),
 			},
 		},
-		doPrefix + "search": schema{
+		"/api/do/search": schema{
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Search groups, people and documents",
@@ -342,7 +357,7 @@ func spec() schema {
 				}),
 			},
 		},
-		doPrefix + "compose": schema{
+		"/api/do/compose": schema{
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Write a query from a description",

@@ -63,7 +63,7 @@ func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, ve
 	form.Close()
 	mux := http.NewServeMux()
 	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
-	r := httptest.NewRequest(http.MethodPost, doPrefix+verb, body)
+	r := httptest.NewRequest(http.MethodPost, "/api/do/"+verb, body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
 	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
@@ -96,7 +96,7 @@ func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as s
 	form.Close()
 	mux := http.NewServeMux()
 	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
-	r := httptest.NewRequest(http.MethodPost, doPrefix+"file", body)
+	r := httptest.NewRequest(http.MethodPost, "/api/do/file", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
 	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
@@ -138,7 +138,7 @@ func thumbOf(t *testing.T, pics *Pictures, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return pictureFolder + "/" + blob.Name(thumb, "jpg")
+	return "photos/" + blob.Name(thumb, "jpg")
 }
 
 func TestPersonPhotoAddsFirst(t *testing.T) {
@@ -155,14 +155,14 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 		row := made(t, s, "PHOTO", out.Result[0], "ready")
-		if row["person"] != staff || row["original"] != pictureFolder+"/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
+		if row["person"] != staff || row["original"] != "photos/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
 			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
 		}
 		if found, err := pics.bucket.Exists(context.Background(), row["original"]); err != nil || !found {
 			t.Fatalf("photo %d's original is not in the bucket: %v", i, err)
 		}
 		re, mimeType, err := pics.bucket.Get(context.Background(), row["reencode"])
-		if err != nil || mimeType != "image/jpeg" || pictureFolder+"/"+blob.Name(re, "jpg") != row["reencode"] {
+		if err != nil || mimeType != "image/jpeg" || "photos/"+blob.Name(re, "jpg") != row["reencode"] {
 			t.Fatalf("photo %d's re-encode %q is not its own stored jpeg: %v", i, row["reencode"], err)
 		}
 		if row["thumbnail"] != thumbOf(t, pics, row["reencode"]) {
@@ -178,11 +178,11 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	}
 
 	photo := pngOf(t, 4)
-	rec := addPhoto(t, s, queue, pics, "maya.lindqvist@example.org", staff, photo)
+	rec := addPhoto(t, s, queue, pics, "rowan.ashdown@example.org", staff, photo)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("a photo of someone outside one's family: %d %s", rec.Code, rec.Body.String())
 	}
-	if found, _ := pics.bucket.Exists(context.Background(), pictureFolder+"/"+blob.Name(photo, "png")); found {
+	if found, _ := pics.bucket.Exists(context.Background(), "photos/"+blob.Name(photo, "png")); found {
 		t.Fatal("a refused photo was stored")
 	}
 	if rec := addPhoto(t, s, queue, pics, "bearer:"+testImportKey, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
@@ -275,8 +275,11 @@ func TestGroupPhotos(t *testing.T) {
 	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", nil, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a photo of nobody: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "maya.lindqvist@example.org", "photo", map[string]string{"group": "grp00000000020"}, "photo", pngOf(t, 6)); rec.Code != http.StatusForbidden {
-		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
+	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000503"}, "photo", pngOf(t, 6)); rec.Code != http.StatusForbidden {
+		t.Fatalf("a photo of a family one doesn't manage: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000020"}, "photo", pngOf(t, 6)); rec.Code != http.StatusOK {
+		t.Fatalf("a photo of one's own family: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -284,7 +287,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	original := pngOf(t, 7)
-	name := pictureFolder + "/" + blob.Name(original, "png")
+	name := "photos/" + blob.Name(original, "png")
 	if err := bucket.Put(context.Background(), name, "image/png", original); err != nil {
 		t.Fatal(err)
 	}
