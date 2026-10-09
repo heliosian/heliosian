@@ -18,7 +18,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
@@ -78,17 +77,6 @@ func waitRows(t *testing.T, s *Store, x *Searcher) map[string]SearchRow {
 	return nil
 }
 
-func askAll(t *testing.T, s *Store, x *Searcher) map[string]SearchRow {
-	t.Helper()
-	rows := waitRows(t, s, x)
-	for id := range rows {
-		if _, err := x.Make(id); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return rows
-}
-
 func waitIndexed(t *testing.T, x *Searcher, rows map[string]SearchRow) {
 	t.Helper()
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
@@ -103,12 +91,12 @@ func waitIndexed(t *testing.T, x *Searcher, rows map[string]SearchRow) {
 			return
 		}
 	}
-	t.Fatal("the searcher never indexed every row it was asked to make")
+	t.Fatal("the searcher never indexed every row")
 }
 
 func makeAll(t *testing.T, s *Store, x *Searcher) {
 	t.Helper()
-	waitIndexed(t, x, askAll(t, s, x))
+	waitIndexed(t, x, waitRows(t, s, x))
 }
 
 func hitIDs(results []SearchResult) []string {
@@ -138,16 +126,20 @@ func sendMail(t *testing.T, s *Store, pics *Pictures, subject, body string) stri
 	return children(s, part["id"])[0]["id"]
 }
 
-func TestNothingIsMadeUnasked(t *testing.T) {
+func TestEveryRowIsMadeUnasked(t *testing.T) {
 	s, _, bucket, x := searcher(t)
-	waitRows(t, s, x)
-	time.Sleep(200 * time.Millisecond)
+	rows := waitRows(t, s, x)
+	waitIndexed(t, x, rows)
 	held, err := bucket.List(context.Background(), searchFolder+"/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(held) != 0 {
-		t.Fatalf("the searcher made %d entries nobody asked for", len(held))
+	objects := map[string]bool{}
+	for _, r := range rows {
+		objects[r.Object] = true
+	}
+	if len(held) != len(objects) {
+		t.Fatalf("the bucket holds %d entries for %d inputs", len(held), len(objects))
 	}
 }
 
@@ -161,7 +153,7 @@ func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 		mu.Unlock()
 		testkit.ClaudeStream(w, `{"summary": "cut`, "max_tokens")
 	}), blob.NewMemoryBucket())
-	rows := askAll(t, s, x)
+	rows := waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		x.mu.RLock()
 		done := true
@@ -206,7 +198,7 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 		}
 		return `{"summary": "a thing in the sample, asked twice", "keywords": ["outing"]}`
 	}), blob.NewMemoryBucket())
-	askAll(t, s, x)
+	waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		rows := runAs(t, s.Model(), "", `(from SEARCH (where (= failures 1) (= summary "a thing in the sample, asked twice") (> chunks 0)))`).Rows()
 		if len(rows) > 0 && len(rows) == len(runAs(t, s.Model(), "", `(from SEARCH)`).Rows()) {
@@ -218,13 +210,15 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 	}
 }
 
-func TestDeletingASearchEntryRemovesItUntilAskedAgain(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
+func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
+	s, queue, _, x := searcher(t)
 	makeAll(t, s, x)
 	rows := runAs(t, s.Model(), "", `(from SEARCH (where (= target "grp00000000040")))`).Rows()
 	if len(rows) != 1 {
 		t.Fatalf("search rows for the event: %v", rows)
 	}
+	object := rows[0]["object"]
+	old := x.snapshot().entries[object]
 	b := Batch{Batch: []Edit{{Delete: rows[0]["id"]}}}
 	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
 		t.Fatal("a parent deleted a search entry")
@@ -232,27 +226,14 @@ func TestDeletingASearchEntryRemovesItUntilAskedAgain(t *testing.T) {
 	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
 		t.Fatal(err)
 	}
-	object := rows[0]["object"]
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-		held, err := bucket.Exists(context.Background(), object)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !held && x.snapshot().entries[object] == nil {
-			break
+		if e := x.snapshot().entries[object]; e != nil && e != old && e.Summary != "" {
+			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("the deleted entry is still stored or indexed")
+			t.Fatal("the deleted entry was never made again")
 		}
 	}
-	time.Sleep(200 * time.Millisecond)
-	if held, _ := bucket.Exists(context.Background(), object); held {
-		t.Fatal("the deleted entry was made again unasked")
-	}
-	if _, err := x.Make("grp00000000040"); err != nil {
-		t.Fatal(err)
-	}
-	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: object}})
 }
 
 func TestEveryShownRowHasAnInput(t *testing.T) {
@@ -745,9 +726,6 @@ func TestAChangedRowLosesItsOldEntry(t *testing.T) {
 			t.Fatalf("the picnic's old entry %s is still stored", before)
 		}
 	}
-	if held, _ := bucket.Exists(context.Background(), after); held {
-		t.Fatal("the picnic's new entry was made unasked")
-	}
 	makeAll(t, s, x)
 	if held, err := bucket.Exists(context.Background(), after); err != nil || !held {
 		t.Errorf("the picnic's new entry %s was never made: %v", after, err)
@@ -868,30 +846,4 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 	if rec := ask(`{"words": "picnic", "limits": {"FAMILY": 1}}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("an unknown table's limit answered %d", rec.Code)
 	}
-}
-
-func TestOnlyTheImportKeyAsksForEntries(t *testing.T) {
-	s, _, _, x := searcher(t)
-	waitRows(t, s, x)
-	mux := http.NewServeMux()
-	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
-	ask := func(bearer bool) int {
-		req := httptest.NewRequest(http.MethodPost, "/api/do/search/make", strings.NewReader(`{"id": "grp00000000040"}`))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		if bearer {
-			req.Header.Set("Authorization", "Bearer "+testImportKey)
-			mux.ServeHTTP(rec, req)
-			return rec.Code
-		}
-		auth.Fixed("rowan@example.com", mux).ServeHTTP(rec, req)
-		return rec.Code
-	}
-	if code := ask(false); code != http.StatusForbidden {
-		t.Errorf("a signed-in person asking for an entry got %d", code)
-	}
-	if code := ask(true); code != http.StatusOK {
-		t.Fatalf("the import key asking for an entry got %d", code)
-	}
-	waitIndexed(t, x, map[string]SearchRow{"grp00000000040": {Object: s.Model().SearchInputs(nil)["grp00000000040"].Object}})
 }

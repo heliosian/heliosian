@@ -15,7 +15,7 @@ import (
 
 const (
 	systemTokens    = 250
-	outputTokens    = 500
+	outputTokens    = 250
 	inputDollars    = 2.0
 	outputDollars   = 10.0
 	charsPerToken   = 4

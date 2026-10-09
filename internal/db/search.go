@@ -39,7 +39,7 @@ const (
 	searchLoaders   = 16
 	searchTimeout   = 2 * time.Minute
 	searchAttempts  = 3
-	searchShortest  = 20
+	searchShortest  = 10
 )
 
 var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
@@ -257,20 +257,6 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	case x.poke <- struct{}{}:
 	default:
 	}
-}
-
-func (x *Searcher) Make(id string) (string, error) {
-	x.mu.Lock()
-	defer x.mu.Unlock()
-	if x.client == nil {
-		return "", access.Refuse(http.StatusServiceUnavailable, "search entries are not made on this server")
-	}
-	r, ok := x.rows[id]
-	if !ok {
-		return "", access.Missing("no search row for %s", id)
-	}
-	x.enqueue(r.Object)
-	return r.Object, nil
 }
 
 func SearchObject(input string) string {
@@ -560,6 +546,13 @@ func (x *Searcher) follow() {
 			x.missing[hash] = true
 		}
 		missing := len(x.missing)
+		if x.client != nil {
+			for _, hash := range slices.Sorted(maps.Keys(wanted)) {
+				if e := x.entries[hash]; e == nil || e.unfinished() {
+					x.enqueue(hash)
+				}
+			}
+		}
 		x.mu.Unlock()
 		if len(unknown) > 0 {
 			slog.Info("search: read the index", "rows", len(rows), "loaded", len(unknown), "missing", missing, "took", time.Since(start).Round(time.Millisecond))
@@ -1068,28 +1061,5 @@ func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, importKey []byte,
 			return
 		}
 		serve.Write(w, r, http.StatusOK, results)
-	})
-	mux.HandleFunc("POST "+doPrefix+"search/make", func(w http.ResponseWriter, r *http.Request) {
-		env, _, ok := caller(w, r, s.Model(), importKey, now())
-		if !ok {
-			return
-		}
-		if env.System != importReader {
-			serve.Error(w, r, access.Forbidden("only the import key makes search entries"))
-			return
-		}
-		var asked struct {
-			ID string `json:"id"`
-		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&asked); err != nil {
-			serve.Error(w, r, access.Invalid("send {\"id\": \"…\"}: %v", err))
-			return
-		}
-		object, err := x.Make(strings.TrimSpace(asked.ID))
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		serve.Write(w, r, http.StatusOK, map[string]string{"object": object})
 	})
 }

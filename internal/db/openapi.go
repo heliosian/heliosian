@@ -349,26 +349,6 @@ func spec() schema {
 				}),
 			},
 		},
-		doPrefix + "search/make": schema{
-			"post": schema{
-				"tags":        []string{"do"},
-				"summary":     "Make a row's search entry",
-				"description": "The import key alone. Queues the search entry of one group, person or document extract for the makers, who ask Vertex and Claude for it off the request path and store it. Nothing else makes entries.",
-				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
-					"type":       "object",
-					"required":   []string{"id"},
-					"properties": schema{"id": schema{"type": "string"}},
-				}}}},
-				"responses": refusals(schema{
-					"200": schema{"description": "Queued; the entry's object.", "content": schema{"application/json": schema{"schema": schema{
-						"type":       "object",
-						"required":   []string{"object"},
-						"properties": schema{"object": schema{"type": "string"}},
-					}}}},
-					"404": failure("No search row for the ID."),
-				}),
-			},
-		},
 		doPrefix + "compose": schema{
 			"post": schema{
 				"tags":        []string{"do"},

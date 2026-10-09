@@ -30,7 +30,6 @@ import (
 const (
 	rowan    = "rowan@example.com"
 	rowanID  = "per00000000002"
-	mayaID   = "per00000000003"
 	picnic   = "grp00000000040"
 	camping  = "doc00000000106"
 	redirect = "http://127.0.0.1:33418/callback"
@@ -420,12 +419,6 @@ func TestSearchNamesEachHit(t *testing.T) {
 	session := f.connect(t, f.token(t))
 	text := ""
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
-		if _, err := f.search.Make(rowanID); err != nil {
-			continue
-		}
-		if _, err := f.search.Make(mayaID); err != nil {
-			continue
-		}
 		text, _ = callTool(t, session, "helios_search", map[string]any{"words": "Rowan Ashdown"})
 		if strings.Contains(text, `"meaning":[{`) {
 			break

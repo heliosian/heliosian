@@ -675,7 +675,7 @@ var Tables = []Table{
 			col("keywords", Text).about("Claude's words someone might type looking for it, comma-separated; blank until made."),
 			col("chunks", Int).about("How many pieces the input was cut into, each embedded by Vertex; blank until made."),
 			col("object", Text).about("Where the entry is kept in the media bucket: search/ and the input's SHA-256."),
-			col("made", Bool).about("Whether the entry is in the bucket; no until someone asks for it to be made."),
+			col("made", Bool).about("Whether the entry is in the bucket; no until the makers have made it."),
 			col("failures", Int).about("How many attempts to make it failed; an entry with no summary is tried again until it has three, and deleting it starts it over."),
 		},
 	},
