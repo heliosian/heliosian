@@ -398,7 +398,7 @@ func TestWrapAdmitsOnlyMembers(t *testing.T) {
 		{"an unlisted page", a.Wrap(next), "left@heliosschool.org", "", "/people", http.StatusForbidden, true},
 		{"an unlisted static file", a.Wrap(next), "left@heliosschool.org", "", "/app.js", http.StatusForbidden, true},
 		{"an unlisted api", a.Wrap(next), "left@heliosschool.org", "", "/api/people", http.StatusForbidden, false},
-		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/person-records", http.StatusForbidden, false},
+		{"an unlisted admin", a.Wrap(next), "left@heliosschool.org", "", "/api/admin-lists", http.StatusForbidden, false},
 		{"an unlisted sign-out", a.Wrap(next), "left@heliosschool.org", "", "/auth/logout", http.StatusTeapot, false},
 		{"an unlisted opt-in", a.Wrap(next), "left@heliosschool.org", "", "/optin", http.StatusTeapot, false},
 		{"an unlisted public path", a.Wrap(next), "left@heliosschool.org", "", "/open/share/about.png", http.StatusTeapot, false},

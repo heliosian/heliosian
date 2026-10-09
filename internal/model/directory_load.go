@@ -836,8 +836,6 @@ func (l *loader) applyOverride(email string, row store.Row, bandSet map[string]b
 	if err != nil {
 		return err
 	}
-	p.overrideRow = row
-	p.imported = importedCells(p)
 	o := override{l: l, email: email, row: row}
 	if err := o.fields(p, added, bandSet); err != nil {
 		return err
@@ -882,15 +880,6 @@ func (l *loader) overridden(email string, added bool) (*Person, error) {
 	l.people[email] = p
 	l.order = append(l.order, email)
 	return p, nil
-}
-
-func importedCells(p *Person) map[string]string {
-	return map[string]string{
-		"Full Name": p.FullName, "Legal Name": p.LegalName, "Preferred Name": p.PreferredName,
-		"Grade": p.Grade, "Classroom": p.Classroom, "Crew": p.Crew,
-		"Phone": p.Phone, "Job Title": p.JobTitle, "Facts": p.Facts,
-		"Is Staff": cells.YesNoCell(p.IsStaff),
-	}
 }
 
 type override struct {
@@ -1001,13 +990,12 @@ func (l *loader) buildFamilies() error {
 		key := familyID(l.idKey, email)
 		l.familyKeys[setKey] = key
 		l.model.Families[key] = Family{
-			Key:             key,
-			email:           email,
-			Address:         hh.address,
-			Phone:           hh.phone,
-			AdultEmails:     hh.adults,
-			KidEmails:       hh.kids,
-			importedAddress: hh.address,
+			Key:         key,
+			email:       email,
+			Address:     hh.address,
+			Phone:       hh.phone,
+			AdultEmails: hh.adults,
+			KidEmails:   hh.kids,
 		}
 	}
 	return nil
@@ -1274,12 +1262,6 @@ func classifyPhone(family Family, people map[string]*Person) string {
 }
 
 func (l *loader) removeOptedOut() error {
-	hidden := []string{}
-	for email := range l.optedOut {
-		hidden = append(hidden, email)
-	}
-	sort.Strings(hidden)
-	l.model.hiddenEmails = hidden
 	l.removePeople(l.optedOut)
 	return nil
 }

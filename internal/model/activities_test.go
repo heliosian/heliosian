@@ -61,7 +61,7 @@ func activitiesServeWith(t *testing.T, mailer *mail.Mailgun) (*Store, *http.Serv
 		Mailer:   mailer,
 		Style:    activitiesTestStyle,
 	})
-	typedRegistry(s, queue, DirectoryResources(s), calendar.Resources(), hooks.Resources()).Register(mux)
+	typedRegistry(s, queue, DirectoryResources(), calendar.Resources(), hooks.Resources()).Register(mux)
 	return s, mux
 }
 

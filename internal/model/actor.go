@@ -13,7 +13,7 @@ var (
 	Administer = access.Named("who.administer")
 )
 
-var WhoAdminAllowances = []access.Allowance{EditAnyone, Administer, Configure}
+var WhoAdminAllowances = []access.Allowance{EditAnyone, Administer}
 
 func (m *Directory) ActorOf(email string, held []access.Allowance) access.Actor {
 	return access.Actor{Email: email, Household: m.Family(email), Allowances: access.Grant(held)}

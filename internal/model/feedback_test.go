@@ -383,7 +383,7 @@ func feedbackAdminServer(t *testing.T, s *Store, queue *store.Queue, bucket *blo
 	t.Helper()
 	mux := http.NewServeMux()
 	hooks := RegisterFeedbackAdmin(mux, s, bucket, filer)
-	typedRegistry(s, queue, DirectoryResources(s), hooks.Resources()).Register(mux)
+	typedRegistry(s, queue, DirectoryResources(), hooks.Resources()).Register(mux)
 	return mux
 }
 

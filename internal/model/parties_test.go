@@ -67,7 +67,7 @@ func partiesServeWith(t *testing.T, mailer *mail.Mailgun) (*Store, *http.ServeMu
 		Mailer:   mailer,
 		Style:    partiesTestStyle,
 	})
-	typedRegistry(s, queue, DirectoryResources(s), calendar.Resources(), parties.Resources()).Register(mux)
+	typedRegistry(s, queue, DirectoryResources(), calendar.Resources(), parties.Resources()).Register(mux)
 	return s, mux
 }
 

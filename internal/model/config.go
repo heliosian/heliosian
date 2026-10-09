@@ -172,7 +172,3 @@ func parseConfig(tables store.Tables) (*Config, error) {
 	}
 	return s, nil
 }
-
-func formatYears(years float64) string {
-	return strconv.FormatFloat(years, 'f', -1, 64)
-}

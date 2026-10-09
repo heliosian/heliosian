@@ -1,7 +1,7 @@
 package model
 
 import (
-	"net/http"
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -56,10 +56,8 @@ func TestRenamingATagKeepsTheGroupsThatNameIt(t *testing.T) {
 	if len(before) <= len(tagged(s.Model().Directory, soccerTeamID)) {
 		t.Fatalf("the group's members %v do not reach past the tag to its parents", before)
 	}
-	mux := http.NewServeMux()
-	typedRegistry(s, q, DirectoryResources(s)).Register(mux)
-	if rec := testkit.Call(t, mux, jordan, "POST", "/api/tags/"+soccerTeamID+"/rename", map[string]string{"name": "Football"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	if err := s.Commit(context.Background(), access.System("test"), DirectoryApp, store.Update(tagListTable, store.Row{tagID: soccerTeamID}, store.Row{tagName: "Football"})); err != nil {
+		t.Fatal(err)
 	}
 	renamed := sourcesOf(s.Model().Directory)
 	if after := g.Members(renamed); !slices.Equal(after, before) {

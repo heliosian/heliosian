@@ -10,7 +10,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties PartiesHooks, activities ActivitiesHooks, home HomeHooks, feedback FeedbackHooks, documents *DocumentFiler, mapsKey string) *api.Registry[*Model] {
+func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties PartiesHooks, activities ActivitiesHooks, home HomeHooks, feedback FeedbackHooks, documents *DocumentFiler) *api.Registry[*Model] {
 	reg := api.New(api.Config[*Model]{
 		Actor:  func(r *http.Request, m *Model) access.Actor { return m.Directory.Actor(r, m.Held) },
 		Held:   s.Held,
@@ -19,7 +19,7 @@ func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties P
 		Staged: s.In,
 		Scope:  (*Model).at,
 	})
-	types := slices.Concat(DirectoryResources(s), WhoResources(s, mapsKey), BirthdayResources(s), EmailListResources(s, documents), calendar.Resources(), parties.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources())
+	types := slices.Concat(DirectoryResources(), BirthdayResources(s), EmailListResources(s, documents), calendar.Resources(), parties.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources())
 	for _, t := range types {
 		reg.Add(t)
 	}

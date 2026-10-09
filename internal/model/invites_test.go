@@ -150,11 +150,10 @@ func (s *sampleSources) tag(t *testing.T, key string, people ...string) {
 	}
 	owner := d.ActorOf(tag.Owner, nil)
 	for _, person := range people {
-		ops, _, err := d.setTag(owner, key, "", person, true, nil)
-		if err != nil {
-			t.Fatalf("tag %s: %v", person, err)
+		if slices.Contains(tag.People, person) {
+			continue
 		}
-		if err := s.directory.Commit(context.Background(), owner, DirectoryApp, ops...); err != nil {
+		if err := s.directory.Commit(context.Background(), owner, DirectoryApp, store.Insert(tagsTable, store.Row{tagID: key, tagPerson: person})); err != nil {
 			t.Fatalf("tag %s: %v", person, err)
 		}
 	}
@@ -163,12 +162,12 @@ func (s *sampleSources) tag(t *testing.T, key string, people ...string) {
 func (s *sampleSources) newTag(t *testing.T, owner, name, person string) string {
 	t.Helper()
 	d := s.directory.Model().Directory
-	actor := d.ActorOf(owner, nil)
-	ops, key, err := d.setTag(actor, "", name, person, true, func(k string) bool { return d.tagByKey(k) != nil })
+	key := id.New(func(k string) bool { return d.tagByKey(k) != nil })
+	err := s.directory.Commit(context.Background(), d.ActorOf(owner, nil), DirectoryApp,
+		store.Insert(tagListTable, store.Row{tagID: key, tagOwner: owner, tagName: name}),
+		store.Insert(tagsTable, store.Row{tagID: key, tagPerson: person}),
+	)
 	if err != nil {
-		t.Fatalf("tag %s: %v", name, err)
-	}
-	if err := s.directory.Commit(context.Background(), actor, DirectoryApp, ops...); err != nil {
 		t.Fatalf("tag %s: %v", name, err)
 	}
 	return key

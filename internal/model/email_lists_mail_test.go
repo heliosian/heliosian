@@ -121,7 +121,7 @@ func loopHarness(t *testing.T, team store.Tables) *harness {
 	filer := RegisterDocuments(http.NewServeMux(), s, embedder, queue, artifacts.Inbox{SigningKey: "key", Bucket: objects}, func(context.Context, []byte) error { return nil })
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, store: s, sources: sources, sender: mailtest.NewRecorder(mailtest.From), archive: &fakeArchive{objects: map[string][]byte{}}, documents: filer, queue: queue}
 	h.mailbox = ListMail{Sender: h.sender.Mailgun, SigningKey: signingKey, Key: []byte("key"), Base: "https://loop.test", Archive: h.archive, Documents: h.documents}
-	typedRegistry(s, queue, DirectoryResources(s), EmailListResources(s, h.documents), MagicTagResources()).Register(h.mux)
+	typedRegistry(s, queue, DirectoryResources(), EmailListResources(s, h.documents), MagicTagResources()).Register(h.mux)
 	RegisterEmailLists(h.mux, EmailListsDeps{
 		Store:     s,
 		Mail:      h.mailbox,

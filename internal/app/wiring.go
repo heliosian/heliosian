@@ -159,7 +159,6 @@ func NewCore(cfg Config) *Core {
 	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
 	who.Register(mux, whoAbout, cfg.BrowserKey)
-	model.RegisterDirectoryMedia(mux, cfg.Store)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
@@ -258,7 +257,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
-	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents, cfg.BrowserKey)
+	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents)
 	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,

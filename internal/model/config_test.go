@@ -125,16 +125,16 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	}
 }
 
-func configMux(cache *Store, queue *store.Queue) (*http.ServeMux, string) {
+func configMux(cache *Store, queue *store.Queue) *http.ServeMux {
 	mux := http.NewServeMux()
-	typedRegistry(cache, queue, WhoResources(cache, ""), []api.Type[*Model]{adminListResources(cache)}).Register(mux)
-	return mux, "/api/who-settings/" + derived(cache.Model(), kindWhoSettings, "")
+	typedRegistry(cache, queue, []api.Type[*Model]{adminListResources(cache)}).Register(mux)
+	return mux
 }
 
 func TestAdminEditsAreCommits(t *testing.T) {
 	dir, queue, cache := sampleConfig(t)
 	const jordan = "jordan.whitfield@heliosschool.org"
-	mux, settings := configMux(cache, queue)
+	mux := configMux(cache, queue)
 	post := func(path, body string, want int) {
 		t.Helper()
 		rec := httptest.NewRecorder()
@@ -143,46 +143,25 @@ func TestAdminEditsAreCommits(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
 		}
 	}
-	post(settings+"/stale-years", `{"photo":1,"facts":0.6,"familyPhoto":1.5}`, http.StatusNoContent)
-	post(settings+"/color", `{"kind":"grade","name":"Kindergarten","color":"#000000"}`, http.StatusNoContent)
 	post("/api/admin-lists/super/edit", `{"admins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
-	s := cache.Model().Config
-	if s.StaleYears.Photo != 1 || s.GradeColors["Kindergarten"] != "#000000" || !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
-		t.Fatalf("settings after the edits: %+v", s)
+	if !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
+		t.Fatalf("super admins after the edit: %v", cache.Model().Config.SuperAdmins)
 	}
 	log := testkit.ChangeLines(t, dir, queue, ConfigApp)
-	for _, line := range []string{
-		jordan + "|set|Settings|Key=Photo Stale Years|Value|0.75",
-		jordan + "|set|Grade Colors|Grade=Kindergarten|Color|#d20210",
-		jordan + "|insert|Super Admins|Email=asha.chandra@heliosschool.org||",
-	} {
-		if !slices.Contains(log, line) {
-			t.Errorf("the change log lacks %q:\n%s", line, strings.Join(log, "\n"))
-		}
-	}
-	if slices.ContainsFunc(log, func(line string) bool { return strings.Contains(line, "Facts Stale Years") }) {
-		t.Errorf("an unchanged setting was logged:\n%s", strings.Join(log, "\n"))
+	if line := jordan + "|insert|Super Admins|Email=asha.chandra@heliosschool.org||"; !slices.Contains(log, line) {
+		t.Errorf("the change log lacks %q:\n%s", line, strings.Join(log, "\n"))
 	}
 }
 
 func TestEditsNeedTheirAdmin(t *testing.T) {
 	const asha = "asha.chandra@heliosschool.org"
 	_, queue, cache := sampleConfig(t, asha)
-	mux, settings := configMux(cache, queue)
-	color, supers := settings+"/color", "/api/admin-lists/super/edit"
-	for path, body := range map[string]string{
-		color:  `{"kind":"staff","color":"#000000"}`,
-		supers: `{"admins":["` + asha + `"]}`,
-	} {
-		for who, want := range map[string]int{"robin.whitfield@heliosschool.org": http.StatusForbidden, asha: http.StatusNoContent} {
-			if path == supers {
-				want = http.StatusNotFound
-			}
-			rec := httptest.NewRecorder()
-			auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
-			if rec.Code != want {
-				t.Errorf("%s by %s: %d %s, want %d", path, who, rec.Code, rec.Body, want)
-			}
+	mux := configMux(cache, queue)
+	for _, who := range []string{"robin.whitfield@heliosschool.org", asha} {
+		rec := httptest.NewRecorder()
+		auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin-lists/super/edit", strings.NewReader(`{"admins":["`+asha+`"]}`)))
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("super admin edit by %s: %d %s, want %d", who, rec.Code, rec.Body, http.StatusNotFound)
 		}
 	}
 }

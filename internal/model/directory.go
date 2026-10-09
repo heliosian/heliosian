@@ -44,8 +44,6 @@ type Person struct {
 	veracrossPhoto      string
 	websitePhoto        string
 	pronunciation       string
-	overrideRow         map[string]string
-	imported            map[string]string
 	PhotoUpdated        string   `json:"photoUpdated,omitempty"`
 	Grade               string   `json:"grade,omitempty"`
 	Classroom           string   `json:"classroom,omitempty"`
@@ -86,8 +84,6 @@ type Family struct {
 	photo, pronunciation, photoCropName, email string
 
 	sheetRow map[string]string
-
-	importedAddress string
 }
 
 type Classroom struct {
@@ -126,7 +122,6 @@ type Directory struct {
 	byEmail           map[string]int
 	byID              map[string]int
 	familyKeysByEmail map[string][]string
-	hiddenEmails      []string
 	aliases           EmailAliases
 	tags              map[string]*tagRecord
 	admins            []string

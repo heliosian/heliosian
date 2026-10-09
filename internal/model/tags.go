@@ -155,12 +155,3 @@ func (m *Directory) SharedTags(email string) []Tag {
 	email = strings.ToLower(email)
 	return m.sortedTags(func(t *tagRecord) bool { return slices.Contains(t.managers, email) && m.Person(t.owner) != nil })
 }
-
-func (m *Directory) ownTagNamed(owner, name string) *tagRecord {
-	for _, t := range m.tags {
-		if t.owner == owner && strings.EqualFold(t.name, name) {
-			return t
-		}
-	}
-	return nil
-}

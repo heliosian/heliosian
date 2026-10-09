@@ -1,8 +1,11 @@
 package model
 
 import (
-	"net/http"
+	"context"
 	"testing"
+
+	"heliosian/internal/access"
+	"heliosian/internal/store"
 )
 
 func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
@@ -17,12 +20,12 @@ func TestRenamingATagKeepsTheInviteGroupsThatNameIt(t *testing.T) {
 		t.Fatalf("group: %d %s", rec.Code, rec.Body)
 	}
 
-	if rec := call(t, jordan, "POST", "/api/tags/"+carpool+"/rename", `{"name":"Rideshare"}`); rec.Code != http.StatusNoContent {
-		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
-	}
-	miaID := sources.directory.Model().Directory.Person(mia).ID
-	if rec := call(t, jordan, "POST", "/api/tags/"+carpool+"/add", `{"person":"`+miaID+`"}`); rec.Code != http.StatusNoContent {
-		t.Fatalf("tag mia: %d %s", rec.Code, rec.Body)
+	err := sources.directory.Commit(context.Background(), access.System("test"), DirectoryApp,
+		store.Update(tagListTable, store.Row{tagID: carpool}, store.Row{tagName: "Rideshare"}),
+		store.Insert(tagsTable, store.Row{tagID: carpool, tagPerson: mia}),
+	)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	if g := cache.Model().Calendar.GroupOf(meetup, made.Group); g == nil || len(g.Rule.Tags) != 1 || g.Rule.Tags[0] != key {

@@ -47,7 +47,7 @@ func birthdaysOver(t *testing.T) (*Store, *http.ServeMux) {
 	s := sampleStore(t, sheet, queue, sampleDeps(sampleKey))
 	mux := http.NewServeMux()
 	birthdaysSent = mailtest.NewRecorder("Helios Staff Birthdays <birthday@example.org>")
-	reg := typedRegistry(s, queue, DirectoryResources(s), BirthdayResources(s))
+	reg := typedRegistry(s, queue, DirectoryResources(), BirthdayResources(s))
 	reg.Register(mux)
 	RegisterBirthdays(mux, BirthdaysDeps{
 		Store:     s,

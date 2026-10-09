@@ -2,11 +2,10 @@ package model
 
 import (
 	"context"
-	"net/http"
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/testkit"
+	"heliosian/internal/store"
 )
 
 func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
@@ -39,8 +38,8 @@ func TestRenamingATagKeepsTheAudiencesThatNameIt(t *testing.T) {
 	if !includes() || tagLabel() != "Soccer Team" {
 		t.Fatalf("the audience naming the tag leaves out %s or reads %q", asha, tagLabel())
 	}
-	if rec := testkit.Call(t, mux, homeAdmin, "POST", "/api/tags/"+soccerTeamID+"/rename", map[string]string{"name": "Football"}); rec.Code != http.StatusNoContent {
-		t.Fatalf("rename: %d %s", rec.Code, rec.Body)
+	if err := c.Commit(context.Background(), access.System("test"), DirectoryApp, store.Update(tagListTable, store.Row{tagID: soccerTeamID}, store.Row{tagName: "Football"})); err != nil {
+		t.Fatal(err)
 	}
 	if !includes() {
 		t.Fatalf("the renamed tag's audience leaves out %s", asha)

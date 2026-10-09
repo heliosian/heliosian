@@ -200,26 +200,3 @@ var invitesTabs = []store.Tab{
 	{Name: templatesTab, Columns: TemplateColumns, Key: []string{"Service", store.OrderColumn}},
 	{Name: greetingsTab, Columns: GreetingColumns, Key: []string{"Greeting ID"}},
 }
-
-func (m *InviteTemplates) greeting(raw string) (GreetingTemplate, bool) {
-	key, ok := id.Parse(raw)
-	if !ok {
-		return GreetingTemplate{}, false
-	}
-	for _, g := range m.Greetings {
-		if g.ID == key {
-			return g, true
-		}
-	}
-	return GreetingTemplate{}, false
-}
-
-func visibleGreetings(greetings []GreetingTemplate, email string) []GreetingTemplate {
-	visible := []GreetingTemplate{}
-	for _, g := range greetings {
-		if g.CreatedBy == "" || g.CreatedBy == email {
-			visible = append(visible, g)
-		}
-	}
-	return visible
-}

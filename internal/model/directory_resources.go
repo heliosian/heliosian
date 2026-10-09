@@ -89,14 +89,8 @@ type tagResource struct {
 	Me        tagMe  `json:"me"`
 }
 
-func DirectoryResources(s *Store) []api.Type[*Model] {
-	people, families, classrooms, grades, tags := peopleType(), familiesType(), classroomsType(), gradesType(), tagsType()
-	people.Actions = personActions(s)
-	families.Actions = familyActions(s)
-	classrooms.Actions = map[string]api.Action[*Model]{"image": imageAction(s, imageClassroom, func(m *Model, key string) string { return m.Directory.classroomByID(key).Name })}
-	grades.Actions = map[string]api.Action[*Model]{"image": imageAction(s, imageGrade, func(m *Model, key string) string { return m.Directory.gradeByID(key).Name })}
-	tags.Actions, tags.Create = tagActions(s), tagCreator(s)
-	return []api.Type[*Model]{people, families, classrooms, grades, crewsType(), departmentsType(), tags}
+func DirectoryResources() []api.Type[*Model] {
+	return []api.Type[*Model]{peopleType(), familiesType(), classroomsType(), gradesType(), crewsType(), departmentsType(), tagsType()}
 }
 
 func (m *Directory) tagFor(key string, viewer string) (Tag, bool) {

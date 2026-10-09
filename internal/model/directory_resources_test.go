@@ -30,7 +30,7 @@ func resourceGetAs(t *testing.T, m *Directory, as, path string) (int, resourceRe
 		Now:   time.Now,
 		Scope: (*Model).at,
 	})
-	for _, rt := range DirectoryResources(nil) {
+	for _, rt := range DirectoryResources() {
 		reg.Add(rt)
 	}
 	reg.Publish(&Model{Directory: m})
@@ -219,6 +219,24 @@ func TestEnrolledGradesAreTheOnesWithStudents(t *testing.T) {
 		if !slices.ContainsFunc(m.People, func(p Person) bool { return p.IsStudent && p.Grade == name }) {
 			t.Errorf("%s has no student", name)
 		}
+	}
+}
+
+func TestAGradeListsItsBandsRoomParents(t *testing.T) {
+	m := sampleModel(t)
+	i := slices.IndexFunc(m.Grades, func(g Grade) bool { return len(m.RoomParentsOf(g.Band)) > 0 })
+	if i < 0 {
+		t.Fatal("the sample has no room parents")
+	}
+	g := m.Grades[i]
+	_, out := resourceGet(t, m, "/api/grades/"+g.ID+"?include=room-parents")
+	got := []string{}
+	for _, v := range out.Resources["grades"][g.ID]["room-parents"].([]any) {
+		got = append(got, out.Resources["people"][v.(string)]["email"].(string))
+	}
+	want := slices.Sorted(slices.Values(m.RoomParentsOf(g.Band)))
+	if slices.Sort(got); !slices.Equal(got, want) {
+		t.Fatalf("room parents of %s: %v, want %v", g.Name, got, want)
 	}
 }
 
