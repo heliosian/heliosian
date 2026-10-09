@@ -282,13 +282,16 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 		}
 	}
 	docs := m.Shown("DOCUMENT")
-	for _, row := range m.markdownExtracts() {
+	for _, row := range m.markdownDocuments() {
 		text, ok := texts[row["content"]]
 		if !ok {
 			continue
 		}
-		terminal, _ := docs.Get(row["terminal"])
-		source, _ := docs.Get(row["source"])
+		terminal, source := row, row
+		if row["kind"] == "" {
+			terminal, _ = docs.Get(row["terminal"])
+			source, _ = docs.Get(row["source"])
+		}
 		line := m.sourceLine(source, terminal)
 		head := m.extractHead(terminal, line)
 		input := head + "\n\n" + strings.TrimSpace(text)
@@ -333,11 +336,11 @@ func (m *Model) sourceLine(source, terminal store.Row) string {
 	return strings.Join(slices.DeleteFunc(parts, func(p string) bool { return p == "" }), ", ")
 }
 
-func (m *Model) markdownExtracts() []store.Row {
+func (m *Model) markdownDocuments() []store.Row {
 	contents := m.Shown("CONTENT")
 	out := []store.Row{}
 	for _, row := range m.Shown("DOCUMENT").All() {
-		if row["relation"] != "extract" {
+		if row["relation"] != "extract" && row["kind"] != "wiki" {
 			continue
 		}
 		if c, ok := contents.Get(row["content"]); ok && baseType(c["mime"]) == "text/markdown" {
@@ -351,7 +354,7 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 	contents := m.Shown("CONTENT")
 	out := map[string]string{}
 	missing := []store.Row{}
-	for _, row := range m.markdownExtracts() {
+	for _, row := range m.markdownDocuments() {
 		id := row["content"]
 		if _, done := out[id]; done {
 			continue

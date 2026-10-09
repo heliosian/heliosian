@@ -45,9 +45,18 @@ func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store
 	return s, queue, x
 }
 
-func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
+func sampleBucket(t *testing.T) *blob.Bucket {
 	t.Helper()
 	bucket := blob.NewMemoryBucket()
+	if err := bucket.FillFrom("../../sampledata/bucket"); err != nil {
+		t.Fatal(err)
+	}
+	return bucket
+}
+
+func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
+	t.Helper()
+	bucket := sampleBucket(t)
 	s, queue, x := newSearcher(t, testkit.SearchClaude(), bucket)
 	return s, queue, bucket, x
 }
@@ -152,7 +161,7 @@ func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 		asked[string(request)]++
 		mu.Unlock()
 		testkit.ClaudeStream(w, `{"summary": "cut`, "max_tokens")
-	}), blob.NewMemoryBucket())
+	}), sampleBucket(t))
 	rows := waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		x.mu.RLock()
@@ -197,7 +206,7 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 			return `{"summary": "x"}`
 		}
 		return `{"summary": "a thing in the sample, asked twice"}`
-	}), blob.NewMemoryBucket())
+	}), sampleBucket(t))
 	waitRows(t, s, x)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		rows := runAs(t, s.Model(), "", `(from SEARCH (where (= failures 1) (= summary "a thing in the sample, asked twice") (> chunks 0)))`).Rows()
@@ -679,6 +688,25 @@ func TestANameMustHoldEveryWord(t *testing.T) {
 	}
 }
 
+func TestAWikiPageIsSearchedAsItself(t *testing.T) {
+	s, _, _, x := searcher(t)
+	makeAll(t, s, x)
+	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "drop-off and pickup", testLimits)["DOCUMENT"]
+	if len(results) == 0 || len(results[0].Refs) != 1 {
+		t.Fatalf("the wiki page's result: %+v", results)
+	}
+	ref := results[0].Refs[0]
+	if ref.Extract != "doc00000000104" || ref.Document != "doc00000000104" || ref.Terminal != "doc00000000104" || ref.Source != "" || ref.Name != "Drop-off and Pickup" || ref.Href == "" || ref.Score != 1 {
+		t.Fatalf("the wiki page's ref: %+v", ref)
+	}
+	x.mu.RLock()
+	row := x.rows["doc00000000104"]
+	x.mu.RUnlock()
+	if !strings.HasPrefix(row.Input, "Wiki page: Drop-off and Pickup\nKind: wiki\nUpdated: 2026-09-01 09:00:00\n") {
+		t.Fatalf("the wiki page's input starts %.120q", row.Input)
+	}
+}
+
 func TestAResultKeepsFiveRefs(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
 	pics := NewPictures(s, queue, bucket)
@@ -785,7 +813,7 @@ func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, queue := sampleWithQueue(t)
-	bucket := blob.NewMemoryBucket()
+	bucket := sampleBucket(t)
 	stray := SearchObject("a row long gone")
 	if err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`)); err != nil {
 		t.Fatal(err)

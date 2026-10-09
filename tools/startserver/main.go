@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -168,22 +167,7 @@ func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
 }
 
 func fillSampleBucket(bucket *blob.Bucket) {
-	root := "sampledata/bucket"
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		name, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		return bucket.Put(context.Background(), filepath.ToSlash(name), http.DetectContentType(content), content)
-	})
-	if err != nil {
+	if err := bucket.FillFrom("sampledata/bucket"); err != nil {
 		logging.Fatal("fill the sample bucket", "error", err)
 	}
 }

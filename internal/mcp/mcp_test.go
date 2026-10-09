@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -77,14 +76,8 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	bucket := blob.NewMemoryBucket()
-	for _, content := range []string{"22792c45ef58dad79968050aa89fcc2eecb46446f8fd7d053e65bbef5525b392", "20459606b3b5dc2fa29911a43070c5de1d69f7fbeb426c9b5a9f4b5d7d55c285"} {
-		body, err := os.ReadFile("../../sampledata/bucket/content/" + content)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := bucket.Put(context.Background(), "content/"+content, "text/markdown", body); err != nil {
-			t.Fatal(err)
-		}
+	if err := bucket.FillFrom("../../sampledata/bucket"); err != nil {
+		t.Fatal(err)
 	}
 	signed := &sessions{out: map[string]time.Time{}}
 	search := db.NewSearcher(s, queue, bucket, vertex, model.Origin("heliosian.com"))

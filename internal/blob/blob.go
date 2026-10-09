@@ -8,9 +8,12 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -150,6 +153,23 @@ func Open(name string) (*Bucket, error) {
 
 func NewMemoryBucket() *Bucket {
 	return &Bucket{objects: &memory{objects: map[string]object{}}}
+}
+
+func (b *Bucket) FillFrom(root string) error {
+	return filepath.WalkDir(root, func(name string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		content, err := os.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, name)
+		if err != nil {
+			return err
+		}
+		return b.Put(context.Background(), filepath.ToSlash(rel), http.DetectContentType(content), content)
+	})
 }
 
 func (b *Bucket) Get(ctx context.Context, name string) ([]byte, string, error) {
