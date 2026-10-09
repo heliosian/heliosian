@@ -87,14 +87,19 @@ type cond struct {
 	probeSet func(f *frame) *valueSet
 }
 
+type probe struct {
+	col   string
+	value *operand
+}
+
 type scan struct {
 	table    *Table
 	name     string
 	guarded  bool
 	constant bool
 	conds    []cond
+	probes   []probe
 	probeCol string
-	probe    *operand
 	probeSet func(f *frame) *valueSet
 }
 
@@ -270,9 +275,11 @@ func (s *scan) pickProbe() {
 	for _, enum := range []bool{false, true} {
 		for _, c := range s.conds {
 			if c.probe != nil && s.enum(c.probeCol) == enum {
-				s.probeCol, s.probe = c.probeCol, c.probe
-				return
+				s.probes = append(s.probes, probe{col: c.probeCol, value: c.probe})
 			}
+		}
+		if len(s.probes) > 0 {
+			return
 		}
 		for _, c := range s.conds {
 			if c.probeSet != nil && s.enum(c.probeCol) == enum {
@@ -292,7 +299,7 @@ func (s *scan) candidates(f *frame) []store.Row {
 	if s.probeSet != nil {
 		out := []store.Row{}
 		for id := range s.probeSet(f).keys {
-			out = append(out, s.lookup(f, id)...)
+			out = append(out, s.lookup(f, s.probeCol, id)...)
 		}
 		if !s.table.Generated {
 			byID := f.run.table(s.table.Name).rows.byID
@@ -300,37 +307,43 @@ func (s *scan) candidates(f *frame) []store.Row {
 		}
 		return out
 	}
-	if s.probe == nil {
+	if len(s.probes) == 0 {
 		if s.table.Generated {
 			return f.run.m.generated(s.table).rows
 		}
 		return f.run.table(s.table.Name).All()
 	}
-	v := s.probe.eval(f)
-	if v.blank {
-		return nil
+	var fewest []store.Row
+	for i, p := range s.probes {
+		v := p.value.eval(f)
+		if v.blank {
+			return nil
+		}
+		if rows := s.lookup(f, p.col, v.s); i == 0 || len(rows) < len(fewest) {
+			fewest = rows
+		}
 	}
-	return s.lookup(f, v.s)
+	return fewest
 }
 
-func (s *scan) lookup(f *frame, v string) []store.Row {
+func (s *scan) lookup(f *frame, col, v string) []store.Row {
 	m := f.run.m
-	c, _ := s.table.Column(s.probeCol)
+	c, _ := s.table.Column(col)
 	v = indexKey(c, v)
 	if s.table.Generated {
-		if s.table.Name == "EFFECTIVE_MEMBER" && s.probeCol == "group" {
+		if s.table.Name == "EFFECTIVE_MEMBER" && col == "group" {
 			return m.effectiveRows(v)
 		}
-		return m.generated(s.table).by[s.probeCol][v]
+		return m.generated(s.table).by[col][v]
 	}
 	rows := f.run.table(s.table.Name)
-	if s.probeCol == "id" {
+	if col == "id" {
 		if row, ok := rows.Get(v); ok {
 			return []store.Row{row}
 		}
 		return nil
 	}
-	return rows.Referencing(s.probeCol, v)
+	return rows.Referencing(col, v)
 }
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
