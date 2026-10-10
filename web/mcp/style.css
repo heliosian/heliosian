@@ -27,6 +27,13 @@ body {
   text-align: center;
 }
 
+.panel .lockup {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
 .panel p {
   margin: 0 0 1.25rem;
   font-size: 0.9375rem;
