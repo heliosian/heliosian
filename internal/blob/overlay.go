@@ -78,3 +78,18 @@ func (o *overlay) list(ctx context.Context, prefix string) ([]string, error) {
 	slices.Sort(out)
 	return slices.Compact(out), nil
 }
+
+func (o *overlay) usage(ctx context.Context) (map[string]Usage, error) {
+	out, err := o.base.usage(ctx)
+	if err != nil {
+		return nil, err
+	}
+	top, _ := o.top.usage(ctx)
+	for folder, u := range top {
+		sum := out[folder]
+		sum.Objects += u.Objects
+		sum.Bytes += u.Bytes
+		out[folder] = sum
+	}
+	return out, nil
+}

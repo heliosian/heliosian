@@ -13,6 +13,7 @@ import (
 	"github.com/lmittmann/tint"
 
 	"heliosian/internal/auth"
+	"heliosian/internal/vitals"
 )
 
 const project = "heliosian"
@@ -42,6 +43,19 @@ func (h handler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h handler) Handle(ctx context.Context, record slog.Record) error {
 	req, ok := ctx.Value(contextKey{}).(request)
+	if record.Level >= slog.LevelError {
+		attrs := map[string]string{}
+		record.Attrs(func(a slog.Attr) bool {
+			attrs[a.Key] = a.Value.String()
+			return true
+		})
+		for key, value := range map[string]string{"app": req.app, "user": req.user, "as": req.as, "trace": req.trace} {
+			if value != "" {
+				attrs[key] = value
+			}
+		}
+		vitals.RecordError(record.Time, record.Message, attrs)
+	}
 	if !ok {
 		return h.inner.Handle(ctx, record)
 	}
@@ -145,6 +159,9 @@ func Requests(app string, media func(path string) bool, next http.Handler) http.
 		}
 		rec := &recorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
+		if rec.Header().Get("Content-Type") != "text/event-stream" {
+			vitals.RecordRequest(app, time.Since(start), rec.status)
+		}
 		level := slog.LevelInfo
 		if rec.status >= http.StatusInternalServerError {
 			level = slog.LevelError

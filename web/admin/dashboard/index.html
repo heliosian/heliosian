@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard · Helios Admin</title>
+<link rel="stylesheet" href="/chrome.css">
+<link rel="stylesheet" href="/dashboard/style.css">
+<link rel="modulepreload" href="/chrome.js">
+<link rel="modulepreload" href="/elements.js">
+<link rel="modulepreload" href="/api.js">
+<link rel="modulepreload" href="/data.js">
+<link rel="modulepreload" href="/appswitch.js">
+<link rel="modulepreload" href="/feedback.js">
+<link rel="modulepreload" href="/directory.js">
+</head>
+<body>
+<header>
+<div class="tools">
+<h1>dashboard<span class="sub">/ the server as it runs</span></h1>
+<span id="summary" class="summary">connecting…</span>
+</div>
+</header>
+<main>
+<div id="tiles">
+<section id="errors" class="tile wide"><h2>errors</h2><div class="body"></div></section>
+<section id="runtime" class="tile"><h2>runtime</h2><div class="body"></div></section>
+<section id="queues" class="tile"><h2><a href="/queues">queues</a></h2><div class="body"></div></section>
+<section id="latency" class="tile wide"><h2>requests<span class="sub">last hour</span></h2><div class="body"></div></section>
+<section id="data" class="tile"><h2>data</h2><div class="body"></div></section>
+</div>
+</main>
+<script type="module" src="/dashboard/start.js"></script>
+</body>
+</html>

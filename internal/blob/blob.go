@@ -65,6 +65,7 @@ type objects interface {
 	exists(ctx context.Context, name string) (bool, error)
 	remove(ctx context.Context, name string) error
 	list(ctx context.Context, prefix string) ([]string, error)
+	usage(ctx context.Context) (map[string]Usage, error)
 }
 
 type gcs struct {
@@ -134,6 +135,20 @@ func (b gcs) list(ctx context.Context, prefix string) ([]string, error) {
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list %s: %w", prefix, err)
+	}
+	return out, nil
+}
+
+func (b gcs) usage(ctx context.Context) (map[string]Usage, error) {
+	out := map[string]Usage{}
+	err := b.service.Objects.List(b.name).Fields("nextPageToken", "items/name", "items/size").Pages(ctx, func(page *storage.Objects) error {
+		for _, o := range page.Items {
+			addUsage(out, o.Name, int64(o.Size))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("measure %s: %w", b.name, err)
 	}
 	return out, nil
 }
@@ -259,6 +274,33 @@ func (m *memory) list(_ context.Context, prefix string) ([]string, error) {
 	}
 	slices.Sort(out)
 	return out, nil
+}
+
+func (m *memory) usage(_ context.Context) (map[string]Usage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := map[string]Usage{}
+	for name, o := range m.objects {
+		addUsage(out, name, int64(len(o.data)))
+	}
+	return out, nil
+}
+
+type Usage struct {
+	Objects int   `json:"objects"`
+	Bytes   int64 `json:"bytes"`
+}
+
+func addUsage(out map[string]Usage, name string, size int64) {
+	folder, _, _ := strings.Cut(name, "/")
+	u := out[folder]
+	u.Objects++
+	u.Bytes += size
+	out[folder] = u
+}
+
+func (b *Bucket) Usage(ctx context.Context) (map[string]Usage, error) {
+	return b.objects.usage(ctx)
 }
 
 func Media(path string) bool {

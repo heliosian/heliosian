@@ -9,7 +9,6 @@ import (
 	"mime"
 	"net/http"
 	"os"
-	"runtime"
 	"runtime/debug"
 	"time"
 
@@ -38,6 +37,7 @@ import (
 	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/tools"
+	"heliosian/internal/vitals"
 	"heliosian/internal/who"
 )
 
@@ -216,7 +216,6 @@ func NewCore(cfg Config) *Core {
 	})
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
-	adminMux.Handle("GET /{$}", http.RedirectHandler("/resources", http.StatusFound))
 	for _, page := range []string{"resources", "query", "search", "queues", "policies", "erd"} {
 		adminMux.HandleFunc("GET /"+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/admin/"+page+"/index.html")
@@ -287,7 +286,9 @@ func NewCore(cfg Config) *Core {
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
+	db.RegisterDashboard(adminMux, dataStore, queue, map[string]db.Measurable{blob.MediaBucket: cfg.Bucket, blob.MailBucket: cfg.Loop.Archive})
 	go queue.Tick()
+	go vitals.Sampler()
 	go func() {
 		<-queue.Refreshed()
 		pictures.Start()
@@ -403,7 +404,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	db.StartWarmer(core.Data, core.Queue)
 	if os.Getenv("K_SERVICE") != "" {
 		debug.SetMemoryLimit(memoryLimit)
-		go logMemory()
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
@@ -423,14 +423,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 }
 
 const memoryLimit = 3 << 30
-
-func logMemory() {
-	for range time.Tick(5 * time.Second) {
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		slog.Info("memory", "heap_mib", m.HeapAlloc>>20, "sys_mib", m.Sys>>20, "gc", m.NumGC, "goroutines", runtime.NumGoroutine())
-	}
-}
 
 func calendarWatcher(core *Core, sessionKey, anthropicKey string) *db.CalendarWatcher {
 	cal, err := gcal.NewService(context.Background(), option.WithScopes(gcal.CalendarReadonlyScope))

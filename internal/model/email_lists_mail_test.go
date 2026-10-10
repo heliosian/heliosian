@@ -45,6 +45,10 @@ func (f *fakeArchive) Put(_ context.Context, name, mimeType string, content []by
 	return nil
 }
 
+func (f *fakeArchive) Usage(_ context.Context) (map[string]blob.Usage, error) {
+	return map[string]blob.Usage{}, nil
+}
+
 func (f *fakeArchive) Get(_ context.Context, name string) ([]byte, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

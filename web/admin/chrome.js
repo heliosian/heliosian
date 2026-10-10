@@ -2,7 +2,14 @@ import {el} from '/elements.js';
 import {api} from '/api.js';
 import {listed, emailOf, wordsOf} from '/directory.js';
 
-const pages = [['resources', '/resources'], ['query', '/query'], ['search', '/search'], ['queues', '/queues'], ['policies', '/policies'], ['erd', '/erd']];
+const pages = [['resources', '/resources'], ['query', '/query'], ['search', '/search'], ['policies', '/policies'], ['erd', '/erd']];
+const systemPages = [['dashboard', '/'], ['queues', '/queues']];
+
+function navLink(current, name, href) {
+  const a = el('a', name === current ? 'here' : '', name);
+  a.href = href;
+  return a;
+}
 
 export function chrome(current) {
   const header = document.querySelector('header');
@@ -12,10 +19,13 @@ export function chrome(current) {
   brand.append(el('span', 'mark', '◆'), ' admin');
   const nav = el('nav');
   for (const [name, href] of pages) {
-    const a = el('a', name === current ? 'here' : '', name);
-    a.href = href;
-    nav.append(a);
+    nav.append(navLink(current, name, href));
   }
+  api('GET', '/api/system').then(system => {
+    if (system.allowed) {
+      nav.prepend(...systemPages.map(([name, href]) => navLink(current, name, href)));
+    }
+  }).catch(err => nav.append(el('span', 'error', err.message)));
   const spoof = el('div', 'spoof');
   bar.append(brand, nav, spoof);
   header.prepend(bar);

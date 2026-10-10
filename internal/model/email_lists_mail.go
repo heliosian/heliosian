@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -26,6 +29,7 @@ import (
 type Archive interface {
 	Put(ctx context.Context, name, mimeType string, content []byte) error
 	Get(ctx context.Context, name string) ([]byte, string, error)
+	Usage(ctx context.Context) (map[string]blob.Usage, error)
 }
 
 type ListMail struct {
@@ -56,6 +60,33 @@ func (d DirArchive) Put(_ context.Context, name, _ string, content []byte) error
 func (d DirArchive) Get(_ context.Context, name string) ([]byte, string, error) {
 	content, err := os.ReadFile(filepath.Join(d.Dir, filepath.FromSlash(name)))
 	return content, mailType, err
+}
+
+func (d DirArchive) Usage(_ context.Context) (map[string]blob.Usage, error) {
+	out := map[string]blob.Usage{}
+	err := filepath.WalkDir(d.Dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(d.Dir, path)
+		if err != nil {
+			return err
+		}
+		folder, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+		u := out[folder]
+		u.Objects++
+		u.Bytes += info.Size()
+		out[folder] = u
+		return nil
+	})
+	if errors.Is(err, fs.ErrNotExist) {
+		return out, nil
+	}
+	return out, err
 }
 
 const (
