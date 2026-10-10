@@ -169,6 +169,14 @@ func (g *GitHubApp) accessToken(ctx context.Context) (string, error) {
 	return g.token, nil
 }
 
+func (g *GitHubApp) Read(ctx context.Context, path string, into any) error {
+	token, err := g.accessToken(ctx)
+	if err != nil {
+		return err
+	}
+	return g.call(ctx, http.MethodGet, path, token, nil, http.StatusOK, into)
+}
+
 func (g *GitHubApp) File(ctx context.Context, title, body, issueType string, labels []string) (string, error) {
 	token, err := g.accessToken(ctx)
 	if err != nil {

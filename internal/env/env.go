@@ -25,6 +25,8 @@ var Secrets = []Secret{
 	{"GITHUB_APP_ID", "heliosian-github-app-id"},
 	{"GITHUB_APP_KEY", "heliosian-github-app-key"},
 	{"ANTHROPIC_API_KEY", "heliosian-anthropic-key"},
+	{"ANTHROPIC_ADMIN_KEY", "heliosian-anthropic-admin-key"},
+	{"GITHUB_WEBHOOK_SECRET", "heliosian-github-webhook-secret"},
 	{"IMPORT_KEY", "heliosian-import-key"},
 }
 

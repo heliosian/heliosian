@@ -32,6 +32,7 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/mcp"
 	"heliosian/internal/model"
+	"heliosian/internal/ops"
 	"heliosian/internal/serve"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
@@ -74,6 +75,8 @@ type Config struct {
 	ArtifactsMail artifacts.Inbox
 	Digest        *digest.Claude
 	Composer      *db.Composer
+	Ops           ops.Deps
+	Hooks         ops.Hooks
 }
 
 type appSpec struct {
@@ -286,7 +289,10 @@ func NewCore(cfg Config) *Core {
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
-	db.RegisterDashboard(adminMux, dataStore, queue, map[string]db.Measurable{blob.MediaBucket: cfg.Bucket, blob.MailBucket: cfg.Loop.Archive})
+	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket, blob.MailBucket: cfg.Loop.Archive}
+	external := ops.New(cfg.Ops)
+	external.Register(adminMux, cfg.Hooks)
+	db.RegisterDashboard(adminMux, dataStore, queue, external)
 	go queue.Tick()
 	go vitals.Sampler()
 	go func() {
@@ -360,6 +366,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	mcpKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	geocoder := geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY"))
+	github := githubApp()
 	core := NewCore(Config{
 		Domain:        site,
 		Source:        sheet,
@@ -379,7 +386,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		CalendarMail:  calendarMail(sessionKey),
 		BirthdayMail:  newMailer(birthdayMailFrom),
 		BirthdayBase:  birthdayBase,
-		FeedbackFiler: githubApp(),
+		FeedbackFiler: github,
 		FeedbackBase:  feedbackBase,
 		Loop:          loopMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
@@ -387,6 +394,8 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Composer:      db.NewComposer(anthropicKey, spend),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
+		Ops:           OpsDeps(github, env.Required("ANTHROPIC_ADMIN_KEY")),
+		Hooks:         ops.Hooks{GitHubSecret: []byte(env.Required("GITHUB_WEBHOOK_SECRET")), Audience: "https://admin." + site + ops.BuildHookPath, PushAccount: runtimeAccount},
 	})
 	muxes := core.Muxes()
 	client := env.Required("GOOGLE_CLIENT_ID")

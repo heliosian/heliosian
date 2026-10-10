@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -28,11 +30,13 @@ import (
 	"heliosian/internal/devtls"
 	"heliosian/internal/digest"
 	"heliosian/internal/env"
+	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/intercept"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
+	"heliosian/internal/ops"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
 )
@@ -118,6 +122,13 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
 	intercept.Install(intercept.PlacesHost, intercept.Places())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
+	intercept.Install(intercept.GitHubHost, intercept.GitHub())
+	intercept.Install(intercept.CloudBuildHost, intercept.CloudBuild())
+	intercept.Install(intercept.CloudRunHost, intercept.CloudRun())
+	githubKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		logging.Fatal("sample github app key", "error", err)
+	}
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
@@ -149,6 +160,8 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
 		Digest:        digest.New("sample"),
 		Composer:      db.NewComposer("sample", claude.NewLimiter()),
+		Ops:           app.OpsDeps(&feedback.GitHubApp{ID: "sample", PrivateKey: githubKey}, "sample"),
+		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},
 	})
 	core.Search.StartMaking("sample")
 	return core

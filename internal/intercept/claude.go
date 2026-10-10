@@ -107,8 +107,12 @@ func (s *claudeStream) tool(name, input string) {
 
 func Claude() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/v1/organizations/cost_report" {
+			costReport(w)
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/messages" {
-			http.Error(w, "intercept answers only POST /v1/messages", http.StatusNotFound)
+			http.Error(w, "intercept answers only POST /v1/messages and GET /v1/organizations/cost_report", http.StatusNotFound)
 			return
 		}
 		var req claudeRequest

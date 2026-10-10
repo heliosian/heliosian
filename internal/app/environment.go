@@ -1,7 +1,11 @@
 package app
 
 import (
+	"context"
 	"os"
+
+	cloudbuild "google.golang.org/api/cloudbuild/v1"
+	run "google.golang.org/api/run/v2"
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
@@ -11,6 +15,7 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/model"
+	"heliosian/internal/ops"
 )
 
 const (
@@ -30,6 +35,20 @@ func githubApp() *feedback.GitHubApp {
 		logging.Fatal("read the github app key", "error", err)
 	}
 	return app
+}
+
+const runtimeAccount = "directory@heliosian.iam.gserviceaccount.com"
+
+func OpsDeps(github *feedback.GitHubApp, adminKey string) ops.Deps {
+	builds, err := cloudbuild.NewService(context.Background())
+	if err != nil {
+		logging.Fatal("cloud build client", "error", err)
+	}
+	runs, err := run.NewService(context.Background())
+	if err != nil {
+		logging.Fatal("cloud run client", "error", err)
+	}
+	return ops.Deps{GitHub: github, Builds: builds, Run: runs, AdminKey: adminKey}
 }
 
 func calendarMail(sessionKey string) model.CalendarMail {

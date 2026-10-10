@@ -185,28 +185,164 @@ function showData(d) {
   const bhead = el('tr');
   bhead.append(el('th', '', 'bucket'), el('th', 'num', 'objects'), el('th', 'num', 'size'), el('th', 'num', 'measured'));
   buckets.append(bhead);
-  for (const b of d.buckets) {
+  for (const b of d.ops.buckets) {
     const tr = el('tr');
-    if (b.error) {
-      tr.append(el('td', '', b.name), el('td', 'bad', b.error));
+    const r = b.reading;
+    if (r.error) {
+      tr.append(el('td', '', b.name), el('td', 'bad', r.error));
       tr.lastChild.colSpan = 3;
       buckets.append(tr);
       continue;
     }
-    const folders = Object.values(b.folders ?? {});
-    const measured = !b.measured.startsWith('0001');
+    const folders = Object.values(r.value);
+    const measured = !r.fetched.startsWith('0001');
     tr.append(
       el('td', '', b.name),
       el('td', 'num', measured ? count(folders.reduce((n, f) => n + f.objects, 0)) : ''),
       el('td', 'num', measured ? bytes(folders.reduce((n, f) => n + f.bytes, 0)) : ''),
-      el('td', 'num', measured ? ago(b.measured) : 'measuring…'),
+      el('td', 'num', measured ? ago(r.fetched) : 'measuring…'),
     );
     buckets.append(tr);
   }
   body('data').replaceChildren(table, buckets);
 }
 
+function pending(reading) {
+  if (reading.error) {
+    return el('div', 'bad', reading.error);
+  }
+  if (reading.fetched.startsWith('0001')) {
+    return el('div', 'quiet', 'reading…');
+  }
+  return null;
+}
+
+function link(href, text, className) {
+  const a = el('a', className ?? '', text);
+  a.href = href;
+  a.target = '_blank';
+  a.rel = 'noopener';
+  return a;
+}
+
+function minutes(from, to) {
+  const s = Math.max(0, Math.round((new Date(to) - new Date(from)) / 1000));
+  return s < 90 ? `${s}s` : `${Math.round(s / 60)}m`;
+}
+
+const buildWords = {
+  QUEUED: ['queued', 'warn'],
+  PENDING: ['queued', 'warn'],
+  WORKING: ['building', 'warn'],
+  FAILURE: ['build failed', 'bad'],
+  INTERNAL_ERROR: ['build errored', 'bad'],
+  TIMEOUT: ['build timed out', 'bad'],
+  CANCELLED: ['cancelled', 'quiet'],
+  EXPIRED: ['expired', 'quiet'],
+};
+
+function stage(commit, builds, serving, deployedBelow) {
+  if (serving && commit.sha.startsWith(serving.sha)) {
+    return [`serving · ${serving.revision}`, 'good'];
+  }
+  if (deployedBelow) {
+    return ['deployed earlier', 'quiet'];
+  }
+  const build = builds.find(b => b.sha === commit.sha);
+  if (!build) {
+    return ['no build', 'quiet'];
+  }
+  if (build.status === 'SUCCESS') {
+    return [`built in ${minutes(build.started, build.finished)}, deploying`, 'warn'];
+  }
+  const [word, tone] = buildWords[build.status] ?? [build.status.toLowerCase(), 'quiet'];
+  if (build.status === 'WORKING') {
+    return [`${word} ${minutes(build.started, new Date())}`, tone];
+  }
+  return [word, tone];
+}
+
+function showDeploy(d) {
+  const {commits, builds, serving} = d.ops;
+  const waiting = pending(commits) ?? pending(builds) ?? pending(serving);
+  if (waiting) {
+    body('deploy').replaceChildren(waiting);
+    return;
+  }
+  const table = el('table', 'rows deploys');
+  let deployed = false;
+  for (const c of commits.value) {
+    const [word, tone] = stage(c, builds.value, serving.value, deployed);
+    if (serving.value.sha && c.sha.startsWith(serving.value.sha)) {
+      deployed = true;
+    }
+    const build = builds.value.find(b => b.sha === c.sha);
+    const status = build?.logUrl ? link(build.logUrl, word) : el('span', '', word);
+    const tr = el('tr', tone);
+    const sha = el('td', 'sha');
+    sha.append(link(c.url, c.sha.slice(0, 7)));
+    tr.append(sha, el('td', 'what', c.message), el('td', 'where', `${c.author} · ${ago(c.time)}`), el('td', 'stage'));
+    tr.lastChild.append(status);
+    table.append(tr);
+  }
+  body('deploy').replaceChildren(table);
+}
+
+function dollars(n) {
+  return n.toLocaleString('en-US', {style: 'currency', currency: 'USD'});
+}
+
+function showClaude(d) {
+  const spend = d.ops.spend;
+  const waiting = pending(spend);
+  if (waiting) {
+    body('claude').replaceChildren(waiting);
+    return;
+  }
+  const days = spend.value.days.map(day => ({time: day.date + 'T12:00:00', total: Object.values(day.byModel).reduce((n, v) => n + v, 0), byModel: day.byModel}));
+  const month = {};
+  for (const day of days) {
+    for (const [model, v] of Object.entries(day.byModel)) {
+      month[model] = (month[model] ?? 0) + v;
+    }
+  }
+  const today = days.length ? days[days.length - 1].total : 0;
+  const stats = el('div', 'stats');
+  stats.append(stat('today (UTC)', dollars(today)), stat('this month', dollars(Object.values(month).reduce((n, v) => n + v, 0))));
+  const table = el('table', 'rows');
+  for (const [model, v] of Object.entries(month).sort((a, b) => b[1] - a[1])) {
+    const tr = el('tr');
+    tr.append(el('td', '', model), el('td', 'num', dollars(v)));
+    table.append(tr);
+  }
+  body('claude').replaceChildren(
+    stats,
+    sparkline(days, v => v.total, dollars, 'per day'),
+    table,
+    el('div', 'quiet', `read ${ago(spend.fetched)}`),
+  );
+}
+
+function showIssues(d) {
+  const issues = d.ops.issues;
+  const waiting = pending(issues);
+  if (waiting) {
+    body('issues').replaceChildren(waiting);
+    return;
+  }
+  const list = el('ol', 'issues');
+  for (const i of issues.value.items) {
+    const li = el('li');
+    li.append(el('span', 'when', `#${i.number}`), link(i.url, i.title, 'what'), el('span', 'where', [...i.labels, ago(i.created)].join(' · ')));
+    list.append(li);
+  }
+  body('issues').replaceChildren(stat('open', count(issues.value.open)), list);
+}
+
 function show(d) {
+  showDeploy(d);
+  showClaude(d);
+  showIssues(d);
   showErrors(d);
   showRuntime(d);
   showQueues(d);

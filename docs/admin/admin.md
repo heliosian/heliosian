@@ -10,11 +10,25 @@ Helios Admin, at `admin.heliosian.com`, holds views of the data behind the apps.
 
 `/` (`web/admin/dashboard/`) is the dashboard for a super admin; anyone else at `/` goes to `/resources`. It holds `GET /api/dashboard` (`internal/db/dashboard.go`) open as a server-sent event stream: a whole snapshot on connecting and another whenever something in it changes - an error logged, a runtime sample taken, a write swapping the model in, a bucket measured - so the page updates itself with no polling. The browser's `EventSource` reconnects on its own when Cloud Run ends the request.
 
+- **Deploy**: the newest commits on `main`, each with where it stands: no build, queued, building (and for how long), build failed, built and deploying, serving (with the Cloud Run revision), or deployed earlier. Each status links to its build's log.
+- **Claude spend**: today's and this month's dollars from the Anthropic Usage and Cost Admin API's `cost_report`, split by model, with a per-day sparkline. Its days are UTC days, and it is about a day behind.
+- **Issues**: how many issues are open on `heliosian/heliosian` and the newest of them.
 - **Errors**: how many records were logged at ERROR in the last hour and the newest, each with its message, app, user and `error`. The `logging` handler hands every ERROR record to `internal/vitals`, which keeps the last 200 since the server started.
 - **Runtime**: heap, sys and CPU (cores used, from `getrusage`) as sparklines over the last hour, plus goroutines and GC runs, from the sampler `internal/vitals` runs every 5 seconds wherever the server runs; each sample is also the `memory` log line.
 - **Queues**: the counts `/queues` shows, worked out again when the model changes, and when the sheets last refreshed.
 - **Requests**: per app over the last hour, the requests `logging.Requests` saw (media routes and event streams aside), how many failed, p50, p95 and max latency, and how many took 750ms or more.
-- **Data**: rows and cells (rows times stored columns) of the data-model tables, per spreadsheet, and the objects and bytes in `heliosian-media` and `heliosian-mail`, measured by listing each bucket in the background when a dashboard connects and the last measure is over 10 minutes old.
+- **Data**: rows and cells (rows times stored columns) of the data-model tables, per spreadsheet, and the objects and bytes in `heliosian-media` and `heliosian-mail`, measured by listing each bucket.
+
+What comes from outside the server is `internal/ops`: commits and issues through the feedback GitHub App, builds through the Cloud Build API, the serving revision through the Cloud Run Admin API, spend through the Anthropic Admin API with `ANTHROPIC_ADMIN_KEY`, and the bucket sizes. Each is read once in the background and kept, so a dashboard never waits on one, and shows its own error in its tile when a read fails. Commits, issues, builds and the serving revision are read at start and again when something says they changed:
+
+- `POST /hooks/github` takes the GitHub App's webhook, checked against `GITHUB_WEBHOOK_SECRET`: a `push` rereads the commits and an `issues` event the issues.
+- `POST /hooks/build` takes a Pub/Sub push from the `cloud-builds` topic, which Cloud Build publishes every build's status changes to, carrying an OIDC token for `directory@` with the hook's own address as its audience: it rereads the builds, and the serving revision too once a build succeeds.
+
+Spend and the bucket sizes have no such signal, so a dashboard connecting rereads them when they are over 10 minutes old; it also retries any source whose last read failed.
+
+The GitHub App's webhook is on its settings page (heliosian organization, Settings › Developer settings › GitHub Apps), sending `push` and `issues` events to `https://admin.heliosian.com/hooks/github`. The subscription is `gcloud pubsub subscriptions describe dashboard-builds --project heliosian`.
+
+Locally, `tools/startserver` answers GitHub, Cloud Build, Cloud Run and the cost report itself (`internal/intercept/ops.go`), so the tiles show sample commits, builds and spend.
 
 ## Resources
 

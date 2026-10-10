@@ -77,6 +77,67 @@
   color: var(--faint);
 }
 
+table.deploys .sha {
+  width: 70px;
+}
+
+table.deploys .what {
+  color: var(--text);
+}
+
+table.deploys .where {
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+table.deploys .stage {
+  text-align: right;
+  white-space: nowrap;
+}
+
+table.deploys .stage a {
+  color: inherit;
+}
+
+table.deploys tr.good .stage {
+  color: var(--accent);
+}
+
+table.deploys tr.warn .stage {
+  color: var(--hit);
+}
+
+table.deploys tr.bad .stage {
+  color: var(--warn);
+}
+
+table.deploys tr.quiet td {
+  color: var(--faint);
+}
+
+.issues {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.issues li {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: 0 8px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.issues .when,
+.issues .where {
+  color: var(--dim);
+}
+
+.issues .where {
+  grid-column: 2;
+}
+
 .errors {
   margin: 10px 0 0;
   padding: 0;

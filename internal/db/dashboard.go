@@ -1,27 +1,24 @@
 package db
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net/http"
 	"slices"
 	"sync"
 	"time"
 
 	"heliosian/internal/auth"
-	"heliosian/internal/blob"
+	"heliosian/internal/ops"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/vitals"
 )
 
 const (
-	slowRequest  = 750 * time.Millisecond
-	shownErrors  = 50
-	measureAfter = 10 * time.Minute
+	slowRequest = 750 * time.Millisecond
+	shownErrors = 50
 )
 
 type tableSize struct {
@@ -29,13 +26,6 @@ type tableSize struct {
 	Sheet   string `json:"sheet"`
 	Rows    int    `json:"rows"`
 	Columns int    `json:"columns"`
-}
-
-type bucketSize struct {
-	Name     string                `json:"name"`
-	Measured time.Time             `json:"measured"`
-	Error    string                `json:"error,omitempty"`
-	Folders  map[string]blob.Usage `json:"folders"`
 }
 
 type dashboard struct {
@@ -47,33 +37,20 @@ type dashboard struct {
 	Samples     []vitals.Sample  `json:"samples"`
 	Latency     []vitals.Latency `json:"latency"`
 	Tables      []tableSize      `json:"tables"`
-	Buckets     []bucketSize     `json:"buckets"`
-}
-
-type Measurable interface {
-	Usage(ctx context.Context) (map[string]blob.Usage, error)
-}
-
-type measured struct {
-	bucket  Measurable
-	size    bucketSize
-	running bool
+	Ops         ops.Snapshot     `json:"ops"`
 }
 
 type board struct {
-	store   *Store
-	queue   *store.Queue
-	mu      sync.Mutex
-	model   *Model
-	queues  []queueCount
-	buckets []*measured
+	store  *Store
+	queue  *store.Queue
+	ops    *ops.Board
+	mu     sync.Mutex
+	model  *Model
+	queues []queueCount
 }
 
-func RegisterDashboard(mux *http.ServeMux, s *Store, queue *store.Queue, buckets map[string]Measurable) {
-	b := &board{store: s, queue: queue}
-	for _, name := range slices.Sorted(maps.Keys(buckets)) {
-		b.buckets = append(b.buckets, &measured{bucket: buckets[name], size: bucketSize{Name: name, Folders: map[string]blob.Usage{}}})
-	}
+func RegisterDashboard(mux *http.ServeMux, s *Store, queue *store.Queue, external *ops.Board) {
+	b := &board{store: s, queue: queue, ops: external}
 	queue.OnSwap(vitals.Poke)
 	allowed := func(r *http.Request) bool {
 		return s.Model().SuperAdmin(auth.Email(r))
@@ -100,7 +77,7 @@ func RegisterDashboard(mux *http.ServeMux, s *Store, queue *store.Queue, buckets
 func (b *board) stream(w http.ResponseWriter, r *http.Request) {
 	changed, stop := vitals.Watch()
 	defer stop()
-	b.measure()
+	b.ops.Freshen()
 	controller := http.NewResponseController(w)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
@@ -129,10 +106,7 @@ func (b *board) snapshot() dashboard {
 	if b.model != m {
 		b.model, b.queues = m, m.queueCounts()
 	}
-	out := dashboard{At: time.Now(), Queues: b.queues, Buckets: []bucketSize{}}
-	for _, mb := range b.buckets {
-		out.Buckets = append(out.Buckets, mb.size)
-	}
+	out := dashboard{At: time.Now(), Queues: b.queues, Ops: b.ops.Snapshot()}
 	b.mu.Unlock()
 	status := b.queue.Status()
 	out.LastRefresh = status.LastRefresh
@@ -162,32 +136,4 @@ func (b *board) snapshot() dashboard {
 		out.Tables = append(out.Tables, tableSize{Name: t.Name, Sheet: t.Sheet, Rows: m.Table(t.Name).Len(), Columns: columns})
 	}
 	return out
-}
-
-func (b *board) measure() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	for _, mb := range b.buckets {
-		if mb.running || time.Since(mb.size.Measured) < measureAfter {
-			continue
-		}
-		mb.running = true
-		go func() {
-			start := time.Now()
-			folders, err := mb.bucket.Usage(context.Background())
-			b.mu.Lock()
-			mb.running = false
-			mb.size.Measured = time.Now()
-			mb.size.Error = ""
-			if err != nil {
-				slog.Error("measure bucket", "bucket", mb.size.Name, "error", err)
-				mb.size.Error = err.Error()
-			} else {
-				mb.size.Folders = folders
-			}
-			b.mu.Unlock()
-			slog.Info("measured bucket", "bucket", mb.size.Name, "took", time.Since(start))
-			vitals.Poke()
-		}()
-	}
 }
