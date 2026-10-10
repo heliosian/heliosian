@@ -143,14 +143,20 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .starter:hover { border-color: var(--accent); background: var(--input); }
 
-/* Turns: the person's on the right in a teal bubble, the answer on the
-   left on the page itself, with the tools it used in a line above. */
-.turn { display: flex; flex-direction: column; max-width: 100%; }
+.turn { display: flex; align-items: flex-start; gap: 12px; max-width: 100%; }
 
-.turn-user { align-items: flex-end; }
+.turn-user { flex-direction: row-reverse; }
+
+.turn-avatar { flex-shrink: 0; width: 36px; height: 36px; }
+
+.turn-user .turn-avatar { display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
+
+.turn-user .turn-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.turn-bot { object-fit: contain; }
 
 .turn-user .turn-body {
-  max-width: 78%;
+  max-width: calc(78% - 48px);
   padding: 10px 16px;
   border-radius: 18px 18px 4px 18px;
   /* The deep teal in both modes: dark mode pales --brand for text, and
@@ -161,7 +167,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   overflow-wrap: anywhere;
 }
 
-.turn-assistant .turn-body { max-width: 92%; overflow-wrap: anywhere; }
+.turn-assistant .turn-body { flex: 1; min-width: 0; max-width: 92%; padding-top: 6px; overflow-wrap: anywhere; }
 
 .turn-assistant .turn-body > :first-child { margin-top: 0; }
 

@@ -11,6 +11,7 @@ Each file under `web/public/<app>/brand/` is cut from its app's exports at the w
 - `maskable-icon-*.png` - the bare mark at 62% of the square on the app icon's corner colour, which keeps it inside the maskable safe circle.
 - `logo-tile.png` - the app icon under a rounded mask with a 22% radius, applied last with `-compose CopyOpacity`.
 - `symbol-white.png` and `symbol-watermark.png` - from `symbol_white.png`.
+- `bot-face-1.png` and `bot-face-2.png` - Ask's bot in the conversation, from its `symbol_nochat_face1.png` and `symbol_nochat_face2.png`, the bare face without the chat bubble, resting and open-mouthed.
 - `logo-lockup*.png` - the horizontal export for a file wider than twice its height, else the vertical one; the white export for a name with `light` in it, else the teal.
 
 - `splash/splash-<size>.png` - the iOS launch screens the login page lists (`web/templates/login.html`), one for every device size it names: the white vertical export, trimmed, 55% of the screen's shorter side wide, centred on the brand teal. Every app has the same set of sizes.

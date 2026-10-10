@@ -1,7 +1,7 @@
 import {api, signedIn} from '/api.js';
 import {initTopbar, renderAccount, onSlash} from '/shell.js';
 import {render, stable} from '/markdown.js';
-import {el, toast} from '/elements.js';
+import {el, toast, avatar} from '/elements.js';
 
 const maxChats = 50;
 const ivLength = 12;
@@ -92,11 +92,34 @@ function scrollDown() {
   main.scrollTo({top: main.scrollHeight});
 }
 
+const botFaces = ['/brand/bot-face-1.png', '/brand/bot-face-2.png'];
+
 function addTurn(role) {
   const row = el('div', 'turn turn-' + role);
+  if (role === 'user') {
+    row.append(avatar(state.model.user, 'turn-avatar'));
+  } else {
+    const face = el('img', 'turn-avatar turn-bot');
+    face.src = botFaces[0];
+    face.alt = '';
+    row.append(face);
+  }
   row.append(el('div', 'turn-body'));
   thread().append(row);
   return row;
+}
+
+function talk(row) {
+  const face = row.querySelector('.turn-bot');
+  let frame = 0;
+  const timer = setInterval(() => {
+    frame = 1 - frame;
+    face.src = botFaces[frame];
+  }, 350);
+  return () => {
+    clearInterval(timer);
+    face.src = botFaces[0];
+  };
 }
 
 function segmentsOf(turn) {
@@ -355,6 +378,7 @@ async function send(message) {
   const mine = addTurn('user');
   mine.querySelector('.turn-body').textContent = message;
   const answer = addTurn('assistant');
+  const quiet = talk(answer);
   const spin = spinner();
   placeSpinner(answer, spin.node);
   const segments = [];
@@ -460,6 +484,7 @@ async function send(message) {
     segments.push({kind: 'text', text: 'The connection dropped; try again.'});
     showSegments(answer, segments, false, cards);
   } finally {
+    quiet();
     spin.stop();
     state.stopper = null;
     setBusy(false);
