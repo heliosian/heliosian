@@ -1142,6 +1142,8 @@ const PolicySource = `
 (read MEMBER (and (system "import") (= group.kind "activity")))
 ; add a volunteer or co-chair the old sheet has
 (insert MEMBER (and (system "import") (= @new.group.kind "activity")))
+; remove a volunteer or co-chair the old sheet no longer has
+(delete MEMBER (and (system "import") (= @old.group.kind "activity")))
 ; add a category the old tables or sheets held
 (insert GROUP (and (system "import") (= @new.kind "category")))
 ; a category's name, as the old tables or sheets have it
