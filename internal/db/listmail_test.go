@@ -24,20 +24,20 @@ const (
 	hummingbirdsTo = "hummingbirds-parents@loop.heliosian.com"
 )
 
-type loopHarness struct {
+type listMailHarness struct {
 	t      *testing.T
 	s      *Store
 	queue  *store.Queue
 	mux    *http.ServeMux
 	sender *mailtest.Recorder
-	loop   *Loop
+	mailer *ListMailer
 }
 
-func newLoopHarness(t *testing.T) *loopHarness {
+func newListMailHarness(t *testing.T) *listMailHarness {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
-	h := &loopHarness{t: t, s: s, queue: queue, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
-	h.loop = RegisterLoop(h.mux, s, queue, newPictures(s, queue), LoopMail{Sender: h.sender.Mailgun, SigningKey: loopSigningKey, Key: []byte("key"), Base: "https://loop.test"})
+	h := &listMailHarness{t: t, s: s, queue: queue, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
+	h.mailer = RegisterListMail(h.mux, s, queue, newPictures(s, queue), ListMailConfig{Sender: h.sender.Mailgun, SigningKey: loopSigningKey, Key: []byte("key"), Base: "https://loop.test"})
 	return h
 }
 
@@ -57,20 +57,20 @@ func loopNotice(raw, recipient string) map[string]string {
 	return map[string]string{"recipient": recipient, "sender": "rowan.ashdown@example.org", "from": "Rowan Ashdown <rowan.ashdown@example.org>", "subject": "Field trip", "body-mime": raw, "timestamp": stamp, "token": token, "signature": sig}
 }
 
-func (h *loopHarness) serve(r *http.Request) *httptest.ResponseRecorder {
+func (h *listMailHarness) serve(r *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	h.mux.ServeHTTP(rec, r)
 	return rec
 }
 
-func (h *loopHarness) inbound(fields map[string]string) *httptest.ResponseRecorder {
+func (h *listMailHarness) inbound(fields map[string]string) *httptest.ResponseRecorder {
 	body, _ := json.Marshal(fields)
 	r := httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader(string(body)))
 	r.Header.Set("Content-Type", "application/json")
 	return h.serve(r)
 }
 
-func (h *loopHarness) posts(group, direction string) []store.Row {
+func (h *listMailHarness) posts(group, direction string) []store.Row {
 	out := []store.Row{}
 	for _, m := range h.s.Model().Table("MESSAGE").Referencing("group", group) {
 		if m["kind"] == "post" && m["direction"] == direction {
@@ -80,7 +80,7 @@ func (h *loopHarness) posts(group, direction string) []store.Row {
 	return out
 }
 
-func (h *loopHarness) waitFor(what string, ok func() bool) {
+func (h *listMailHarness) waitFor(what string, ok func() bool) {
 	h.t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -92,7 +92,7 @@ func (h *loopHarness) waitFor(what string, ok func() bool) {
 	h.t.Fatalf("waited in vain for %s", what)
 }
 
-func (h *loopHarness) settled(group string) store.Row {
+func (h *listMailHarness) settled(group string) store.Row {
 	h.t.Helper()
 	var post store.Row
 	h.waitFor("the post to settle", func() bool {
@@ -106,9 +106,9 @@ func (h *loopHarness) settled(group string) store.Row {
 	return post
 }
 
-func (h *loopHarness) addMember(group, person, member string) {
+func (h *listMailHarness) addMember(group, person, member string) {
 	h.t.Helper()
-	if _, err := Write(context.Background(), h.s, h.queue, h.loop.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -116,7 +116,7 @@ func (h *loopHarness) addMember(group, person, member string) {
 var unsubscribeHeader = regexp.MustCompile(`List-Unsubscribe: <mailto:unsubscribe@loop\.heliosian\.com\?subject=([^>]+)>, <https://loop\.test/open/unsubscribe/([^>]+)>`)
 
 func TestAPostIsSentOnToEveryMemberOnceAndFiled(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	h.addMember(parentsList, staff, "yes")
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "abc@example.org", "Re: Field trip", "")
 	if rec := h.inbound(loopNotice(raw, hummingbirdsTo)); rec.Code != http.StatusOK {
@@ -172,7 +172,7 @@ func TestAPostIsSentOnToEveryMemberOnceAndFiled(t *testing.T) {
 }
 
 func TestAnAliasAndAFormReachTheList(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "alias@example.org", "Hello", "")
 	form := url.Values{}
 	for k, v := range loopNotice(raw, "K7M2Q9X4V1BNC@loop.heliosian.com") {
@@ -201,7 +201,7 @@ func TestPostsTheListDoesNotTakeAreDropped(t *testing.T) {
 		"a staff outsider": {loopPost("Maya Lindqvist <maya.lindqvist@example.org>", "e@example.org", "Hi all", ""), "only the email list's members may post", true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newLoopHarness(t)
+			h := newListMailHarness(t)
 			if rec := h.inbound(loopNotice(c.raw, hummingbirdsTo)); rec.Code != http.StatusOK {
 				t.Fatalf("inbound answered %d: %s", rec.Code, rec.Body)
 			}
@@ -224,8 +224,8 @@ func TestPostsTheListDoesNotTakeAreDropped(t *testing.T) {
 }
 
 func TestRepliesFollowTheListsReplying(t *testing.T) {
-	h := newLoopHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, h.loop.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
+	h := newListMailHarness(t)
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	first := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "first@example.org", "Plan", "")
@@ -233,7 +233,7 @@ func TestRepliesFollowTheListsReplying(t *testing.T) {
 	if post := h.settled(parentsList); post["state"] != postDropped {
 		t.Fatalf("a member's new post to a managers-only list reads %v", post)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, h.loop.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
 		t.Fatal(err)
 	}
 	reply := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "reply@example.org", "Re: Plan", "<first@example.org>")
@@ -245,7 +245,7 @@ func TestRepliesFollowTheListsReplying(t *testing.T) {
 }
 
 func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	h.addMember(parentsList, staff, "yes")
 	tok := unsubscribeToken([]byte("key"), "hummingbirds-parents", "rowan.ashdown@example.org")
 	page := h.serve(httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok, nil))
@@ -286,26 +286,26 @@ func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 }
 
 func TestARestartResumesAPostNotYetSentOn(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "resume@example.org", "Resume", "")
 	content := "content/resume"
-	if err := h.loop.pics.bucket.Put(context.Background(), content, mailType, []byte(raw)); err != nil {
+	if err := h.mailer.pics.bucket.Put(context.Background(), content, mailType, []byte(raw)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, h.loop.pics, access.System(importReader), Env{System: loopSystem, Now: testNow}, Batch{Batch: []Edit{
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": "resume", "blob": content, "mime": mailType, "size": "10"}},
 		{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": parentsList, "content": "@content", "created": "2026-10-09 09:00", "state": postReceived}},
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	h.loop.Start()
+	h.mailer.Start()
 	if post := h.settled(parentsList); post["state"] != postSent {
 		t.Fatalf("the resumed post reads %v", post)
 	}
 }
 
 func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "none@example.org", "Hi", "")
 	if rec := h.inbound(loopNotice(raw, "nobody@loop.heliosian.com")); rec.Code != http.StatusOK {
 		t.Fatalf("mail for no list answered %d", rec.Code)
@@ -319,7 +319,7 @@ func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
 		t.Fatal("a post was recorded")
 	}
 	bare := http.NewServeMux()
-	RegisterLoop(bare, h.s, h.queue, h.loop.pics, LoopMail{})
+	RegisterListMail(bare, h.s, h.queue, h.mailer.pics, ListMailConfig{})
 	rec := httptest.NewRecorder()
 	bare.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {
@@ -341,7 +341,7 @@ func loopEvent(kind, severity, from, messageID, recipient, detail string) string
 }
 
 func TestDeliveryEventsSettleEachCopy(t *testing.T) {
-	h := newLoopHarness(t)
+	h := newListMailHarness(t)
 	h.addMember(parentsList, staff, "yes")
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "events@example.org", "Events", "")
 	h.inbound(loopNotice(raw, hummingbirdsTo))

@@ -67,7 +67,7 @@ A family carries `veracrossAddress` and `veracrossPhone`, how Veracross shows it
 
 ## Helios Who?
 
-Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`internal/who/who.go`).
+Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`internal/who/who.go`). Loop's pages are on the data model the same way: one named batch to `/api/q` for every list the viewer may see with its members, hand additions, rules, aliases and managers, `POST /api/q` batches for every change, and `/api/do/draft-members`, `/api/do/describe-group` and `/api/do/guest` for the editor (`docs/datamodel.md`, The query API).
 
 The directory types above are the old directory, read-only and frozen since Who? moved: nothing writes their sheet but the geocoder. The apps still on the old model read them - Loop and Heliosian's rule editors `classrooms`, `grades?enrolled` and `tags`, Staff Birthdays `departments` - and `people` and `families` are reached as relations of other apps' types.
 

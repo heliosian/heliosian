@@ -651,68 +651,68 @@ const PolicySource = `
 ; every delivery of mail about parties and celebrations
 (read RECIPIENT (and (admin_of "celebrate") (in message.group.kind "party" "celebration")))
 
-;; Loop
+;; Mail lists
 
-; @g is a Loop list: a plain group with mail, under nothing, linking nowhere
+; @g is a mail list: a plain group with mail, under nothing, linking nowhere
 (define (mail_list @g)
   (and (= @g.kind "group") @g.mail (blank @g.parent) (blank @g.url)))
 
-; @g is a Loop list the viewer manages, or any Loop list for a Loop admin
+; @g is a mail list the viewer manages, or any mail list for a Loop admin
 (define (runs_list @g)
   (and (mail_list @g) (or (manages @g) (admin_of "loop"))))
 
-; anyone but a guest makes a Loop list, run by a group they are in, seen by its managers or by everyone
+; anyone but a guest makes a mail list, run by a group they are in, seen by its managers or by everyone
 (insert GROUP
   (and (mail_list @new) (= @new.status "open") (not (blank @new.slug)) (= @new.added_by @viewer)
        (!= @viewer.source "guest")
        (exists EFFECTIVE_MEMBER (= group @new.managed_by) (= person @viewer))
        (or (blank @new.visible_to) (= @new.visible_to.slug "everyone"))
        (or (blank @new.members_visible_to) (= @new.members_visible_to.slug "everyone"))))
-; a Loop list's managers rename it
+; a mail list's managers rename it
 (set GROUP.name (runs_list @old))
-; a Loop list's managers describe it
+; a mail list's managers describe it
 (set GROUP.description (runs_list @old))
-; a Loop list's managers say who may post to it
+; a mail list's managers say who may post to it
 (set GROUP.posting (runs_list @old))
-; a Loop list's managers say who may reply to its posts
+; a mail list's managers say who may reply to its posts
 (set GROUP.replying (runs_list @old))
-; a Loop list's managers show it to its managers alone, its own members, or everyone
+; a mail list's managers show it to its managers alone, its own members, or everyone
 (set GROUP.visible_to
   (and (runs_list @old)
        (or (blank @new.visible_to) (= @new.visible_to @old.id) (= @new.visible_to.slug "everyone"))))
-; a Loop list's managers show who is on it to its managers alone, its own members, or everyone
+; a mail list's managers show who is on it to its managers alone, its own members, or everyone
 (set GROUP.members_visible_to
   (and (runs_list @old)
        (or (blank @new.members_visible_to) (= @new.members_visible_to @old.id)
            (= @new.members_visible_to.slug "everyone"))))
-; a Loop list's managers close it, or open it again
+; a mail list's managers close it, or open it again
 (set GROUP.status (and (runs_list @old) (in @new.status "open" "closed")))
-; a Loop list's managers give it a rule naming only groups and people whose members they may see
+; a mail list's managers give it a rule naming only groups and people whose members they may see
 (insert RULE
   (and (runs_list @new.group)
        (or (blank @new.target) (sees_members @new.target))
        (or (blank @new.within) (sees_members @new.within))
        (or (blank @new.person) (person_visible @new.person))))
-; a Loop list's managers reorder its rules
+; a mail list's managers reorder its rules
 (set RULE.order (runs_list @old.group))
-; a Loop list's managers take a rule away
+; a mail list's managers take a rule away
 (delete RULE (runs_list @old.group))
-; a Loop list's managers put someone on it by hand, or keep someone off it
+; a mail list's managers put someone on it by hand, or keep someone off it
 (insert MEMBER (and (runs_list @new.group) (in @new.member "yes" "excluded")))
-; a Loop list's managers turn a hand addition into a keeping off, or back
+; a mail list's managers turn a hand addition into a keeping off, or back
 (set MEMBER.member (and (runs_list @old.group) (in @new.member "yes" "excluded")))
-; a Loop list's managers take away a hand addition or a keeping off
+; a mail list's managers take away a hand addition or a keeping off
 (delete MEMBER (runs_list @old.group))
-; someone a Loop list takes in unsubscribes themselves from it
+; someone a mail list takes in unsubscribes themselves from it
 (insert MEMBER
   (and (mail_list @new.group) (= @new.person @viewer) (= @new.member "excluded")
        (exists EFFECTIVE_MEMBER (= group @new.group) (= person @viewer))))
-; someone on a Loop list by hand unsubscribes themselves from it
+; someone on a mail list by hand unsubscribes themselves from it
 (set MEMBER.member
   (and (mail_list @old.group) (= @old.person @viewer) (= @old.member "yes") (= @new.member "excluded")))
-; someone who unsubscribed from a Loop list resubscribes
+; someone who unsubscribed from a mail list resubscribes
 (delete MEMBER (and (mail_list @old.group) (= @old.person @viewer) (= @old.member "excluded")))
-; whoever runs a Loop list adds someone outside the directory, to put on one by hand
+; whoever runs a mail list adds someone outside the directory, to put on one by hand
 (insert PERSON
   (and (= @new.source "guest") (!= @viewer.source "guest")
        (or (admin_of "loop") (exists GROUP @l (mail_list @l) (manages @l)))))
@@ -720,9 +720,9 @@ const PolicySource = `
 (insert PERSON_EMAIL
   (and (= @new.source "guest") (= @new.person.source "guest") (!= @viewer.source "guest")
        (or (admin_of "loop") (exists GROUP @l (mail_list @l) (manages @l)))))
-; a Loop list's managers give it another address
+; a mail list's managers give it another address
 (insert ALIAS (exists GROUP @l (= id @new.target) (runs_list @l)))
-; a Loop list's managers take one of its other addresses away
+; a mail list's managers take one of its other addresses away
 (delete ALIAS (exists GROUP @l (= id @old.target) (runs_list @l)))
 
 ;; Loop admins
@@ -823,56 +823,56 @@ const PolicySource = `
 ; every bug report and idea, to triage
 (read REPORT (super_admin))
 
-;; System: loop, the mailer
+;; System: mailer, the mail lists' mail
 
-; every Loop list
-(read GROUP (and (system "loop") (mail_list @row)))
-; every Loop list's other addresses
-(read ALIAS (and (system "loop") (exists GROUP @l (= id @row.target) (mail_list @l))))
-; who is on every Loop list by hand or kept off it
-(read MEMBER (and (system "loop") (mail_list group)))
-; who every Loop list's managers groups hold
-(read MEMBER (and (system "loop") (managers_for_mail group)))
-; every Loop list's effective members
-(read EFFECTIVE_MEMBER (and (system "loop") (mail_list group)))
-; who in effect manages every Loop list
-(read EFFECTIVE_MEMBER (and (system "loop") (managers_for_mail group)))
+; every mail list
+(read GROUP (and (system "mailer") (mail_list @row)))
+; every mail list's other addresses
+(read ALIAS (and (system "mailer") (exists GROUP @l (= id @row.target) (mail_list @l))))
+; who is on every mail list by hand or kept off it
+(read MEMBER (and (system "mailer") (mail_list group)))
+; who every mail list's managers groups hold
+(read MEMBER (and (system "mailer") (managers_for_mail group)))
+; every mail list's effective members
+(read EFFECTIVE_MEMBER (and (system "mailer") (mail_list group)))
+; who in effect manages every mail list
+(read EFFECTIVE_MEMBER (and (system "mailer") (managers_for_mail group)))
 ; everyone, to match a sender and address each copy
-(read PERSON (system "loop"))
+(read PERSON (system "mailer"))
 ; everyone's addresses
-(read PERSON_EMAIL (system "loop"))
-; every Loop post
-(read MESSAGE (and (system "loop") (= kind "post")))
-; take in a Loop post, or send one on to its list
-(insert MESSAGE (and (system "loop") (= @new.kind "post") (mail_list @new.group)))
-; where a Loop post stands
-(set MESSAGE.state (and (system "loop") (= @old.kind "post")))
-; why a Loop post was dropped or failed
-(set MESSAGE.detail (and (system "loop") (= @old.kind "post")))
-; the raw mail of every Loop post
-(read CONTENT (and (system "loop") (exists MESSAGE (= content @row) (= kind "post"))))
-; keep a Loop post's raw mail
-(insert CONTENT (and (system "loop") (= @new.mime "message/rfc822")))
-; every copy of every Loop post
-(read RECIPIENT (and (system "loop") (= message.kind "post")))
-; send a copy of a Loop post to one person
-(insert RECIPIENT (and (system "loop") (= @new.message.kind "post")))
+(read PERSON_EMAIL (system "mailer"))
+; every post to a mail list
+(read MESSAGE (and (system "mailer") (= kind "post")))
+; take in a post, or send one on to its list
+(insert MESSAGE (and (system "mailer") (= @new.kind "post") (mail_list @new.group)))
+; where a post stands
+(set MESSAGE.state (and (system "mailer") (= @old.kind "post")))
+; why a post was dropped or failed
+(set MESSAGE.detail (and (system "mailer") (= @old.kind "post")))
+; the raw mail of every post
+(read CONTENT (and (system "mailer") (exists MESSAGE (= content @row) (= kind "post"))))
+; keep a post's raw mail
+(insert CONTENT (and (system "mailer") (= @new.mime "message/rfc822")))
+; every copy of every post
+(read RECIPIENT (and (system "mailer") (= message.kind "post")))
+; send a copy of a post to one person
+(insert RECIPIENT (and (system "mailer") (= @new.message.kind "post")))
 ; when the mail provider took a copy
-(set RECIPIENT.sent (and (system "loop") (= @old.message.kind "post")))
+(set RECIPIENT.sent (and (system "mailer") (= @old.message.kind "post")))
 ; the mail provider's ID for a copy
-(set RECIPIENT.provider_id (and (system "loop") (= @old.message.kind "post")))
+(set RECIPIENT.provider_id (and (system "mailer") (= @old.message.kind "post")))
 ; when a copy was delivered
-(set RECIPIENT.delivered (and (system "loop") (= @old.message.kind "post")))
+(set RECIPIENT.delivered (and (system "mailer") (= @old.message.kind "post")))
 ; when a copy failed
-(set RECIPIENT.failed (and (system "loop") (= @old.message.kind "post")))
+(set RECIPIENT.failed (and (system "mailer") (= @old.message.kind "post")))
 ; why a copy failed
-(set RECIPIENT.detail (and (system "loop") (= @old.message.kind "post")))
+(set RECIPIENT.detail (and (system "mailer") (= @old.message.kind "post")))
 ; unsubscribe someone by the link or the address in their copy
-(insert MEMBER (and (system "loop") (mail_list @new.group) (= @new.member "excluded")))
-; unsubscribe someone on a Loop list by hand, by the link or the address in their copy
-(set MEMBER.member (and (system "loop") (mail_list @old.group) (= @new.member "excluded")))
-; say how someone on a Loop list by hand unsubscribed
-(set MEMBER.note (and (system "loop") (mail_list @old.group)))
+(insert MEMBER (and (system "mailer") (mail_list @new.group) (= @new.member "excluded")))
+; unsubscribe someone on a mail list by hand, by the link or the address in their copy
+(set MEMBER.member (and (system "mailer") (mail_list @old.group) (= @new.member "excluded")))
+; say how someone on a mail list by hand unsubscribed
+(set MEMBER.note (and (system "mailer") (mail_list @old.group)))
 
 ;; System: import
 

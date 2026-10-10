@@ -208,6 +208,12 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .rule-sign-include { background: var(--green-3); }
 .rule-sign-exclude { background: var(--alert); }
 
+.rule-edit-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.rule-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rule-edit-row input[type="text"] { flex: 1 1 240px; min-width: 0; }
+.rule-edit-row input.is-wanted { border-color: var(--alert); }
+.rule-edit-row select { flex: 0 0 auto; }
+
 .card h3 { font-size: 14px; margin: 16px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
 .panel-empty { padding: 28px 16px; color: var(--muted); font-size: 15px; text-align: center; }

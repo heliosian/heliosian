@@ -1,30 +1,24 @@
-import {state, me, options, groupPath, person, personView, memberView, loadModel} from '../state.js';
+import {state, groupPath, person, personView, loadModel, write, query, rowsOf, domain} from '../state.js';
+import {rulesCard, ruleWords, ruleSaysSomething, newRule} from '../listrules.js';
 import {pageHead} from '../dom.js';
+import {visibilityWords} from './groups.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
-import {query, act, create, remove} from '/data.js';
 import {load, navigate} from '/router.js';
 import {openLayer} from '/modal.js';
 import {createPersonPicker} from '/picker.js';
 import {field, text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
-import {rulesEditor} from '/rules.js';
-import {visibilityWords} from './groups.js';
 import {personCard} from '/people.js';
 import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from '/members.js';
-import {emailOf, photoOf, wordsOf} from '/directory.js';
-
-const {rulesCard, newRule, ruleSaysSomething, personWords, ruleWords} = rulesEditor({
-  options,
-  personName: email => (person(email) || {}).name_show || '',
-});
+import {keyBetween} from '/order.js';
 
 const visibilityNotes = {
   hidden: 'Only the email list\'s managers and the admins see it.',
-  members: 'Anyone the rules or the additions place on the email list can see it, and take themselves off it or put themselves back; only managers can change it.',
+  members: 'The people on the email list see it and can take themselves off it or put themselves back; only managers can change it.',
   everyone: 'Anyone in Loop can see it, and only managers can change it.',
 };
 
@@ -32,15 +26,17 @@ const postingWords = {everyone: 'Everyone', members: 'Members', managers: 'Manag
 
 const postingNotes = {
   everyone: 'A new message from any address goes out to the email list.',
-  members: 'A new message goes out only from the managers and the people the rules or the additions place on the email list; anyone else gets a note saying so.',
+  members: 'A new message goes out only from the managers and the people on the email list; anyone else gets a note saying so.',
   managers: 'A new message goes out only from the email list\'s managers; anyone else gets a note saying so.',
 };
 
 const replyingNotes = {
   everyone: 'A reply to a message the email list sent goes out from any address.',
-  members: 'A reply to a message the email list sent goes out only from the managers and the people the rules or the additions place on the email list; anyone else gets a note saying so.',
+  members: 'A reply to a message the email list sent goes out only from the managers and the people on the email list; anyone else gets a note saying so.',
   managers: 'A reply to a message the email list sent goes out only from the email list\'s managers; anyone else gets a note saying so.',
 };
+
+const reserved = ['abuse', 'admin', 'administrator', 'hostmaster', 'noreply', 'no-reply', 'postmaster', 'root', 'unsubscribe', 'webmaster'];
 
 function audienceField(label, notes, value, onChange) {
   const input = selectInput(Object.entries(postingWords).map(([option, words]) => ({value: option, label: words})), value);
@@ -54,40 +50,42 @@ function audienceField(label, notes, value, onChange) {
   return wrap;
 }
 
+function ruleOf(row) {
+  return {id: row.id, exclude: row.exclude === 'Yes', target: row.target || '', replace_with: row.replace_with || '', within: row.within || '', person: row.person || '', search: row.search || ''};
+}
+
 function groupDraft(g, isNew) {
   return {
-    id: isNew ? '' : g.id, name: g.name, aliases: [...(g.aliases || [])], title: g.title, description: g.description || '',
-    prefix: isNew ? true : g.prefix,
+    id: isNew ? '' : g.id,
+    slug: g.slug || '',
+    title: g.title || '',
+    description: g.description || '',
+    aliases: [...(g.aliases || [])],
     visibility: isNew ? 'hidden' : g.visibility,
     posting: isNew ? 'everyone' : g.posting,
     replying: isNew ? 'everyone' : g.replying,
-    managers: g.managers.map(m => m.email),
-    rules: g.rules.map(r => ({kind: r.kind, roles: [...r.roles], search: r.search, classrooms: [...r.classrooms], grades: [...r.grades], tags: [...r.tags], family: [...r.family], tagLabels: r.tagLabels})),
-    additions: (g.additions || []).map(a => ({email: a.email, name: a.name})),
-    excluded: (g.excluded || []).map(e => ({email: e.email, note: e.note || '', when: e.when || ''})),
+    managers: [...(g.managerIds || [])],
+    rules: (g.rules || []).map(r => r.id ? ruleOf(r) : r),
+    hand: (g.hand || []).map(m => ({person: m.person, member: m.member})),
+    guests: [],
   };
 }
 
 function editor(g, isNew, closeModal, startTab) {
   const draft = groupDraft(g, isNew);
-  const firstRule = isNew && !draft.rules.length ? newRule('include') : null;
-  if (firstRule) {
-    draft.rules.push(firstRule);
-  }
   const form = el('form', 'editor');
   form.addEventListener('submit', e => e.preventDefault());
   const ed = {
     g, isNew, closeModal, form, draft, original: JSON.parse(JSON.stringify(draft)),
     nameInput: null, nameTouched: false, addressNote: el('small'),
-    opened: firstRule, rules: null, ruleCounts: new Map(),
-    preview: previewParts(g, isNew), previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
+    ruleCounts: new Map(), summary: el('span', 'change-summary'),
+    current: isNew ? [] : g.members, previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
   };
-  const overviewPanel = detailsPanel(ed);
-  const rulesPanel = el('div');
-  rulesPanel.append(loopRulesCard(ed), previewCard(ed));
+  const membersPanel = el('div');
+  membersPanel.append(loopRulesCard(ed), previewCard(ed), keptOffCard(ed));
   form.append(tabbed([
-    {key: 'members', label: 'Members', panel: rulesPanel},
-    {key: 'details', label: 'Details', panel: overviewPanel},
+    {key: 'members', label: 'Members', panel: membersPanel},
+    {key: 'details', label: 'Details', panel: detailsPanel(ed)},
   ], !closeModal, startTab), editorActions(ed));
   refreshPreview(ed);
   return form;
@@ -106,7 +104,7 @@ function detailsPanel(ed) {
     addressField(ed, alias),
     alias.field,
     descriptionField(ed),
-    ...prefixFields(draft, title),
+    el('small', 'subject-note', 'Every message goes out with the email list\'s name in brackets at the front of its subject.'),
     visibilityField(draft),
     audienceField('Who can post', postingNotes, draft.posting, value => {
       draft.posting = value;
@@ -130,7 +128,7 @@ function groupTitleInput(ed) {
     draft.title = title.value;
     if (isNew && !ed.nameTouched) {
       ed.nameInput.value = slug(title.value);
-      draft.name = ed.nameInput.value;
+      draft.slug = ed.nameInput.value;
       updateAddress(ed);
     }
   });
@@ -148,16 +146,16 @@ function groupTitleInput(ed) {
 
 function updateAddress(ed) {
   const {draft} = ed;
-  ed.addressNote.textContent = draft.name ? `${draft.name}@${state.model.domain}` : `The address is <name>@${state.model.domain}, and cannot change once made.`;
+  ed.addressNote.textContent = draft.slug ? `${draft.slug}@${domain}` : `The address is <name>@${domain}, and cannot change once made.`;
 }
 
 function addressField(ed, alias) {
   const {draft} = ed;
-  const name = textInput(draft.name, {maxLength: 40, placeholder: 'soccer-team'});
+  const name = textInput(draft.slug, {maxLength: 40, placeholder: 'soccer-team'});
   name.disabled = !ed.isNew;
   name.addEventListener('input', () => {
     ed.nameTouched = true;
-    draft.name = slug(name.value);
+    draft.slug = slug(name.value);
     updateAddress(ed);
   });
   ed.nameInput = name;
@@ -186,9 +184,9 @@ function aliasField(ed) {
     if (!alias) {
       return;
     }
-    if (alias === draft.name || draft.aliases.includes(alias)) {
+    if (alias === draft.slug || draft.aliases.includes(alias) || reserved.includes(alias)) {
       status.classList.add('error');
-      status.textContent = 'Already this email list\'s.';
+      status.textContent = 'That address cannot be added.';
       return;
     }
     draft.aliases.push(alias);
@@ -214,7 +212,7 @@ function aliasField(ed) {
   });
   const box = el('div', 'alias-box');
   box.append(input, clear);
-  add.append(box, button('Add', 'plus', 'button button-secondary', addAlias), status, el('small', '', `Another name for the same address, unused by every other email list:<name>@${state.model.domain}.`));
+  add.append(box, button('Add', 'plus', 'button button-secondary', addAlias), status, el('small', '', `Another name for the same address, unused by every other email list: <name>@${domain}.`));
   const wrap = el('div', 'field alias-field');
   wrap.append(rows, add);
   renderAliases(draft, rows);
@@ -232,7 +230,7 @@ function renderAliases(draft, rows) {
       draft.aliases = draft.aliases.filter(x => x !== alias);
       renderAliases(draft, rows);
     });
-    row.append(el('span', 'alias-address', `${alias}@${state.model.domain}`), remove);
+    row.append(el('span', 'alias-address', `${alias}@${domain}`), remove);
     rows.append(row);
   }
 }
@@ -255,16 +253,28 @@ function descriptionField(ed) {
   return wrap;
 }
 
+function draftBody(ed) {
+  const rules = ed.draft.rules.filter(ruleSaysSomething);
+  return {
+    rules,
+    body: {
+      list: ed.draft.id,
+      name: ed.draft.title,
+      ruleWords: rules.map(ruleWords),
+      rules: rules.map(r => ({exclude: r.exclude, target: r.target, replace_with: r.replace_with, within: r.within, person: r.person, search: r.search})),
+      members: ed.draft.hand,
+    },
+  };
+}
+
 async function describeGroup(ed, desc, status, generate) {
-  const {draft} = ed;
   generate.disabled = true;
   status.classList.remove('error');
   status.textContent = 'Writing…';
   try {
-    const rules = draft.rules.filter(ruleSaysSomething);
-    const {description} = await api('POST', '/api/loop/describe', {id: draft.id, title: draft.title, ruleWords: rules.map(r => (r.kind === 'exclude' ? 'Leaving out: ' : '') + ruleWords(r)), rules, additions: draft.additions, excluded: draft.excluded});
+    const {description} = await api('POST', '/api/do/describe-group', draftBody(ed).body);
     desc.value = description;
-    draft.description = description;
+    ed.draft.description = description;
     status.textContent = '';
     desc.focus();
   } catch (err) {
@@ -273,25 +283,6 @@ async function describeGroup(ed, desc, status, generate) {
   } finally {
     generate.disabled = false;
   }
-}
-
-function prefixFields(draft, title) {
-  const note = el('small');
-  const updateNote = () => {
-    note.textContent = draft.prefix ? `Every message goes out with “[${draft.title || 'Email list name'}]” at the front of its subject.` : 'Subjects go out as written.';
-  };
-  const prefix = el('input');
-  prefix.type = 'checkbox';
-  prefix.checked = draft.prefix;
-  prefix.addEventListener('change', () => {
-    draft.prefix = prefix.checked;
-    updateNote();
-  });
-  title.addEventListener('input', updateNote);
-  updateNote();
-  const wrap = el('label', 'field check');
-  wrap.append(prefix, el('span', '', 'Put the email list name in front of every subject'));
-  return [wrap, note];
 }
 
 function visibilityField(draft) {
@@ -312,16 +303,16 @@ function visibilityField(draft) {
 
 function managersEditor(draft) {
   const card = el('div', 'card');
-  card.append(el('h2', '', 'Managers'), el('div', 'hint', 'Managers can edit or delete the email list.'));
+  card.append(el('h2', '', 'Managers'), el('div', 'hint', 'Managers can edit or close the email list.'));
   const rows = el('div');
   const mount = el('div');
-  const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !draft.managers.includes(emailOf(p)))});
+  const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !draft.managers.includes(p.id))});
   const addManager = () => {
-    const email = picker.value;
-    if (!email || draft.managers.includes(email)) {
+    const p = picker.value && person(picker.value);
+    if (!p || draft.managers.includes(p.id)) {
       return;
     }
-    draft.managers.push(email);
+    draft.managers.push(p.id);
     picker.reset();
     renderManagerRows(draft, rows);
   };
@@ -340,14 +331,13 @@ function managersEditor(draft) {
 
 function renderManagerRows(draft, rows) {
   rows.replaceChildren();
-  for (const email of draft.managers) {
-    const known = person(email);
-    const shown = known ? {email, name: known.name_show, photoUrl: photoOf(known), words: wordsOf(known)} : {email, name: email};
+  for (const id of draft.managers) {
+    const shown = personView(id);
     const remove = el('button', 'link-button danger', 'Remove');
     remove.type = 'button';
-    remove.disabled = draft.managers.length === 1;
+    remove.disabled = id === state.model.viewer.id;
     remove.addEventListener('click', () => {
-      draft.managers = draft.managers.filter(m => m !== email);
+      draft.managers = draft.managers.filter(m => m !== id);
       renderManagerRows(draft, rows);
     });
     rows.append(personRow(shown, {
@@ -359,26 +349,29 @@ function renderManagerRows(draft, rows) {
   }
 }
 
-function previewParts(g, isNew) {
-  const current = isNew ? [] : g.members;
-  return {
-    summary: el('span', 'change-summary'),
-    current,
-    currentEmails: new Set(current.map(m => m.email)),
-  };
+function setHand(ed, id, member) {
+  const {draft} = ed;
+  draft.hand = draft.hand.filter(m => m.person !== id);
+  if (member) {
+    draft.hand.push({person: id, member});
+  }
 }
 
 function previewCard(ed) {
-  const p = ed.preview;
   const {draft, isNew} = ed;
-  const isOn = email => Boolean(ed.lastPreview && ed.lastPreview.members.some(m => m.email === email)) || draft.additions.some(a => a.email === email);
+  const current = new Set(ed.current.map(m => m.person));
+  const isOn = email => {
+    const p = person(email);
+    return Boolean(p && ed.lastPreview && ed.lastPreview.members.some(m => m.person === p.id)) || draft.guests.some(x => x.email === email);
+  };
   const add = memberAdders(close => personAdder({
     isOn,
     gradeColors: state.model.gradeColors,
     onAdd: async people => {
-      for (const {email, name} of people) {
-        if (!draft.additions.some(a => a.email === email)) {
-          draft.additions.push({email, name});
+      for (const {email} of people) {
+        const p = person(email);
+        if (p) {
+          setHand(ed, p.id, 'yes');
         }
       }
       rulesChanged(ed);
@@ -389,8 +382,13 @@ function previewCard(ed) {
     note: 'Someone the directory does not hold - a coach, a league office, a family friend - and their family, on the email list whatever the rules say.',
     onAdd: async people => {
       for (const {email, name} of people) {
-        if (email && !draft.additions.some(a => a.email === email)) {
-          draft.additions.push({email, name});
+        const p = email && person(email);
+        if (p) {
+          setHand(ed, p.id, 'yes');
+          continue;
+        }
+        if (email && !draft.guests.some(x => x.email === email)) {
+          draft.guests.push({email, name});
         }
       }
       rulesChanged(ed);
@@ -401,18 +399,18 @@ function previewCard(ed) {
     noun: ['member', 'members'],
     listWord: 'email list',
     adders: add,
-    phrase: personWords,
-    chip: m => (!isNew && !p.currentEmails.has(m.email) ? el('span', 'chip joins', 'Joins') : null),
+    phrase: ruleWords,
+    chip: m => (!isNew && m.person && !current.has(m.person) ? el('span', 'chip joins', 'Joins') : null),
     onExclude: m => {
-      draft.additions = draft.additions.filter(a => a.email !== m.email);
-      if (!draft.rules.some(r => r.kind === 'exclude' && r.search === m.email && !r.roles.length && !r.grades.length && !r.classrooms.length && !r.tags.length)) {
-        draft.rules.push({...newRule('exclude'), search: m.email});
-        ed.rules.render();
-      }
+      setHand(ed, m.person, 'excluded');
       rulesChanged(ed);
     },
     onRemove: m => {
-      draft.additions = draft.additions.filter(a => a.email !== m.email);
+      if (m.person) {
+        setHand(ed, m.person, '');
+      } else {
+        draft.guests = draft.guests.filter(x => x.email !== m.email);
+      }
       rulesChanged(ed);
     },
     gradeColors: state.model.gradeColors,
@@ -420,36 +418,56 @@ function previewCard(ed) {
   return ed.members.card;
 }
 
+function keptOffCard(ed) {
+  const card = el('div', 'card');
+  card.append(el('h2', '', 'Kept off'), el('div', 'hint', 'People kept off the email list whatever the rules say: those a manager excluded and those who unsubscribed.'));
+  const rows = el('div');
+  card.append(rows);
+  ed.keptOff = () => {
+    rows.replaceChildren();
+    const off = ed.draft.hand.filter(m => m.member === 'excluded');
+    card.hidden = !off.length;
+    for (const m of off) {
+      const shown = personView(m.person);
+      const back = el('button', 'link-button', 'Put back');
+      back.type = 'button';
+      back.addEventListener('click', () => {
+        setHand(ed, m.person, '');
+        rulesChanged(ed);
+      });
+      rows.append(personRow(shown, {className: 'manager-edit-row', lines: [shown.email || shown.words], after: [back]}));
+    }
+  };
+  ed.keptOff();
+  return card;
+}
+
 function renderChanges(ed, members, rules) {
   const {isNew} = ed;
-  const {summary, current, currentEmails} = ed.preview;
   const {changes} = ed.members;
-  const memberEmails = new Set(members.map(m => m.email));
-  const joining = isNew ? [] : members.filter(m => !currentEmails.has(m.email));
-  const leaving = current.filter(m => !memberEmails.has(m.email));
+  const current = new Set(ed.current.map(m => m.person));
+  const now = new Set(members.map(m => m.person).filter(Boolean));
+  const joining = isNew ? [] : members.filter(m => m.person && !current.has(m.person));
+  const leaving = ed.current.filter(m => !now.has(m.person));
   changes.replaceChildren();
   changes.hidden = isNew || (!joining.length && !leaving.length);
   if (!isNew) {
-    summary.textContent = joining.length || leaving.length ? `${joining.length} ${joining.length === 1 ? 'joins' : 'join'} · ${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}` : 'Nobody joins or leaves';
-    if (joining.length) {
-      const line = el('div', 'change-line');
-      line.append(el('span', 'chip joins', `${joining.length} ${joining.length === 1 ? 'joins' : 'join'}`), el('span', '', joining.map(m => m.name).join(', ')));
-      changes.append(line);
-    }
-    if (leaving.length) {
-      const line = el('div', 'change-line');
-      line.append(el('span', 'chip leaves', `${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}`), el('span', '', leaving.map(m => m.name).join(', ')));
-      changes.append(line);
+    ed.summary.textContent = joining.length || leaving.length ? `${joining.length} ${joining.length === 1 ? 'joins' : 'join'} · ${leaving.length} ${leaving.length === 1 ? 'leaves' : 'leave'}` : 'Nobody joins or leaves';
+    for (const [chip, word, people] of [['joins', joining.length === 1 ? 'joins' : 'join', joining], ['leaves', leaving.length === 1 ? 'leaves' : 'leave', leaving]]) {
+      if (people.length) {
+        const line = el('div', 'change-line');
+        line.append(el('span', 'chip ' + chip, `${people.length} ${word}`), el('span', '', people.map(m => m.name).join(', ')));
+        changes.append(line);
+      }
     }
   }
   ed.lastPreview = {members, rules, leaving};
-  const joins = m => !isNew && !currentEmails.has(m.email);
+  const joins = m => !isNew && m.person && !current.has(m.person);
   const ordered = [...members.filter(m => m.outside), ...members.filter(m => !m.outside)];
   ed.members.show({members: [...ordered.filter(joins), ...ordered.filter(m => !joins(m))], rules, leaving});
 }
 
 async function refreshPreview(ed) {
-  const {draft} = ed;
   const {status} = ed.members;
   if (ed.previewing) {
     ed.previewAgain = true;
@@ -459,13 +477,21 @@ async function refreshPreview(ed) {
   status.classList.remove('error');
   status.textContent = 'Working out the members…';
   try {
-    const rules = draft.rules.filter(ruleSaysSomething);
-    const preview = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
-    const members = preview.members.map(m => memberView(m, m.person ? {email: m.email, fullName: m.email} : null));
-    const counts = preview.ruleCounts;
+    const {rules, body} = draftBody(ed);
+    const preview = await api('POST', '/api/do/draft-members', body);
+    const members = preview.members.map(m => {
+      const shown = personView(m.person);
+      return {...shown, name: shown.email ? shown.name : m.name || shown.name, reasons: m.reasons};
+    });
+    for (const x of ed.draft.guests) {
+      members.push({email: x.email, name: x.name || x.email, words: 'Outside the directory', outside: true, reasons: [{added: true}]});
+    }
     renderChanges(ed, members, rules);
-    showRuleCounts(ed, rules, counts || []);
-    status.textContent = rules.length ? '' : 'Add a rule to pick people out.';
+    ed.ruleCounts.clear();
+    rules.forEach((rule, i) => ed.ruleCounts.set(rule, preview.ruleCounts[i]));
+    ed.rules.render();
+    ed.keptOff();
+    status.textContent = rules.length || members.length ? '' : 'Add a rule, or add people by hand.';
   } catch (err) {
     status.classList.add('error');
     status.textContent = err.message;
@@ -484,10 +510,7 @@ function rulesChanged(ed) {
 
 function loopRulesCard(ed) {
   const made = rulesCard({
-    hint: 'Someone is on the email list if any include rule matches them and no exclude rule does; a rule matches only if every choice in it holds.',
     list: () => ed.draft.rules,
-    empty: 'No rules yet: the email list has nobody on it.',
-    opened: ed.opened,
     onAdd: rule => ed.draft.rules.push(rule),
     onChange: () => rulesChanged(ed),
     onRemove: rule => {
@@ -495,17 +518,10 @@ function loopRulesCard(ed) {
       ed.rules.render();
       rulesChanged(ed);
     },
-    onDone: () => {},
     count: r => ed.ruleCounts.get(r),
   });
-  ed.rules = made.list;
+  ed.rules = made;
   return made.card;
-}
-
-function showRuleCounts(ed, rules, counts) {
-  ed.ruleCounts.clear();
-  rules.forEach((rule, i) => ed.ruleCounts.set(rule, counts[i]));
-  ed.rules.refreshCounts();
 }
 
 function editorActions(ed) {
@@ -523,43 +539,149 @@ function editorActions(ed) {
     }), status);
     return actions;
   }
-  const del = el('button', 'danger-button', 'Delete email list');
-  del.type = 'button';
-  del.addEventListener('click', () => deleteGroup(ed, status));
+  const close = el('button', 'danger-button', 'Close email list');
+  close.type = 'button';
+  close.addEventListener('click', () => closeGroup(ed, status));
   actions.append(button('Cancel', null, 'button button-secondary', () => {
     if (closeModal) {
       closeModal();
     } else {
       navigate(withTab(groupPath(g)));
     }
-  }), ed.preview.summary, status, del);
+  }), ed.summary, status, close);
   return actions;
 }
 
-const editable = ['aliases', 'title', 'description', 'prefix', 'visibility', 'posting', 'replying', 'rules', 'additions', 'excluded'];
+function visibleTo(visibility, id) {
+  return {hidden: '', members: id, everyone: state.model.everyone}[visibility];
+}
 
-function changed(ed) {
-  const {draft, original} = ed;
-  const now = {...draft, rules: draft.rules.filter(ruleSaysSomething)};
-  const out = {};
-  for (const key of editable) {
-    if (JSON.stringify(now[key]) !== JSON.stringify(original[key])) {
-      out[key] = now[key];
+function ruleRow(group, r, order) {
+  const row = {group, order};
+  if (r.exclude) {
+    row.exclude = true;
+  }
+  for (const column of ['target', 'replace_with', 'within', 'person', 'search']) {
+    if (r[column]) {
+      row[column] = r[column];
     }
   }
-  return out;
+  return row;
+}
+
+function ruleEdits(ed, group) {
+  const {draft, original, g} = ed;
+  const now = draft.rules.filter(ruleSaysSomething);
+  const strip = rules => JSON.stringify(rules.map(r => ({...r, id: undefined})));
+  if (!ed.isNew && strip(now) === strip(original.rules.filter(ruleSaysSomething))) {
+    return [];
+  }
+  const edits = ed.isNew ? [] : g.rules.map(r => ({delete: r.id}));
+  let order = '';
+  for (const r of now) {
+    order = keyBetween(order, null);
+    edits.push({insert: 'RULE', row: ruleRow(group, r, order)});
+  }
+  return edits;
+}
+
+function handEdits(ed, group) {
+  const before = new Map((ed.isNew ? [] : ed.g.hand).map(m => [m.person, m]));
+  const edits = [];
+  for (const m of ed.draft.hand) {
+    const was = before.get(m.person);
+    before.delete(m.person);
+    if (!was) {
+      edits.push({insert: 'MEMBER', row: {group, person: m.person, member: m.member}});
+      continue;
+    }
+    if (was.member !== m.member) {
+      edits.push({set: was.id, cells: {member: m.member}});
+    }
+  }
+  for (const was of before.values()) {
+    edits.push({delete: was.id});
+  }
+  return edits;
+}
+
+function aliasEdits(ed, group) {
+  const before = ed.isNew ? [] : ed.g.aliasRows;
+  const edits = before.filter(a => !ed.draft.aliases.includes(a.alias)).map(a => ({delete: a.id}));
+  for (const alias of ed.draft.aliases.filter(a => !before.some(b => b.alias === a))) {
+    edits.push({insert: 'ALIAS', row: {alias, target: group}});
+  }
+  return edits;
+}
+
+async function addGuests(ed, group) {
+  const edits = [];
+  for (const x of ed.draft.guests) {
+    const {result} = await api('POST', '/api/do/guest', {email: x.email, name: x.name});
+    edits.push({insert: 'MEMBER', row: {group, person: result[0], member: 'yes'}});
+  }
+  if (edits.length) {
+    await write(edits);
+  }
+}
+
+async function makeGroup(ed) {
+  const {draft} = ed;
+  if (!draft.slug || reserved.includes(draft.slug)) {
+    throw new Error('Give the email list an address.');
+  }
+  const viewer = state.model.viewer.id;
+  const list = {kind: 'group', mail: true, listed: true, slug: draft.slug, name: draft.title.trim(), status: 'open', members_visible_to: state.model.everyone, posting: draft.posting, replying: draft.replying, managed_by: '@managers', added_by: viewer};
+  if (draft.description.trim()) {
+    list.description = draft.description.trim();
+  }
+  if (draft.visibility === 'everyone') {
+    list.visible_to = state.model.everyone;
+  }
+  const edits = [
+    {insert: 'GROUP', as: 'managers', row: {kind: 'group', name: `${list.name} Managers`, status: 'open', added_by: viewer}},
+    {set: '@managers', cells: {managed_by: '@managers'}},
+    {insert: 'MEMBER', row: {group: '@managers', person: viewer, member: 'yes'}},
+    ...draft.managers.filter(id => id !== viewer).map(id => ({insert: 'MEMBER', row: {group: '@managers', person: id, member: 'yes'}})),
+    {insert: 'GROUP', as: 'list', row: list},
+  ];
+  if (draft.visibility === 'members') {
+    edits.push({set: '@list', cells: {visible_to: '@list'}});
+  }
+  edits.push(...ruleEdits(ed, '@list'), ...handEdits(ed, '@list'), ...aliasEdits(ed, '@list'));
+  const {result} = await write(edits);
+  await addGuests(ed, result[edits.findIndex(e => e.as === 'list')]);
+}
+
+async function changeGroup(ed) {
+  const {draft, original, g} = ed;
+  const cells = {};
+  for (const [key, column] of [['title', 'name'], ['description', 'description'], ['posting', 'posting'], ['replying', 'replying']]) {
+    if (draft[key] !== original[key]) {
+      cells[column] = draft[key].trim();
+    }
+  }
+  if (draft.visibility !== original.visibility) {
+    cells.visible_to = visibleTo(draft.visibility, g.id);
+  }
+  const edits = Object.keys(cells).length ? [{set: g.id, cells}] : [];
+  edits.push(...ruleEdits(ed, g.id), ...handEdits(ed, g.id), ...aliasEdits(ed, g.id));
+  if (edits.length) {
+    await write(edits);
+  }
+  await addGuests(ed, g.id);
 }
 
 async function saveGroup(ed, save, status) {
-  const {g, draft, isNew, closeModal} = ed;
+  const {draft, isNew, closeModal} = ed;
   status.classList.remove('error');
   status.textContent = 'Saving…';
   save.disabled = true;
   try {
     if (isNew) {
-      await create('email-lists', {name: draft.name, aliases: draft.aliases, title: draft.title, description: draft.description, prefix: draft.prefix, visibility: draft.visibility, posting: draft.posting, replying: draft.replying, managers: draft.managers, rules: draft.rules.filter(ruleSaysSomething), additions: draft.additions, excluded: draft.excluded});
+      await makeGroup(ed);
     } else {
-      await act('email-lists', g.id, 'edit', changed(ed));
+      await changeGroup(ed);
     }
     if (closeModal) {
       closeModal();
@@ -582,18 +704,18 @@ async function saveGroup(ed, save, status) {
   }
 }
 
-async function deleteGroup(ed, status) {
+async function closeGroup(ed, status) {
   const {g, closeModal} = ed;
-  if (!confirm(`Delete ${g.address}? Mail sent to it will bounce.`)) {
+  if (!confirm(`Close ${g.address}? Mail sent to it will go nowhere.`)) {
     return;
   }
   try {
-    await remove('email-lists', g.id);
+    await write([{set: g.id, cells: {status: 'closed'}}]);
     if (closeModal) {
       closeModal();
     }
-    await load();
-    toast('Email list deleted');
+    await loadModel();
+    toast('Email list closed');
     navigate('/');
   } catch (err) {
     status.classList.add('error');
@@ -647,21 +769,43 @@ function slug(text) {
 
 export function newGroupModal() {
   const from = new URLSearchParams(location.search).get('from');
-  const suggestion = state.model.suggestions.find(s => s.key === from);
+  const viewer = state.model.viewer.id;
+  const suggestion = state.model.suggestions.find(s => s.id === from);
   if (suggestion) {
-    const rule = {...newRule('include'), tags: [suggestion.key], tagLabels: [suggestion.name], family: ['Parents']};
-    editModal({name: slug(suggestion.name), title: suggestion.name, description: '', managers: suggestion.managers, rules: [rule], additions: []}, null, true);
+    const rules = suggestion.targets.flatMap(target => [{...newRule(), target}, {...newRule(), target, replace_with: 'parents'}]);
+    editModal({slug: slug(suggestion.name), title: suggestion.name, managerIds: [viewer, ...suggestion.managers.filter(id => id !== viewer)], rules}, null, true);
     return;
   }
-  editModal({name: '', title: '', description: '', managers: [{email: me().email, name: me().name}], rules: [], additions: []}, null, true);
+  editModal({managerIds: [viewer], rules: [newRule()]}, null, true);
 }
 
+function unsubscribeButton(g) {
+  const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
+    toggle.disabled = true;
+    try {
+      const viewer = state.model.viewer.id;
+      if (g.unsubscribed) {
+        await write([{delete: g.ownRow.id}]);
+      } else if (g.ownRow) {
+        await write([{set: g.ownRow.id, cells: {member: 'excluded'}}]);
+      } else {
+        await write([{insert: 'MEMBER', row: {group: g.id, person: viewer, member: 'excluded'}}]);
+      }
+      await load();
+      toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
+    } catch (err) {
+      toggle.disabled = false;
+      toast(err.message);
+    }
+  });
+  return toggle;
+}
 
 export function groupPage(g) {
   setTitle(g.title);
   const page = el('div', 'group-page');
   const editing = new URLSearchParams(location.search).get('edit') === '1';
-  const canEdit = g.can.edit;
+  const canEdit = g.run;
   if (editing && canEdit) {
     page.append(pageHead(g.title));
     page.append(editor(g, false));
@@ -671,81 +815,11 @@ export function groupPage(g) {
   if (canEdit) {
     actions.push(button('Edit', 'edit', 'button', () => editModal(g)));
   }
-  if (g.can.unsubscribe || g.can.resubscribe) {
-    const toggle = button(g.can.resubscribe ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
-      toggle.disabled = true;
-      try {
-        await act('email-lists', g.id, g.can.resubscribe ? 'resubscribe' : 'unsubscribe');
-        await load();
-        toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
-      } catch (err) {
-        toggle.disabled = false;
-        toast(err.message);
-      }
-    });
-    actions.push(toggle);
+  if (g.member || g.unsubscribed) {
+    actions.push(unsubscribeButton(g));
   }
-  const archive = button(g.archived ? 'Unarchive' : 'Archive', 'archive', 'button button-secondary', async () => {
-    archive.disabled = true;
-    try {
-      await act('email-lists', g.id, g.archived ? 'unarchive' : 'archive');
-      await load();
-      toast(g.archived ? 'Back among your email lists' : 'Archived');
-    } catch (err) {
-      archive.disabled = false;
-      toast(err.message);
-    }
-  });
-  archive.title = g.archived
-    ? 'Put the email list back in your normal view. It has been active all along.'
-    : 'Archiving removes from your normal view, but the list stays active.';
-  actions.push(archive);
   page.append(pageHead(g.title, actions));
-
-  const overview = el('div', 'group-overview');
-  const address = el('div', 'address-band');
-  const mail = el('a', 'address-mail');
-  mail.href = 'mailto:' + g.address;
-  mail.append(svg('mail'), el('span', '', g.address));
-  address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
-  if (g.aliases.length) {
-    const aliases = el('div', 'address-aliases');
-    const count = el('button', 'address-aliases-count', `${g.aliases.length} ${g.aliases.length === 1 ? 'alias' : 'aliases'}`);
-    count.type = 'button';
-    count.setAttribute('aria-label', 'Also reached as');
-    const tip = el('div', 'address-aliases-tip');
-    tip.append(el('div', 'address-aliases-head', 'Also reached as'));
-    for (const alias of [...g.aliases].sort()) {
-      tip.append(el('div', '', `${alias}@${state.model.domain}`));
-    }
-    aliases.append(count, tip);
-    address.append(aliases);
-  }
-  overview.append(address);
-  overview.append(el('div', 'subject-note', g.prefix ? `Every message goes out with “[${g.title}]” at the front of its subject.` : 'Subjects go out as written.'));
-  if (g.visibility === 'everyone') {
-    overview.append(el('div', 'subject-note', 'Visible to everyone in Loop; only its managers can change it.'));
-  }
-  if (g.visibility === 'members') {
-    overview.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
-  }
-  const audienceNotes = {everyone: 'Anyone', members: 'Only its managers and the people on it', managers: 'Only its managers'};
-  if (g.posting !== 'everyone') {
-    overview.append(el('div', 'subject-note', `${audienceNotes[g.posting]} can post new messages.`));
-  }
-  if (g.replying !== g.posting) {
-    overview.append(el('div', 'subject-note', `${audienceNotes[g.replying]} can reply to its messages.`));
-  }
-  if (g.archived) {
-    overview.append(el('div', 'subject-note', 'Archived for you: it sits under Archived in the rail and its Magic Tag is off your lists in Helios Who?, and it works as it always did.'));
-  }
-  if (g.member && g.unsubscribed) {
-    overview.append(el('div', 'subject-note', 'You are on this email list\'s excluded list and get no mail from it. Resubscribe to get its mail again.'));
-  }
-  if (g.description) {
-    overview.append(el('p', 'page-lead', g.description));
-  }
-  page.append(overview);
+  page.append(overview(g));
 
   const members = el('div');
   const grid = el('div', 'person-cards');
@@ -754,14 +828,15 @@ export function groupPage(g) {
   search.placeholder = 'Search the members…';
   search.setAttribute('aria-label', 'Search the members');
   const empty = el('div', 'rule-empty');
+  const rules = g.rules.map(ruleOf);
   const showMembers = () => {
     const q = search.value.trim().toLowerCase();
     grid.replaceChildren();
     const shown = g.members.filter(m => !q || m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q) || (m.context || '').toLowerCase().includes(q));
     for (const m of shown) {
-      grid.append(memberCard(canEdit ? m : {...m, reasons: []}, g.rules));
+      grid.append(memberCard(canEdit ? m : {...m, reasons: []}, rules));
     }
-    empty.textContent = g.members.length ? 'Nobody matches that.' : 'Nobody matches the rules yet.';
+    empty.textContent = g.members.length ? 'Nobody matches that.' : 'Nobody is on the email list yet.';
     empty.hidden = shown.length > 0;
   };
   search.addEventListener('input', showMembers);
@@ -770,29 +845,8 @@ export function groupPage(g) {
     members.append(search);
   }
   members.append(grid, empty);
-
   if (canEdit) {
-    const rules = el('div', 'card');
-    const rulesHead = el('div', 'card-head');
-    rulesHead.append(el('h2', '', 'How the members are chosen'));
-    rulesHead.append(iconButton('edit', 'Edit the rules', '', () => editModal(g, 'members')));
-    rules.append(rulesHead);
-    const lines = el('div', 'rule-lines');
-    for (const kind of ['include', 'exclude']) {
-      for (const r of g.rules.filter(x => x.kind === kind)) {
-        const line = el('div', 'rule-line');
-        const sign = el('span', 'rule-sign rule-sign-' + kind);
-        sign.append(svg(kind === 'include' ? 'plus' : 'minus'));
-        sign.title = kind === 'include' ? 'Included' : 'Excluded';
-        line.append(sign, el('span', 'rule-line-words', ruleWords(r)));
-        lines.append(line);
-      }
-    }
-    rules.append(lines);
-    if (g.excluded.length) {
-      rules.append(el('div', 'subject-note', `${g.excluded.length} ${g.excluded.length === 1 ? 'address is' : 'addresses are'} kept off the email list whatever the rules say.`));
-    }
-    members.append(rules);
+    members.append(rulesSummary(g, rules));
   }
 
   const managersPanel = el('div');
@@ -808,6 +862,76 @@ export function groupPage(g) {
   return page;
 }
 
+function overview(g) {
+  const wrap = el('div', 'group-overview');
+  const address = el('div', 'address-band');
+  const mail = el('a', 'address-mail');
+  mail.href = 'mailto:' + g.address;
+  mail.append(svg('mail'), el('span', '', g.address));
+  address.append(mail, iconButton('copy', 'Copy the address', '', () => copyText(g.address, 'Address copied')));
+  if (g.aliases.length) {
+    const aliases = el('div', 'address-aliases');
+    const count = el('button', 'address-aliases-count', `${g.aliases.length} ${g.aliases.length === 1 ? 'alias' : 'aliases'}`);
+    count.type = 'button';
+    count.setAttribute('aria-label', 'Also reached as');
+    const tip = el('div', 'address-aliases-tip');
+    tip.append(el('div', 'address-aliases-head', 'Also reached as'));
+    for (const alias of [...g.aliases].sort()) {
+      tip.append(el('div', '', `${alias}@${domain}`));
+    }
+    aliases.append(count, tip);
+    address.append(aliases);
+  }
+  wrap.append(address);
+  wrap.append(el('div', 'subject-note', `Every message goes out with “[${g.title}]” at the front of its subject.`));
+  if (g.visibility === 'everyone') {
+    wrap.append(el('div', 'subject-note', 'Visible to everyone in Loop; only its managers can change it.'));
+  }
+  if (g.visibility === 'members') {
+    wrap.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
+  }
+  const audienceNotes = {everyone: 'Anyone', members: 'Only its managers and the people on it', managers: 'Only its managers'};
+  if (g.posting !== 'everyone') {
+    wrap.append(el('div', 'subject-note', `${audienceNotes[g.posting]} can post new messages.`));
+  }
+  if (g.replying !== g.posting) {
+    wrap.append(el('div', 'subject-note', `${audienceNotes[g.replying]} can reply to its messages.`));
+  }
+  if (g.unsubscribed) {
+    wrap.append(el('div', 'subject-note', 'You unsubscribed and get no mail from it. Resubscribe to get its mail again.'));
+  }
+  if (g.description) {
+    wrap.append(el('p', 'page-lead', g.description));
+  }
+  return wrap;
+}
+
+function rulesSummary(g, rules) {
+  const card = el('div', 'card');
+  const head = el('div', 'card-head');
+  head.append(el('h2', '', 'How the members are chosen'));
+  head.append(iconButton('edit', 'Edit the rules', '', () => editModal(g, 'members')));
+  card.append(head);
+  const lines = el('div', 'rule-lines');
+  for (const r of rules) {
+    const line = el('div', 'rule-line');
+    const sign = el('span', 'rule-sign rule-sign-' + (r.exclude ? 'exclude' : 'include'));
+    sign.append(svg(r.exclude ? 'minus' : 'plus'));
+    sign.title = r.exclude ? 'Left out' : 'Included';
+    line.append(sign, el('span', 'rule-line-words', ruleWords(r)));
+    lines.append(line);
+  }
+  card.append(lines);
+  const added = g.hand.filter(m => m.member === 'yes').length;
+  const off = g.hand.filter(m => m.member === 'excluded').length;
+  if (added) {
+    card.append(el('div', 'subject-note', `${added} ${added === 1 ? 'person is' : 'people are'} on the email list by hand.`));
+  }
+  if (off) {
+    card.append(el('div', 'subject-note', `${off} ${off === 1 ? 'person is' : 'people are'} kept off the email list whatever the rules say.`));
+  }
+  return card;
+}
 
 let managersEditing = '';
 
@@ -815,20 +939,20 @@ function managersCard(g, canEdit) {
   const card = el('div', 'card managers-card');
   const head = el('div', 'card-head');
   head.append(el('h2', '', 'Managers'));
-  const editing = canEdit && managersEditing === g.name;
-  if (canEdit) {
+  const editing = canEdit && managersEditing === g.id && g.managedBy;
+  if (canEdit && g.managedBy) {
     head.append(iconButton(editing ? 'check' : 'edit', editing ? 'Done' : 'Edit managers', '', () => {
-      managersEditing = editing ? '' : g.name;
+      managersEditing = editing ? '' : g.id;
       card.replaceWith(managersCard(g, canEdit));
     }));
   }
   card.append(head);
   const status = el('div', 'save-status');
-  const save = async managers => {
+  const save = async edits => {
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await act('email-lists', g.id, 'edit', {managers});
+      await write(edits);
       await load();
       toast('Managers saved');
     } catch (err) {
@@ -854,16 +978,15 @@ function managersCard(g, canEdit) {
     }
     const words = el('div', 'manager-words');
     words.append(el('div', 'manager-name', m.name));
-    const subscribed = g.members.some(x => x.email === m.email);
+    const subscribed = g.members.some(x => x.person === m.person);
     const reach = el('div', 'manager-state' + (subscribed ? ' is-subscribed' : ''));
     reach.append(svg(subscribed ? 'check' : 'close'), el('span', '', subscribed ? 'Subscribed' : 'Not subscribed'));
-    reach.title = subscribed ? 'The rules place them on the email list, so its mail reaches them.' : 'No rule places them on the email list, so its mail does not reach them.';
+    reach.title = subscribed ? 'They are on the email list, so its mail reaches them.' : 'They are not on the email list, so its mail does not reach them.';
     words.append(reach);
     tile.append(face, words);
     if (editing) {
-      const remove = iconButton('close', `Remove ${m.name}`, 'manager-remove', () => {
-        save(g.managers.map(x => x.email).filter(email => email !== m.email));
-      });
+      const rowOf = g.managerRows.find(x => x.person === m.person);
+      const remove = iconButton('close', `Remove ${m.name}`, 'manager-remove', () => save([{delete: rowOf.id}]));
       remove.disabled = g.managers.length === 1;
       tile.append(remove);
     }
@@ -872,10 +995,11 @@ function managersCard(g, canEdit) {
   card.append(row);
   if (editing) {
     const mount = el('div');
-    const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !g.managers.some(m => m.email === emailOf(p)))});
+    const picker = createPersonPicker(mount, {people: () => state.people.filter(p => !g.managers.some(m => m.person === p.id))});
     const add = () => {
-      if (picker.value) {
-        save([...g.managers.map(m => m.email), picker.value]);
+      const p = picker.value && person(picker.value);
+      if (p) {
+        save([{insert: 'MEMBER', row: {group: g.managedBy, person: p.id, member: 'yes'}}]);
       }
     };
     mount.addEventListener('keydown', e => {
@@ -891,10 +1015,10 @@ function managersCard(g, canEdit) {
   return card;
 }
 
-function memberCard(m, rules, title) {
+function memberCard(m, rules) {
   return personCard(m, {
     onClick: () => openPersonCard(m),
-    title: title || reasonWords(m, rules, personWords),
+    title: reasonWords(m, rules, ruleWords),
     line: m.outside ? 'Guest' : m.context,
     gradeColors: state.model.gradeColors,
   });
@@ -938,9 +1062,19 @@ function withTab(path) {
 
 const stateWords = {delivered: 'Delivered', failed: 'Failed', pending: 'Pending'};
 
-const attemptWords = {delivered: 'Delivered', bounced: 'Bounced', delivery_delayed: 'Delayed', complained: 'Marked as spam'};
+const postWords = {received: 'Waiting to go out', dropped: 'Not sent', failed: 'Failed'};
 
-const stamp = when => when ? new Date(when).toLocaleString() : '';
+const when = stamp => stamp ? new Date(stamp.replace(' ', 'T')).toLocaleString() : '';
+
+function copyState(c) {
+  if (c.delivered) {
+    return {state: 'delivered', at: c.delivered};
+  }
+  if (c.failed) {
+    return {state: 'failed', at: c.failed};
+  }
+  return {state: 'pending', at: c.sent};
+}
 
 function historyTab(g) {
   const panel = el('div', 'card');
@@ -948,14 +1082,27 @@ function historyTab(g) {
   const list = el('div', 'message-list');
   panel.append(status, list);
   let loaded = false;
-  const load = async () => {
+  const fetchHistory = async () => {
     loaded = true;
+    const id = JSON.stringify(g.id);
     try {
-      const read = await query(`/api/email-lists/${encodeURIComponent(g.id)}?include=messages.copies.person,messages.sender`);
-      const messages = read.follow(read.get(read.result), 'messages').map(m => messageView(read, m));
-      status.textContent = messages.length ? '' : 'Nothing has been sent to the email list yet.';
-      for (const m of messages) {
-        list.append(messageRow(m));
+      const answers = await query({
+        posts: `(from MESSAGE (where (= group ${id}) (= kind "post") (= direction "in")) (order created desc))`,
+        outs: `(from MESSAGE (where (= group ${id}) (= kind "post") (= direction "out")) (columns parent))`,
+        copies: `(from RECIPIENT (where (in message (select MESSAGE.id (= group ${id}) (= kind "post") (= direction "out")))) (columns message person sent delivered failed detail))`,
+      });
+      const outOf = {};
+      for (const o of rowsOf(answers.outs, 'MESSAGE')) {
+        outOf[o.parent] = o.id;
+      }
+      const copiesOf = {};
+      for (const c of rowsOf(answers.copies, 'RECIPIENT')) {
+        (copiesOf[c.message] = copiesOf[c.message] || []).push({...c, ...copyState(c)});
+      }
+      const posts = rowsOf(answers.posts, 'MESSAGE');
+      status.textContent = posts.length ? '' : 'Nothing has been sent to the email list yet.';
+      for (const p of posts) {
+        list.append(messageRow(p, copiesOf[outOf[p.id]] || []));
       }
     } catch (err) {
       loaded = false;
@@ -965,72 +1112,51 @@ function historyTab(g) {
   };
   return {key: 'history', label: 'History', count: g.sent, panel, onShow: () => {
     if (!loaded) {
-      load();
+      fetchHistory();
     }
   }};
 }
 
-function messageView(read, m) {
-  const sender = read.follow(m, 'sender');
-  const copies = read.follow(m, 'copies').map(c => {
-    const p = read.follow(c, 'person');
-    return {...c, email: p ? p.email : c.email, name: p ? p.fullName : c.email};
-  });
-  return {...m, from: sender ? personView(sender) : {email: m.fromEmail, name: m.fromName}, copies};
-}
-
-function messageRow(m) {
+function messageRow(p, copies) {
   const row = el('div', 'message-row');
-  const known = person(m.from.email);
+  const from = p.from_person ? personView(p.from_person) : {email: p.from_address, name: p.from_address};
   const toggle = el('button', 'delivery-toggle');
   toggle.type = 'button';
-  for (const [key, n] of [['delivered', m.delivered], ['failed', m.failed], ['pending', m.pending]]) {
-    toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
+  if (p.state === 'sent') {
+    for (const key of ['delivered', 'failed', 'pending']) {
+      const n = copies.filter(c => c.state === key).length;
+      toggle.append(el('span', `delivery-count is-${key}${n ? '' : ' is-zero'}`, `${n} ${key}`));
+    }
+  } else {
+    toggle.append(el('span', 'delivery-count is-failed', postWords[p.state] || p.state));
   }
   toggle.append(svg('chevron-down'));
-  row.append(personRow(known ? {name: known.name_show, email: emailOf(known), photoUrl: photoOf(known)} : m.from, {
-    name: m.subject || '(no subject)',
-    open: Boolean(known),
-    lines: [[m.from.name, stamp(m.received)].filter(Boolean).join(' · ')],
+  row.append(personRow(from, {
+    name: p.subject || '(no subject)',
+    open: Boolean(from.email && person(from.email)),
+    lines: [[from.name, when(p.created)].filter(Boolean).join(' · ')],
     after: [toggle],
   }));
   const details = el('div', 'delivery-list');
   details.hidden = true;
-  for (const c of m.copies) {
-    details.append(copyRow(c));
+  if (p.detail) {
+    details.append(el('div', 'rule-empty', p.detail));
   }
-  if (!m.copies.length) {
-    details.append(el('div', 'rule-empty', 'No delivery records for this message.'));
+  for (const c of copies) {
+    const shown = personView(c.person);
+    details.append(personRow(shown, {
+      className: 'copy-row',
+      open: Boolean(shown.email && person(shown.email)),
+      lines: [[stateWords[c.state], when(c.at), c.state === 'failed' ? c.detail : '', shown.email].filter(Boolean).join(' · ')],
+    }));
+  }
+  if (!copies.length && !p.detail) {
+    details.append(el('div', 'rule-empty', 'No copies recorded for this message.'));
   }
   toggle.addEventListener('click', () => {
     details.hidden = !details.hidden;
     toggle.classList.toggle('open', !details.hidden);
   });
   row.append(details);
-  return row;
-}
-
-function copyRow(c) {
-  const known = person(c.email);
-  const words = [stateWords[c.state], stamp(c.when)].filter(Boolean).join(' · ');
-  const row = personRow({email: c.email, name: c.name || c.email, photoUrl: known ? photoOf(known) : ''}, {
-    className: 'copy-row',
-    open: Boolean(known),
-    lines: [[words, c.email].filter(Boolean).join(' · ')],
-  });
-  const attempts = c.attempts.filter(a => a.event !== 'sent');
-  if (!attempts.some(a => a.event !== 'delivered')) {
-    return row;
-  }
-  const list = el('div', 'attempt-list');
-  for (const a of attempts) {
-    const line = el('div', 'attempt');
-    line.append(el('span', 'attempt-event', attemptWords[a.event] || a.event), el('span', 'attempt-when', stamp(a.when)));
-    if (a.detail) {
-      line.append(el('span', 'attempt-detail', a.detail));
-    }
-    list.append(line);
-  }
-  row.querySelector('.person-row-words').append(list);
   return row;
 }

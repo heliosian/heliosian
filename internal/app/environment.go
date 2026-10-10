@@ -68,8 +68,8 @@ func newMailer(from string) *mail.Mailgun {
 	return mail.NewMailgun(mailgunKey(), from)
 }
 
-func loopMail(sessionKey string) db.LoopMail {
-	return db.LoopMail{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com"}
+func listMail(sessionKey string) db.ListMailConfig {
+	return db.ListMailConfig{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com"}
 }
 
 func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {

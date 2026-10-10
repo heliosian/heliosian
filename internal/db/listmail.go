@@ -28,7 +28,7 @@ import (
 
 const (
 	LoopDomain       = "loop.heliosian.com"
-	loopSystem       = "loop"
+	mailerSystem     = "mailer"
 	unsubscribeLocal = "unsubscribe"
 	bounceFrom       = "HCA-Team <team@" + LoopDomain + ">"
 	mailType         = "message/rfc822"
@@ -39,18 +39,18 @@ const (
 	maxEventBody     = 1 << 20
 )
 
-type LoopMail struct {
+type ListMailConfig struct {
 	Sender     *mail.Mailgun
 	SigningKey string
 	Key        []byte
 	Base       string
 }
 
-type Loop struct {
+type ListMailer struct {
 	s         *Store
 	queue     *store.Queue
 	pics      *Pictures
-	mail      LoopMail
+	mail      ListMailConfig
 	receiving sync.Mutex
 	mu        sync.Mutex
 	queued    map[string]bool
@@ -59,8 +59,8 @@ type Loop struct {
 	flushing  bool
 }
 
-func RegisterLoop(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, lm LoopMail) *Loop {
-	l := &Loop{s: s, queue: queue, pics: pics, mail: lm, queued: map[string]bool{}, work: make(chan string, 256)}
+func RegisterListMail(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, lm ListMailConfig) *ListMailer {
+	l := &ListMailer{s: s, queue: queue, pics: pics, mail: lm, queued: map[string]bool{}, work: make(chan string, 256)}
 	mux.HandleFunc("POST /hooks/mail/mime", l.inbound)
 	mux.HandleFunc("POST /hooks/events", l.events)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", l.unsubscribePage)
@@ -69,7 +69,7 @@ func RegisterLoop(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictur
 	return l
 }
 
-func (l *Loop) Start() {
+func (l *ListMailer) Start() {
 	resumed := 0
 	for _, post := range l.s.Model().Table("MESSAGE").All() {
 		if receivedPost(post) && post["state"] == postReceived {
@@ -77,18 +77,18 @@ func (l *Loop) Start() {
 			resumed++
 		}
 	}
-	slog.Info("loop: resumed posts not yet sent on", "posts", resumed)
+	slog.Info("list mail:resumed posts not yet sent on", "posts", resumed)
 }
 
-func (l *Loop) ready() bool {
+func (l *ListMailer) ready() bool {
 	return l.mail.SigningKey != ""
 }
 
-func (l *Loop) write(ctx context.Context, edits ...Edit) ([]string, error) {
-	return Write(ctx, l.s, l.queue, l.pics, access.System(loopSystem), Env{System: loopSystem, Now: time.Now()}, Batch{Batch: edits})
+func (l *ListMailer) write(ctx context.Context, edits ...Edit) ([]string, error) {
+	return Write(ctx, l.s, l.queue, l.pics, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits})
 }
 
-func (l *Loop) enqueue(id string) {
+func (l *ListMailer) enqueue(id string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.queued[id] {
@@ -98,7 +98,7 @@ func (l *Loop) enqueue(id string) {
 	l.work <- id
 }
 
-func (l *Loop) run() {
+func (l *ListMailer) run() {
 	for id := range l.work {
 		l.forward(context.Background(), id)
 		l.mu.Lock()
@@ -208,7 +208,7 @@ func (m *Model) postOf(group, content string) bool {
 	})
 }
 
-func (l *Loop) inbound(w http.ResponseWriter, r *http.Request) {
+func (l *ListMailer) inbound(w http.ResponseWriter, r *http.Request) {
 	if !l.ready() {
 		http.Error(w, "mail is not set up", http.StatusNotFound)
 		return
@@ -219,7 +219,7 @@ func (l *Loop) inbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyNotification(l.mail.SigningKey, fields, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "loop: inbound call refused", "error", err)
+		slog.WarnContext(r.Context(), "list mail:inbound call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
@@ -236,7 +236,7 @@ func (l *Loop) inbound(w http.ResponseWriter, r *http.Request) {
 		}
 		g := m.mailList(local)
 		if g == nil {
-			slog.WarnContext(r.Context(), "loop: mail for no list", "local", local)
+			slog.WarnContext(r.Context(), "list mail:mail for no list", "local", local)
 			continue
 		}
 		if !slices.Contains(lists, g["id"]) {
@@ -245,19 +245,19 @@ func (l *Loop) inbound(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := []byte(fields["body-mime"])
 	if len(raw) == 0 {
-		slog.WarnContext(r.Context(), "loop: inbound call carries no body-mime", "recipient", fields["recipient"])
+		slog.WarnContext(r.Context(), "list mail:inbound call carries no body-mime", "recipient", fields["recipient"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := l.received(r.Context(), raw, lists); err != nil {
-		slog.ErrorContext(r.Context(), "loop: post not recorded", "recipient", fields["recipient"], "error", err)
+		slog.ErrorContext(r.Context(), "list mail:post not recorded", "recipient", fields["recipient"], "error", err)
 		http.Error(w, "not recorded", http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func (l *Loop) received(ctx context.Context, raw []byte, lists []string) error {
+func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) error {
 	l.receiving.Lock()
 	defer l.receiving.Unlock()
 	sum := sha256.Sum256(raw)
@@ -307,13 +307,13 @@ func (l *Loop) received(ctx context.Context, raw []byte, lists []string) error {
 		return fmt.Errorf("record the post: %w", err)
 	}
 	for _, id := range ids[len(ids)-len(fresh):] {
-		slog.InfoContext(ctx, "loop: post received", "message", id, "hash", hash)
+		slog.InfoContext(ctx, "list mail:post received", "message", id, "hash", hash)
 		l.enqueue(id)
 	}
 	return nil
 }
 
-func (l *Loop) forward(ctx context.Context, id string) {
+func (l *ListMailer) forward(ctx context.Context, id string) {
 	m := l.s.Model()
 	post, ok := m.Table("MESSAGE").Get(id)
 	if !ok || !receivedPost(post) || post["state"] != postReceived {
@@ -323,11 +323,11 @@ func (l *Loop) forward(ctx context.Context, id string) {
 	finish := func(state, detail string, edits ...Edit) {
 		edits = append(edits, Edit{Set: id, Cells: map[string]any{"state": state, "detail": detail}})
 		if _, err := l.write(ctx, edits...); err != nil {
-			log.Error("loop: post not recorded", "state", state, "error", err)
+			log.Error("list mail:post not recorded", "state", state, "error", err)
 		}
 	}
 	fail := func(step string, err error) {
-		log.Error("loop: forward failed", "step", step, "error", err)
+		log.Error("list mail:forward failed", "step", step, "error", err)
 		finish(postFailed, step+": "+err.Error())
 	}
 	g, ok := m.Table("GROUP").Get(post["group"])
@@ -351,12 +351,12 @@ func (l *Loop) forward(ctx context.Context, id string) {
 	}
 	lines, body := mail.SplitMessage(raw)
 	if reason := held(lines); reason != "" {
-		log.Info("loop: post held", "reason", reason)
+		log.Info("list mail:post held", "reason", reason)
 		finish(postDropped, reason)
 		return
 	}
 	if reason := mail.Authenticated(lines); reason != "" {
-		log.Info("loop: post not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
+		log.Info("list mail:post not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
 		finish(postDropped, reason)
 		return
 	}
@@ -367,9 +367,9 @@ func (l *Loop) forward(ctx context.Context, id string) {
 		if reply {
 			audience, verb = g["replying"], "reply"
 		}
-		log.Info("loop: post refused", "from", sender, "reply", reply, "audience", audience)
+		log.Info("list mail:post refused", "from", sender, "reply", reply, "audience", audience)
 		if err := l.bounce(ctx, g, lines, audience, verb); err != nil {
-			log.Error("loop: bounce failed", "error", err)
+			log.Error("list mail:bounce failed", "error", err)
 		}
 		finish(postDropped, "only the email list's "+audience+" may "+verb)
 		return
@@ -402,14 +402,14 @@ func (l *Loop) forward(ctx context.Context, id string) {
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + LoopDomain + "?subject=" + tok + ">, <" + l.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := l.mail.Sender.SendRaw(ctx, listAddress(g), []string{address}, msg); err != nil {
-			log.Error("loop: send failed", "to", address, "error", err)
+			log.Error("list mail:send failed", "to", address, "error", err)
 			failures = append(failures, address+": "+err.Error())
 			continue
 		}
 		at := stamp(time.Now())
 		copies = append(copies, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": ids[0], "person": member["person"], "created": at, "sent": at}})
 	}
-	log.Info("loop: forwarded", "members", len(members), "sent", len(copies), "failed", len(failures))
+	log.Info("list mail:forwarded", "members", len(members), "sent", len(copies), "failed", len(failures))
 	state := postSent
 	if len(copies) == 0 && len(members) > 0 {
 		state = postFailed
@@ -419,7 +419,7 @@ func (l *Loop) forward(ctx context.Context, id string) {
 
 var posters = map[string]string{"members": "the people on it and its managers", "managers": "its managers"}
 
-func (l *Loop) bounce(ctx context.Context, g store.Row, lines []mail.HeaderLine, audience, verb string) error {
+func (l *ListMailer) bounce(ctx context.Context, g store.Row, lines []mail.HeaderLine, audience, verb string) error {
 	to := mail.AddressOf(mail.Header(lines, "from"))
 	subject := decodeHeader(mail.Header(lines, "subject"))
 	text := fmt.Sprintf("Your message to %s, “%s”, was not sent to the email list: only %s can %s to it.", listAddress(g), subject, posters[audience], verb)
@@ -432,7 +432,7 @@ func (l *Loop) bounce(ctx context.Context, g store.Row, lines []mail.HeaderLine,
 	return l.mail.Sender.SendRaw(ctx, bounceFrom, []string{to}, []byte(raw))
 }
 
-func (l *Loop) events(w http.ResponseWriter, r *http.Request) {
+func (l *ListMailer) events(w http.ResponseWriter, r *http.Request) {
 	if !l.ready() {
 		http.Error(w, "mail is not set up", http.StatusNotFound)
 		return
@@ -471,7 +471,7 @@ func (l *Loop) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyMailgun(l.mail.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "loop: event call refused", "error", err)
+		slog.WarnContext(r.Context(), "list mail:event call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
@@ -490,12 +490,12 @@ func (l *Loop) events(w http.ResponseWriter, r *http.Request) {
 	case d.Event == "failed" && d.Severity == "permanent":
 		l.delivery(d.Message.Headers.From, d.Message.Headers.MessageID, d.Recipient, map[string]any{"failed": when, "detail": detail})
 	case d.Event == "failed", d.Event == "complained":
-		slog.WarnContext(r.Context(), "loop: delivery trouble", "event", d.Event, "from", d.Message.Headers.From, "to", d.Recipient, "detail", detail)
+		slog.WarnContext(r.Context(), "list mail:delivery trouble", "event", d.Event, "from", d.Message.Headers.From, "to", d.Recipient, "detail", detail)
 	}
 	w.WriteHeader(http.StatusOK)
 }
 
-func (l *Loop) delivery(from, messageID, recipient string, set map[string]any) {
+func (l *ListMailer) delivery(from, messageID, recipient string, set map[string]any) {
 	m := l.s.Model()
 	local, domain, _ := strings.Cut(strings.ToLower(mail.AddressOf(from)), "@")
 	key := messageKey(messageID)
@@ -520,7 +520,7 @@ func (l *Loop) delivery(from, messageID, recipient string, set map[string]any) {
 	}
 }
 
-func (l *Loop) record(e Edit) {
+func (l *ListMailer) record(e Edit) {
 	l.mu.Lock()
 	l.pending = append(l.pending, e)
 	start := !l.flushing
@@ -531,7 +531,7 @@ func (l *Loop) record(e Edit) {
 	}
 }
 
-func (l *Loop) flush() {
+func (l *ListMailer) flush() {
 	for {
 		l.mu.Lock()
 		edits := l.pending
@@ -543,7 +543,7 @@ func (l *Loop) flush() {
 		}
 		l.mu.Unlock()
 		if _, err := l.write(context.Background(), edits...); err != nil {
-			slog.Error("loop: deliveries not recorded", "edits", len(edits), "error", err)
+			slog.Error("list mail:deliveries not recorded", "edits", len(edits), "error", err)
 		}
 	}
 }
@@ -625,7 +625,7 @@ func (m *Model) listNamed(slug string) store.Row {
 	return nil
 }
 
-func (l *Loop) tokenList(w http.ResponseWriter, r *http.Request) (store.Row, string, bool) {
+func (l *ListMailer) tokenList(w http.ResponseWriter, r *http.Request) (store.Row, string, bool) {
 	name, email, ok := parseToken(l.mail.Key, r.PathValue("token"))
 	if !ok {
 		http.Error(w, "this link is not one Helios Loop made", http.StatusNotFound)
@@ -644,7 +644,7 @@ func (m *Model) unsubscribed(group, person string) bool {
 	return ok && memberAs(row) == "excluded"
 }
 
-func (l *Loop) unsubscribePage(w http.ResponseWriter, r *http.Request) {
+func (l *ListMailer) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := l.tokenList(w, r)
 	if !ok {
 		return
@@ -659,7 +659,7 @@ func (l *Loop) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	writePage(w, g["name"], "Unsubscribe", body)
 }
 
-func (l *Loop) unsubscribeAddress(ctx context.Context, g store.Row, email, how string) error {
+func (l *ListMailer) unsubscribeAddress(ctx context.Context, g store.Row, email, how string) error {
 	m := l.s.Model()
 	person := m.personAt(email)
 	if person == "" {
@@ -679,11 +679,11 @@ func (l *Loop) unsubscribeAddress(ctx context.Context, g store.Row, email, how s
 	if _, err := l.write(ctx, edit); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "loop: unsubscribed", "group", g["slug"], "person", person, "how", how)
+	slog.InfoContext(ctx, "list mail:unsubscribed", "group", g["slug"], "person", person, "how", how)
 	return nil
 }
 
-func (l *Loop) unsubscribe(w http.ResponseWriter, r *http.Request) {
+func (l *ListMailer) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	g, email, ok := l.tokenList(w, r)
 	if !ok {
 		return
@@ -708,7 +708,7 @@ func (l *Loop) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	writePage(w, g["name"], "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
 }
 
-func (l *Loop) unsubscribeByMail(ctx context.Context, subject, sender string) {
+func (l *ListMailer) unsubscribeByMail(ctx context.Context, subject, sender string) {
 	tok := strings.TrimSpace(subject)
 	for _, prefix := range []string{"re:", "fwd:", "fw:"} {
 		if strings.HasPrefix(strings.ToLower(tok), prefix) {
@@ -717,15 +717,15 @@ func (l *Loop) unsubscribeByMail(ctx context.Context, subject, sender string) {
 	}
 	name, email, ok := parseToken(l.mail.Key, tok)
 	if !ok {
-		slog.WarnContext(ctx, "loop: unsubscribe mail with no token", "sender", sender, "subject", subject)
+		slog.WarnContext(ctx, "list mail:unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
 	g := l.s.Model().listNamed(name)
 	if g == nil {
-		slog.WarnContext(ctx, "loop: unsubscribe mail for no list", "group", name, "email", email)
+		slog.WarnContext(ctx, "list mail:unsubscribe mail for no list", "group", name, "email", email)
 		return
 	}
 	if err := l.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
-		slog.ErrorContext(ctx, "loop: unsubscribe by mail", "group", name, "email", email, "error", err)
+		slog.ErrorContext(ctx, "list mail:unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

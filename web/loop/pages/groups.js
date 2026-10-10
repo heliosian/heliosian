@@ -1,4 +1,4 @@
-import {state, managed, matches, groupPath} from '../state.js';
+import {state, matches, groupPath, personView, domain} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, svg, link, button, iconButton, copyText} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -30,13 +30,13 @@ function groupCard(g) {
     subscribed.append(svg('check'), el('span', '', 'Subscribed'));
     meta.append(subscribed);
   }
-  if (g.mine) {
+  if (g.run) {
     const star = el('span', 'group-manage');
     star.title = 'You manage this email list';
     star.append(svg('star'));
     card.append(star);
   }
-  if (managed(g) && g.visibility !== 'hidden') {
+  if (g.run && g.visibility !== 'hidden') {
     meta.append(el('span', 'chip', visibilityWords[g.visibility]));
   }
   card.append(meta);
@@ -44,9 +44,9 @@ function groupCard(g) {
 }
 
 const suggestionWords = {
-  party: 'Everyone holding tickets, and the parents of any student who does, as the party\'s Magic Tag lists them now.',
-  activity: 'Everyone on the volunteer list, and the parents of any student on it, as the activity\'s Magic Tag lists them now.',
-  tag: 'Everyone under this tag of yours in Helios Who?, and the parents of any student among them, as the tag stands now.',
+  party: 'Everyone holding tickets, and the parents of any student who does.',
+  activity: 'Everyone signed up, and the parents of any student who is.',
+  tag: 'Everyone under this tag of yours in Helios Who?, and the parents of any student among them.',
 };
 
 const suggestionApp = {party: 'celebrate', activity: 'team', tag: 'who'};
@@ -65,8 +65,10 @@ function suggestionCard(s) {
   head.append(icon, words);
   card.append(head);
   const meta = el('div', 'group-meta');
-  meta.append(button('Make this email list', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.key))));
-  meta.append(el('span', '', 'Managed by ' + s.managers.map(m => m.name).join(', ')));
+  meta.append(button('Make this email list', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.id))));
+  if (s.managers.length) {
+    meta.append(el('span', '', 'Managed by ' + s.managers.map(id => personView(id).name).join(', ')));
+  }
   card.append(meta);
   return card;
 }
@@ -83,19 +85,19 @@ export function groupsPage() {
   setTitle('My Email Lists');
   const page = el('div', 'list-page');
   page.append(pageHead('My Email Lists', [button('New Email List', 'plus', 'button', () => navigate('/new'))]));
-  page.append(el('p', 'page-lead', 'Each email list is an address at ' + state.model.domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
+  page.append(el('p', 'page-lead', 'Each email list is an address at ' + domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
   const suggested = el('div');
   suggested.append(el('h2', 'section-title', 'Suggested email lists'));
-  suggested.append(el('p', 'page-lead', 'A party you host, an activity you co-chair or a tag of yours in Helios Who? with no email list yet. Make one and it starts with the right rule and managers; change anything before you save.'));
+  suggested.append(el('p', 'page-lead', 'A party you host, an activity you run or a tag of yours in Helios Who? that no email list names yet. Make one and it starts with the right rules and managers; change anything before you save.'));
   const suggestedList = el('div', 'group-list');
   suggested.append(suggestedList);
   const render = query => {
     list.replaceChildren();
     suggestedList.replaceChildren();
-    const mine = state.model.groups.filter(g => (g.mine || g.member) && !g.archived && matches(g, query));
-    const suggestions = state.model.suggestions.filter(s => s.mine && (!query || s.name.toLowerCase().includes(query)));
+    const mine = state.model.groups.filter(g => (g.run || g.member) && matches(g, query));
+    const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
     if (!mine.length) {
       empty.textContent = query ? 'No email list of yours matches that.' : 'You are on no email lists and manage none yet. Make one, and its address is yours to hand out.';
       list.append(empty);

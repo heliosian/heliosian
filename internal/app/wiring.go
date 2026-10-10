@@ -69,7 +69,7 @@ type Config struct {
 	FeedbackFiler *feedback.GitHubApp
 	FeedbackBase  string
 	Describer     *describe.Describer
-	Loop          db.LoopMail
+	ListMail      db.ListMailConfig
 	Asker         *ask.Claude
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
@@ -209,12 +209,11 @@ func NewCore(cfg Config) *Core {
 	})
 	loopMux := http.NewServeMux()
 	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
-		Store:     models,
-		Media:     cfg.Store,
-		Describer: cfg.Describer,
-		About:     loopAbout,
+		Store: models,
+		Media: cfg.Store,
+		About: loopAbout,
 	})
-	loop := db.RegisterLoop(loopMux, dataStore, queue, pictures, cfg.Loop)
+	listMail := db.RegisterListMail(loopMux, dataStore, queue, pictures, cfg.ListMail)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	for _, page := range []string{"resources", "query", "search", "queues", "policies", "erd"} {
@@ -286,6 +285,7 @@ func NewCore(cfg Config) *Core {
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
+	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
@@ -296,7 +296,7 @@ func NewCore(cfg Config) *Core {
 	go func() {
 		<-queue.Refreshed()
 		pictures.Start()
-		loop.Start()
+		listMail.Start()
 	}()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
@@ -387,7 +387,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		BirthdayBase:  birthdayBase,
 		FeedbackFiler: github,
 		FeedbackBase:  feedbackBase,
-		Loop:          loopMail(sessionKey),
+		ListMail:      listMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
 		Digest:        digest.New(anthropicKey),
 		Composer:      db.NewComposer(anthropicKey, spend),

@@ -115,7 +115,7 @@ func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	const hummingbirdsParents = "grp00000000030"
 	s, queue := sampleWithQueue(t)
 	write := func(edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.System("loop"), Env{System: "loop", Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, newPictures(s, queue), access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: edits})
 	}
 	ids, err := write(
 		Edit{Insert: "MESSAGE", As: "in", Row: map[string]any{"direction": "in", "kind": "post", "group": hummingbirdsParents, "subject": "Field trip", "created": "2026-10-09 09:00", "state": "received"}},

@@ -154,7 +154,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
-		Loop:          db.LoopMail{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},
+		ListMail:      db.ListMailConfig{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},
 		Asker:         ask.NewClaude("sample"),
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},

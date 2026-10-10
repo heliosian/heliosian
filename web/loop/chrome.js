@@ -12,17 +12,8 @@ function openGroup() {
   return state.model ? state.model.groups.find(g => path === decodeURIComponent(groupPath(g))) : null;
 }
 
-function yours(g) {
-  return g.mine || g.member;
-}
-
 function active(href) {
-  const path = location.pathname;
-  if (href === '/') {
-    const g = openGroup();
-    return path === '/' || (path.startsWith('/groups/') && !(g && (g.archived || !yours(g))));
-  }
-  return path === href;
+  return location.pathname === href;
 }
 
 function navLink(item) {
@@ -36,7 +27,7 @@ function groupRows(groups) {
   for (const g of groups) {
     const row = link(groupPath(g), 'nav-sub-item' + (decodeURIComponent(location.pathname) === decodeURIComponent(groupPath(g)) ? ' is-on' : ''));
     row.append(el('span', 'nav-sub-name', g.title || g.name));
-    if (g.mine) {
+    if (g.run) {
       const icon = svg('star');
       icon.classList.add('nav-sub-manage');
       icon.setAttribute('aria-label', 'You manage it');
@@ -60,22 +51,20 @@ function fillNav(nav) {
     }
     nav.append(navLink(item));
     const groups = state.model ? state.model.groups : [];
-    const current = groups.filter(g => yours(g) && !g.archived);
-    if (current.length) {
-      nav.append(groupRows(current));
-    }
-    section(nav, 'loop.otherOpen', 'mail', 'Other Email Lists', groups.filter(g => !yours(g) && !g.archived && g.visibility === 'everyone'));
-    section(nav, 'loop.archivedOpen', 'archive', 'Archived', groups.filter(g => g.archived));
+    section(nav, 'loop.runningOpen', 'star', 'Running', groups.filter(g => g.run && g.member), true);
+    section(nav, 'loop.joinedOpen', 'check', 'Joined', groups.filter(g => !g.run && g.member), true);
+    section(nav, 'loop.managingOpen', 'edit', 'Managing', groups.filter(g => g.run && !g.member), false);
+    section(nav, 'loop.otherOpen', 'mail', 'Other Email Lists', groups.filter(g => !g.run && !g.member), false);
   }
 }
 
-function section(nav, key, icon, title, groups) {
+function section(nav, key, icon, title, groups, openFirst) {
   if (!groups.length) {
     return;
   }
   const g = openGroup();
   const here = Boolean(g && groups.includes(g));
-  const open = here || sectionOpen(key);
+  const open = here || sectionOpen(key, openFirst);
   const heading = el('button', 'nav-heading-toggle' + (open ? ' open' : '') + (here ? ' is-active' : ''));
   heading.type = 'button';
   heading.setAttribute('aria-expanded', String(open));
@@ -93,8 +82,9 @@ function section(nav, key, icon, title, groups) {
   }
 }
 
-function sectionOpen(key) {
-  return localStorage.getItem(key) === '1';
+function sectionOpen(key, openFirst) {
+  const kept = localStorage.getItem(key);
+  return kept === null ? openFirst : kept === '1';
 }
 
 function setSectionOpen(key, open) {

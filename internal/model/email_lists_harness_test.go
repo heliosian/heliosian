@@ -8,9 +8,7 @@ import (
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
-	"heliosian/internal/claude"
 	"heliosian/internal/data"
-	"heliosian/internal/describe"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
@@ -53,9 +51,8 @@ func loopHarness(t *testing.T, team store.Tables) *harness {
 	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, store: s, sources: sources, queue: queue}
 	typedRegistry(s, queue, DirectoryResources(), EmailListResources(s, filer), MagicTagResources()).Register(h.mux)
 	RegisterEmailLists(h.mux, EmailListsDeps{
-		Store:     s,
-		Describer: describe.New("test", claude.NewLimiter()),
-		About:     EmailListsAbout(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
+		Store: s,
+		About: EmailListsAbout(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
 	})
 	return h
 }

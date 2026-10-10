@@ -5,7 +5,7 @@ import {startApp, load, notFound} from '/router.js';
 import {initModal} from '/modal.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
-import {adminPage} from './pages/admin.js';
+import {appOrigin} from '/appswitch.js';
 
 const routes = {
   '': () => groupsPage(),
@@ -17,7 +17,10 @@ const routes = {
     const g = group(parts[1] || '');
     return g ? groupPage(g) : notFound(parts[1] || 'That email list');
   },
-  admin: () => adminPage(),
+  admin: () => {
+    location.replace(appOrigin('who') + '/groups/loop-admins');
+    return groupsPage();
+  },
 };
 
 initChrome();
