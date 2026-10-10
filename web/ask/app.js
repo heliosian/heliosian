@@ -112,6 +112,7 @@ function addTurn(role) {
 function talk(row) {
   const face = row.querySelector('.turn-bot');
   face.classList.add('is-thinking');
+  row.classList.add('is-working');
   let frame = 0;
   const timer = setInterval(() => {
     frame = 1 - frame;
@@ -120,6 +121,7 @@ function talk(row) {
   return () => {
     clearInterval(timer);
     face.classList.remove('is-thinking');
+    row.classList.remove('is-working');
     face.src = botFaces[0];
   };
 }
@@ -156,20 +158,12 @@ function showSegments(row, segments, streaming, cards) {
   });
 }
 
-const spinFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-
 function spinner() {
-  const node = el('span', 'spinner', spinFrames[0]);
+  const node = el('span', 'spinner');
+  node.setAttribute('role', 'status');
   node.setAttribute('aria-label', 'Still answering');
-  let frame = 0;
-  const timer = setInterval(() => {
-    frame = (frame + 1) % spinFrames.length;
-    node.textContent = spinFrames[frame];
-  }, 120);
-  return {node, stop: () => {
-    clearInterval(timer);
-    node.remove();
-  }};
+  node.append(el('span'), el('span'), el('span'));
+  return {node, stop: () => node.remove()};
 }
 
 const spinnerHosts = new Set(['DIV', 'P', 'UL', 'OL', 'LI', 'BLOCKQUOTE', 'H3']);
