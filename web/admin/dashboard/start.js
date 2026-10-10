@@ -50,8 +50,9 @@ function stat(label, value, className) {
   return node;
 }
 
-function sparkline(samples, pick, format, label) {
+function sparkline(samples, pick, format, label, from, to) {
   const w = 280, h = 44;
+  samples = samples.filter(s => new Date(s.time) >= from);
   const box = el('div', 'spark');
   const head = el('div', 'spark-head');
   const name = el('span', 'label', label);
@@ -65,8 +66,9 @@ function sparkline(samples, pick, format, label) {
     return box;
   }
   const values = samples.map(pick);
+  const times = samples.map(s => new Date(s.time).getTime());
   const top = Math.max(...values) || 1;
-  const x = i => i / (values.length - 1) * w;
+  const x = i => (times[i] - from) / (to - from) * w;
   const y = v => h - 2 - v / top * (h - 4);
   const line = document.createElementNS(svgNS, 'polyline');
   line.setAttribute('points', values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' '));
@@ -78,7 +80,13 @@ function sparkline(samples, pick, format, label) {
   chart.append(line, cursor);
   chart.addEventListener('mousemove', e => {
     const rect = chart.getBoundingClientRect();
-    const i = Math.round((e.clientX - rect.left) / rect.width * (values.length - 1));
+    const at = from.getTime() + (e.clientX - rect.left) / rect.width * (to - from);
+    let i = 0;
+    for (let j = 1; j < times.length; j++) {
+      if (Math.abs(times[j] - at) < Math.abs(times[i] - at)) {
+        i = j;
+      }
+    }
     cursor.setAttribute('x1', String(x(i)));
     cursor.setAttribute('x2', String(x(i)));
     cursor.style.display = '';
@@ -118,10 +126,12 @@ function showRuntime(d) {
   const last = s[s.length - 1];
   const stats = el('div', 'stats');
   stats.append(stat('goroutines', count(last.goroutines)), stat('gc runs', count(last.gc)));
+  const to = new Date(d.at);
+  const from = new Date(to - 3600 * 1000);
   body('runtime').replaceChildren(
-    sparkline(s, v => v.heapMiB, v => `${count(v)} MiB`, 'heap'),
-    sparkline(s, v => v.sysMiB, v => `${count(v)} MiB`, 'sys'),
-    sparkline(s, v => v.cpu, v => `${v.toFixed(2)} cores`, 'cpu'),
+    sparkline(s, v => v.heapMiB, v => `${count(v)} MiB`, 'heap · last hour', from, to),
+    sparkline(s, v => v.sysMiB, v => `${count(v)} MiB`, 'sys', from, to),
+    sparkline(s, v => v.cpu, v => `${v.toFixed(2)} cores`, 'cpu', from, to),
     stats,
   );
 }
@@ -241,19 +251,15 @@ const buildWords = {
   EXPIRED: ['expired', 'quiet'],
 };
 
-function stage(commit, builds, serving, deployedBelow) {
-  if (serving && commit.sha.startsWith(serving.sha)) {
+function stage(commit, build, servingBuild, serving, older) {
+  if (servingBuild && commit.sha === servingBuild.sha) {
     return [`serving · ${serving.revision}`, 'good'];
   }
-  if (deployedBelow) {
-    return ['deployed earlier', 'quiet'];
-  }
-  const build = builds.find(b => b.sha === commit.sha);
   if (!build) {
     return ['no build', 'quiet'];
   }
   if (build.status === 'SUCCESS') {
-    return [`built in ${minutes(build.started, build.finished)}, deploying`, 'warn'];
+    return older ? ['deployed earlier', 'quiet'] : [`built in ${minutes(build.started, build.finished)}, deploying`, 'warn'];
   }
   const [word, tone] = buildWords[build.status] ?? [build.status.toLowerCase(), 'quiet'];
   if (build.status === 'WORKING') {
@@ -270,13 +276,14 @@ function showDeploy(d) {
     return;
   }
   const table = el('table', 'rows deploys');
-  let deployed = false;
+  const servingBuild = builds.value.find(b => b.digest && b.digest === serving.value.digest);
+  let older = false;
   for (const c of commits.value) {
-    const [word, tone] = stage(c, builds.value, serving.value, deployed);
-    if (serving.value.sha && c.sha.startsWith(serving.value.sha)) {
-      deployed = true;
-    }
     const build = builds.value.find(b => b.sha === c.sha);
+    const [word, tone] = stage(c, build, servingBuild, serving.value, older);
+    if (servingBuild && c.sha === servingBuild.sha) {
+      older = true;
+    }
     const status = build?.logUrl ? link(build.logUrl, word) : el('span', '', word);
     const tr = el('tr', tone);
     const sha = el('td', 'sha');
@@ -286,6 +293,16 @@ function showDeploy(d) {
     table.append(tr);
   }
   body('deploy').replaceChildren(table);
+}
+
+function monthStart(iso) {
+  const now = new Date(iso);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function todayNoon(iso) {
+  const now = new Date(iso);
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
 }
 
 function dollars(n) {
@@ -299,7 +316,7 @@ function showClaude(d) {
     body('claude').replaceChildren(waiting);
     return;
   }
-  const days = spend.value.days.map(day => ({time: day.date + 'T12:00:00', total: Object.values(day.byModel).reduce((n, v) => n + v, 0), byModel: day.byModel}));
+  const days = spend.value.days.map(day => ({time: day.date + 'T12:00:00Z', total:Object.values(day.byModel).reduce((n, v) => n + v, 0), byModel: day.byModel}));
   const month = {};
   for (const day of days) {
     for (const [model, v] of Object.entries(day.byModel)) {
@@ -317,7 +334,7 @@ function showClaude(d) {
   }
   body('claude').replaceChildren(
     stats,
-    sparkline(days, v => v.total, dollars, 'per day'),
+    sparkline(days, v => v.total, dollars, 'per day this month', monthStart(d.at), todayNoon(d.at)),
     table,
     el('div', 'quiet', `read ${ago(spend.fetched)}`),
   );
@@ -333,7 +350,9 @@ function showIssues(d) {
   const list = el('ol', 'issues');
   for (const i of issues.value.items) {
     const li = el('li');
-    li.append(el('span', 'when', `#${i.number}`), link(i.url, i.title, 'what'), el('span', 'where', [...i.labels, ago(i.created)].join(' · ')));
+    const title = link(i.url, i.title, 'what');
+    title.title = i.title;
+    li.append(el('span', 'when', `#${i.number}`), title, el('span', 'labels', i.labels.join(' ')), el('span', 'where', ago(i.created)));
     list.append(li);
   }
   body('issues').replaceChildren(stat('open', count(issues.value.open)), list);

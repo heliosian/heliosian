@@ -25,6 +25,7 @@ const (
 	region      = "us-west1"
 	service     = "heliosian"
 	shownItems  = 12
+	readBuilds  = 30
 	measureAge  = 10 * time.Minute
 	costHost    = "https://api.anthropic.com"
 	costVersion = "2023-06-01"
@@ -58,12 +59,13 @@ type Build struct {
 	Started  string `json:"started"`
 	Finished string `json:"finished"`
 	LogURL   string `json:"logUrl"`
+	Digest   string `json:"digest"`
 }
 
 type Serving struct {
 	Revision string `json:"revision"`
 	Image    string `json:"image"`
-	SHA      string `json:"sha"`
+	Digest   string `json:"digest"`
 	Created  string `json:"created"`
 }
 
@@ -203,13 +205,17 @@ func (d Deps) openIssues(ctx context.Context) (Issues, error) {
 }
 
 func (d Deps) recentBuilds(ctx context.Context) ([]Build, error) {
-	found, err := d.Builds.Projects.Locations.Builds.List(fmt.Sprintf("projects/%s/locations/%s", project, region)).PageSize(shownItems).Context(ctx).Do()
+	found, err := d.Builds.Projects.Locations.Builds.List(fmt.Sprintf("projects/%s/locations/%s", project, region)).PageSize(readBuilds).Context(ctx).Do()
 	if err != nil {
 		return nil, fmt.Errorf("list builds: %w", err)
 	}
 	out := []Build{}
 	for _, b := range found.Builds {
-		out = append(out, Build{ID: b.Id, Status: b.Status, SHA: b.Substitutions["COMMIT_SHA"], Created: b.CreateTime, Started: b.StartTime, Finished: b.FinishTime, LogURL: b.LogUrl})
+		build := Build{ID: b.Id, Status: b.Status, SHA: b.Substitutions["COMMIT_SHA"], Created: b.CreateTime, Started: b.StartTime, Finished: b.FinishTime, LogURL: b.LogUrl}
+		if b.Results != nil && len(b.Results.Images) > 0 {
+			build.Digest = b.Results.Images[0].Digest
+		}
+		out = append(out, build)
 	}
 	return out, nil
 }
@@ -227,9 +233,12 @@ func (d Deps) servingRevision(ctx context.Context) (Serving, error) {
 		return Serving{}, fmt.Errorf("revision %s has no container", rev.Name)
 	}
 	image := rev.Containers[0].Image
-	_, tag, _ := strings.Cut(image[strings.LastIndex(image, "/")+1:], ":")
+	_, digest, ok := strings.Cut(image, "@")
+	if !ok {
+		return Serving{}, fmt.Errorf("revision %s runs %s, not pinned to a digest", rev.Name, image)
+	}
 	parts := strings.Split(rev.Name, "/")
-	return Serving{Revision: parts[len(parts)-1], Image: image, SHA: tag, Created: rev.CreateTime}, nil
+	return Serving{Revision: parts[len(parts)-1], Image: image, Digest: digest, Created: rev.CreateTime}, nil
 }
 
 func (d Deps) monthSpend(ctx context.Context) (Spend, error) {

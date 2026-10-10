@@ -25,6 +25,10 @@ var sampleCommits = []struct {
 	{"5a1e000000000000000000000000000000000000", "Sample commit deployed earlier", 5 * time.Hour, "SUCCESS"},
 }
 
+func sampleDigest(sha string) string {
+	return "sha256:" + strings.Repeat(sha[len(sha)-1:], 64)
+}
+
 func GitHub() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := time.Now().UTC()
@@ -66,6 +70,9 @@ func CloudBuild() http.Handler {
 			if c.build != "WORKING" {
 				b["finishTime"] = created.Add(165 * time.Second).Format(time.RFC3339)
 			}
+			if c.build == "SUCCESS" {
+				b["results"] = map[string]any{"images": []any{map[string]any{"name": "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian", "digest": sampleDigest(c.sha)}}}
+			}
 			builds = append(builds, b)
 		}
 		writeJSON(w, map[string]any{"builds": builds})
@@ -78,7 +85,7 @@ func CloudRun() http.Handler {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/services/heliosian"):
 			writeJSON(w, map[string]any{"latestReadyRevision": sampleRevision})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, sampleRevision):
-			writeJSON(w, map[string]any{"name": sampleRevision, "createTime": time.Now().UTC().Add(-37 * time.Minute).Format(time.RFC3339), "containers": []any{map[string]any{"image": "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian:" + sampleCommits[1].sha}}})
+			writeJSON(w, map[string]any{"name": sampleRevision, "createTime": time.Now().UTC().Add(-37 * time.Minute).Format(time.RFC3339), "containers": []any{map[string]any{"image": "us-west1-docker.pkg.dev/heliosian/heliosian/heliosian@" + sampleDigest(sampleCommits[1].sha)}}})
 		default:
 			http.Error(w, "intercept has no answer for "+r.Method+" "+r.URL.Path, http.StatusNotFound)
 		}

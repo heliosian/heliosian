@@ -56,8 +56,11 @@ func TestTheBoardReadsEverySource(t *testing.T) {
 	if len(s.Builds.Value) != 4 || s.Builds.Value[0].Status != "WORKING" || s.Builds.Value[0].SHA != s.Commits.Value[0].SHA {
 		t.Errorf("builds: %+v", s.Builds.Value)
 	}
-	if s.Serving.Value.Revision != "heliosian-00001-dev" || s.Serving.Value.SHA != s.Commits.Value[1].SHA {
-		t.Errorf("serving: %+v", s.Serving.Value)
+	if s.Serving.Value.Revision != "heliosian-00001-dev" || s.Serving.Value.Digest != s.Builds.Value[1].Digest || s.Builds.Value[1].SHA != s.Commits.Value[1].SHA {
+		t.Errorf("serving: %+v, built: %+v", s.Serving.Value, s.Builds.Value[1])
+	}
+	if s.Builds.Value[0].Digest != "" || s.Builds.Value[3].Digest == s.Builds.Value[1].Digest {
+		t.Errorf("digests: %+v", s.Builds.Value)
 	}
 	if s.Issues.Value.Open != 2 || s.Issues.Value.Items[0].Labels[0] != "app:admin" {
 		t.Errorf("issues: %+v", s.Issues.Value)
