@@ -1,8 +1,13 @@
 #tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  grid-auto-flow: dense;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
+}
+
+@media (max-width: 1400px) {
+  #tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .tile {
@@ -18,6 +23,10 @@
 }
 
 @media (max-width: 760px) {
+  #tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .tile.wide {
     grid-column: auto;
   }

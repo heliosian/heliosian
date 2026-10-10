@@ -27,7 +27,10 @@ function ago(iso) {
   if (s < 5400) {
     return `${Math.round(s / 60)}m ago`;
   }
-  return `${Math.round(s / 3600)}h ago`;
+  if (s < 48 * 3600) {
+    return `${Math.round(s / 3600)}h ago`;
+  }
+  return `${Math.round(s / 86400)}d ago`;
 }
 
 function bytes(n) {
