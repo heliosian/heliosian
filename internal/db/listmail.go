@@ -77,7 +77,7 @@ func (l *ListMailer) Start() {
 			resumed++
 		}
 	}
-	slog.Info("list mail:resumed posts not yet sent on", "posts", resumed)
+	slog.Info("list mail: resumed posts not yet sent on", "posts", resumed)
 }
 
 func (l *ListMailer) ready() bool {
@@ -111,24 +111,24 @@ func stamp(t time.Time) string {
 	return t.In(School).Format(cells.StampFormat)
 }
 
-func isMailList(g store.Row) bool {
-	mail, _ := cells.YesNo(g["mail"], false)
-	return g["kind"] == "group" && mail && g["parent"] == "" && g["url"] == "" && g["status"] != "closed"
+func groupOpen(g store.Row) bool {
+	return g["status"] != "closed"
 }
 
 func (m *Model) mailList(local string) store.Row {
 	local = strings.ToLower(strings.TrimSpace(local))
 	groups := m.Table("GROUP")
 	for _, g := range groups.All() {
-		if isMailList(g) && strings.EqualFold(g["slug"], local) {
+		if groupOpen(g) && strings.EqualFold(g["slug"], local) {
 			return g
 		}
 	}
 	for _, a := range m.Table("ALIAS").All() {
-		if !strings.EqualFold(a["alias"], local) {
+		// local is lowercased, so an alias with an uppercase letter (a case-sensitive old ID) never matches.
+		if a["alias"] != local {
 			continue
 		}
-		if g, ok := groups.Get(a["target"]); ok && isMailList(g) {
+		if g, ok := groups.Get(a["target"]); ok && groupOpen(g) {
 			return g
 		}
 	}
@@ -184,12 +184,14 @@ func (m *Model) mayPost(g store.Row, sender string, reply bool) bool {
 		audience = g["replying"]
 	}
 	switch audience {
+	case "everyone":
+		return true
 	case "members":
 		return sender != "" && (m.effectivelyIn(g["id"], sender) || m.runsGroup(g["id"], sender))
 	case "managers":
 		return sender != "" && m.runsGroup(g["id"], sender)
 	}
-	return true
+	return false
 }
 
 func (m *Model) repliesTo(group string, lines []mail.HeaderLine) bool {
@@ -219,7 +221,7 @@ func (l *ListMailer) inbound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyNotification(l.mail.SigningKey, fields, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "list mail:inbound call refused", "error", err)
+		slog.WarnContext(r.Context(), "list mail: inbound call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
@@ -236,7 +238,7 @@ func (l *ListMailer) inbound(w http.ResponseWriter, r *http.Request) {
 		}
 		g := m.mailList(local)
 		if g == nil {
-			slog.WarnContext(r.Context(), "list mail:mail for no list", "local", local)
+			slog.WarnContext(r.Context(), "list mail: mail for no list", "local", local)
 			continue
 		}
 		if !slices.Contains(lists, g["id"]) {
@@ -245,12 +247,12 @@ func (l *ListMailer) inbound(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := []byte(fields["body-mime"])
 	if len(raw) == 0 {
-		slog.WarnContext(r.Context(), "list mail:inbound call carries no body-mime", "recipient", fields["recipient"])
+		slog.WarnContext(r.Context(), "list mail: inbound call carries no body-mime", "recipient", fields["recipient"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}
 	if err := l.received(r.Context(), raw, lists); err != nil {
-		slog.ErrorContext(r.Context(), "list mail:post not recorded", "recipient", fields["recipient"], "error", err)
+		slog.ErrorContext(r.Context(), "list mail: post not recorded", "recipient", fields["recipient"], "error", err)
 		http.Error(w, "not recorded", http.StatusInternalServerError)
 		return
 	}
@@ -307,7 +309,7 @@ func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) e
 		return fmt.Errorf("record the post: %w", err)
 	}
 	for _, id := range ids[len(ids)-len(fresh):] {
-		slog.InfoContext(ctx, "list mail:post received", "message", id, "hash", hash)
+		slog.InfoContext(ctx, "list mail: post received", "message", id, "hash", hash)
 		l.enqueue(id)
 	}
 	return nil
@@ -323,15 +325,15 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 	finish := func(state, detail string, edits ...Edit) {
 		edits = append(edits, Edit{Set: id, Cells: map[string]any{"state": state, "detail": detail}})
 		if _, err := l.write(ctx, edits...); err != nil {
-			log.Error("list mail:post not recorded", "state", state, "error", err)
+			log.Error("list mail: post not recorded", "state", state, "error", err)
 		}
 	}
 	fail := func(step string, err error) {
-		log.Error("list mail:forward failed", "step", step, "error", err)
+		log.Error("list mail: forward failed", "step", step, "error", err)
 		finish(postFailed, step+": "+err.Error())
 	}
 	g, ok := m.Table("GROUP").Get(post["group"])
-	if !ok || !isMailList(g) {
+	if !ok || !groupOpen(g) {
 		fail("list", errors.New("the list is gone"))
 		return
 	}
@@ -351,12 +353,12 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 	}
 	lines, body := mail.SplitMessage(raw)
 	if reason := held(lines); reason != "" {
-		log.Info("list mail:post held", "reason", reason)
+		log.Info("list mail: post held", "reason", reason)
 		finish(postDropped, reason)
 		return
 	}
 	if reason := mail.Authenticated(lines); reason != "" {
-		log.Info("list mail:post not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
+		log.Info("list mail: post not authenticated", "reason", reason, "from", mail.Header(lines, "from"))
 		finish(postDropped, reason)
 		return
 	}
@@ -367,11 +369,11 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 		if reply {
 			audience, verb = g["replying"], "reply"
 		}
-		log.Info("list mail:post refused", "from", sender, "reply", reply, "audience", audience)
+		log.Info("list mail: post refused", "from", sender, "reply", reply, "audience", audience)
 		if err := l.bounce(ctx, g, lines, audience, verb); err != nil {
-			log.Error("list mail:bounce failed", "error", err)
+			log.Error("list mail: bounce failed", "error", err)
 		}
-		finish(postDropped, "only the email list's "+audience+" may "+verb)
+		finish(postDropped, "only "+posters[audience]+" may "+verb)
 		return
 	}
 	head, err := rewrite(lines, g)
@@ -391,7 +393,7 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 		return
 	}
 	copies, failures := []Edit{}, []string{}
-	members := m.effectiveRows(g["id"])
+	members := slices.DeleteFunc(slices.Clone(m.effectiveRows(g["id"])), func(member store.Row) bool { return m.unsubscribed(g, member["person"]) })
 	for _, member := range members {
 		address := m.addressOf(member["person"])
 		if address == "" {
@@ -402,14 +404,14 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + LoopDomain + "?subject=" + tok + ">, <" + l.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := l.mail.Sender.SendRaw(ctx, listAddress(g), []string{address}, msg); err != nil {
-			log.Error("list mail:send failed", "to", address, "error", err)
+			log.Error("list mail: send failed", "to", address, "error", err)
 			failures = append(failures, address+": "+err.Error())
 			continue
 		}
 		at := stamp(time.Now())
 		copies = append(copies, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": ids[0], "person": member["person"], "created": at, "sent": at}})
 	}
-	log.Info("list mail:forwarded", "members", len(members), "sent", len(copies), "failed", len(failures))
+	log.Info("list mail: forwarded", "members", len(members), "sent", len(copies), "failed", len(failures))
 	state := postSent
 	if len(copies) == 0 && len(members) > 0 {
 		state = postFailed
@@ -417,7 +419,7 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 	finish(state, strings.Join(failures, "; "), copies...)
 }
 
-var posters = map[string]string{"members": "the people on it and its managers", "managers": "its managers"}
+var posters = map[string]string{"members": "the people on it and its managers", "managers": "its managers", "none": "nobody"}
 
 func (l *ListMailer) bounce(ctx context.Context, g store.Row, lines []mail.HeaderLine, audience, verb string) error {
 	to := mail.AddressOf(mail.Header(lines, "from"))
@@ -471,7 +473,7 @@ func (l *ListMailer) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := mail.VerifyMailgun(l.mail.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "list mail:event call refused", "error", err)
+		slog.WarnContext(r.Context(), "list mail: event call refused", "error", err)
 		http.Error(w, "signature", http.StatusNotAcceptable)
 		return
 	}
@@ -490,7 +492,7 @@ func (l *ListMailer) events(w http.ResponseWriter, r *http.Request) {
 	case d.Event == "failed" && d.Severity == "permanent":
 		l.delivery(d.Message.Headers.From, d.Message.Headers.MessageID, d.Recipient, map[string]any{"failed": when, "detail": detail})
 	case d.Event == "failed", d.Event == "complained":
-		slog.WarnContext(r.Context(), "list mail:delivery trouble", "event", d.Event, "from", d.Message.Headers.From, "to", d.Recipient, "detail", detail)
+		slog.WarnContext(r.Context(), "list mail: delivery trouble", "event", d.Event, "from", d.Message.Headers.From, "to", d.Recipient, "detail", detail)
 	}
 	w.WriteHeader(http.StatusOK)
 }
@@ -543,7 +545,7 @@ func (l *ListMailer) flush() {
 		}
 		l.mu.Unlock()
 		if _, err := l.write(context.Background(), edits...); err != nil {
-			slog.Error("list mail:deliveries not recorded", "edits", len(edits), "error", err)
+			slog.Error("list mail: deliveries not recorded", "edits", len(edits), "error", err)
 		}
 	}
 }
@@ -618,7 +620,7 @@ func writePage(w http.ResponseWriter, title, heading, body string) {
 
 func (m *Model) listNamed(slug string) store.Row {
 	for _, g := range m.Table("GROUP").All() {
-		if isMailList(g) && g["slug"] == slug {
+		if groupOpen(g) && g["slug"] == slug {
 			return g
 		}
 	}
@@ -639,9 +641,40 @@ func (l *ListMailer) tokenList(w http.ResponseWriter, r *http.Request) (store.Ro
 	return g, email, true
 }
 
-func (m *Model) unsubscribed(group, person string) bool {
-	row, ok := m.Table("MEMBER").Find(group, person)
-	return ok && memberAs(row) == "excluded"
+func (m *Model) unsubscribed(g store.Row, person string) bool {
+	if g["unsubscribed"] == "" {
+		return false
+	}
+	row, ok := m.Table("MEMBER").Find(g["unsubscribed"], person)
+	return ok && memberAs(row) == "yes"
+}
+
+func (m *Model) unsubscribeEdits(g store.Row, person, note string) []Edit {
+	if m.unsubscribed(g, person) {
+		return nil
+	}
+	member := map[string]any{"group": g["unsubscribed"], "person": person, "member": "yes", "note": note, "added": stamp(time.Now())}
+	if g["unsubscribed"] != "" {
+		return []Edit{{Insert: "MEMBER", Row: member}}
+	}
+	group := map[string]any{"kind": "group", "name": g["name"] + " Unsubscribed", "status": "open"}
+	if g["managed_by"] != "" {
+		group["managed_by"] = g["managed_by"]
+	}
+	member["group"] = "@unsubscribed"
+	return []Edit{
+		{Insert: "GROUP", As: "unsubscribed", Row: group},
+		{Set: g["id"], Cells: map[string]any{"unsubscribed": "@unsubscribed"}},
+		{Insert: "MEMBER", Row: member},
+	}
+}
+
+func (m *Model) resubscribeEdits(g store.Row, person string) []Edit {
+	row, ok := m.Table("MEMBER").Find(g["unsubscribed"], person)
+	if g["unsubscribed"] == "" || !ok {
+		return nil
+	}
+	return []Edit{{Delete: row["id"]}}
 }
 
 func (l *ListMailer) unsubscribePage(w http.ResponseWriter, r *http.Request) {
@@ -650,7 +683,7 @@ func (l *ListMailer) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	m := l.s.Model()
-	if person := m.personAt(email); person != "" && m.unsubscribed(g["id"], person) {
+	if person := m.personAt(email); person != "" && m.unsubscribed(g, person) {
 		writePage(w, g["name"], "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
 		return
 	}
@@ -665,21 +698,14 @@ func (l *ListMailer) unsubscribeAddress(ctx context.Context, g store.Row, email,
 	if person == "" {
 		return access.Missing("no one has the address %s", email)
 	}
-	note := "Unsubscribed by " + how
-	row, found := m.Table("MEMBER").Find(g["id"], person)
-	var edit Edit
-	switch {
-	case found && memberAs(row) == "excluded":
+	edits := m.unsubscribeEdits(g, person, "Unsubscribed by "+how)
+	if len(edits) == 0 {
 		return nil
-	case found:
-		edit = Edit{Set: row["id"], Cells: map[string]any{"member": "excluded", "note": note}}
-	default:
-		edit = Edit{Insert: "MEMBER", Row: map[string]any{"group": g["id"], "person": person, "member": "excluded", "note": note, "added": stamp(time.Now())}}
 	}
-	if _, err := l.write(ctx, edit); err != nil {
+	if _, err := l.write(ctx, edits...); err != nil {
 		return err
 	}
-	slog.InfoContext(ctx, "list mail:unsubscribed", "group", g["slug"], "person", person, "how", how)
+	slog.InfoContext(ctx, "list mail: unsubscribed", "group", g["slug"], "person", person, "how", how)
 	return nil
 }
 
@@ -717,15 +743,15 @@ func (l *ListMailer) unsubscribeByMail(ctx context.Context, subject, sender stri
 	}
 	name, email, ok := parseToken(l.mail.Key, tok)
 	if !ok {
-		slog.WarnContext(ctx, "list mail:unsubscribe mail with no token", "sender", sender, "subject", subject)
+		slog.WarnContext(ctx, "list mail: unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
 	g := l.s.Model().listNamed(name)
 	if g == nil {
-		slog.WarnContext(ctx, "list mail:unsubscribe mail for no list", "group", name, "email", email)
+		slog.WarnContext(ctx, "list mail: unsubscribe mail for no list", "group", name, "email", email)
 		return
 	}
 	if err := l.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
-		slog.ErrorContext(ctx, "list mail:unsubscribe by mail", "group", name, "email", email, "error", err)
+		slog.ErrorContext(ctx, "list mail: unsubscribe by mail", "group", name, "email", email, "error", err)
 	}
 }

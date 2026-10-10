@@ -23,6 +23,7 @@ type Query struct {
 	limit   int
 	include []*pathSpec
 	columns []Column
+	selects []*selectSpec
 }
 
 type Env struct {
@@ -65,11 +66,25 @@ type run struct {
 	viewer  store.Row
 	system  string
 	now     time.Time
-	rows    map[string]bool
-	columns map[string]bool
-	exists  map[*scan]bool
-	selects map[*scan]*valueSet
+	rows    map[cellKey]bool
+	columns map[cellKey]bool
+	memo    map[string]any
+	fusable map[string][]*selectSpec
+	filling map[*selectSpec]bool
+	queries map[string]Result
 	policy  *trace.Span
+	span    *trace.Span
+}
+
+type cellKey struct {
+	table, column, id string
+}
+
+type selectSpec struct {
+	inner   *scan
+	column  Column
+	exact   bool
+	guarded bool
 }
 
 type operand struct {
@@ -99,6 +114,8 @@ type scan struct {
 	name     string
 	guarded  bool
 	constant bool
+	key      string
+	outer    []string
 	conds    []cond
 	probes   []probe
 	probeCol string
@@ -122,13 +139,13 @@ type define struct {
 type compiler struct {
 	policy  bool
 	defines map[string]*define
-	used    map[string]bool
 	hidden  int
 	touched []*scope
+	selects []*selectSpec
 }
 
 func newCompiler(policy bool) *compiler {
-	return &compiler{policy: policy, defines: definitions, used: map[string]bool{}}
+	return &compiler{policy: policy, defines: definitions}
 }
 
 var keywords = []string{"true", "false", "today", "now", "asc", "desc"}
@@ -212,6 +229,7 @@ func (cx *compiler) query(tree *sexp) (*Query, error) {
 		}
 	}
 	s.pickProbe()
+	q.selects = cx.selects
 	return q, nil
 }
 
@@ -255,7 +273,7 @@ func tableNamed(s *sexp) (*Table, error) {
 	return t, nil
 }
 
-func (cx *compiler) scan(s *sexp, at int, outer *scope) (*scan, error) {
+func (cx *compiler) scan(s *sexp, at int, outer *scope, also func(*scope) error) (*scan, error) {
 	out, rest, err := cx.scanHead(s, at)
 	if err != nil {
 		return nil, err
@@ -266,21 +284,71 @@ func (cx *compiler) scan(s *sexp, at int, outer *scope) (*scan, error) {
 	if err != nil {
 		return nil, err
 	}
-	out.constant = cx.closed(mark, inner)
+	if also != nil {
+		if err := also(inner); err != nil {
+			return nil, err
+		}
+	}
+	cx.keyed(out, s, mark, inner)
 	out.pickProbe()
 	return out, nil
 }
 
-func (cx *compiler) closed(mark int, inner *scope) bool {
+func (cx *compiler) keyed(out *scan, s *sexp, mark int, inner *scope) {
+	out.outer = cx.outside(mark, inner)
+	out.constant = len(out.outer) == 0
+	out.key = guardKey(out.guarded) + s.flat()
+}
+
+func guardKey(guarded bool) string {
+	if guarded {
+		return "q\x00"
+	}
+	return "p\x00"
+}
+
+// outside names the rows, other than inner's own and those under it, that what was compiled since mark reads.
+func (cx *compiler) outside(mark int, inner *scope) []string {
+	names := []string{}
 	for _, at := range cx.touched[mark:] {
-		for at != nil && at != inner {
-			at = at.outer
+		within := at
+		for within != nil && within != inner {
+			within = within.outer
 		}
-		if at == nil {
-			return false
+		if within == nil && !slices.Contains(names, at.name) {
+			names = append(names, at.name)
 		}
 	}
-	return true
+	slices.Sort(names)
+	return names
+}
+
+func remembered[T any](f *frame, s *scan, work func() T) T {
+	if !s.constant && !s.guarded {
+		return work()
+	}
+	key := f.memoKey(s.key, s.outer)
+	if v, ok := f.run.memo[key]; ok {
+		return v.(T)
+	}
+	v := work()
+	f.run.memo[key] = v
+	return v
+}
+
+func (f *frame) memoKey(key string, outer []string) string {
+	if len(outer) == 0 {
+		return key
+	}
+	var b strings.Builder
+	b.WriteString(key)
+	for _, name := range outer {
+		b.WriteString("\x00")
+		if row, _ := startRow(f, true, name); row != nil {
+			b.WriteString(row["id"])
+		}
+	}
+	return b.String()
 }
 
 func indexed(t typ) bool {
@@ -481,20 +549,16 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			return !v.blank && strings.Contains(strings.ToLower(v.s), needle)
 		}, cheap: p.cheap}, nil
 	case "exists":
-		inner, err := cx.scan(s, 1, sc)
+		inner, err := cx.scan(s, 1, sc, nil)
 		if err != nil {
 			return cond{}, err
 		}
 		return cond{eval: func(f *frame) bool {
-			if found, ok := f.run.exists[inner]; ok {
+			return remembered(f, inner, func() bool {
+				found := false
+				inner.each(f, func(*frame) bool { found = true; return false })
 				return found
-			}
-			found := false
-			inner.each(f, func(*frame) bool { found = true; return false })
-			if inner.constant {
-				f.run.exists[inner] = found
-			}
-			return found
+			})
 		}}, nil
 	case "system":
 		if len(args) != 1 || args[0].isList || args[0].kind != atomString {
@@ -510,7 +574,22 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			if err != nil {
 				return cond{}, err
 			}
-			return cx.cond(expanded, sc)
+			mark := len(cx.touched)
+			c, err := cx.cond(expanded, sc)
+			if err != nil || cx.policy || c.cheap {
+				return c, err
+			}
+			key, outer, work := guardKey(true)+expanded.flat(), cx.outside(mark, nil), c.eval
+			c.eval = func(f *frame) bool {
+				k := f.memoKey(key, outer)
+				if held, ok := f.run.memo[k]; ok {
+					return held.(bool)
+				}
+				held := work(f)
+				f.run.memo[k] = held
+				return held
+			}
+			return c, nil
 		}
 		return cond{}, s.errorf("no condition %s", op)
 	}
@@ -521,7 +600,6 @@ func (cx *compiler) expand(call *sexp, d *define, sc *scope) (*sexp, error) {
 	if len(args) != len(d.params) {
 		return nil, call.errorf("%s takes %d arguments", call.head(), len(d.params))
 	}
-	cx.used[call.head()] = true
 	bound := map[string]*sexp{}
 	for i, p := range d.params {
 		bound[p] = anchor(args[i], sc)
@@ -580,6 +658,15 @@ func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
 		if arg, ok := bound[body.text]; ok {
 			return arg, nil
 		}
+		name, rest, dotted := strings.Cut(body.text, ".")
+		arg, ok := bound[name]
+		if !dotted || !ok {
+			return body, nil
+		}
+		if arg.isList || (arg.kind != atomName && arg.kind != atomAt) {
+			return nil, body.errorf("%s is %s, which has no columns to follow", name, arg.flat())
+		}
+		return &sexp{kind: arg.kind, text: arg.text + "." + rest, pos: body.pos}, nil
 	}
 	return body, nil
 }
@@ -742,7 +829,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			if v.blank {
 				return out
 			}
-			for id := v.s; id != "" && !out.keys[id]; {
+			for id := v.s; id != "" && out.keys[id] == 0; {
 				out.add(value{kind: ID, s: id})
 				row, ok := f.run.table(table.Name).Get(id)
 				if !ok {
@@ -797,25 +884,93 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 	if err != nil {
 		return nil, typ{}, false, err
 	}
-	inner.constant = cx.closed(mark, within)
+	cx.keyed(inner, s, mark, within)
 	inner.pickProbe()
 	guarded := !cx.policy
 	ct := columnType(t.Name, c)
 	exact := x.kind == Order && ct.kind == Order
+	inner.key += fmt.Sprintf("\x00%t", exact)
+	spec := &selectSpec{inner: inner, column: c, exact: exact, guarded: guarded}
+	fused := inner.constant && guarded && len(inner.probes) == 0 && inner.probeSet == nil
+	if fused {
+		cx.selects = append(cx.selects, spec)
+	}
 	return func(f *frame) *valueSet {
-		if out, ok := f.run.selects[inner]; ok {
+		if fused {
+			if out, ok := f.run.memo[inner.key]; ok {
+				return out.(*valueSet)
+			}
+			if f.run.fuse(f, spec) {
+				return f.run.memo[inner.key].(*valueSet)
+			}
+		}
+		return remembered(f, inner, func() *valueSet {
+			out := newValueSet(exact)
+			inner.each(f, func(g *frame) bool {
+				out.add(g.run.cell(guarded, t, g.row, c))
+				return true
+			})
 			return out
-		}
-		out := newValueSet(exact)
-		inner.each(f, func(g *frame) bool {
-			out.add(g.run.cell(guarded, t, g.row, c))
-			return true
 		})
-		if inner.constant {
-			f.run.selects[inner] = out
-		}
-		return out
 	}, ct, inner.constant, nil
+}
+
+// fuse fills, in one pass over the table, every whole-table select on it the run's queries hold, spec among them.
+func (r *run) fuse(f *frame, spec *selectSpec) bool {
+	group := r.fusable[spec.inner.table.Name]
+	if !slices.Contains(group, spec) || r.filling[spec] {
+		return false
+	}
+	pending := []*selectSpec{}
+	for _, s := range group {
+		if _, done := r.memo[s.inner.key]; !done && !r.filling[s] && !slices.ContainsFunc(pending, func(p *selectSpec) bool { return p.inner.key == s.inner.key }) {
+			pending = append(pending, s)
+		}
+	}
+	for _, s := range pending {
+		r.filling[s] = true
+	}
+	defer func() {
+		for _, s := range pending {
+			delete(r.filling, s)
+		}
+	}()
+	start := time.Now()
+	outs := make([]*valueSet, len(pending))
+	for i, s := range pending {
+		outs[i] = newValueSet(s.exact)
+	}
+	t := spec.inner.table
+	defer func() {
+		fused := r.span.Tally("fuse")
+		fused.Add(time.Since(start))
+		fused.Inc(t.Name)
+	}()
+	var rows []store.Row
+	if t.Generated {
+		rows = r.m.generated(t).rows
+	} else {
+		rows = r.table(t.Name).All()
+	}
+	for _, row := range rows {
+		checked, readable := false, false
+		for i, s := range pending {
+			inner := &frame{table: t, row: row, name: s.inner.name, outer: f, run: r}
+			if !s.inner.matches(inner, true) {
+				continue
+			}
+			if !checked {
+				checked, readable = true, r.readable(t, row)
+			}
+			if readable && s.inner.matches(inner, false) {
+				outs[i].add(r.cell(true, t, row, s.column))
+			}
+		}
+	}
+	for i, s := range pending {
+		r.memo[s.inner.key] = outs[i]
+	}
+	return true
 }
 
 func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
@@ -842,24 +997,27 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 	}
 	switch s.head() {
 	case "count":
-		inner, err := cx.scan(s, 1, sc)
+		inner, err := cx.scan(s, 1, sc, nil)
 		if err != nil {
 			return operand{}, err
 		}
 		return operand{t: typ{class: classNumber, kind: Int}, eval: func(f *frame) value {
-			n := int64(0)
-			inner.each(f, func(*frame) bool { n++; return true })
-			return value{kind: Int, num: new(big.Rat).SetInt64(n)}
+			return remembered(f, inner, func() value {
+				n := int64(0)
+				inner.each(f, func(*frame) bool { n++; return true })
+				return value{kind: Int, num: new(big.Rat).SetInt64(n)}
+			})
 		}}, nil
 	case "sum":
 		if len(s.list) < 3 {
 			return operand{}, s.errorf("sum takes a path and a table")
 		}
-		inner, err := cx.scan(s, 2, sc)
-		if err != nil {
-			return operand{}, err
-		}
-		p, err := cx.path(s.list[1], &scope{table: inner.table, name: inner.name, outer: sc})
+		var p operand
+		inner, err := cx.scan(s, 2, sc, func(within *scope) error {
+			var err error
+			p, err = cx.path(s.list[1], within)
+			return err
+		})
 		if err != nil {
 			return operand{}, err
 		}
@@ -867,14 +1025,48 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			return operand{}, s.list[1].errorf("sum adds numbers, and %s is %s", s.list[1].flat(), p.t)
 		}
 		return operand{t: p.t, eval: func(f *frame) value {
-			total := new(big.Rat)
-			inner.each(f, func(g *frame) bool {
-				if v := p.eval(g); !v.blank {
-					total.Add(total, v.num)
-				}
-				return true
+			return remembered(f, inner, func() value {
+				total := new(big.Rat)
+				inner.each(f, func(g *frame) bool {
+					if v := p.eval(g); !v.blank {
+						total.Add(total, v.num)
+					}
+					return true
+				})
+				return value{kind: p.t.kind, num: total}
 			})
-			return value{kind: p.t.kind, num: total}
+		}}, nil
+	case "tally":
+		if len(s.list) < 3 {
+			return operand{}, s.errorf("tally takes a value and at least one set")
+		}
+		x, err := cx.operand(s.list[1], sc)
+		if err != nil {
+			return operand{}, err
+		}
+		if x.lit != nil {
+			return operand{}, s.list[1].errorf("tally counts a path, not a literal")
+		}
+		sets := []func(*frame) *valueSet{}
+		for _, item := range s.list[2:] {
+			if !item.isList {
+				return operand{}, item.errorf("tally counts in selects")
+			}
+			set, t, _, err := cx.set(item, sc, x.t)
+			if err != nil {
+				return operand{}, err
+			}
+			if err := comparable(s, x.t, t); err != nil {
+				return operand{}, err
+			}
+			sets = append(sets, set)
+		}
+		return operand{t: typ{class: classNumber, kind: Int}, eval: func(f *frame) value {
+			v, n := x.eval(f), 0
+			for _, set := range sets {
+				n += set(f).count(v)
+			}
+			return value{kind: Int, num: new(big.Rat).SetInt64(int64(n))}
 		}}, nil
 	case "length":
 		if len(s.list) != 2 {
@@ -891,7 +1083,7 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			return value{kind: Int, num: new(big.Rat).SetInt64(int64(utf8.RuneCountInString(p.eval(f).s)))}
 		}}, nil
 	}
-	return operand{}, s.errorf("a value is a path, a literal, today, now, count, sum or length")
+	return operand{}, s.errorf("a value is a path, a literal, today, now, count, sum, tally or length")
 }
 
 func coerce(lit *sexp, t typ) (operand, error) {
@@ -1084,7 +1276,7 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 }
 
 func (m *Model) newRun(env Env) *run {
-	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[string]bool{}, columns: map[string]bool{}, exists: map[*scan]bool{}, selects: map[*scan]*valueSet{}}
+	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
 	if env.Viewer != "" {
 		r.viewer, _ = r.table("PERSON").Get(env.Viewer)
 	}
@@ -1096,14 +1288,26 @@ func (r *run) table(name string) *View {
 }
 
 func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
-	return m.runIn(ctx, m.newRun(env), q)
+	return m.RunAll(ctx, []*Query{q}, env)[0]
 }
 
 func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 	r := m.newRun(env)
+	for _, q := range qs {
+		for _, s := range q.selects {
+			r.fusable[s.inner.table.Name] = append(r.fusable[s.inner.table.Name], s)
+		}
+	}
 	out := []Result{}
 	for _, q := range qs {
-		out = append(out, m.runIn(ctx, r, q))
+		key := guardKey(q.scan.guarded) + q.String()
+		if held, ok := r.queries[key]; ok {
+			out = append(out, held)
+			continue
+		}
+		result := m.runIn(ctx, r, q)
+		r.queries[key] = result
+		out = append(out, result)
 	}
 	return out
 }
@@ -1111,7 +1315,7 @@ func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	_, span := trace.Start(ctx, "run")
 	defer span.End()
-	r.policy = span.Tally("policy")
+	r.policy, r.span = span.Tally("policy"), span
 	top := &frame{run: r}
 	scanned := span.Start("scan")
 	rows := []store.Row{}

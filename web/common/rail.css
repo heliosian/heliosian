@@ -1,0 +1,287 @@
+/* The rail every app shares (rail.js): the brand, folding sections of
+   rows, and the group lists under their subheadings. */
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
+  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
+  background-size: 360px auto, auto;
+  background-position: right -120px bottom -100px, left top;
+  background-repeat: no-repeat, no-repeat;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  position: relative;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  z-index: 1;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 10px 14px;
+}
+
+.brand a {
+  display: block;
+  line-height: 0;
+}
+
+.brand img {
+  height: 170px;
+  max-width: 100%;
+  width: auto;
+  display: block;
+}
+
+.app-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* The nav reaches the rail's edges through the rail's padding, so its
+     scrollbar hugs the rail's right edge instead of sitting 12px in; the
+     rows keep the rail's inset through the nav's own padding. */
+  margin: 0 -12px;
+  padding: 0 12px;
+  /* The thin white thumb the shared sheet gives the rail, when the list
+     is long enough to need one. */
+  scrollbar-width: thin;
+  /* The edges fade only while there is more to scroll to on that side; an
+     app's scroll handler sets the two lengths. */
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top, 0px), #000 calc(100% - var(--fade-bottom, 0px)), transparent);
+}
+
+.app-nav a { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 3px 32px 3px 10px; border-radius: 7px; color: #fff; text-decoration: none; font-size: 14px; font-weight: 500; line-height: 1.25; }
+
+.app-nav a svg {
+  width: 26px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.app-nav a:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* The item the page is on: a lighter teal wash with a lime bar at its left,
+   its icon and the chevron at its end in lime, white words. */
+.app-nav a.active {
+  background: var(--nav-active);
+  color: #fff;
+  font-weight: 700;
+  position: relative;
+  border-radius: 0 10px 10px 0;
+  overflow: hidden;
+}
+
+.app-nav a.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.app-nav a.active svg { color: var(--lime); }
+
+/* The chevron takes no room in the row - it sits at the right edge over
+   space every row leaves - so a count beside a name stays put when the
+   row is lit. */
+.app-nav a.active::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -5px;
+  border-right: 2.5px solid var(--lime);
+  border-bottom: 2.5px solid var(--lime);
+  transform: rotate(-45deg);
+}
+
+.nav-heading {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.nav-heading-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 14px;
+  padding: 0 14px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-heading-toggle:first-child {
+  margin-top: 2px;
+}
+
+.nav-heading-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* A section with the page's row under it: the same wash and lime bar. */
+.nav-heading-toggle.active {
+  position: relative;
+  background: var(--nav-active);
+  color: #fff;
+  border-radius: 0 999px 999px 0;
+  overflow: hidden;
+}
+
+.nav-heading-toggle.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--lime);
+}
+
+.nav-heading-toggle.active > svg:not(.nav-chevron svg) { color: var(--lime); }
+
+.nav-heading-toggle.active .nav-chevron svg { stroke: var(--lime); }
+
+.nav-heading-toggle .app-symbol-who { -webkit-mask-image: url('/brand/apps/who-outline.png'); mask-image: url('/brand/apps/who-outline.png'); }
+
+/* Every mark in the rail - a heading's icon, a row's icon, an avatar -
+   sits in one 26px column, so they line up down the rail: the heading's
+   icon is drawn in a 26px box, and a row is padded so its box starts
+   where the heading's does. */
+.nav-heading-toggle svg {
+  width: 26px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex-shrink: 0;
+}
+
+.nav-heading-title {
+  flex: 1;
+}
+
+/* The chevron that folds a section sits at the row's end; the icon leads. */
+.nav-chevron {
+  display: flex;
+  flex-shrink: 0;
+  order: 9;
+  margin-left: auto;
+}
+
+.nav-heading-toggle .nav-badge, .nav-heading-toggle .nav-item-alert { margin-left: auto; }
+
+.nav-heading-toggle .nav-badge ~ .nav-chevron, .nav-heading-toggle .nav-item-alert ~ .nav-chevron { margin-left: 8px; }
+
+.nav-chevron svg {
+  width: 14px;
+  height: 14px;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 2;
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.nav-heading-toggle.open .nav-chevron svg {
+  transform: none;
+}
+
+.nav-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 6px 22px;
+  padding-left: 10px;
+  border-left: 1.5px solid rgba(255, 255, 255, 0.14);
+}
+
+/* The rows under a section are words alone. */
+.nav-section-body .app-nav a > svg, .nav-section-body a > svg { display: none; }
+
+.nav-subheading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 2px;
+  padding: 8px 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.nav-subheading-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.nav-subheading-toggle .nav-chevron { display: flex; flex-shrink: 0; order: 9; margin-left: auto; }
+
+.nav-subheading-toggle .nav-chevron svg { width: 12px; height: 12px; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; transform: rotate(-90deg); transition: transform 0.15s ease; }
+
+.nav-subheading-toggle.open .nav-chevron svg { transform: none; }
+
+.nav-subheading-count {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.nav-subheading-count ~ .nav-chevron { margin-left: 8px; }
+
+.nav-list-row {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-list-label {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-list-marks {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-list-date {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.nav-list-run {
+  color: var(--lime);
+  font-size: 12px;
+}

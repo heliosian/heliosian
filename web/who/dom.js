@@ -58,14 +58,6 @@ export function paletteColor(text) {
   return brandPalette[hue(text) % brandPalette.length];
 }
 
-export function trimMiddle(text, max) {
-  if (text.length <= max) {
-    return text;
-  }
-  const head = Math.ceil((max - 1) * 0.55);
-  return text.slice(0, head).trimEnd() + '…' + text.slice(text.length - (max - 1 - head)).trimStart();
-}
-
 export function firstName(fullName) {
   return fullName.trim().split(/\s+/)[0];
 }

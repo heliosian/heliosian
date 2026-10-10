@@ -27,96 +27,6 @@ button { font: inherit; }
 
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
-.sidebar {
-  width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  /* The app's own symbol, large and faint, slipping off the rail's bottom-right corner. */
-  background-image: url('/brand/symbol-watermark.png'), linear-gradient(180deg, #022427, var(--brand-fill));
-  background-size: 360px auto, auto;
-  background-position: right -120px bottom -100px, left top;
-  background-repeat: no-repeat, no-repeat;
-  border-right: 1px solid var(--line);
-  z-index: 1;
-}
-
-.brand { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 18px 16px 8px; flex-shrink: 0; }
-
-.brand a { display: block; line-height: 0; }
-
-.brand img { height: 170px; width: auto; max-width: 100%; display: block; }
-
-.app-nav { display: flex; flex-direction: column; gap: 2px; flex: 1; padding: 14px 10px; overflow-y: auto; }
-
-/* The rail's action is the button every page has, filling the rail. It is
-   a link to /new rather than a button, and .app-nav a would give it the
-   rail's white words and hover wash; said again here so it wears the
-   button's dark words and green hover like the other rails' actions. */
-.button.nav-action { margin: 14px 4px 0; justify-content: center; width: calc(100% - 8px); }
-
-.app-nav a.button.nav-action { color: var(--brand-deep); }
-
-.app-nav a.button.nav-action:hover { background: var(--green-3); border-color: var(--green-3); color: var(--brand-deep); }
-
-/* The person's groups under My Groups, as HCA-Team lists its sections'
-   rows: indented behind a rule, the one open lit with the lime bar. */
-.nav-sub { display: flex; flex-direction: column; margin: 2px 0 6px 22px; padding-left: 10px; border-left: 1.5px solid rgba(255, 255, 255, 0.14); }
-
-.nav-sub-item { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 3px 10px; border-radius: 7px; font-size: 14px; font-weight: 500; color: #fff; text-decoration: none; }
-
-.nav-sub-item:hover { background: rgba(255, 255, 255, 0.1); }
-
-.nav-sub-item.is-on { background: var(--nav-active); position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
-
-.nav-sub-item.is-on::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
-
-/* Archived, under the person's groups in the rail: a row shaped like the
-   pages' rows that folds its groups away, as Who?'s section headings do -
-   the chevron at its end pointing sideways while it is folded, down once
-   it is open. */
-.nav-heading-toggle { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; margin-top: 6px; padding: 0 14px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.05); color: #fff; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.25; text-align: left; cursor: pointer; user-select: none; }
-.nav-heading-toggle:hover { background: rgba(255, 255, 255, 0.1); }
-.nav-heading-toggle > svg { width: 20px; height: 20px; flex-shrink: 0; }
-.nav-heading-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-chevron { display: flex; flex-shrink: 0; }
-.nav-chevron svg { width: 14px; height: 14px; stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; transform: rotate(-90deg); transition: transform 0.15s ease; }
-.nav-heading-toggle.open .nav-chevron svg { transform: none; }
-/* Archived is lit as a page's row is while one of its groups is the page open. */
-.nav-heading-toggle.is-active { position: relative; background: var(--nav-active); border-radius: 0 10px 10px 0; overflow: hidden; }
-.nav-heading-toggle.is-active > svg { color: var(--lime); }
-.nav-heading-toggle.is-active .nav-chevron svg { stroke: var(--lime); }
-.nav-heading-toggle.is-active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
-
-.nav-sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.nav-sub-manage { flex-shrink: 0; width: 14px; height: 14px; stroke: var(--lime); }
-
-.nav-sub-count { flex-shrink: 0; min-width: 20px; padding: 0 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); font-size: 11px; font-weight: 700; line-height: 17px; text-align: center; }
-
-.app-nav a { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border-radius: 10px; color: #fff; text-decoration: none; font-size: 15px; font-weight: 600; line-height: 1.25; }
-
-.app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
-
-.app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
-
-/* The item the page is on: a lighter teal wash with a lime bar at its left,
-   its icon and the chevron at its end in lime, white words. */
-.app-nav a.is-active { background: var(--nav-active); color: #fff; position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
-/* ...its icon and the chevron at its end in lime. */
-.app-nav a.is-active svg { color: var(--lime); }
-
-.app-nav a.is-active::after {
-  content: '';
-  width: 8px;
-  height: 8px;
-  margin-left: auto;
-  border-right: 2.5px solid var(--lime);
-  border-bottom: 2.5px solid var(--lime);
-  transform: rotate(-45deg);
-  flex-shrink: 0;
-}
-
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
 /* The editor's window over a group's page (Edit): a box in the middle of
@@ -276,8 +186,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .group-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--input); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
 .group-icon svg { width: 22px; height: 22px; }
-/* A suggestion wears the source app's mark in place of a kind icon. */
-.group-icon-app img { width: 26px; height: 26px; display: block; }
 
 .group-words { min-width: 0; flex: 1; }
 
@@ -505,15 +413,4 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   .card { padding: 14px; }
   /* The bar sits at the foot of main, which already stops above the tab bar. */
   .editor-actions { margin: 8px -12px -40px; padding: 10px 12px; }
-}
-
-/* The lime bar at a selected item's left, straight, clear of the corners. */
-.app-nav a.is-active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 5px;
-  background: var(--lime);
 }

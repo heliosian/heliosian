@@ -32,7 +32,7 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 	}
 	code, coach := ask("maya.lindqvist@example.org", `{"email": "Coach@Example.net", "name": "Pat  Coach"}`)
 	if code != http.StatusOK || coach == "" {
-		t.Fatalf("a Loop admin can't add a guest: %d", code)
+		t.Fatalf("a super admin can't add a guest: %d", code)
 	}
 	if p, _ := s.Model().Table("PERSON").Get(coach); p["source"] != "guest" || p["name_long_override"] != "Pat Coach" {
 		t.Fatalf("the guest reads %v", p)
@@ -43,8 +43,11 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 	if _, rowan := ask("maya.lindqvist@example.org", `{"email": "rowan.ashdown@example.org"}`); rowan != parent {
 		t.Fatalf("a directory address answered %s", rowan)
 	}
+	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000513", "person": parent})); err != nil {
+		t.Fatal(err)
+	}
 	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusForbidden {
-		t.Fatalf("someone who runs no list added a guest: %d", code)
+		t.Fatalf("someone who runs no group added a guest: %d", code)
 	}
 }
 

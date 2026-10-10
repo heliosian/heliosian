@@ -5,6 +5,7 @@ import "heliosian/internal/store"
 func SchoolDay() []store.Op {
 	open := func(row store.Row) store.Op {
 		row["status"], row["visible_to"], row["members_visible_to"] = "open", "grp00000000004", "grp00000000004"
+		row["posting"], row["replying"] = "members", "members"
 		return store.Insert("GROUP", row)
 	}
 	return []store.Op{

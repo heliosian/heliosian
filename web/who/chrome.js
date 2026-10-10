@@ -1,25 +1,15 @@
-import {state, model, groupKeyOf, viewer, familyOf, resetPageState} from './state.js';
-import {segments, hue, firstName, trimMiddle} from './dom.js';
+import {model, viewer, familyOf, resetPageState} from './state.js';
+import {segments, hue, firstName} from './dom.js';
+import {navSections, sectionHeading, listName, railRow, fillNav as drawRail, listPageRows, listsOpen, setListsOpen, groupActive, groupPathOf} from '/rail.js';
 import {el, svg, link} from '/elements.js';
-import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
+import {loadNavScroll, saveNavScroll} from './storage.js';
 import {myFamily} from './families.js';
 import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
-import {tagKeys, tagLabel, listApp, listOf, listSections, sharedTag, tagHref, onTagsChange, onTagsChangeChrome} from './tags.js';
+import {tagKeys, tagOf, listKeys, listApp, listOf, sharedTag, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
 import {privacyMismatchCardDismissed, myPrivacyWarnings, privacyMismatchCard} from './pages/privacy.js';
 import {initShell, renderAccount, searchInput, syncViewportHeight, onSlash, isEditableTarget} from '/shell.js';
-
-const primaryNavItems = [
-  {path: 'people', label: 'Directory'},
-  {path: 'classrooms', label: 'Gradebands'},
-  {path: 'staff', label: 'Staff'},
-];
-
-const toolsNavItems = [
-  {path: 'email-list', label: 'Everyone'},
-  {path: 'greenvelope', label: 'Invites'},
-];
 
 const mobileNavSections = [
   {path: 'people', label: 'Directory'},
@@ -149,153 +139,64 @@ function placeNavScroll(top) {
   navScrollFade();
 }
 
+function familyRow(indicator) {
+  const a = railRow({href: '/my-family', icon: 'my-family', label: 'My Family'}, activeSection() === 'my-family');
+  if (indicator === 'alert') {
+    const alert = el('span', 'nav-item-alert');
+    alert.title = 'Some family info is missing or out of date';
+    alert.append(svg('warn'));
+    a.append(alert);
+  } else if (indicator) {
+    a.append(navBadge(indicator));
+  }
+  return a;
+}
+
+function familySection(people, activeId) {
+  const todos = staleItems();
+  const familyTodos = todos.filter(i => i.target === 'family').length;
+  return {
+    after: todos.length ? [navBadge(todos.length)] : [],
+    forceOpen: Boolean(activeId),
+    fill: body => {
+      body.append(familyRow(familyTodos || (todos.length > familyTodos && 'alert')));
+      for (const p of people) {
+        body.append(familyMemberRow(p, viewer().id, activeId));
+      }
+    },
+  };
+}
+
 function fillNav(nav) {
   const seg = activeSection();
   const rawSeg = segments();
-  const me = viewer();
   const familyPeople = familyNavPeople();
   const familyIds = new Set(familyPeople.map(p => p.id));
   const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
   const onFamilyMember = !!rawSegPerson && familyIds.has(rawSegPerson.id);
-
-  function renderItem(container, item, indicator) {
-    const a = link('/' + item.path);
-    if (item.path === seg && !(item.path === 'people' && onFamilyMember)) {
-      a.className = 'active';
-    }
-    const icon = svg(item.path);
-    icon.classList.add('nav-icon-' + item.path);
-    a.append(icon, el('span', '', item.label));
-    if (indicator === 'alert') {
-      const alert = el('span', 'nav-item-alert');
-      alert.title = 'Some family info is missing or out of date';
-      alert.append(svg('warn'));
-      a.append(alert);
-    } else if (indicator) {
-      a.append(navBadge(indicator));
-    }
-    container.append(a);
-  }
-
-  function sectionHeading(key, title, icon, indicator, forceOpen) {
-    const open = state.navOpen[key] || forceOpen;
-    const heading = el('div', 'nav-heading nav-heading-toggle' + (open ? ' open' : ''));
-    const chevron = el('span', 'nav-chevron');
-    chevron.append(svg('chevron-down'));
-    const headingIcon = icon === 'app' ? el('span', 'app-symbol') : svg(icon);
-    headingIcon.classList.add('nav-heading-icon-' + icon);
-    heading.append(chevron, headingIcon, el('span', 'nav-heading-title', title));
-    if (indicator === 'alert') {
-      const alert = el('span', 'nav-heading-alert');
-      alert.title = 'Some family info is missing or out of date';
-      alert.append(svg('warn'));
-      heading.append(alert);
-    } else if (indicator) {
-      heading.append(navBadge(indicator));
-    }
-    heading.addEventListener('click', () => {
-      state.navOpen[key] = !state.navOpen[key];
-      saveNavOpen(state.navOpen);
-      if (nav.id !== 'nav') {
-        fillNav(nav);
+  drawRail(nav, {
+    here: seg === 'people' && onFamilyMember ? '' : seg,
+    lists: listItems(),
+    family: familyPeople.length ? familySection(familyPeople, onFamilyMember ? rawSegPerson.id : null) : null,
+    redraw: target => {
+      if (target.id !== 'nav') {
+        fillNav(target);
       }
       renderNav();
-    });
-    nav.append(heading);
-    if (!open) {
-      return null;
-    }
-    const body = el('div', 'nav-section-body');
-    nav.append(body);
-    queueMicrotask(() => heading.classList.toggle('active', Boolean(body.querySelector('a.active'))));
-    return body;
-  }
-
-  nav.replaceChildren();
-  const directoryBody = sectionHeading('directory', 'Directory', 'app', 0, false);
-  if (directoryBody) {
-    for (const item of primaryNavItems) {
-      renderItem(directoryBody, item);
-    }
-  }
-
-  if (familyPeople.length) {
-    const todos = staleItems();
-    const familyTodos = todos.filter(i => i.target === 'family').length;
-    const familyBody = sectionHeading('family', 'My Family', 'heart', todos.length, onFamilyMember);
-    if (familyBody) {
-      renderItem(familyBody, {path: 'my-family', label: 'My Family'}, familyTodos || (todos.length > familyTodos && 'alert'));
-      for (const p of familyPeople) {
-        familyBody.append(familyMemberRow(p, me.id, onFamilyMember ? rawSegPerson.id : null));
-      }
-    }
-  }
-
-  const toolsBody = sectionHeading('tools', 'Lists', 'list', 0, false);
-  if (toolsBody) {
-    for (const item of toolsNavItems) {
-      renderItem(toolsBody, item);
-    }
-    for (const group of listGroups()) {
-      if (!listsHeading(toolsBody, group, 'nav-subheading')) {
-        continue;
-      }
-      for (const item of group.items) {
-        const a = link(item.href);
-        a.title = item.title;
-        if (seg === 'people' && item.active) {
-          a.className = 'active';
-        }
-        a.append(listName(item));
-        toolsBody.append(a);
-      }
-    }
-  }
+    },
+  });
 }
 
-function listGroups() {
-  const {own, shared} = groupedTags();
-  const {running, upcoming, joined, managing} = listSections();
-  const tagItems = [...own, ...shared].map(entry => ({href: entry.href, shared: entry.shared, name: entry.name, title: entry.title, active: groupActive(entry.key), run: false, mail: false, start: ''}));
-  const listItems = (keys, dated) => keys.map(key => ({
-    href: tagHref(key),
-    list: key,
-    name: tagLabel(key),
-    title: tagLabel(key),
-    active: groupActive(key),
-    run: dated && listOf(key).run,
-    mail: listOf(key).mail,
-    start: dated ? listOf(key).start : '',
-  }));
-  const byName = (a, b) => a.name.localeCompare(b.name);
-  return [
-    {key: 'running', title: 'Running', open: true, items: [...tagItems, ...listItems(running)].sort(byName)},
-    {key: 'upcoming', title: 'Coming Up', open: true, items: listItems(upcoming, true)},
-    {key: 'joined', title: 'Joined', open: true, items: listItems(joined)},
-    {key: 'managing', title: 'Managing', open: false, items: listItems(managing)},
-  ].filter(group => group.items.length);
+function listItems() {
+  return {
+    tags: tagKeys().map(key => ({key, id: tagOf(key).id, name: tagOf(key).name, slug: '', shared: sharedTag(key)})),
+    lists: listKeys().map(key => ({...listOf(key), slug: listOf(key).groupSlug})),
+  };
 }
 
-const dayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
-
-function listName(item) {
-  const label = el('span', 'nav-list-label');
-  label.append(el('span', '', trimMiddle(item.name, 40)));
-  if (item.start) {
-    label.append(el('span', 'nav-list-date', dayFormat.format(new Date(item.start.slice(0, 10) + 'T00:00'))));
-  }
-  const marks = el('span', 'nav-list-marks');
-  if (item.mail) {
-    const mark = svg('mail');
-    mark.classList.add('nav-list-mail');
-    marks.append(mark);
-  }
-  if (item.run) {
-    marks.append(el('span', 'nav-list-run', '★'));
-  }
-  const row = el('span', 'nav-list-row');
-  row.append(label, marks);
-  return row;
+function toggleLists(section, open) {
+  setListsOpen(section, open);
+  renderNav();
 }
 
 function fillTabbar(bar) {
@@ -344,44 +245,6 @@ function setMobileListsMenu(open) {
   mobileListsOverlay.hidden = !open;
 }
 
-function listsHeading(container, group, className) {
-  const key = 'lists-' + group.key;
-  const open = state.navOpen[key] ?? group.open;
-  const heading = el('div', className + ' nav-subheading-toggle' + (open ? ' open' : ''));
-  const chevron = el('span', 'nav-chevron');
-  chevron.append(svg('chevron-down'));
-  heading.append(el('span', '', group.title));
-  if (!open) {
-    heading.append(el('span', 'nav-subheading-count', String(group.items.length)));
-  }
-  heading.append(chevron);
-  heading.addEventListener('click', () => {
-    state.navOpen[key] = !open;
-    saveNavOpen(state.navOpen);
-    renderNav();
-  });
-  container.append(heading);
-  return open;
-}
-
-function groupActive(key) {
-  const seg = segments();
-  return seg[0] === 'groups' && Boolean(seg[1]) && groupKeyOf(seg[1]) === key;
-}
-
-function groupedTags() {
-  const entry = (key, title, shared) => ({
-    key,
-    name: tagLabel(key),
-    href: tagHref(key),
-    title,
-    shared,
-  });
-  const own = tagKeys().filter(key => !sharedTag(key)).map(key => entry(key, tagLabel(key), false));
-  const shared = tagKeys().filter(sharedTag).map(key => entry(key, `${tagLabel(key)} - shared with others`, true));
-  return {own, shared};
-}
-
 function sharedTagIcon(icon) {
   const wrap = el('span', 'magic-tag-icon');
   wrap.append(icon);
@@ -399,25 +262,25 @@ function renderMobileListsMenu() {
   const body = mobileListsMenu.querySelector('#mobile-lists-body');
   body.replaceChildren();
   const seg = activeSection();
-  for (const item of toolsNavItems) {
+  for (const item of listPageRows) {
     const a = link('/' + item.path, 'mobile-lists-item' + (item.path === seg ? ' active' : ''));
     a.append(svg(item.path), el('span', '', item.label));
     body.append(a);
   }
   const itemIcon = item => {
-    if (item.list) {
-      return magicTagIcon(item.list);
+    if (!item.tag) {
+      return magicTagIcon(item.key);
     }
     const icon = svg(item.shared ? 'families' : 'tag');
     icon.style.color = `hsl(${hue(item.name)}, 65%, 40%)`;
     return item.shared ? sharedTagIcon(icon) : icon;
   };
-  for (const group of listGroups()) {
-    if (!listsHeading(body, group, 'mobile-lists-subheading')) {
+  for (const group of navSections(listItems())) {
+    if (!sectionHeading(body, group, {className: 'mobile-lists-subheading', open: listsOpen(group), toggle: open => toggleLists(group, open)})) {
       continue;
     }
     for (const item of group.items) {
-      const a = link(item.href, 'mobile-lists-item' + (seg === 'people' && item.active ? ' active' : ''));
+      const a = link(groupPathOf(item), 'mobile-lists-item' + (groupActive(item) ? ' active' : ''));
       a.append(itemIcon(item), listName(item));
       body.append(a);
     }

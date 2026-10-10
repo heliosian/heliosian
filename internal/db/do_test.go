@@ -492,7 +492,7 @@ func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
 
 func TestMailIsSentToItsListsGroups(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000031", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000031", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"})); err != nil {
 		t.Fatal(err)
 	}
 	m := s.Model()

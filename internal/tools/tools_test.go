@@ -111,7 +111,7 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 func TestACityOnlyFamilyIsNeverMeasured(t *testing.T) {
 	set, s, _ := sample(t)
 	if err := s.Commit(context.Background(), access.System("test"), db.GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000540", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": "Moss Beach, CA", "address_consent": "shared", "consent": "listed"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000540", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": "Moss Beach, CA", "address_consent": "shared", "consent": "listed"}),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -139,9 +139,9 @@ func TestEveryHrefIsNotedWithItsRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for href, id := range map[string]string{
-		"https://who.heliosian.com/classrooms/hummingbirds":      "grp00000000010",
-		"https://who.heliosian.com/people/" + maya:               maya,
-		"https://loop.heliosian.com/groups/jayvens-room-parents": "grp00000000502",
+		"https://who.heliosian.com/classrooms/hummingbirds":     "grp00000000010",
+		"https://who.heliosian.com/people/" + maya:              maya,
+		"https://who.heliosian.com/groups/jayvens-room-parents": "grp00000000502",
 	} {
 		if answer.Links[href] != id {
 			t.Errorf("%s noted as %q; every link: %v", href, answer.Links[href], answer.Links)

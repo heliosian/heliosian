@@ -23,7 +23,7 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 			{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "name": slug + " Managers", "status": "open", "added_by": viewer}},
 			{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
 			{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": viewer, "member": "yes"}},
-			{Insert: "GROUP", As: "list", Row: map[string]any{"kind": "group", "name": slug, "slug": slug, "status": "open", "mail": true, "listed": true, "visible_to": everyone, "members_visible_to": everyone, "posting": "everyone", "replying": "everyone", "managed_by": "@managers", "added_by": viewer}},
+			{Insert: "GROUP", As: "list", Row: map[string]any{"kind": "group", "name": slug, "slug": slug, "status": "open", "listed": true, "visible_to": everyone, "members_visible_to": everyone, "posting": "everyone", "replying": "everyone", "managed_by": "@managers", "added_by": viewer}},
 		}
 		for i, r := range rules {
 			r["group"], r["order"] = "@list", string(rune('a'+i))
@@ -45,10 +45,10 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	if _, err := makeList(guest, "guests"); err == nil {
 		t.Error("a guest makes a list")
 	}
-	if _, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Theirs", "slug": "theirs", "status": "open", "mail": true, "managed_by": nightManagers, "added_by": parent}}); err != nil {
+	if _, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Theirs", "slug": "theirs", "status": "open", "managed_by": nightManagers, "added_by": parent}}); err != nil {
 		t.Errorf("a parent can't make a list run by managers they're among: %v", err)
 	}
-	if _, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Hosts", "slug": "hosts", "status": "open", "mail": true, "managed_by": picnicManagers, "added_by": parent}}); err == nil {
+	if _, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Hosts", "slug": "hosts", "status": "open", "managed_by": picnicManagers, "added_by": parent}}); err == nil {
 		t.Error("a parent makes a list run by managers they aren't among")
 	}
 
@@ -65,7 +65,7 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 		t.Error("someone who doesn't manage a list renames it")
 	}
 	if _, err := write(staff, Edit{Set: list, Cells: map[string]any{"description": "Checked"}}); err != nil {
-		t.Errorf("a Loop admin can't describe any list: %v", err)
+		t.Errorf("a super admin can't describe any list: %v", err)
 	}
 
 	added, err := write(parent,
@@ -87,20 +87,11 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": student, "member": "excluded"}}); err == nil || !strings.Contains(err.Error(), "MEMBER") {
 		t.Errorf("someone unsubscribes another person from a list they don't run: %v", err)
 	}
-	if _, err := write(guest, Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": guest, "member": "excluded"}}); err == nil || !strings.Contains(err.Error(), "MEMBER") {
-		t.Errorf("someone the list doesn't take in unsubscribes: %v", err)
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": parent, "member": "excluded"}}); err == nil || !strings.Contains(err.Error(), "MEMBER") {
+		t.Errorf("someone keeps themselves off a list they don't run: %v", err)
 	}
-	off, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": parent, "member": "excluded"}})
-	if err != nil {
-		t.Fatalf("a parent can't unsubscribe from their classroom's list: %v", err)
-	}
-	for _, row := range s.Model().effectiveRows(hummingbirdsParents) {
-		if row["person"] == parent {
-			t.Error("an unsubscribed parent is still on the list")
-		}
-	}
-	if _, err := write(parent, Edit{Delete: off[0]}); err != nil {
-		t.Errorf("a parent can't resubscribe: %v", err)
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000020", "person": staff, "member": "yes"}}); err == nil || !strings.Contains(err.Error(), "MEMBER") {
+		t.Errorf("a parent adds someone to their family: %v", err)
 	}
 
 	if _, err := write(parent, Edit{Insert: "ALIAS", Row: map[string]any{"alias": "night", "target": list}}); err != nil {
@@ -130,17 +121,35 @@ func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	if row, _ := s.Model().Table("MESSAGE").Get(ids[0]); row["state"] != "sent" {
 		t.Errorf("the post's state reads %q", row["state"])
 	}
-	if _, err := write(Edit{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": "grp00000000040", "subject": "Picnic", "created": "2026-10-09 09:00"}}); err == nil {
-		t.Error("the mailer takes in a post for a group that is no list")
+	if _, err := write(Edit{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": "grp00000000040", "subject": "Picnic", "created": "2026-10-09 09:00"}}); err != nil {
+		t.Errorf("the mailer can't take in a post for an event, every group being a list: %v", err)
 	}
 	if _, err := write(Edit{Insert: "MESSAGE", Row: map[string]any{"direction": "out", "kind": "invitation", "group": hummingbirdsParents, "subject": "Party", "created": "2026-10-09 09:00"}}); err == nil {
 		t.Error("the mailer writes an invitation")
 	}
-	if _, err := write(Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": parent, "member": "excluded"}}); err != nil {
-		t.Errorf("the mailer can't unsubscribe someone by their link: %v", err)
+	list, _ := s.Model().Table("GROUP").Get(hummingbirdsParents)
+	if _, err := write(s.Model().unsubscribeEdits(list, parent, "Unsubscribed by the page")...); err != nil {
+		t.Fatalf("the mailer can't unsubscribe someone by their link: %v", err)
+	}
+	list, _ = s.Model().Table("GROUP").Get(hummingbirdsParents)
+	unsubscribed, _ := s.Model().Table("GROUP").Get(list["unsubscribed"])
+	if unsubscribed["name"] != "Hummingbirds Parents Unsubscribed" || unsubscribed["visible_to"] != "" || !s.Model().unsubscribed(list, parent) {
+		t.Fatalf("the unsubscribed group reads %v, the list %v", unsubscribed, list)
+	}
+	if !s.Model().effectivelyIn(hummingbirdsParents, parent) {
+		t.Error("unsubscribing took them off the list")
+	}
+	if _, err := write(s.Model().unsubscribeEdits(list, staff, "Unsubscribed by mail")...); err != nil {
+		t.Errorf("the mailer can't unsubscribe a second person into the same group: %v", err)
+	}
+	if _, err := write(s.Model().resubscribeEdits(list, parent)...); err != nil || s.Model().unsubscribed(list, parent) {
+		t.Errorf("the mailer can't resubscribe someone: %v", err)
 	}
 	if _, err := write(Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": staff, "member": "yes"}}); err == nil {
 		t.Error("the mailer puts someone on a list")
+	}
+	if _, err := write(Edit{Set: hummingbirdsParents, Cells: map[string]any{"unsubscribed": "grp00000000004"}}); err == nil {
+		t.Error("the mailer points a list's unsubscribed group somewhere else")
 	}
 	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System("import"), Env{System: "import", Now: testNow}, Batch{Batch: []Edit{{Set: ids[0], Cells: map[string]any{"state": "dropped", "detail": "auto-submitted mail"}}}}); err != nil {
 		t.Errorf("the sync can't carry a post's state from the old sheet: %v", err)

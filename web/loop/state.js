@@ -1,6 +1,7 @@
 import {api, signedIn} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
+import {navQueries, navLists, viewerListCondition} from '/rail.js';
 
 export const domain = 'loop.heliosian.com';
 
@@ -30,43 +31,23 @@ export function write(batch) {
   return api('POST', '/api/q', {batch});
 }
 
-const listCondition = '(mail_list @g) (!= status "closed")';
-const lists = `(select GROUP.id @g ${listCondition})`;
-const runsDirectly = '(in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))';
+const lists = `(select GROUP.id @g ${viewerListCondition})`;
 
-function suggestions(answers, named) {
-  const today = new Date().toLocaleDateString('en-CA');
-  const running = rowsOf(answers.running, 'GROUP');
-  const byId = {};
-  for (const g of running) {
-    byId[g.id] = g;
-  }
-  const runners = {};
-  for (const m of rowsOf(answers.runners, 'MEMBER')) {
-    (runners[m.group] = runners[m.group] || []).push(m.person);
-  }
-  const under = root => running.filter(g => {
-    for (let at = byId[g.parent]; at; at = byId[at.parent]) {
-      if (at === root) {
-        return true;
-      }
-    }
-    return false;
-  });
-  const out = [];
-  for (const g of running) {
-    const past = (g.end || g.start || '9999').slice(0, 10) < today;
-    if (byId[g.parent] || past || named.has(g.id)) {
-      continue;
-    }
-    out.push({id: g.id, name: g.name, kind: g.kind, targets: [g.id, ...under(g).map(x => x.id)], managers: runners[g.managed_by] || []});
-  }
-  for (const g of rowsOf(answers.tags, 'GROUP')) {
-    if (!named.has(g.id)) {
-      out.push({id: g.id, name: g.name, kind: 'tag', targets: [g.id], managers: []});
-    }
-  }
-  return out;
+function groupQueries(sel) {
+  const into = `(or (in group ${sel}) (in group (select GROUP.rsvp_yes (in id ${sel}))))`;
+  return {
+    groups: `(from GROUP @g (where (in id ${sel})) (order name asc))`,
+    runs: `(from GROUP @g (where (in id ${sel}) (runs_list @g)) (columns slug))`,
+    members: `(from EFFECTIVE_MEMBER (where ${into}) (columns group person reasons))`,
+    hand: `(from MEMBER (where (in group ${sel})) (columns group person member note added))`,
+    managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (in id ${sel})))) (columns group person))`,
+    rules: `(from RULE (where (in group ${sel})) (order order asc) (include target within))`,
+    aliases: `(from ALIAS (where (in target ${sel})))`,
+    guests: `(from PERSON (where (= source "guest") (or (in id (select MEMBER.person (in group ${sel}))) (in id (select EFFECTIVE_MEMBER.person ${into})))))`,
+    guestEmails: `(from PERSON_EMAIL (where guest (in person (select MEMBER.person (in group ${sel})))) (columns person address))`,
+    sent: `(from MESSAGE (where (= kind "post") (= direction "in") (= state "sent") (in group ${sel})) (columns group))`,
+    unsubscribed: `(from MEMBER (where (= person @viewer) (in group (select GROUP.unsubscribed (in id ${sel})))) (columns group person))`,
+  };
 }
 
 export function personOf(id) {
@@ -102,40 +83,17 @@ const reasonOf = (rules, word) => {
   return rule < 0 ? null : {rule};
 };
 
-export async function loadModel() {
-  const [who, answers, people] = await Promise.all([whoAmI(), query({
-    viewer: '(from PERSON (where (= id @viewer)))',
-    admin: '(from PERSON (where (= id @viewer) (admin_of "loop")) (columns source))',
-    everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
-    lists: `(from GROUP @g (where ${listCondition}) (order name asc))`,
-    runs: `(from GROUP @g (where ${listCondition} (runs_list @g)) (columns slug))`,
-    members: `(from EFFECTIVE_MEMBER (where (in group ${lists})) (columns group person reasons))`,
-    hand: `(from MEMBER (where (in group ${lists})) (columns group person member note added))`,
-    managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${listCondition}))) (columns group person))`,
-    rules: `(from RULE (where (in group ${lists})) (order order asc) (include target within))`,
-    aliases: `(from ALIAS (where (in target ${lists})))`,
-    guests: `(from PERSON (where (= source "guest") (or (in id (select MEMBER.person (in group ${lists}))) (in id (select EFFECTIVE_MEMBER.person (in group ${lists}))))))`,
-    guestEmails: `(from PERSON_EMAIL (where guest (in person (select MEMBER.person (in group ${lists})))) (columns person address))`,
-    sent: `(from MESSAGE (where (= kind "post") (= direction "in") (= state "sent") (in group ${lists})) (columns group))`,
-    grades: '(from GROUP (where (= kind "grade")) (columns name color))',
-    running: `(from GROUP @g (where (in kind "activity" "party") (not (blank parent)) (!= status "closed") ${runsDirectly}) (order name asc) (columns name kind parent start end managed_by))`,
-    tags: `(from GROUP @g (where (own_group @g) (not (blank managed_by)) (!= status "closed") ${runsDirectly} (not (exists GROUP (= managed_by @g) (!= id @g)))) (order name asc) (columns name kind managed_by))`,
-    runners: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g (in kind "activity" "party") ${runsDirectly}))) (columns group person))`,
-  }), listed()]);
-  await directory();
-  const everyone = (answers.everyone.result || [])[0] || '';
-  const viewer = answers.viewer.result.length ? rowsOf(answers.viewer, 'PERSON')[0] : null;
+function buildGroups(answers) {
+  const {viewer, everyone, people, guestEmails, groupNames} = state.model;
   const runs = new Set(answers.runs.result);
-  const peopleById = {};
-  for (const p of people) {
-    peopleById[p.id] = p;
-  }
   for (const p of rowsOf(answers.guests, 'PERSON')) {
-    peopleById[p.id] = p;
+    people[p.id] = p;
   }
-  const guestEmails = {};
   for (const e of rowsOf(answers.guestEmails, 'PERSON_EMAIL')) {
     guestEmails[e.person] = e.address;
+  }
+  for (const g of Object.values(answers.rules.resources.GROUP || {})) {
+    groupNames[g.id] = g;
   }
   const by = (answer, table, key) => {
     const out = {};
@@ -148,11 +106,59 @@ export async function loadModel() {
   const hand = by(answers.hand, 'MEMBER', 'group');
   const managers = by(answers.managers, 'MEMBER', 'group');
   const rules = by(answers.rules, 'RULE', 'group');
-  const aliases = by(answers.aliases, 'ALIAS', 'target');
+  const aliases = by({...answers.aliases, result: rowsOf(answers.aliases, 'ALIAS').filter(a => !/[A-Z]/.test(a.alias)).map(a => a.id)}, 'ALIAS', 'target');
   const sent = by(answers.sent, 'MESSAGE', 'group');
-  const groupNames = {};
-  for (const g of Object.values(answers.rules.resources.GROUP || {})) {
-    groupNames[g.id] = g;
+  const off = new Set(rowsOf(answers.unsubscribed, 'MEMBER').map(m => m.group));
+  return rowsOf(answers.groups, 'GROUP').map(g => {
+    const listRules = rules[g.id] || [];
+    const source = g.kind === 'event' && g.rsvp_yes ? g.rsvp_yes : g.id;
+    const shown = (members[source] || []).map(e => ({...personView(e.person), reasons: e.reasons.split(', ').map(w => reasonOf(listRules, w)).filter(Boolean)}));
+    return {
+      id: g.id,
+      slug: g.slug,
+      title: g.name,
+      address: g.slug ? `${g.slug}@${domain}` : '',
+      description: g.description || '',
+      posting: g.posting,
+      replying: g.replying,
+      visibility: visibility(g, everyone),
+      managedBy: g.managed_by,
+      aliases: (aliases[g.id] || []).map(a => a.alias),
+      aliasRows: aliases[g.id] || [],
+      rules: listRules,
+      hand: hand[g.id] || [],
+      members: shown,
+      managers: (managers[g.managed_by] || []).map(m => personView(m.person)),
+      managerRows: managers[g.managed_by] || [],
+      run: runs.has(g.id),
+      member: Boolean(viewer && shown.some(m => m.person === viewer.id)),
+      unsubscribed: off.has(g.unsubscribed),
+      sent: (sent[g.id] || []).length,
+    };
+  });
+}
+
+function remember(g, ...keys) {
+  byId[g.id] = g;
+  for (const key of [g.slug, ...keys]) {
+    if (key) {
+      bySlug[key] = g;
+    }
+  }
+}
+
+export async function loadModel() {
+  const [who, answers, people] = await Promise.all([whoAmI(), query({
+    viewer: '(from PERSON (where (= id @viewer)))',
+    everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
+    grades: '(from GROUP (where (= kind "grade")) (columns name color))',
+    ...groupQueries(lists),
+    ...navQueries(),
+  }), listed()]);
+  await directory();
+  const peopleById = {};
+  for (const p of people) {
+    peopleById[p.id] = p;
   }
   const gradeColors = {};
   for (const g of rowsOf(answers.grades, 'GROUP')) {
@@ -161,53 +167,32 @@ export async function loadModel() {
     }
   }
   state.people = people;
-  const named = new Set(rowsOf(answers.rules, 'RULE').map(r => r.target).filter(Boolean));
   state.model = {
-    suggestions: suggestions(answers, named),
-    viewer,
+    nav: navLists(answers),
+    viewer: answers.viewer.result.length ? rowsOf(answers.viewer, 'PERSON')[0] : null,
     email: who.email,
-    admin: answers.admin.result.length > 0,
-    everyone,
+    everyone: (answers.everyone.result || [])[0] || '',
     people: peopleById,
-    guestEmails,
-    groupNames,
+    guestEmails: {},
+    groupNames: {},
     gradeColors,
     groups: [],
   };
-  state.model.groups = rowsOf(answers.lists, 'GROUP').map(g => {
-      const listRules = rules[g.id] || [];
-      const shown = (members[g.id] || []).map(e => ({...personView(e.person), reasons: e.reasons.split(', ').map(w => reasonOf(listRules, w)).filter(Boolean)}));
-      const own = (hand[g.id] || []).find(m => viewer && m.person === viewer.id);
-      return {
-        id: g.id,
-        slug: g.slug,
-        title: g.name,
-        address: `${g.slug}@${domain}`,
-        description: g.description || '',
-        posting: g.posting || 'everyone',
-        replying: g.replying || 'everyone',
-        visibility: visibility(g, everyone),
-        managedBy: g.managed_by,
-        aliases: (aliases[g.id] || []).map(a => a.alias),
-        aliasRows: aliases[g.id] || [],
-        rules: listRules,
-        hand: hand[g.id] || [],
-        members: shown,
-        managers: (managers[g.managed_by] || []).map(m => personView(m.person)),
-        managerRows: managers[g.managed_by] || [],
-        run: runs.has(g.id),
-        member: Boolean(viewer && shown.some(m => m.person === viewer.id)),
-        unsubscribed: Boolean(own && own.member === 'excluded'),
-        ownRow: own || null,
-        sent: (sent[g.id] || []).length,
-      };
-  });
+  state.model.groups = buildGroups(answers);
   byId = {};
   bySlug = {};
   for (const g of state.model.groups) {
-    byId[g.id] = g;
-    bySlug[g.slug] = g;
+    remember(g);
   }
+}
+
+export async function fetchGroup(key) {
+  const column = /^grp[0-9A-Za-z]{11}$/.test(key) ? 'id' : 'slug';
+  const [g] = buildGroups(await query(groupQueries(`(select GROUP.id (!= status "closed") (= ${column} ${JSON.stringify(key)}))`)));
+  if (g) {
+    remember(g, key);
+  }
+  return g || null;
 }
 
 export function person(email) {
@@ -218,10 +203,6 @@ export function me() {
   const v = state.model.viewer;
   const name = (v && v.name_show) || state.model.email;
   return {email: state.model.email, name, initial: name[0].toUpperCase(), photoUrl: v ? photoOf(v) : ''};
-}
-
-export function isAdmin() {
-  return state.model.admin;
 }
 
 export function group(slug) {

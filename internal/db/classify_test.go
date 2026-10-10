@@ -60,7 +60,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 		return `{"classrooms": [], "grades": [], "nobody": false}`
 	}))
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000033", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000033", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"})); err != nil {
 		t.Fatal(err)
 	}
 	bucket := blob.NewMemoryBucket()

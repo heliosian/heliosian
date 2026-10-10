@@ -334,22 +334,22 @@ func TestFillerWordsAreNotSearched(t *testing.T) {
 func TestListsAdminsManagersSessionsDaysAndCategoriesAreNotSearched(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000099", "kind": "day_part", "name": "Pickup", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:15:00", "end": "2026-11-03 15:30:00"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000089", "kind": "day", "name": "No School", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000096", "kind": "admins", "name": "Book Club Admins", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000097", "kind": "group", "name": "Book Club Chat Viewers", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000098", "kind": "group", "name": "Book Club Chat", "status": "open", "parent": "grp00000000090", "visible_to": "grp00000000097"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093", "managed_by": "grp00000000094", "waitlist": "grp00000000095"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Club", "parent": "grp00000000091", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:45:00"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000090", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000099", "kind": "day_part", "name": "Pickup", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:15:00", "end": "2026-11-03 15:30:00"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000089", "kind": "day", "name": "No School", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000093", "kind": "group", "name": "Book Club Going", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000094", "kind": "group", "name": "Book Club Managers", "status": "open", "managed_by": "grp00000000094"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000095", "kind": "group", "name": "Book Club Waitlist", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000096", "kind": "admins", "name": "Book Club Admins", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000097", "kind": "group", "name": "Book Club Chat Viewers", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000098", "kind": "group", "name": "Book Club Chat", "status": "open", "parent": "grp00000000090", "visible_to": "grp00000000097"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000091", "kind": "event", "name": "Book Club", "parent": "grp00000000090", "status": "open", "visible_to": "grp00000000004", "rsvp_yes": "grp00000000093", "managed_by": "grp00000000094", "waitlist": "grp00000000095"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000092", "kind": "event", "name": "Book Club", "parent": "grp00000000091", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:45:00"}),
 	); err != nil {
 		t.Fatal(err)
 	}
 	rows := s.Model().SearchInputs(nil)
-	for id, want := range map[string]bool{"grp00000000089": false, "grp00000000090": false, "grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": false, "grp00000000098": true, "grp00000000099": false} {
+	for id, want := range map[string]bool{"grp00000000089": false, "grp00000000090": false, "grp00000000091": true, "grp00000000092": false, "grp00000000093": false, "grp00000000094": false, "grp00000000095": false, "grp00000000096": false, "grp00000000097": true, "grp00000000098": true, "grp00000000099": false} {
 		if _, got := rows[id]; got != want {
 			t.Errorf("%s searched %v, want %v", id, got, want)
 		}
@@ -887,7 +887,7 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 		}
 	}
 	s, _, _, x := searcher(t)
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "event", "name": "Spring Picnic", "parent": "grp00000000060", "status": "open", "visible_to": "grp00000000004", "start": "2027-04-10 12:00:00"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000090", "kind": "event", "name": "Spring Picnic", "parent": "grp00000000060", "status": "open", "visible_to": "grp00000000004", "start": "2027-04-10 12:00:00"})); err != nil {
 		t.Fatal(err)
 	}
 	makeAll(t, s, x)

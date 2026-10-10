@@ -197,8 +197,8 @@ func TestPostsTheListDoesNotTakeAreDropped(t *testing.T) {
 		"auto-submitted":   {"Auto-Submitted: auto-replied\r\n" + loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "a@example.org", "Accepted: Picnic", ""), "auto-submitted mail", false},
 		"looped":           {"X-Helios-Loop: hummingbirds-parents\r\n" + loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "b@example.org", "Again", ""), "already sent through Helios Loop", false},
 		"unauthenticated":  {strings.Replace(loopPost("Stranger <stranger@example.net>", "c@example.org", "Hi", ""), "dmarc=pass", "dmarc=fail", 1), "", false},
-		"not a member":     {loopPost("Stranger <stranger@example.net>", "d@example.org", "Buy now", ""), "only the email list's members may post", true},
-		"a staff outsider": {loopPost("Maya Lindqvist <maya.lindqvist@example.org>", "e@example.org", "Hi all", ""), "only the email list's members may post", true},
+		"not a member":     {loopPost("Stranger <stranger@example.net>", "d@example.org", "Buy now", ""), "only the people on it and its managers may post", true},
+		"a staff outsider": {loopPost("Maya Lindqvist <maya.lindqvist@example.org>", "e@example.org", "Hi all", ""), "only the people on it and its managers may post", true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newListMailHarness(t)
@@ -257,9 +257,13 @@ func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 	if rec := h.serve(r); rec.Code != http.StatusOK {
 		t.Fatalf("one-click answered %d: %s", rec.Code, rec.Body)
 	}
-	row, ok := h.s.Model().Table("MEMBER").Find(parentsList, parent)
-	if !ok || row["member"] != "excluded" || row["note"] != "Unsubscribed by one-click" {
+	list, _ := h.s.Model().Table("GROUP").Get(parentsList)
+	row, ok := h.s.Model().Table("MEMBER").Find(list["unsubscribed"], parent)
+	if !ok || row["member"] != "yes" || row["note"] != "Unsubscribed by one-click" {
 		t.Fatalf("the unsubscribe reads %v", row)
+	}
+	if _, kept := h.s.Model().Table("MEMBER").Find(parentsList, parent); kept {
+		t.Fatal("the unsubscribe wrote to the list's own memberships")
 	}
 	if again := h.serve(httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok, nil)); !strings.Contains(again.Body.String(), "Already unsubscribed") {
 		t.Fatalf("the page after reads %s", again.Body)
@@ -274,11 +278,18 @@ func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 	if rec := h.inbound(notice); rec.Code != http.StatusOK {
 		t.Fatalf("the unsubscribe mail answered %d", rec.Code)
 	}
-	if row, ok := h.s.Model().Table("MEMBER").Find(parentsList, staff); !ok || row["member"] != "excluded" || row["note"] != "Unsubscribed by mail from rowan.ashdown@example.org" {
+	if row, ok := h.s.Model().Table("MEMBER").Find(list["unsubscribed"], staff); !ok || row["member"] != "yes" || row["note"] != "Unsubscribed by mail from rowan.ashdown@example.org" {
 		t.Fatalf("the hand addition's unsubscribe reads %v", row)
 	}
 	if len(h.posts(parentsList, "in")) != 0 {
 		t.Fatal("an unsubscribe mail was taken as a post")
+	}
+	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "after@example.org", "After", "")
+	if rec := h.inbound(loopNotice(raw, hummingbirdsTo)); rec.Code != http.StatusOK {
+		t.Fatalf("inbound answered %d", rec.Code)
+	}
+	if post := h.settled(parentsList); post["state"] != postSent || len(h.sender.Raws()) != 0 {
+		t.Fatalf("a post after both unsubscribed reads %v and sent %d copies", post, len(h.sender.Raws()))
 	}
 	if rec := h.serve(httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok+"x", nil)); rec.Code != http.StatusNotFound {
 		t.Fatalf("a forged token answered %d", rec.Code)
@@ -324,6 +335,21 @@ func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
 	bare.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("an unconfigured hook answered %d", rec.Code)
+	}
+}
+
+func TestAnAliasWithAnUppercaseLetterReachesNoList(t *testing.T) {
+	h := newListMailHarness(t)
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "0dLdEoHQT2eB-V2dRFe5TA", "target": parentsList}}}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, to := range []string{"0dLdEoHQT2eB-V2dRFe5TA", "0dldeohqt2eb-v2drfe5ta"} {
+		if g := h.s.Model().mailList(to); g != nil {
+			t.Errorf("%s reached %s", to, g["id"])
+		}
+	}
+	if g := h.s.Model().mailList("K7M2Q9X4V1BNC"); g == nil || g["id"] != parentsList {
+		t.Errorf("the lowercase alias, written in capitals, reached %v", g)
 	}
 }
 

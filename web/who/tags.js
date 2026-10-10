@@ -44,18 +44,6 @@ export function listOf(key) {
   return lists[key];
 }
 
-export function listSections() {
-  const keys = listKeys();
-  const backstage = key => lists[key].run && !lists[key].member && lists[key].kind !== 'event';
-  const shown = keys.filter(key => !backstage(key));
-  return {
-    running: shown.filter(key => lists[key].run && !lists[key].start),
-    upcoming: shown.filter(key => lists[key].start).sort((a, b) => lists[a].start.localeCompare(lists[b].start)),
-    joined: shown.filter(key => !lists[key].run && !lists[key].start),
-    managing: keys.filter(backstage),
-  };
-}
-
 export function listIcon(key) {
   return listIcons[lists[key].kind];
 }

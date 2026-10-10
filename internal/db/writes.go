@@ -168,6 +168,9 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 			if c.Kind == ID && c.Required {
 				row[c.Name] = Mint(c.Prefix, m.Has)
 			}
+			if c.Default != "" && strings.TrimSpace(row[c.Name]) == "" {
+				row[c.Name] = c.Default
+			}
 		}
 		id := row["id"]
 		if err := t.Check(row); err != nil {

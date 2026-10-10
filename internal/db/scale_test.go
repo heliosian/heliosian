@@ -13,6 +13,7 @@ import (
 
 const (
 	scaleFamilies = 400
+	scaleEvents   = 600
 	scaleMails    = 2000
 	scaleViewer   = "per00000000101"
 )
@@ -59,7 +60,7 @@ func scaleStore(tb testing.TB) *Store {
 	n, m := 100, 100
 	for f := range scaleFamilies {
 		family := fmt.Sprintf("grp%011d", 1000+f)
-		groups = append(groups, map[string]string{"id": family, "kind": "family", "name": fmt.Sprintf("Family %d", f), "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "managed_by": family, "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared"})
+		groups = append(groups, map[string]string{"id": family, "kind": "family", "name": fmt.Sprintf("Family %d", f), "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "managed_by": family, "vc_address": fmt.Sprintf("%d Main St", f), "consent": "listed", "address_consent": "shared", "phone_consent": "shared", "posting": "members", "replying": "members"})
 		for k := range 4 {
 			n++
 			id := fmt.Sprintf("per%011d", n)
@@ -74,6 +75,23 @@ func scaleStore(tb testing.TB) *Store {
 			m++
 			members = append(members, map[string]string{"id": fmt.Sprintf("mem%011d", m), "group": roleGroup, "person": id, "member": "yes"})
 		}
+	}
+	for e := range scaleEvents {
+		event, managers, going, notGoing := fmt.Sprintf("grp%011d", 5000+4*e), fmt.Sprintf("grp%011d", 5001+4*e), fmt.Sprintf("grp%011d", 5002+4*e), fmt.Sprintf("grp%011d", 5003+4*e)
+		open := func(id, kind, name string, cells map[string]string) map[string]string {
+			row := map[string]string{"id": id, "kind": kind, "name": name, "status": "open", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}
+			for k, v := range cells {
+				row[k] = v
+			}
+			return row
+		}
+		groups = append(groups,
+			open(event, "event", fmt.Sprintf("Event %d", e), map[string]string{"managed_by": managers, "rsvp_yes": going, "rsvp_no": notGoing, "start": "2026-10-20 18:00"}),
+			open(managers, "group", fmt.Sprintf("Event %d Managers", e), map[string]string{"managed_by": managers}),
+			open(going, "group", fmt.Sprintf("Event %d Going", e), map[string]string{"parent": event}),
+			open(notGoing, "group", fmt.Sprintf("Event %d Not Going", e), map[string]string{"parent": event}))
+		m++
+		members = append(members, map[string]string{"id": fmt.Sprintf("mem%011d", m), "group": going, "person": fmt.Sprintf("per%011d", 101+e%(4*scaleFamilies)), "member": "yes"})
 	}
 	appendRows(tb, filepath.Join(root, "datapeople", "PERSON.csv"), people)
 	appendRows(tb, filepath.Join(root, "datapeople", "PERSON_EMAIL.csv"), emails)
@@ -135,6 +153,26 @@ func BenchmarkWikiPages(b *testing.B) {
 
 func BenchmarkWikiSides(b *testing.B) {
 	benchQuery(b, `(from DOCUMENT (where (= relation "side")))`)
+}
+
+func BenchmarkSidebar(b *testing.B) {
+	m := scaleStore(b).Model()
+	mine := `(select EFFECTIVE_MEMBER.group (= person @viewer))`
+	queries := []*Query{}
+	for _, src := range []string{
+		`(from GROUP @g (where (sidebar_group @g) (manages @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
+		`(from GROUP @g (where (sidebar_group @g) (not (manages @g)) (or (in id ` + mine + `) (in rsvp_yes ` + mine + `))) (order name asc) (include parent parent.parent parent.parent.parent))`,
+	} {
+		q, err := Parse(src)
+		if err != nil {
+			b.Fatal(err)
+		}
+		queries = append(queries, q)
+	}
+	env := Env{Viewer: scaleViewer, Now: testNow}
+	for b.Loop() {
+		m.RunAll(b.Context(), queries, env)
+	}
 }
 
 func BenchmarkRebuildDocuments(b *testing.B) {

@@ -309,8 +309,8 @@ type list struct {
 	YouAreIn    bool     `json:"youAreIn,omitempty"`
 }
 
-var lists = define("helios_lists", "Looking at the email lists", "The email lists on Helios Loop the viewer can see - the ones they manage, the ones open to everyone and the ones they are on - each with its address, description, managers, how many are on it, its members where the viewer may see them, and whether the viewer is on it. A list's members follow from rules over the directory.", func(c *call, in wordsIn) (any, error) {
-	found, _, err := c.rows(tree{"from": "GROUP", "where": words([]any{path("mail")}, in.Words, "name", "slug", "description"), "order": asc("name")})
+var lists = define("helios_lists", "Looking at the email lists", "The email lists on Helios Loop the viewer can see - every group with an address: the ones they manage, the ones open to everyone and the ones they are on - each with its address, description, managers, how many are on it, its members where the viewer may see them, and whether the viewer is on it. A list's members follow from rules over the directory.", func(c *call, in wordsIn) (any, error) {
+	found, _, err := c.rows(tree{"from": "GROUP", "where": words([]any{tree{"not": tree{"blank": path("slug")}}}, in.Words, "name", "slug", "description"), "order": asc("name")})
 	if err != nil {
 		return nil, err
 	}
@@ -324,10 +324,7 @@ var lists = define("helios_lists", "Looking at the email lists", "The email list
 		if err != nil {
 			return nil, err
 		}
-		l := list{named: c.named("GROUP", g), Description: clip(g["description"], clipped), MemberCount: count}
-		if g["slug"] != "" {
-			l.Address = g["slug"] + "@" + listDomain
-		}
+		l := list{named: c.named("GROUP", g), Description: clip(g["description"], clipped), MemberCount: count, Address: g["slug"] + "@" + listDomain}
 		for _, m := range managers {
 			l.Managers = append(l.Managers, m.Name)
 		}

@@ -1,15 +1,3 @@
-export function loadNavOpen() {
-  const raw = localStorage.getItem('navOpen');
-  if (raw) {
-    return JSON.parse(raw);
-  }
-  return {directory: true, family: false, tools: true};
-}
-
-export function saveNavOpen(navOpen) {
-  localStorage.setItem('navOpen', JSON.stringify(navOpen));
-}
-
 export function loadLastTag() {
   return localStorage.getItem('lastTag') || '';
 }

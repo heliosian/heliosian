@@ -38,6 +38,7 @@ type Column struct {
 	Target      string
 	Values      []Value
 	Required    bool
+	Default     string
 	Generated   bool
 	Private     bool
 	Description string
@@ -103,6 +104,7 @@ var (
 		v("everyone", "anyone, from any address, in Helios or not"),
 		v("members", "its effective members and managers"),
 		v("managers", "its managers alone"),
+		v("none", "nobody"),
 	}
 	consents = []Value{
 		v("listed", "consented: shown"),
@@ -144,6 +146,12 @@ func generated(name string) Column {
 
 func (c Column) required() Column {
 	c.Required = true
+	return c
+}
+
+func (c Column) byDefault(value string) Column {
+	c.Required = true
+	c.Default = value
 	return c
 }
 
@@ -367,7 +375,7 @@ var Tables = []Table{
 				v("cancelled", "called off"),
 				v("closed", "gone from every list and page, kept for the messages naming it")).about("Where it stands."),
 			col("slug", Text).about("Its short name in addresses: a page's friendly address, a list's email address, a grade's grade-k to grade-8."),
-			col("name", Text).about("Its name. A family's is written by a trigger from its members' last names. A managers group named <name> Managers, a waitlist named <name> Waitlist, or answer groups named <name> Going and <name> Not Going, are renamed with the group they serve."),
+			col("name", Text).about("Its name. A family's is written by a trigger from its members' last names. A managers group named <name> Managers, a waitlist named <name> Waitlist, answer groups named <name> Going and <name> Not Going, or an unsubscribed group named <name> Unsubscribed, are renamed with the group they serve."),
 			col("subtitle", Text).about("A line under the name."),
 			col("description", Text).about("What it is, in words. A category's is what the calendar classifier reads."),
 			col("color", Text).about("A classroom's or grade's color."),
@@ -389,9 +397,9 @@ var Tables = []Table{
 			generated("phone").about("Its phone number: the override, else Veracross's; for a family, blank unless phone_consent is shared."),
 			enum("phone_consent", shares...).about("Whether a family's phone number is shown: shared only when every parent's is. Written by the consent import."),
 			enum("consent", consents...).private().about("A family's consent: listed only when every parent's is. Written by the consent import."),
-			col("mail", Bool).about("Has an email address and is a list in Loop."),
-			enum("posting", senders...).about("Who may post to a Loop list."),
-			enum("replying", senders...).about("Who may reply to a Loop list's posts."),
+			enum("posting", senders...).byDefault("members").about("Who may post to the group's email list."),
+			enum("replying", senders...).byDefault("members").about("Who may reply to its email list's posts."),
+			ref("unsubscribed", "GROUP").about("The group of those who unsubscribed from its email list: they stay members and get none of its mail. Made at the first unsubscribe, and managed by the group's managers."),
 			enum("join",
 				v("direct", "sign up or buy right here"),
 				v("below", "sign up for something under it, not here"),

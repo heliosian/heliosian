@@ -14,9 +14,9 @@ func TestTheGeocoderPlacesAFamilysSharedAddressOnce(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	const address = "3 Tide Pool Court, Montara, CA 94037"
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000508", "kind": "family", "status": "open", "name": "Okafor Family", "visible_to": "grp00000000004", "vc_address": address, "address_consent": "shared", "consent": "listed"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000509", "kind": "family", "status": "open", "name": "Brandt Family", "visible_to": "grp00000000004", "vc_address": "9 Hidden Lane, Montara, CA 94037", "address_consent": "withheld", "consent": "listed"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000540", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "vc_address": "Half Moon Bay, CA", "address_consent": "shared", "consent": "listed"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000508", "kind": "family", "status": "open", "name": "Okafor Family", "visible_to": "grp00000000004", "vc_address": address, "address_consent": "shared", "consent": "listed"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000509", "kind": "family", "status": "open", "name": "Brandt Family", "visible_to": "grp00000000004", "vc_address": "9 Hidden Lane, Montara, CA 94037", "address_consent": "withheld", "consent": "listed"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000540", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "vc_address": "Half Moon Bay, CA", "address_consent": "shared", "consent": "listed"}),
 	); err != nil {
 		t.Fatal(err)
 	}

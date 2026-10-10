@@ -20,13 +20,13 @@ func calendarSample(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
 	ops := []store.Op{
-		store.Insert("GROUP", store.Row{"id": ospreys, "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
-		store.Insert("GROUP", store.Row{"id": conference, "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": ospreys, "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": conference, "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
 	}
 	n := 70
 	for name := range DayTemplates {
 		n++
-		ops = append(ops, store.Insert("GROUP", store.Row{"id": "grp000000000" + itoa2(n), "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}))
+		ops = append(ops, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp000000000" + itoa2(n), "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}))
 	}
 	if err := commit(s, GroupsSheet, ops...); err != nil {
 		t.Fatal(err)
@@ -195,8 +195,8 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 	sync([]GoogleEvent{cafe})
 	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000901", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000902", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000901", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000902", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}),
 		store.Update("GROUP", store.Row{"id": event}, store.Row{"rsvp_yes": "grp00000000901", "rsvp_no": "grp00000000902"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000901", "group": "grp00000000901", "person": "per00000000002", "member": "yes"}),
 	); err != nil {

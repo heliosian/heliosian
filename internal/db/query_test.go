@@ -8,11 +8,83 @@ import (
 	"time"
 
 	"heliosian/internal/store"
+	"heliosian/internal/trace"
 )
+
+func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
+	s := sample(t)
+	group := func(id, name string, cells store.Row) store.Op {
+		row := store.Row{"id": id, "kind": "group", "name": name, "status": "open", "posting": "members", "replying": "members"}
+		for k, v := range cells {
+			row[k] = v
+		}
+		return store.Insert("GROUP", row)
+	}
+	if err := commit(s, GroupsSheet,
+		group("grp00000000801", "Tech Team", store.Row{"slug": "tech", "visible_to": "grp00000000801", "managed_by": "grp00000000802"}),
+		group("grp00000000802", "Tech Team Managers", store.Row{"visible_to": "grp00000000801", "managed_by": "grp00000000802"}),
+		group("grp00000000803", "Hummingbirds Chat Viewers", nil),
+		group("grp00000000804", "Hummingbirds Chat", store.Row{"visible_to": "grp00000000803", "managed_by": "grp00000000802"}),
+		group("grp00000000805", "Sci Oly Managers", store.Row{"managed_by": "grp00000000805"}),
+		group("grp00000000806", "Sci Oly Parents", store.Row{"managed_by": "grp00000000805"}),
+		group("grp00000000807", "Sci Oly Students", store.Row{"managed_by": "grp00000000805"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
+	slices.Sort(got)
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000513", "grp00000000522", "grp00000000803"}
+	if !slices.Equal(got, want) {
+		t.Errorf("implementation only: %v, want %v", got, want)
+	}
+	sidebar := ids(as(t, s, staff, `(from GROUP @g (where (sidebar_group @g)))`), "id")
+	nested := ids(as(t, s, staff, `(from GROUP @g (where (in id (select GROUP.id @s (sidebar_group @s)))))`), "id")
+	if !slices.Equal(nested, sidebar) {
+		t.Errorf("a select of the sidebar groups found %v, the sidebar %v", nested, sidebar)
+	}
+	for id, want := range map[string]bool{"grp00000000801": true, "grp00000000802": true, "grp00000000805": true, "grp00000000803": false, "grp00000000041": false, "grp00000000060": false, "grp00000000030": true} {
+		if slices.Contains(sidebar, id) != want {
+			t.Errorf("%s in the sidebar: %v, want %v", id, !want, want)
+		}
+	}
+}
+
+func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
+	m := sample(t).Model()
+	root := trace.New("test")
+	queries := []*Query{}
+	for _, src := range []string{
+		`(from GROUP @g (where (sidebar_group @g) (= kind "event")))`,
+		`(from GROUP @g (where (sidebar_group @g) (= kind "group")))`,
+		`(from GROUP @g (where (implementation_only @g)))`,
+	} {
+		queries = append(queries, mustParse(t, src))
+	}
+	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
+	if len(results[2].IDs) != 5 {
+		t.Fatalf("the third query found %v", results[2].IDs)
+	}
+	passes := map[string]int{}
+	for _, run := range root.Children {
+		for _, c := range run.Children {
+			if c.Name != "fuse" {
+				continue
+			}
+			for table, n := range c.Counts {
+				passes[table] += n
+			}
+		}
+	}
+	for _, table := range []string{"GROUP", "RULE", "APP", "WIDGET", "COLLECTION_GROUP", "PERSON"} {
+		if passes[table] != 1 {
+			t.Errorf("%s was scanned %d times for its selects, want once: %v", table, passes[table], passes)
+		}
+	}
+}
 
 var designQueries = []string{
 	`(from GROUP @g
-  (where mail
+  (where listed
          (= status "open")
          (or (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))
              (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer)))))`,
@@ -65,7 +137,7 @@ func TestRenderIsCanonical(t *testing.T) {
 		t.Fatalf("a short query renders as %q", got)
 	}
 	long := mustParse(t, designQueries[0]).String()
-	if !strings.HasPrefix(long, "(from GROUP @g\n  (where mail\n         (= status \"open\")") {
+	if !strings.HasPrefix(long, "(from GROUP @g\n  (where listed\n         (= status \"open\")") {
 		t.Fatalf("a long query renders as\n%s", long)
 	}
 }
@@ -155,7 +227,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
-		{"", `(from GROUP (where (or (= kind "family") mail)))`, "id", []string{"grp00000000020", "grp00000000030", "grp00000000502", "grp00000000503"}},
+		{"", `(from GROUP (where (or (= kind "family") (= replying "everyone"))))`, "id", []string{"grp00000000020", "grp00000000030", "grp00000000503"}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from GROUP (where (contains name "LL PICnic") (= kind "event")))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (contains description "picnic")))`, "id", nil},
@@ -390,11 +462,11 @@ func TestEffectiveDropsDeactivated(t *testing.T) {
 func TestParentsAndChildrenFollowStudents(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000051", "kind": "group", "name": "Juni's parents"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000051", "kind": "group", "name": "Juni's parents"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000055", "group": "grp00000000051", "order": "a", "person": student, "replace_with": "parents"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000052", "kind": "group", "name": "Rowan's children"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000052", "kind": "group", "name": "Rowan's children"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000056", "group": "grp00000000052", "order": "a", "person": parent, "replace_with": "children"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000053", "kind": "group", "name": "Rowan's parents"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000053", "kind": "group", "name": "Rowan's parents"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000057", "group": "grp00000000053", "order": "a", "person": parent, "replace_with": "parents"}),
 	); err != nil {
 		t.Fatal(err)
@@ -409,7 +481,7 @@ func TestParentsAndChildrenFollowStudents(t *testing.T) {
 func TestRuleSelectors(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000050", "kind": "group", "name": "Test"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000050", "kind": "group", "name": "Test"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "exclude": "Yes", "search": "lindqvist"}),
 		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "replace_with": "household"}),

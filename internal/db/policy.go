@@ -19,17 +19,11 @@ const PolicySource = `
   (exists GROUP (in id (ancestors @g))
     (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))))
 
-; @g is a plain group, neither a role group nor a mail list, that manages a group of kind k and nothing else but itself
+; @g is a plain group, not a role group, that manages a group of kind k and nothing else but itself
 (define (managers_for @g k)
-  (and (= @g.kind "group") (not (role_group @g)) (not @g.mail)
+  (and (= @g.kind "group") (not (role_group @g))
        (exists GROUP (= managed_by @g) (= kind k))
        (not (exists GROUP (= managed_by @g) (!= kind k) (!= id @g)))))
-
-; @g is a plain group, neither a role group nor a mail list, that manages a mail list and nothing else but itself
-(define (managers_for_mail @g)
-  (and (= @g.kind "group") (not (role_group @g)) (not @g.mail)
-       (exists GROUP (= managed_by @g) mail)
-       (not (exists GROUP (= managed_by @g) (not mail) (!= id @g)))))
 
 ; @g is the group that manages a group the viewer may see
 (define (manages_visible @g)
@@ -118,19 +112,60 @@ const PolicySource = `
   (or (and (not (blank @ph.person)) (self_or_household @ph.person))
       (and (not (blank @ph.group)) (= @ph.group.kind "family") (manages @ph.group))))
 
-; @g is a plain group someone may make and run: no mail, under nothing, linking nowhere, and seen by its managers alone
+; @g is a plain group someone may make and run: under nothing, linking nowhere, and seen by its managers alone
 (define (own_group @g)
-  (and (= @g.kind "group") (not @g.mail) (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
+  (and (= @g.kind "group") (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
+
+; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer or unsubscribed group
+(define (counted c)
+  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id)))
+
+; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed or audience group, and nothing else names it
+(define (implementation_only @g)
+  (and (= (tally @g
+                 (select GROUP.managed_by @r (counted managed_by))
+                 (select GROUP.waitlist @r (counted waitlist))
+                 (select GROUP.rsvp_yes @r (counted rsvp_yes))
+                 (select GROUP.rsvp_no @r (counted rsvp_no))
+                 (select GROUP.unsubscribed @r (counted unsubscribed))
+                 (select GROUP.visible_to @r (counted visible_to))
+                 (select GROUP.members_visible_to @r (counted members_visible_to))
+                 (select GROUP.eligible @r (counted eligible)))
+          1)
+       (= (tally @g
+                 (select GROUP.managed_by @r (counted managed_by))
+                 (select GROUP.waitlist @r (counted waitlist))
+                 (select GROUP.rsvp_yes @r (counted rsvp_yes))
+                 (select GROUP.rsvp_no @r (counted rsvp_no))
+                 (select GROUP.unsubscribed @r (counted unsubscribed))
+                 (select GROUP.visible_to @r (counted visible_to))
+                 (select GROUP.members_visible_to @r (counted members_visible_to))
+                 (select GROUP.eligible @r (counted eligible))
+                 (select GROUP.parent @r (counted parent))
+                 (select RULE.target)
+                 (select RULE.within)
+                 (select APP.admins)
+                 (select APP.visible_to)
+                 (select WIDGET.group)
+                 (select WIDGET.visible_to)
+                 (select COLLECTION_GROUP.group)
+                 (select PERSON.vc_classroom)
+                 (select PERSON.classroom_override)
+                 (select PERSON.vc_crew)
+                 (select PERSON.crew_override)
+                 (select PERSON.vc_department)
+                 (select PERSON.department_override))
+          1)))
+
+; @g belongs in the rail's lists: open, not a day, a part of one or a category, and not there only to serve another group
+(define (sidebar_group @g)
+  (and (!= @g.status "closed") (not (in @g.kind "day" "day_part" "category")) (not (implementation_only @g))))
 
 ; the viewer manages @g, or is in it and it is not hidden from all but its managers
 (define (sees_mail @g)
   (or (manages @g)
       (and (not (blank @g.visible_to))
            (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
-
-; @d, or a document it sits under, was sent to a group that takes mail
-(define (mailed @d)
-  (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to") group.mail))
 
 ; @d or a document it sits under was sent to a group whose mail the viewer sees, or it is no mail and was sent to no group
 (define (document_visible @d)
@@ -250,7 +285,7 @@ const PolicySource = `
 ; every column of a group but what its family's form shares
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
-   default order visible_to members_visible_to managed_by address phone mail posting replying join adding
+   default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
    eligible capacity minimum waitlist rsvp_yes rsvp_no lead_needed priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
@@ -653,17 +688,14 @@ const PolicySource = `
 
 ;; Mail lists
 
-; @g is a mail list: a plain group with mail, under nothing, linking nowhere
-(define (mail_list @g)
-  (and (= @g.kind "group") @g.mail (blank @g.parent) (blank @g.url)))
-
-; @g is a mail list the viewer manages, or any mail list for a Loop admin
+; the viewer manages @g or is a super admin, unless it is a family, whose members only the import changes
 (define (runs_list @g)
-  (and (mail_list @g) (or (manages @g) (admin_of "loop"))))
+  (and (!= @g.kind "family") (or (manages @g) (super_admin))))
 
-; anyone but a guest makes a mail list, run by a group they are in, seen by its managers or by everyone
+; anyone but a guest makes a mail list, a plain group under nothing and linking nowhere, run by a group they are in, seen by its managers or by everyone
 (insert GROUP
-  (and (mail_list @new) (= @new.status "open") (not (blank @new.slug)) (= @new.added_by @viewer)
+  (and (= @new.kind "group") (blank @new.parent) (blank @new.url)
+       (= @new.status "open") (not (blank @new.slug)) (= @new.added_by @viewer)
        (!= @viewer.source "guest")
        (exists EFFECTIVE_MEMBER (= group @new.managed_by) (= person @viewer))
        (or (blank @new.visible_to) (= @new.visible_to.slug "everyone"))
@@ -697,74 +729,23 @@ const PolicySource = `
 (set RULE.order (runs_list @old.group))
 ; a mail list's managers take a rule away
 (delete RULE (runs_list @old.group))
-; a mail list's managers put someone on it by hand, or keep someone off it
-(insert MEMBER (and (runs_list @new.group) (in @new.member "yes" "excluded")))
+; a mail list's managers put someone on it by hand, or keep someone off it; an admins group's members follow its own rules
+(insert MEMBER (and (runs_list @new.group) (!= @new.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers turn a hand addition into a keeping off, or back
-(set MEMBER.member (and (runs_list @old.group) (in @new.member "yes" "excluded")))
+(set MEMBER.member (and (runs_list @old.group) (!= @old.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers take away a hand addition or a keeping off
-(delete MEMBER (runs_list @old.group))
-; someone a mail list takes in unsubscribes themselves from it
-(insert MEMBER
-  (and (mail_list @new.group) (= @new.person @viewer) (= @new.member "excluded")
-       (exists EFFECTIVE_MEMBER (= group @new.group) (= person @viewer))))
-; someone on a mail list by hand unsubscribes themselves from it
-(set MEMBER.member
-  (and (mail_list @old.group) (= @old.person @viewer) (= @old.member "yes") (= @new.member "excluded")))
-; someone who unsubscribed from a mail list resubscribes
-(delete MEMBER (and (mail_list @old.group) (= @old.person @viewer) (= @old.member "excluded")))
-; whoever runs a mail list adds someone outside the directory, to put on one by hand
+(delete MEMBER (and (runs_list @old.group) (!= @old.group.kind "admins")))
+; whoever runs a group adds someone outside the directory, to put on one by hand
 (insert PERSON
-  (and (= @new.source "guest") (!= @viewer.source "guest")
-       (or (admin_of "loop") (exists GROUP @l (mail_list @l) (manages @l)))))
+  (and (= @new.source "guest") (!= @viewer.source "guest") (exists GROUP @l (runs_list @l))))
 ; and gives them their address
 (insert PERSON_EMAIL
   (and (= @new.source "guest") (= @new.person.source "guest") (!= @viewer.source "guest")
-       (or (admin_of "loop") (exists GROUP @l (mail_list @l) (manages @l)))))
+       (exists GROUP @l (runs_list @l))))
 ; a mail list's managers give it another address
 (insert ALIAS (exists GROUP @l (= id @new.target) (runs_list @l)))
 ; a mail list's managers take one of its other addresses away
 (delete ALIAS (exists GROUP @l (= id @old.target) (runs_list @l)))
-
-;; Loop admins
-
-; every group that takes mail
-(read GROUP (and (admin_of "loop") mail))
-; open or close a group that takes mail
-(set GROUP.status (and (admin_of "loop") @old.mail))
-; every mail group's members
-(read MEMBER (and (admin_of "loop") group.mail))
-; make a plain group to manage mail groups
-(insert GROUP (and (admin_of "loop") (= @new.kind "group")))
-; name the group that manages a mail group, or what manages a mail group's managers
-(set GROUP.managed_by (and (admin_of "loop") (or @old.mail (managers_for_mail @old))))
-; every mail group's managers
-(read GROUP (and (admin_of "loop") (managers_for_mail @row)))
-; who manages mail groups
-(read MEMBER (and (admin_of "loop") (managers_for_mail group)))
-; who in effect manages mail groups
-(read EFFECTIVE_MEMBER (and (admin_of "loop") (managers_for_mail group)))
-; make someone a manager of a mail group
-(insert MEMBER (and (admin_of "loop") (managers_for_mail @new.group)))
-; make someone a manager of a mail group again, or keep them from being one
-(set MEMBER.member (and (admin_of "loop") (managers_for_mail @old.group)))
-; stop someone being a manager of a mail group
-(delete MEMBER (and (admin_of "loop") (managers_for_mail @old.group)))
-; every mail group's effective members
-(read EFFECTIVE_MEMBER (and (admin_of "loop") group.mail))
-; the rules that pick each mail group's members
-(read RULE (and (admin_of "loop") group.mail))
-; all mail to groups that take it
-(read MESSAGE (and (admin_of "loop") group.mail))
-; the bytes of all mail to groups that take it
-(read CONTENT (and (admin_of "loop") (exists MESSAGE (= content @row) group.mail)))
-; every delivery of mail to groups that take it
-(read RECIPIENT (and (admin_of "loop") message.group.mail))
-; every post sent to a group that takes mail, and every document under one
-(read DOCUMENT (and (admin_of "loop") (mailed @row)))
-; the bytes of every post sent to a group that takes mail, and of every document under one
-(read CONTENT (and (admin_of "loop") (exists DOCUMENT @d (= content @row) (mailed @d))))
-; which mail groups each post was sent to
-(read DOCUMENT_GROUP (and (admin_of "loop") group.mail))
 
 ;; Home admins
 
@@ -822,21 +803,33 @@ const PolicySource = `
 (read CONTENT (super_admin))
 ; every bug report and idea, to triage
 (read REPORT (super_admin))
+; every group
+(read GROUP (super_admin))
+; every group's members by hand and kept off
+(read MEMBER (super_admin))
+; every group's effective members
+(read EFFECTIVE_MEMBER (super_admin))
+; the rules that pick every group's members
+(read RULE (super_admin))
+; all mail to every group
+(read MESSAGE (super_admin))
+; every delivery of mail to every group
+(read RECIPIENT (super_admin))
+; name the group that manages any group
+(set GROUP.managed_by (super_admin))
+; make a plain group, to manage a group
+(insert GROUP (and (super_admin) (= @new.kind "group")))
 
 ;; System: mailer, the mail lists' mail
 
-; every mail list
-(read GROUP (and (system "mailer") (mail_list @row)))
-; every mail list's other addresses
-(read ALIAS (and (system "mailer") (exists GROUP @l (= id @row.target) (mail_list @l))))
-; who is on every mail list by hand or kept off it
-(read MEMBER (and (system "mailer") (mail_list group)))
-; who every mail list's managers groups hold
-(read MEMBER (and (system "mailer") (managers_for_mail group)))
-; every mail list's effective members
-(read EFFECTIVE_MEMBER (and (system "mailer") (mail_list group)))
-; who in effect manages every mail list
-(read EFFECTIVE_MEMBER (and (system "mailer") (managers_for_mail group)))
+; every group, each a mail list
+(read GROUP (system "mailer"))
+; every group's other addresses
+(read ALIAS (and (system "mailer") (exists GROUP (= id @row.target))))
+; who is in every group by hand or kept off it
+(read MEMBER (system "mailer"))
+; every group's effective members
+(read EFFECTIVE_MEMBER (system "mailer"))
 ; everyone, to match a sender and address each copy
 (read PERSON (system "mailer"))
 ; everyone's addresses
@@ -844,7 +837,7 @@ const PolicySource = `
 ; every post to a mail list
 (read MESSAGE (and (system "mailer") (= kind "post")))
 ; take in a post, or send one on to its list
-(insert MESSAGE (and (system "mailer") (= @new.kind "post") (mail_list @new.group)))
+(insert MESSAGE (and (system "mailer") (= @new.kind "post")))
 ; where a post stands
 (set MESSAGE.state (and (system "mailer") (= @old.kind "post")))
 ; why a post was dropped or failed
@@ -867,12 +860,15 @@ const PolicySource = `
 (set RECIPIENT.failed (and (system "mailer") (= @old.message.kind "post")))
 ; why a copy failed
 (set RECIPIENT.detail (and (system "mailer") (= @old.message.kind "post")))
-; unsubscribe someone by the link or the address in their copy
-(insert MEMBER (and (system "mailer") (mail_list @new.group) (= @new.member "excluded")))
-; unsubscribe someone on a mail list by hand, by the link or the address in their copy
-(set MEMBER.member (and (system "mailer") (mail_list @old.group) (= @new.member "excluded")))
-; say how someone on a mail list by hand unsubscribed
-(set MEMBER.note (and (system "mailer") (mail_list @old.group)))
+; make a group's unsubscribed group at its first unsubscribe: plain, hidden, under nothing, with no address
+(insert GROUP
+  (and (system "mailer") (= @new.kind "group") (blank @new.slug) (blank @new.parent) (blank @new.visible_to)))
+; name a group's unsubscribed group, once
+(set GROUP.unsubscribed (and (system "mailer") (blank @old.unsubscribed)))
+; unsubscribe someone: put them in the group's unsubscribed group
+(insert MEMBER (and (system "mailer") (= @new.member "yes") (exists GROUP (= unsubscribed @new.group))))
+; resubscribe someone: take them out of the group's unsubscribed group
+(delete MEMBER (and (system "mailer") (exists GROUP (= unsubscribed @old.group))))
 
 ;; System: import
 
@@ -1195,10 +1191,10 @@ const PolicySource = `
 (set GROUP.visible_to (and (system "import") (in @old.kind "group" "admins")))
 ; who sees an admins group's members, which a new admins group sets to itself
 (set GROUP.members_visible_to (and (system "import") (= @old.kind "admins")))
-; who may post to a Loop list, as the old sheet has it
-(set GROUP.posting (and (system "import") (= @old.kind "group")))
-; who may reply on a Loop list, as the old sheet has it
-(set GROUP.replying (and (system "import") (= @old.kind "group")))
+; who may post to any group's email list
+(set GROUP.posting (system "import"))
+; who may reply on any group's email list
+(set GROUP.replying (system "import"))
 ; the rules of plain groups, to compare a Loop list's with the old sheet's
 (read RULE (and (system "import") (= group.kind "group")))
 ; a Loop list's rule
@@ -1631,7 +1627,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cx := &compiler{policy: true, defines: map[string]*define{}, used: map[string]bool{}}
+	cx := &compiler{policy: true, defines: map[string]*define{}}
 	out := &policySet{read: map[string][]grant{}, open: map[string]bool{}, insert: map[string][]grant{}, set: map[string][]grant{}, delete: map[string][]grant{}, clauses: []Clause{}}
 	for i, form := range forms {
 		head := form.head()
@@ -1702,11 +1698,6 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			return nil, nil, err
 		}
 		out.clauses = append(out.clauses, described)
-	}
-	for _, form := range forms {
-		if form.head() == "define" && !cx.used[form.list[1].list[0].text] {
-			return nil, nil, form.errorf("%s is never used", form.list[1].list[0].text)
-		}
 	}
 	for _, t := range Tables {
 		for _, c := range t.Columns {
@@ -1815,7 +1806,7 @@ func (r *run) check(name string, grants []grant, f *frame) bool {
 }
 
 func (r *run) readable(t *Table, row store.Row) bool {
-	key := t.Name + "\x00" + row["id"]
+	key := cellKey{table: t.Name, id: row["id"]}
 	if seen, ok := r.rows[key]; ok {
 		r.policy.Tally(t.Name).Inc("cached")
 		return seen
@@ -1830,7 +1821,7 @@ func (r *run) columnReadable(t *Table, row store.Row, c Column) bool {
 		// The consent step strips private columns from every view but the import's.
 		return true
 	}
-	key := t.Name + "." + c.Name + "\x00" + row["id"]
+	key := cellKey{table: t.Name, column: c.Name, id: row["id"]}
 	if seen, ok := r.columns[key]; ok {
 		return seen
 	}

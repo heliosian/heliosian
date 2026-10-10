@@ -17,23 +17,25 @@ import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from 
 import {keyBetween} from '/order.js';
 
 const visibilityNotes = {
-  hidden: 'Only the email list\'s managers and the admins see it.',
+  hidden: 'Only the email list\'s managers and the super admins see it.',
   members: 'The people on the email list see it and can take themselves off it or put themselves back; only managers can change it.',
   everyone: 'Anyone in Loop can see it, and only managers can change it.',
 };
 
-const postingWords = {everyone: 'Everyone', members: 'Members', managers: 'Managers'};
+const postingWords = {everyone: 'Everyone', members: 'Members', managers: 'Managers', none: 'Nobody'};
 
 const postingNotes = {
   everyone: 'A new message from any address goes out to the email list.',
   members: 'A new message goes out only from the managers and the people on the email list; anyone else gets a note saying so.',
   managers: 'A new message goes out only from the email list\'s managers; anyone else gets a note saying so.',
+  none: 'No new message goes out; whoever sends one gets a note saying so.',
 };
 
 const replyingNotes = {
   everyone: 'A reply to a message the email list sent goes out from any address.',
   members: 'A reply to a message the email list sent goes out only from the managers and the people on the email list; anyone else gets a note saying so.',
   managers: 'A reply to a message the email list sent goes out only from the email list\'s managers; anyone else gets a note saying so.',
+  none: 'No reply goes out; whoever sends one gets a note saying so.',
 };
 
 const reserved = ['abuse', 'admin', 'administrator', 'hostmaster', 'noreply', 'no-reply', 'postmaster', 'root', 'unsubscribe', 'webmaster'];
@@ -62,8 +64,8 @@ function groupDraft(g, isNew) {
     description: g.description || '',
     aliases: [...(g.aliases || [])],
     visibility: isNew ? 'hidden' : g.visibility,
-    posting: isNew ? 'everyone' : g.posting,
-    replying: isNew ? 'everyone' : g.replying,
+    posting: isNew ? 'members' : g.posting,
+    replying: isNew ? 'members' : g.replying,
     managers: [...(g.managerIds || [])],
     rules: (g.rules || []).map(r => r.id ? ruleOf(r) : r),
     hand: (g.hand || []).map(m => ({person: m.person, member: m.member})),
@@ -420,7 +422,7 @@ function previewCard(ed) {
 
 function keptOffCard(ed) {
   const card = el('div', 'card');
-  card.append(el('h2', '', 'Kept off'), el('div', 'hint', 'People kept off the email list whatever the rules say: those a manager excluded and those who unsubscribed.'));
+  card.append(el('h2', '', 'Kept off'), el('div', 'hint', 'People a manager keeps off the email list whatever the rules say.'));
   const rows = el('div');
   card.append(rows);
   ed.keptOff = () => {
@@ -631,7 +633,7 @@ async function makeGroup(ed) {
     throw new Error('Give the email list an address.');
   }
   const viewer = state.model.viewer.id;
-  const list = {kind: 'group', mail: true, listed: true, slug: draft.slug, name: draft.title.trim(), status: 'open', members_visible_to: state.model.everyone, posting: draft.posting, replying: draft.replying, managed_by: '@managers', added_by: viewer};
+  const list = {kind: 'group', listed: true, slug: draft.slug, name: draft.title.trim(), status: 'open', members_visible_to: state.model.everyone, posting: draft.posting, replying: draft.replying, managed_by: '@managers', added_by: viewer};
   if (draft.description.trim()) {
     list.description = draft.description.trim();
   }
@@ -768,29 +770,14 @@ function slug(text) {
 }
 
 export function newGroupModal() {
-  const from = new URLSearchParams(location.search).get('from');
-  const viewer = state.model.viewer.id;
-  const suggestion = state.model.suggestions.find(s => s.id === from);
-  if (suggestion) {
-    const rules = suggestion.targets.flatMap(target => [{...newRule(), target}, {...newRule(), target, replace_with: 'parents'}]);
-    editModal({slug: slug(suggestion.name), title: suggestion.name, managerIds: [viewer, ...suggestion.managers.filter(id => id !== viewer)], rules}, null, true);
-    return;
-  }
-  editModal({managerIds: [viewer], rules: [newRule()]}, null, true);
+  editModal({managerIds: [state.model.viewer.id], rules: [newRule()]}, null, true);
 }
 
 function unsubscribeButton(g) {
   const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
     toggle.disabled = true;
     try {
-      const viewer = state.model.viewer.id;
-      if (g.unsubscribed) {
-        await write([{delete: g.ownRow.id}]);
-      } else if (g.ownRow) {
-        await write([{set: g.ownRow.id, cells: {member: 'excluded'}}]);
-      } else {
-        await write([{insert: 'MEMBER', row: {group: g.id, person: viewer, member: 'excluded'}}]);
-      }
+      await api('POST', '/api/do/unsubscribe', {group: g.id, subscribed: g.unsubscribed});
       await load();
       toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
     } catch (err) {
@@ -862,8 +849,7 @@ export function groupPage(g) {
   return page;
 }
 
-function overview(g) {
-  const wrap = el('div', 'group-overview');
+function addressBand(g) {
   const address = el('div', 'address-band');
   const mail = el('a', 'address-mail');
   mail.href = 'mailto:' + g.address;
@@ -882,7 +868,14 @@ function overview(g) {
     aliases.append(count, tip);
     address.append(aliases);
   }
-  wrap.append(address);
+  return address;
+}
+
+function overview(g) {
+  const wrap = el('div', 'group-overview');
+  if (g.address) {
+    wrap.append(addressBand(g));
+  }
   wrap.append(el('div', 'subject-note', `Every message goes out with “[${g.title}]” at the front of its subject.`));
   if (g.visibility === 'everyone') {
     wrap.append(el('div', 'subject-note', 'Visible to everyone in Loop; only its managers can change it.'));
@@ -890,7 +883,7 @@ function overview(g) {
   if (g.visibility === 'members') {
     wrap.append(el('div', 'subject-note', 'Visible to the people on it; only its managers can change it.'));
   }
-  const audienceNotes = {everyone: 'Anyone', members: 'Only its managers and the people on it', managers: 'Only its managers'};
+  const audienceNotes = {everyone: 'Anyone', members: 'Only its managers and the people on it', managers: 'Only its managers', none: 'Nobody'};
   if (g.posting !== 'everyone') {
     wrap.append(el('div', 'subject-note', `${audienceNotes[g.posting]} can post new messages.`));
   }

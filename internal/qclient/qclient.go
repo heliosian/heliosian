@@ -21,28 +21,34 @@ type Answer struct {
 	Query     string                                  `json:"query"`
 	Result    []string                                `json:"result"`
 	Resources map[string]map[string]map[string]string `json:"resources"`
+	Trace     string                                  `json:"-"`
 }
 
 func (c Client) Send(method, path, kind string, body io.Reader, out any) error {
+	_, err := c.send(method, path, kind, body, out)
+	return err
+}
+
+func (c Client) send(method, path, kind string, body io.Reader, out any) (http.Header, error) {
 	req, err := http.NewRequest(method, c.Base+path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", kind)
 	req.Header.Set("Authorization", "Bearer "+c.Key)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	got, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
-		return &StatusError{Code: resp.StatusCode, What: fmt.Sprintf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))}
+		return nil, &StatusError{Code: resp.StatusCode, What: fmt.Sprintf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))}
 	}
-	return json.Unmarshal(got, out)
+	return resp.Header, json.Unmarshal(got, out)
 }
 
 type StatusError struct {
@@ -59,13 +65,21 @@ func (c Client) Query(tree any) (Answer, error) {
 	if err != nil {
 		return Answer{}, err
 	}
-	var a Answer
-	return a, c.Send("QUERY", "/api/q", "application/json", bytes.NewReader(raw), &a)
+	return c.query("application/json", bytes.NewReader(raw))
 }
 
 func (c Client) QueryText(src string) (Answer, error) {
+	return c.query("text/plain", strings.NewReader(src))
+}
+
+func (c Client) query(kind string, body io.Reader) (Answer, error) {
 	var a Answer
-	return a, c.Send("QUERY", "/api/q", "text/plain", strings.NewReader(src), &a)
+	header, err := c.send("QUERY", "/api/q", kind, body, &a)
+	if err != nil {
+		return Answer{}, err
+	}
+	a.Trace = header.Get("Trace")
+	return a, nil
 }
 
 func (c Client) Write(batch any) ([]string, error) {

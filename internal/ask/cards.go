@@ -3,7 +3,6 @@ package ask
 import (
 	"time"
 
-	"heliosian/internal/cells"
 	"heliosian/internal/db"
 	"heliosian/internal/store"
 )
@@ -37,11 +36,8 @@ func (t *turn) linkCard(address string) (linkCard, bool) {
 	if table == "GROUP" {
 		card.Name = row["name"]
 		kind, ok := groupCards[row["kind"]]
-		if mail, _ := cells.YesNo(row["mail"], false); !ok && mail {
-			kind, ok = "group", true
-		}
 		if !ok {
-			return linkCard{}, false
+			kind = "group"
 		}
 		card.Kind = kind
 		card.Color = row["color"]

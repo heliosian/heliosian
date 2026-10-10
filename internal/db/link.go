@@ -3,7 +3,6 @@ package db
 import (
 	"net/url"
 
-	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -36,9 +35,7 @@ func (m *Model) Link(table string, row store.Row, origin func(app string) string
 		case "party":
 			return origin("celebrate") + "/p/" + key
 		}
-		if mail, _ := cells.YesNo(row["mail"], false); mail {
-			return origin("loop") + "/groups/" + key
-		}
+		return origin("who") + "/groups/" + key
 	}
 	return ""
 }

@@ -171,7 +171,7 @@ func (t *turn) documents(rows []store.Row) ([]document, error) {
 	for _, r := range rows {
 		ids = append(ids, fmt.Sprintf("%q", r["id"]))
 	}
-	links, res, err := t.rows(`(from DOCUMENT_GROUP (where (in document %s) (= relation "sent_to") group.mail) (include group))`, strings.Join(ids, " "))
+	links, res, err := t.rows(`(from DOCUMENT_GROUP (where (in document %s) (= relation "sent_to")) (include group))`, strings.Join(ids, " "))
 	if err != nil {
 		return nil, err
 	}
@@ -516,7 +516,7 @@ func (t *turn) exampleLinks(s schoolData, v *viewer) ([]string, error) {
 			out = append(out, t.href("GROUP", g))
 		}
 	}
-	lists, _, err := t.rows(`(from GROUP (where mail) (order name asc) (limit 1))`)
+	lists, _, err := t.rows(`(from GROUP (where (= kind "group")) (order name asc) (limit 1))`)
 	if err != nil {
 		return nil, err
 	}

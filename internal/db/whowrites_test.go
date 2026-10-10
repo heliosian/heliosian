@@ -33,7 +33,7 @@ func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 		t.Fatalf("a parent can't make a tag: %v", err)
 	}
 	managers, own, tag := ids[0], ids[2], ids[3]
-	if _, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": tag, "person": staff, "member": "yes"}}); err == nil {
+	if _, err := write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": tag, "person": student, "member": "yes"}}); err == nil {
 		t.Error("someone who doesn't manage the tag tags themselves")
 	}
 	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": staff, "member": "yes"}}); err != nil {
@@ -56,7 +56,6 @@ func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 	}
 
 	for name, edits := range map[string][]Edit{
-		"a group with mail":                       {{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "List", "status": "open", "mail": true, "added_by": parent}}},
 		"a group everyone sees":                   {{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Open", "status": "open", "visible_to": "grp00000000004", "added_by": parent}}},
 		"a group run by managers one isn't among": {{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Theirs", "status": "open", "managed_by": "grp00000000041", "added_by": parent}}},
 		"a group made in someone else's name":     {{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Forged", "status": "open", "added_by": staff}}},
@@ -139,7 +138,8 @@ func TestWhoWrites(t *testing.T) {
 		{"a parent adds a greeting as someone else", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": staff}), false},
 		{"a guest adds a greeting", guest, insert("GREETING", store.Row{"name": "Hi", "added_by": guest}), false},
 		{"Who?'s admin adds someone by hand", staff, insert("PERSON", store.Row{"source": "manual"}), false},
-		{"Who?'s admin makes someone staff", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), false},
+		{"a super admin makes someone staff, as on any group but a family", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), true},
+		{"a super admin adds someone to a family", staff, insert("MEMBER", store.Row{"group": "grp00000000020", "person": staff, "member": "yes"}), false},
 		{"Who?'s admin deactivates someone", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), false},
 		{"Who?'s admin makes a room parent", staff, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), true},
 		{"a parent makes a room parent", parent, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), false},

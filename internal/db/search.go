@@ -52,7 +52,6 @@ var searchExclusions = []string{
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,
 	`(from GROUP (where (= kind "admins")))`,
 	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
-	`(from GROUP (where (or (in id (select GROUP.visible_to)) (in id (select APP.visible_to)) (in id (select WIDGET.visible_to))) (= kind "group") (blank mail) (blank parent)))`,
 }
 
 var searchFiller = map[string]bool{

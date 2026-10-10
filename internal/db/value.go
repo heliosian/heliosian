@@ -139,11 +139,11 @@ func compareValues(a, b value) (int, bool) {
 
 type valueSet struct {
 	exact bool
-	keys  map[string]bool
+	keys  map[string]int
 }
 
 func newValueSet(exact bool) *valueSet {
-	return &valueSet{exact: exact, keys: map[string]bool{}}
+	return &valueSet{exact: exact, keys: map[string]int{}}
 }
 
 func (s *valueSet) key(v value) string {
@@ -164,11 +164,18 @@ func (s *valueSet) add(v value) {
 	if v.blank {
 		return
 	}
-	s.keys[s.key(v)] = true
+	s.keys[s.key(v)]++
 }
 
 func (s *valueSet) has(v value) bool {
-	return !v.blank && s.keys[s.key(v)]
+	return s.count(v) > 0
+}
+
+func (s *valueSet) count(v value) int {
+	if v.blank {
+		return 0
+	}
+	return s.keys[s.key(v)]
 }
 
 func equalValues(a, b value) bool {

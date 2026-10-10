@@ -1,12 +1,14 @@
 import {api, signedIn} from '/api.js';
 import {me as whoAmI} from '/data.js';
-import {loadNavOpen} from './storage.js';
+import {tagCondition, viewerListCondition, runCondition, joinedCondition, listIncludes, listKinds, today, datedFrom, liveLists} from '/rail.js';
+
+export {today};
 
 function pageState() {
   return {editing: '', tab: 'everyone', classTab: 'by-classroom', rosterTab: 'students', rosterSectionExcluded: new Set(), q: '', filterGrades: new Set(), filterClassrooms: new Set(), filterRoles: new Set(), filterRoleExcluded: new Set(), filterCities: new Set(), filterPronouns: new Set(), filterTags: new Set(), filterTagRelations: new Set(), staffDeptExcluded: new Set(), tagListView: 'faces', gvGreeting: '', gvSiblings: true, gvKidEmail: false, gvInviteBy: 'group', gvSystem: ''};
 }
 
-export const state = {everyoneOrder: [], familyOrder: [], navOpen: loadNavOpen(), ...pageState()};
+export const state = {everyoneOrder: [], familyOrder: [], ...pageState()};
 
 export function resetPageState() {
   Object.assign(state, pageState());
@@ -96,13 +98,7 @@ export function groupKeyOf(name) {
   return Object.keys(lists).find(key => lists[key].id === name || lists[key].groupSlug.toLowerCase() === lower) || '';
 }
 
-const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
-const listKindCondition = '(!= status "closed") (or (in kind "party" "activity" "admins") mail (and (= kind "event") (not (blank rsvp_yes))))';
-const viewerGroups = '(select MEMBER.group (= person @viewer) (= member "yes"))';
-const runCondition = `${listKindCondition} (manages @g)`;
-const joinedCondition = `${listKindCondition} (not (manages @g)) (or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
-const listCondition = `${listKindCondition} (or (manages @g) (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
-const listIncludes = '(include parent parent.parent parent.parent.parent)';
+const listCondition = viewerListCondition;
 const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug ' +
   'grade_override grade classroom_override classroom crew_override crew department_override department job_title_override job_title ' +
   'phone phone_consent address_consent pronouns pronunciation facts facts_updated photo_updated';
@@ -299,38 +295,6 @@ export function tagManagers(t) {
   return Object.keys(t.managerRows);
 }
 
-const listKinds = {party: 'party', activity: 'activity', event: 'event', admins: 'admins'};
-
-export function today() {
-  return new Date().toLocaleDateString('en-CA');
-}
-
-function datedFrom(g, groups) {
-  for (let at = g; at; at = groups[at.parent]) {
-    if (at.start) {
-      return at;
-    }
-  }
-  return null;
-}
-
-function liveLists(rows, groups) {
-  const now = today();
-  const live = rows.filter(g => {
-    const dated = datedFrom(g, groups);
-    return !dated || (dated.end || dated.start).slice(0, 10) >= now;
-  });
-  const ids = new Set(live.map(g => g.id));
-  const instance = g => g.kind === 'event' && groups[g.parent] && groups[g.parent].kind === 'event';
-  const next = {};
-  for (const g of live.filter(instance)) {
-    if (!next[g.parent] || g.start < next[g.parent].start) {
-      next[g.parent] = g;
-    }
-  }
-  return live.filter(g => !ids.has(g.parent) && (!instance(g) || next[g.parent] === g));
-}
-
 function loadLists(managed, joined, memberAnswers, guestRows) {
   lists = {};
   const groups = {};
@@ -359,6 +323,9 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
     (people[e.group] = people[e.group] || []).push(e.person);
   }
   for (const g of rows) {
+    if (tags[tagKey(g.id)]) {
+      continue;
+    }
     const ids = people[g.kind === 'event' ? g.rsvp_yes : g.id] || [];
     const dated = datedFrom(g, groups);
     lists[listKey(g.id)] = {
@@ -370,7 +337,6 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
       groupSlug: g.slug || '',
       run: running.has(g.id),
       member: (people[g.id] || []).includes(model.viewer && model.viewer.id),
-      mail: g.mail === 'Yes',
       start: dated ? dated.start : '',
       people: ids.filter(id => !guests[id]),
       guests: ids.filter(id => guests[id]).map(id => guests[id]),
@@ -388,7 +354,7 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', run: true, member: true, mail: false, start: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', run: true, member: true, start: '', people: [...ids], guests: []};
   }
 }
 

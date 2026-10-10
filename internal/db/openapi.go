@@ -88,6 +88,10 @@ func cellSchema(c Column) schema {
 		out["x-required"] = true
 		notes = append(notes, "Required.")
 	}
+	if c.Default != "" {
+		out["default"] = c.Default
+		notes = append(notes, "An insert that leaves it blank gets "+c.Default+".")
+	}
 	if c.Generated {
 		out["readOnly"] = true
 		out["x-generated"] = true

@@ -36,6 +36,7 @@ type stored struct {
 func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
 	registerWiki(mux, s, queue, pics, importKey, now)
 	registerGuest(mux, s, queue, pics, now)
+	registerUnsubscribe(mux, s, queue, pics, now)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), importKey, now())
 		if !ok {

@@ -1,4 +1,4 @@
-import {state, matches, groupPath, personView, domain} from '../state.js';
+import {state, matches, groupPath, domain} from '../state.js';
 import {pageHead} from '../dom.js';
 import {el, svg, link, button, iconButton, copyText} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
@@ -13,10 +13,12 @@ function groupCard(g) {
   icon.append(svg('groups'));
   const words = el('div', 'group-words');
   words.append(el('div', 'group-title', g.title));
-  const address = el('div', 'group-address');
-  address.append(el('span', '', g.address));
-  address.append(iconButton('copy', 'Copy the address', 'tiny', () => copyText(g.address, 'Address copied')));
-  words.append(address);
+  if (g.address) {
+    const address = el('div', 'group-address');
+    address.append(el('span', '', g.address));
+    address.append(iconButton('copy', 'Copy the address', 'tiny', () => copyText(g.address, 'Address copied')));
+    words.append(address);
+  }
   head.append(icon, words);
   card.append(head);
   if (g.description) {
@@ -43,36 +45,6 @@ function groupCard(g) {
   return card;
 }
 
-const suggestionWords = {
-  party: 'Everyone holding tickets, and the parents of any student who does.',
-  activity: 'Everyone signed up, and the parents of any student who is.',
-  tag: 'Everyone under this tag of yours in Helios Who?, and the parents of any student among them.',
-};
-
-const suggestionApp = {party: 'celebrate', activity: 'team', tag: 'who'};
-
-function suggestionCard(s) {
-  const card = el('div', 'group-card');
-  const head = el('div', 'group-card-head');
-  const icon = el('div', 'group-icon group-icon-app');
-  const mark = el('img');
-  mark.src = `/brand/apps/${suggestionApp[s.kind]}.png`;
-  mark.alt = '';
-  icon.append(mark);
-  const words = el('div', 'group-words');
-  words.append(el('div', 'group-title', s.name));
-  words.append(el('div', 'group-desc', suggestionWords[s.kind]));
-  head.append(icon, words);
-  card.append(head);
-  const meta = el('div', 'group-meta');
-  meta.append(button('Make this email list', 'plus', 'button button-small', () => navigate('/new?from=' + encodeURIComponent(s.id))));
-  if (s.managers.length) {
-    meta.append(el('span', '', 'Managed by ' + s.managers.map(id => personView(id).name).join(', ')));
-  }
-  card.append(meta);
-  return card;
-}
-
 function cards(list, groups) {
   for (const g of groups) {
     const slot = el('div', 'card-slot');
@@ -88,30 +60,17 @@ export function groupsPage() {
   page.append(el('p', 'page-lead', 'Each email list is an address at ' + domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
-  const suggested = el('div');
-  suggested.append(el('h2', 'section-title', 'Suggested email lists'));
-  suggested.append(el('p', 'page-lead', 'A party you host, an activity you run or a tag of yours in Helios Who? that no email list names yet. Make one and it starts with the right rules and managers; change anything before you save.'));
-  const suggestedList = el('div', 'group-list');
-  suggested.append(suggestedList);
   const render = query => {
     list.replaceChildren();
-    suggestedList.replaceChildren();
     const mine = state.model.groups.filter(g => (g.run || g.member) && matches(g, query));
-    const suggestions = state.model.suggestions.filter(s => !query || s.name.toLowerCase().includes(query));
     if (!mine.length) {
       empty.textContent = query ? 'No email list of yours matches that.' : 'You are on no email lists and manage none yet. Make one, and its address is yours to hand out.';
       list.append(empty);
     }
     cards(list, mine);
-    suggested.hidden = !suggestions.length;
-    for (const s of suggestions) {
-      const slot = el('div', 'card-slot');
-      slot.append(suggestionCard(s));
-      suggestedList.append(slot);
-    }
   };
   render('');
   setSearch('', render);
-  page.append(list, suggested);
+  page.append(list);
   return page;
 }

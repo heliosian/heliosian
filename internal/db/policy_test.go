@@ -37,7 +37,6 @@ func TestPoliciesRefuse(t *testing.T) {
 		strings.Replace(PolicySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
 		PolicySource + `(read PERSON (vc_phone) (system "import"))`:                                                    "PERSON.vc_phone is private",
 		PolicySource + `(read MEMBER.price true)`:                                                                      "policies are define",
-		PolicySource + `(define (nobody) false)`:                                                                       "nobody is never used",
 	} {
 		if _, _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("compilePolicies = %v, want %q", err, want)
@@ -58,7 +57,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"GROUP":            {0, 26, 28, 29, 0},
 		"MEMBER":           {0, 21, 22, 22, 1},
 		"EFFECTIVE_MEMBER": {0, 27, 28, 29, 1},
-		"RULE":             {0, 0, 0, 4, 0},
+		"RULE":             {0, 0, 0, 6, 0},
 		"DOCUMENT":         {8, 8, 9, 9, 8},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
 		"CONTENT":          {6, 6, 6, 6, 6},
@@ -297,7 +296,7 @@ func TestAPersonsOldSlugReadsWhileTheyDo(t *testing.T) {
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000070", "kind": "admins", "name": "When Admins", "status": "open", "visible_to": "grp00000000070"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000070", "kind": "admins", "name": "When Admins", "status": "open", "visible_to": "grp00000000070"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000070", "group": "grp00000000070", "person": student, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
@@ -322,9 +321,9 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 func TestAWaitlistShowsToTheWaitingThePartysManagersAndAdmins(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000081", "kind": "group", "name": "Fondue Night Waitlist", "parent": "grp00000000080", "status": "open"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000082", "kind": "group", "name": "Fondue Night Managers", "status": "open", "managed_by": "grp00000000082"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000080", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081", "managed_by": "grp00000000082"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000081", "kind": "group", "name": "Fondue Night Waitlist", "parent": "grp00000000080", "status": "open"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000082", "kind": "group", "name": "Fondue Night Managers", "status": "open", "managed_by": "grp00000000082"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000080", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "waitlist": "grp00000000081", "managed_by": "grp00000000082"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000080", "group": "grp00000000082", "person": student, "member": "yes"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000081", "group": "grp00000000081", "person": parent, "member": "yes", "added": "2026-09-03 21:12:05"}),
 	); err != nil {
@@ -352,9 +351,9 @@ func TestAWaitlistShowsToTheWaitingThePartysManagersAndAdmins(t *testing.T) {
 func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": "grp00000000090", "kind": "category", "name": "Fairs", "status": "open", "visible_to": "grp00000000004", "managed_by": "grp00000000091"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000091", "kind": "group", "name": "Fairs Managers", "status": "open", "managed_by": "grp00000000091"}),
-		store.Insert("GROUP", store.Row{"id": "grp00000000092", "kind": "event", "name": "Book Fair", "parent": "grp00000000090", "status": "pending", "visible_to": "grp00000000004"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000090", "kind": "category", "name": "Fairs", "status": "open", "visible_to": "grp00000000004", "managed_by": "grp00000000091"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000091", "kind": "group", "name": "Fairs Managers", "status": "open", "managed_by": "grp00000000091"}),
+		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000092", "kind": "event", "name": "Book Fair", "parent": "grp00000000090", "status": "pending", "visible_to": "grp00000000004"}),
 		store.Insert("MEMBER", store.Row{"id": "mem00000000090", "group": "grp00000000091", "person": parent, "member": "yes"}),
 	); err != nil {
 		t.Fatal(err)
@@ -810,8 +809,9 @@ func TestAuthorize(t *testing.T) {
 		{"a guest renames a child", guest, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), false},
 		{"Who?'s admin renames anyone", staff, change(t, s, "PERSON", []string{student}, store.Row{"name_long_override": "June Ashdown"}), true},
 		{"a super admin is When's admin", staff, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"}), true},
-		{"nobody may add rows yet", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "member": "yes"}}, false},
-		{"nobody may remove rows yet", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "member": "yes"}}, false},
+		{"a host adds someone by hand", staff, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": student, "member": "yes"}}, true},
+		{"a host takes someone off", staff, Change{Table: "MEMBER", Old: store.Row{"group": "grp00000000040", "person": parent, "member": "yes"}}, true},
+		{"a guest adds someone by hand", guest, Change{Table: "MEMBER", New: store.Row{"group": "grp00000000040", "person": guest, "member": "yes"}}, false},
 	} {
 		err := s.Model().Authorize(Env{Viewer: c.viewer, Now: testNow}, c.change)
 		if (err == nil) != c.ok {

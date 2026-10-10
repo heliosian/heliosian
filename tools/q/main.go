@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
 	"unicode/utf8"
 
 	"heliosian/internal/db"
@@ -94,7 +96,7 @@ func show(w io.Writer, a qclient.Answer, columns []string) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q read [--columns a,b] <query>   (the query language, or a JSON tree; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
 		fmt.Fprintln(os.Stderr, "       go run ./tools/q write <batch>                   (a JSON batch; stdin when no argument)")
 	}
 	flag.Parse()
@@ -107,6 +109,7 @@ func main() {
 	case "read":
 		fs := flag.NewFlagSet("read", flag.ExitOnError)
 		chosen := fs.String("columns", "", "comma-separated columns of the listed table to print, uncut, in place of every filled one cut short")
+		traced := fs.Bool("trace", false, "print the round trip's time and the server's trace of the query after the rows")
 		fs.Parse(flag.Args()[1:])
 		columns := []string{}
 		if *chosen != "" {
@@ -115,15 +118,24 @@ func main() {
 		body := strings.TrimSpace(input(fs.Args()))
 		var a qclient.Answer
 		var err error
+		start := time.Now()
 		if strings.HasPrefix(body, "{") {
 			a, err = c.Query(json.RawMessage(body))
 		} else {
 			a, err = c.QueryText(body)
 		}
+		took := time.Since(start)
 		if err != nil {
 			logging.Fatal("query", "error", err)
 		}
 		show(os.Stdout, a, columns)
+		if *traced {
+			var tree bytes.Buffer
+			if err := json.Indent(&tree, []byte(a.Trace), "", "  "); err != nil {
+				logging.Fatal("read the trace", "error", err, "trace", a.Trace)
+			}
+			fmt.Printf("\nround trip %s\n%s\n", took.Round(time.Millisecond), tree.String())
+		}
 	case "write":
 		body := strings.TrimSpace(input(flag.Args()[1:]))
 		ids, err := c.Write(json.RawMessage(body))
