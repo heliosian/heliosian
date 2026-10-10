@@ -710,7 +710,7 @@ function categoryTitle(category) {
 }
 
 function linkIcon(item, className, tone) {
-  return picture(className, item.image, initial(item.title), tone);
+  return picture(className + (item.mark ? ' is-mark' : ''), item.image, initial(item.title), tone);
 }
 
 function linkGrid(items) {

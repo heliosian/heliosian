@@ -10,7 +10,7 @@ Each file under `web/public/<app>/brand/` is cut from its app's exports at the w
 - `icon-*.png` and `apple-touch-icon.png` - the app icon square, opaque, since a transparent home-screen icon composites onto black on iOS.
 - `maskable-icon-*.png` - the bare mark at 62% of the square on the app icon's corner colour, which keeps it inside the maskable safe circle.
 - `logo-tile.png` - the app icon under a rounded mask with a 22% radius, applied last with `-compose CopyOpacity`.
-- `symbol-white.png` and `symbol-watermark.png` - from `symbol_white.png`.
+- `symbol-white.png` and `symbol-watermark.png` - from `symbol_white.png`, the symbol centred on a square canvas and the watermark trimmed, at about 6% opacity (alpha at most 16/255). Both stay greyscale with alpha and are never palette-reduced: the export is one white with soft edges, which a palette flattens to a bilevel image with no alpha at all, and the rails draw their icon through `symbol-white.png` as a mask, so a flattened file draws nothing.
 - `bot-face-1.png` and `bot-face-2.png` - Ask's bot in the conversation, from its `symbol_nochat_face1.png` and `symbol_nochat_face2.png`, the bare face without the chat bubble, resting and open-mouthed.
 - `logo-lockup*.png` - the horizontal export for a file wider than twice its height, else the vertical one; the white export for a name with `light` in it, else the teal.
 

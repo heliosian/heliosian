@@ -785,6 +785,12 @@ main {
 
 .widget-mark svg, .widget-mark .icon-mask { width: 20px; height: 20px; }
 
+.wg-party-pic.is-mark, .wg-grid-icon.is-mark, .wg-link-icon.is-mark { background: transparent; }
+
+.wg-grid-icon.is-mark { width: 72px; height: 72px; }
+
+.wg-grid-icon.is-mark img { padding: 2px; }
+
 .wg-party-pic.is-mark img { object-fit: contain; padding: 10px; }
 
 /* The foot's way across sits at its left, without a rule. */
