@@ -47,6 +47,7 @@ type Table struct {
 	Name        string
 	Sheet       string
 	Unique      []string
+	Distinct    []string
 	Columns     []Column
 	AppendOnly  bool
 	Generated   bool
@@ -337,6 +338,7 @@ var Tables = []Table{
 	{
 		Name:        "GROUP",
 		Sheet:       GroupsSheet,
+		Distinct:    []string{"slug"},
 		Generate:    eachRow(groupGenerated),
 		Description: "Any set of people, anything things are filed under, and anything on the calendar. A group sits under its parent; a thing's category is its parent. Its managers are the effective members of its managed_by group and of every group above it.",
 		Columns: []Column{

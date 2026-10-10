@@ -282,6 +282,12 @@ const PolicySource = `
 (insert MEMBER (and (own_group @new.group) (manages @new.group) (= @new.member "yes")))
 ; a plain group's managers take someone out of it, themselves included
 (delete MEMBER (and (own_group @old.group) (manages @old.group)))
+; an admins group's managers put someone in it
+(insert MEMBER (and (= @new.group.kind "admins") (manages @new.group) (= @new.member "yes")))
+; an admins group's managers take someone out of it, leaving someone in one that manages itself
+(delete MEMBER
+  (and (= @old.group.kind "admins") (manages @old.group)
+       (or (!= @old.group.managed_by @old.group) (exists MEMBER (= group @old.group) (!= id @old.id)))))
 ; where the calendar groups the viewer may see came from
 (read GROUP_SOURCE (visible group))
 ; every column of where a calendar group came from
@@ -1242,6 +1248,8 @@ const PolicySource = `
 (delete MEMBER (and (system "import") (= @old.person.source "guest")))
 ; the group that runs a tag, list, activity or party, as the old sheets have it
 (set GROUP.managed_by (and (system "import") (in @old.kind "group" "activity" "party" "event")))
+; the group that runs an admins group: super-admins runs itself and every other
+(set GROUP.managed_by (and (system "import") (= @old.kind "admins")))
 ; whether someone is in a tag, list, admins group, activity, party or event, as the old sheets have it
 (set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party" "event")))
 ; whether a volunteer co-chairs an activity, as the old sheet has it

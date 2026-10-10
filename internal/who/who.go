@@ -3,6 +3,7 @@ package who
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -10,7 +11,7 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-var sections = []string{"people", "classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "my-family", "admin"}
+var sections = []string{"classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "my-family", "admin"}
 
 var legacy = map[string]string{
 	"people":   "/people",
@@ -36,6 +37,8 @@ func Register(mux *http.ServeMux, about *sharecard.About, mapsKey string) {
 	for _, section := range sections {
 		mux.HandleFunc("GET /"+section, page)
 	}
+	mux.HandleFunc("GET /people", people)
+	mux.HandleFunc("GET /groups/{key}", page)
 	mux.HandleFunc("GET /people/{id}", page)
 	mux.HandleFunc("GET /families/{id}", page)
 	mux.HandleFunc("GET /classrooms/{slug}", page)
@@ -50,6 +53,21 @@ func legacyRedirect(w http.ResponseWriter, r *http.Request) {
 		target = "/people"
 	}
 	http.Redirect(w, r, target, http.StatusMovedPermanently)
+}
+
+func people(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("tag")
+	if list := r.URL.Query().Get("list"); list != "" {
+		_, key, _ = strings.Cut(list, ":")
+		if key == "" {
+			key = list
+		}
+	}
+	if key == "" {
+		page(w, r)
+		return
+	}
+	http.Redirect(w, r, "/groups/"+url.PathEscape(key), http.StatusMovedPermanently)
 }
 
 func page(w http.ResponseWriter, r *http.Request) {

@@ -108,10 +108,11 @@ export function listPage() {
       mark.alt = '';
       open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
       line.append(open);
-    } else {
+      titleWrap.append(line);
+    } else if (smart.kind === 'room') {
       line.append(svg('sparkle'), el('span', '', 'The families of the grades you are a room parent for'));
+      titleWrap.append(line);
     }
-    titleWrap.append(line);
   }
   const chip = p => link(personLink(p), 'tag-chip person-chip', p.name_show);
   const ownership = el('div', 'page-subtitle tag-ownership');

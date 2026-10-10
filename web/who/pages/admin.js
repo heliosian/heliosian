@@ -1,6 +1,6 @@
 import {model, q, rowsOf, write} from '../state.js';
 import {el} from '/elements.js';
-import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
+import {adminPage as buildAdminPage} from '/admin.js';
 import {api} from '/api.js';
 import {dataGrid} from '/datagrid.js';
 import {photoOrInitials} from '../people.js';
@@ -475,22 +475,12 @@ function hiddenPanel() {
 }
 
 function sections() {
-  const control = [];
-  if (model.allowances.includes('super-admins')) {
-    control.push({key: 'super-admins', label: 'Super Admins', card: () => adminsCard({
-      title: 'Super Admins',
-      hint: 'Super admins can also use Spoof Mode, from the eye beside their avatar in any app’s toolbar, and manage this list. Regular admins never see this tab. Changes save immediately.',
-      ...appAdmins('super'),
-    })});
-  }
-  control.push({key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can reach this page. Changes save immediately.', ...appAdmins('who')})});
   return [
     {title: 'Display', tabs: [
       {key: 'images', label: 'Images', card: imagesPanel},
       {key: 'thresholds', label: 'Update Thresholds', card: thresholdsCard},
       {key: 'privacy-links', label: 'Privacy Links', card: privacyCard},
     ]},
-    {title: 'Editing & Control', tabs: control},
     {title: 'Data Overrides', tabs: [
       {key: 'staff-assignments', label: 'Staff Overrides', card: staffOverrides},
       {key: 'student-overrides', label: 'Student Overrides', card: studentOverrides},

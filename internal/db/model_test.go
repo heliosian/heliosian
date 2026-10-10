@@ -131,6 +131,7 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per99999999999", "member": "yes"}), "names no row"},
 		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "grp00000000001", "member": "yes"}), "not a PERSON id"},
 		"duplicate member": {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000002", "note": "again"}), "two rows have the same group="},
+		"duplicate slug":   {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000011"}, store.Row{"slug": "Hummingbirds"}), `two rows have the slug "Hummingbirds"`},
 		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "two rows have the id"},
 		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "id is required"}, "second primary": {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
 		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},

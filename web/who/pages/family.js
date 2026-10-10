@@ -6,7 +6,7 @@ import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronou
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
 import {saveCells, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, cropped, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
-import {fromURL, peopleCrumbs, breadcrumbs} from '../crumbs.js';
+import {fromURL, peopleCrumbs, listedFrom, breadcrumbs} from '../crumbs.js';
 import {render, notFound, trail} from '/router.js';
 
 export function familyDetailChip(text, color, href) {
@@ -138,9 +138,9 @@ export function familyPage(key) {
     const rsegPerson = rseg[0] === 'people' && rseg[1] ? personByKey(rseg[1]) : undefined;
     if (rsegPerson) {
       const peopleBack = trail()[1];
-      const origin = peopleBack && peopleBack.startsWith('/people') && !peopleBack.startsWith('/people/') ? peopleCrumbs(new URL(peopleBack, location.origin)) : [['People', '/people']];
+      const origin = listedFrom(peopleBack) ? peopleCrumbs(new URL(peopleBack, location.origin)) : [['People', '/people']];
       crumbs = [...origin, [rsegPerson.name_show, back], ['Family', null]];
-    } else if (rseg[0] === 'people' && !rseg[1]) {
+    } else if ((rseg[0] === 'people' && !rseg[1]) || rseg[0] === 'groups') {
       crumbs = [...peopleCrumbs(from), [shortName, null], ['Family', null]];
     } else if (rseg[0] === 'map') {
       crumbs = [['Map', back], [shortName, null], ['Family', null]];

@@ -1,4 +1,4 @@
-import {state, model, tagKey, listKey, viewer, familyOf, resetPageState} from './state.js';
+import {state, model, groupKeyOf, viewer, familyOf, resetPageState} from './state.js';
 import {segments, hue, firstName, trimMiddle} from './dom.js';
 import {el, svg, link} from '/elements.js';
 import {saveNavOpen, loadNavScroll, saveNavScroll} from './storage.js';
@@ -41,6 +41,9 @@ function activeSection() {
   }
   if (seg[0] === 'grades') {
     return 'classrooms';
+  }
+  if (seg[0] === 'groups') {
+    return 'people';
   }
   return seg[0];
 }
@@ -251,16 +254,15 @@ function fillNav(nav) {
 }
 
 function listGroups() {
-  const params = new URLSearchParams(location.search);
   const {own, shared} = groupedTags();
   const {running, upcoming, joined, managing} = listSections();
-  const tagItems = [...own, ...shared].map(entry => ({href: entry.href, shared: entry.shared, name: entry.name, title: entry.title, active: entry.active(params), run: false, mail: false, start: ''}));
+  const tagItems = [...own, ...shared].map(entry => ({href: entry.href, shared: entry.shared, name: entry.name, title: entry.title, active: groupActive(entry.key), run: false, mail: false, start: ''}));
   const listItems = (keys, dated) => keys.map(key => ({
     href: tagHref(key),
     list: key,
     name: tagLabel(key),
     title: tagLabel(key),
-    active: listActive(params, key),
+    active: groupActive(key),
     run: dated && listOf(key).run,
     mail: listOf(key).mail,
     start: dated ? listOf(key).start : '',
@@ -362,17 +364,18 @@ function listsHeading(container, group, className) {
   return open;
 }
 
-function listActive(params, key) {
-  return params.has('list') && listKey(params.get('list')) === key;
+function groupActive(key) {
+  const seg = segments();
+  return seg[0] === 'groups' && Boolean(seg[1]) && groupKeyOf(seg[1]) === key;
 }
 
 function groupedTags() {
   const entry = (key, title, shared) => ({
+    key,
     name: tagLabel(key),
     href: tagHref(key),
     title,
     shared,
-    active: params => params.has('tag') && tagKey(params.get('tag')) === key,
   });
   const own = tagKeys().filter(key => !sharedTag(key)).map(key => entry(key, tagLabel(key), false));
   const shared = tagKeys().filter(sharedTag).map(key => entry(key, `${tagLabel(key)} - shared with others`, true));

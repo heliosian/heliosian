@@ -1,6 +1,6 @@
 # The old directory
 
-Helios Who? reads and writes the data model (`docs/datamodel.md`) and nothing described here. This file is the old directory spreadsheet, which Who? used before it moved: the apps still on the old model read it (`docs/api.md`, The directory), and since Who? moved nothing writes it but the geocoder and the Who? admin list, so what people change in Who? reaches those apps only as they move. The tabs, columns, pipeline steps and validation rules are in `internal/model` (the `directory*.go` files); this file carries only what reading that code cannot tell you.
+Helios Who? reads and writes the data model (`docs/datamodel.md`) and nothing described here. This file is the old directory spreadsheet, which Who? used before it moved: the apps still on the old model read it (`docs/api.md`, The directory), and since Who? moved nothing writes it but the geocoder, so what people change in Who? reaches those apps only as they move. The tabs, columns, pipeline steps and validation rules are in `internal/model` (the `directory*.go` files); this file carries only what reading that code cannot tell you.
 
 Structured data lives in two Google Sheets in the community shared drive, reached through drive membership rather than project IAM; blobs are objects in the media bucket, reached through project IAM. Each has exactly one home, and the organized model is held in memory — nothing computed is ever written back. The staleness thresholds, privacy links, and grade and classroom colors are not directory data at all: they live in the platform `Config` sheet (`docs/config.md`).
 
@@ -80,7 +80,7 @@ Every family address on the map was once a Geocoding API call, and a call per ad
 
 ## What writes it
 
-The directory spreadsheet is a part of the one store (`docs/storage.md`): its tabs and the preferences form's `Sheet1`, read alongside and never written, are `directoryTabs` in `internal/model/directory_cache.go`. Two things write it, as row operations committed to the store, the Change Log tab holding each cell's previous value: the geocoder (below) and the Who? admin list, the `Admins` tab (`docs/api.md`, Admin lists). Nothing writes the Veracross tabs, the staff page tab, `Name to Email`, Overrides, Families, Photos, Images or the tag tabs: `tools/import` writes the data model (`docs/datamodel.md`, Veracross import), and Who? writes the data model too, so those tabs hold what they held when the old Who? last wrote them.
+The directory spreadsheet is a part of the one store (`docs/storage.md`): its tabs and the preferences form's `Sheet1`, read alongside and never written, are `directoryTabs` in `internal/model/directory_cache.go`. The geocoder (below) writes it, as row operations committed to the store, the Change Log tab holding each cell's previous value. Nothing writes the Veracross tabs, the staff page tab, `Name to Email`, Overrides, Families, Photos, Images, the tag tabs or `Admins` (Who?'s admins are the data model's `who-admins` group): `tools/import` writes the data model (`docs/datamodel.md`, Veracross import), and Who? writes the data model too, so those tabs hold what they held when the old Who? last wrote them.
 
 ## Tags are kept by ID
 

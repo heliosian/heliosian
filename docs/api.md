@@ -69,7 +69,7 @@ A family carries `veracrossAddress` and `veracrossPhone`, how Veracross shows it
 
 Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`internal/who/who.go`).
 
-The directory types above are the old directory, read-only and frozen since Who? moved: nothing writes their sheet but the geocoder and the Who? admin list. The apps still on the old model read them - Loop and Heliosian's rule editors `classrooms`, `grades?enrolled` and `tags`, Staff Birthdays `departments` - and `people` and `families` are reached as relations of other apps' types.
+The directory types above are the old directory, read-only and frozen since Who? moved: nothing writes their sheet but the geocoder. The apps still on the old model read them - Loop and Heliosian's rule editors `classrooms`, `grades?enrolled` and `tags`, Staff Birthdays `departments` - and `people` and `families` are reached as relations of other apps' types.
 
 ## Magic Tags
 
@@ -151,7 +151,7 @@ Audience preview reads an unsaved draft and is Heliosian's own route (`POST /api
 
 ## Admin lists
 
-`admin-lists` (in `home_resources.go`) is one resource per app's admin list (`adminApps` in `internal/model/model.go` lists them), each ID derived from the app's key and the key an alias (`/api/admin-lists/team`). It is seen, listed and written only by someone holding that app's `<app>.admins` allowance: `app`, and `admins`, the Admins tab's addresses and the platform super admins. `edit` takes `admins` and writes the tab to match, the super admins left out of it, since they stand on every list from the Config sheet. The super admins are a list of their own, `super`, seen and written only by someone holding `super-admins`, over the Config sheet's Super Admins tab, which may not be left empty. Every app's Admin Tools card reads and writes it (`appAdmins` in `web/common/admin.js`, `docs/toolbar.md`, Admin Tools).
+`admin-lists` (in `home_resources.go`) is one resource per app's admin list (`adminApps` in `internal/model/model.go` lists them), each ID derived from the app's key and the key an alias (`/api/admin-lists/team`). It is seen, listed and written only by someone holding that app's `<app>.admins` allowance: `app`, and `admins`, the Admins tab's addresses and the platform super admins. `edit` takes `admins` and writes the tab to match, the super admins left out of it, since they stand on every list from the Config sheet. The super admins are a list of their own, `super`, seen and written only by someone holding `super-admins`, over the Config sheet's Super Admins tab, which may not be left empty; no page draws it. Every old app's Admin Tools card reads and writes its own list (`appAdmins` in `web/common/admin.js`, `docs/toolbar.md`, Admin Tools).
 
 ## Feedback reports
 

@@ -17,7 +17,7 @@ The sheet is the config part of the one store (`docs/storage.md`), `Model.Config
 
 ## Editing
 
-The super admin list is edited in Who?'s Admin Tools, its Super Admins card being the `super` admin list, which commits the changed rows as the admin; the Change Log keeps what each changed cell held. An empty list is refused whole and never reaches the sheet. Only a super admin may see or change who the super admins are; to anyone else the list does not exist.
+No app edits the `Super Admins` tab: the `super` admin list (`docs/api.md`, Admin lists) would, but nothing draws it since Who?'s admins moved to the data model's admins groups. It is edited by hand in the sheet, and an empty list refuses the next load.
 
 No app edits `Settings`, `Grade Colors` or `Classroom Colors`: Who?'s settings and colors panels write the data model. They are edited by hand in the sheet, and a bad edit (an unknown key, a non-hex color, a non-https link) refuses the next load rather than being read as a default.
 

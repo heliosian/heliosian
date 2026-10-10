@@ -15,7 +15,6 @@ export function resetPageState() {
 export const model = {
   viewer: null,
   email: '',
-  allowances: [],
   admin: false,
   people: [],
   families: [],
@@ -84,8 +83,21 @@ export function listKey(id) {
   return 'list:' + id;
 }
 
+export function groupPath(key) {
+  const g = tags[key] || lists[key];
+  return '/groups/' + encodeURIComponent((g && g.groupSlug) || (g && g.id) || key);
+}
+
+export function groupKeyOf(name) {
+  const lower = name.toLowerCase();
+  if (tags[tagKey(name)]) {
+    return tagKey(name);
+  }
+  return Object.keys(lists).find(key => lists[key].id === name || lists[key].groupSlug.toLowerCase() === lower) || '';
+}
+
 const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
-const listKindCondition = '(!= status "closed") (or (in kind "party" "activity") mail (and (= kind "event") (not (blank rsvp_yes))))';
+const listKindCondition = '(!= status "closed") (or (in kind "party" "activity" "admins") mail (and (= kind "event") (not (blank rsvp_yes))))';
 const viewerGroups = '(select MEMBER.group (= person @viewer) (= member "yes"))';
 const runCondition = `${listKindCondition} (manages @g)`;
 const joinedCondition = `${listKindCondition} (not (manages @g)) (or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
@@ -97,18 +109,10 @@ const personColumns = 'source vc_legal_name name_long_override name_long name_sh
 
 function oldName() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  const params = new URLSearchParams(location.search);
   if (parts[0] === 'people' && parts[1]) {
     return parts[1].startsWith('guest:') ? {page: 'guest', key: parts[1].slice('guest:'.length)} : {page: 'person', key: parts[1].toLowerCase()};
   }
-  if (parts[0] === 'people' && params.get('tag')) {
-    return {page: 'tag', key: params.get('tag')};
-  }
-  if (parts[0] === 'people' && params.get('list')) {
-    const list = params.get('list');
-    return {page: 'list', key: list.startsWith('room:') ? list : list.slice(list.indexOf(':') + 1)};
-  }
-  if (['families', 'classrooms', 'grades'].includes(parts[0]) && parts[1]) {
+  if (['families', 'classrooms', 'grades', 'groups'].includes(parts[0]) && parts[1]) {
     return {page: parts[0], key: parts[1]};
   }
   return null;
@@ -144,8 +148,7 @@ function movedTo(name, target) {
   }
   const group = groupById[target];
   const path = {
-    tag: '/people?tag=' + encodeURIComponent(target),
-    list: '/people?list=' + encodeURIComponent(target),
+    groups: groupPath(tags[tagKey(target)] ? tagKey(target) : listKey(target)),
     families: '/families/' + encodeURIComponent(target),
     classrooms: group && group.slug ? '/classrooms/' + encodeURIComponent(group.slug) : '',
     grades: group && group.slug ? '/grades/' + encodeURIComponent(group.slug) : '',
@@ -175,13 +178,11 @@ export async function loadModel() {
       joined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
       listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (columns group person))`,
       rsvpMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes @g ${listCondition}))) (columns group person))`,
-      guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,
-    }),
+      guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,    }),
     oldTarget(name),
   ]);
   const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, listMembers, rsvpMembers, guests} = answers;
   model.email = who.email;
-  model.allowances = who.allowances;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
   model.admin = admin.result.length > 0;
   model.people = rowsOf(people, 'PERSON');
@@ -298,7 +299,7 @@ export function tagManagers(t) {
   return Object.keys(t.managerRows);
 }
 
-const listKinds = {party: 'party', activity: 'activity', event: 'event'};
+const listKinds = {party: 'party', activity: 'activity', event: 'event', admins: 'admins'};
 
 export function today() {
   return new Date().toLocaleDateString('en-CA');
@@ -366,6 +367,7 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
       name: g.name,
       kind: listKinds[g.kind] || 'group',
       slug: g.slug || g.id,
+      groupSlug: g.slug || '',
       run: running.has(g.id),
       member: (people[g.id] || []).includes(model.viewer && model.viewer.id),
       mail: g.mail === 'Yes',
@@ -386,7 +388,7 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', run: true, member: true, mail: false, start: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', run: true, member: true, mail: false, start: '', people: [...ids], guests: []};
   }
 }
 

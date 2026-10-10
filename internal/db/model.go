@@ -206,6 +206,10 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
 
 func indexRows(t *Table, rows []store.Row) (*Rows, error) {
 	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, by: map[string]map[string][]int{}}
+	distinct := map[string]map[string]bool{}
+	for _, k := range t.Distinct {
+		distinct[k] = map[string]bool{}
+	}
 	for _, row := range rows {
 		if _, dup := out.byID[row["id"]]; dup {
 			return nil, fmt.Errorf("%s: two rows have the id %s", t.Name, row["id"])
@@ -217,6 +221,16 @@ func indexRows(t *Table, rows []store.Row) (*Rows, error) {
 				return nil, fmt.Errorf("%s: two rows have the same %s", t.Name, describeUnique(t, row))
 			}
 			out.byUnique[unique] = len(out.rows)
+		}
+		for _, k := range t.Distinct {
+			value := strings.ToLower(row[k])
+			if value == "" {
+				continue
+			}
+			if distinct[k][value] {
+				return nil, fmt.Errorf("%s: two rows have the %s %q", t.Name, k, row[k])
+			}
+			distinct[k][value] = true
 		}
 		for _, c := range t.Columns {
 			if (c.Kind != Ref && c.Kind != Enum) || row[c.Name] == "" {

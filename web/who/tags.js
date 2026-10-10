@@ -1,4 +1,4 @@
-import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers} from './state.js';
+import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
@@ -31,13 +31,10 @@ export function tagLabel(key) {
 }
 
 export function tagHref(key) {
-  if (tags[key]) {
-    return '/people?tag=' + encodeURIComponent(tags[key].id);
-  }
-  return '/people?list=' + encodeURIComponent(lists[key].id);
+  return groupPath(key);
 }
 
-const listIcons = {party: 'party', activity: 'activity', event: 'calendar', room: 'classrooms', group: 'people'};
+const listIcons = {party: 'party', activity: 'activity', event: 'calendar', room: 'classrooms', group: 'people', admins: 'gear'};
 
 export function listKeys() {
   return Object.keys(lists).sort((a, b) => lists[a].name.localeCompare(lists[b].name));

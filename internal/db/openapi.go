@@ -114,6 +114,7 @@ func tableSchema(t Table) schema {
 		"x-columns":    order,
 		"x-sheet":      t.Sheet,
 		"x-unique":     slices.Clone(t.Unique),
+		"x-distinct":   slices.Clone(t.Distinct),
 		"x-generated":  t.Generated,
 		"x-appendOnly": t.AppendOnly,
 		"description":  t.Description,

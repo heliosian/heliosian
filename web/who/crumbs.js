@@ -1,4 +1,4 @@
-import {classroomByKey, gradeByKey, tags, lists, tagKey, listKey} from './state.js';
+import {classroomByKey, gradeByKey, groupKeyOf} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {trail} from '/router.js';
 import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
@@ -19,12 +19,16 @@ function classroomsBack() {
 
 export function peopleCrumbs(from) {
   const back = from.pathname + from.search;
-  const params = new URLSearchParams(from.search);
-  const key = params.get('tag') ? tagKey(params.get('tag')) : params.get('list') ? listKey(params.get('list')) : '';
-  if (!tags[key] && !lists[key]) {
+  const seg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const key = seg[0] === 'groups' && seg[1] ? groupKeyOf(seg[1]) : '';
+  if (!key) {
     return [['People', back]];
   }
   return [['People', '/people'], [tagLabel(key), back]];
+}
+
+export function listedFrom(href) {
+  return Boolean(href) && ((href.startsWith('/people') && !href.startsWith('/people/')) || href.startsWith('/groups/'));
 }
 
 export function fromCrumbs() {
@@ -46,7 +50,7 @@ export function fromCrumbs() {
       return [['Gradebands', classroomsBack()], [classroom.name, back]];
     }
   }
-  if (seg[0] === 'people' && !seg[1]) {
+  if ((seg[0] === 'people' && !seg[1]) || seg[0] === 'groups') {
     return peopleCrumbs(from);
   }
   if (seg[0] === 'classrooms') {

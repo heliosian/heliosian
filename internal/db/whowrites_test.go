@@ -75,6 +75,36 @@ func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 	}
 }
 
+func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
+	const superAdmins, whoAdmins, superStaff = "grp00000000005", "grp00000000006", "mem00000000007"
+	s, queue := sampleWithQueue(t)
+	write := func(viewer string, edits ...Edit) ([]string, error) {
+		return Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err == nil {
+		t.Error("a parent makes themselves a super admin")
+	}
+	if _, err := write(staff, Edit{Delete: superStaff}); err == nil {
+		t.Error("the last super admin leaves")
+	}
+	ids, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": whoAdmins, "person": parent, "member": "yes"}})
+	if err != nil {
+		t.Fatalf("a super admin can't make a Who? admin: %v", err)
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": whoAdmins, "person": guest, "member": "yes"}}); err == nil {
+		t.Error("a Who? admin makes another")
+	}
+	if _, err := write(staff, Edit{Delete: ids[0]}); err != nil {
+		t.Errorf("a super admin can't remove the last Who? admin: %v", err)
+	}
+	if _, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err != nil {
+		t.Fatalf("a super admin can't make another: %v", err)
+	}
+	if _, err := write(parent, Edit{Delete: superStaff}); err != nil {
+		t.Errorf("a super admin can't remove another while one stays: %v", err)
+	}
+}
+
 func TestWhoWrites(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, ConfigSheet, store.Insert("SETTING", store.Row{"id": "set00000000099", "app": "platform", "key": "Staff Color", "value": "#000000"})); err != nil {
