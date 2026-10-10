@@ -88,8 +88,8 @@ func sampleTurn(t *testing.T, email string) *turn {
 
 func (s sample) mail(t *testing.T, subject, published string) string {
 	t.Helper()
-	env := db.Env{System: "import", Now: sampleNow}
-	ids, err := db.Write(context.Background(), s.data, s.queue, s.pics, access.System("import"), env, db.Batch{Batch: []db.Edit{
+	env := db.Env{System: "mail", Now: sampleNow}
+	ids, err := db.Write(context.Background(), s.data, s.queue, s.pics, access.System(env.System), env, db.Batch{Batch: []db.Edit{
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": subject, "published": published}},
 		{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@mail", "group": "grp00000000030", "relation": "sent_to"}},
 	}})

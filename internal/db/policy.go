@@ -46,15 +46,9 @@ const PolicySource = `
     (in group (select MEMBER.group (= person @p) (= member "yes") (= group.kind "family")))
     (= member "yes")))
 
-; @g is one of the role groups the import keeps: students, parents, staff, adults, everyone
+; @g is one of the role groups the Veracross import keeps: students, parents, staff, adults, everyone
 (define (role_group @g)
   (and (= @g.kind "group") (in @g.slug "students" "parents" "staff" "adults" "everyone")))
-
-; @g is one of the grade Parents groups the import keeps, whose one rule is its grade's parents
-(define (grade_parents @g)
-  (and (= @g.kind "group")
-       (in @g.slug "grade-k-parents" "grade-1-parents" "grade-2-parents" "grade-3-parents" "grade-4-parents"
-           "grade-5-parents" "grade-6-parents" "grade-7-parents" "grade-8-parents")))
 
 ; @g is the waitlist a party names
 (define (party_waitlist @g)
@@ -98,10 +92,6 @@ const PolicySource = `
            (or (exists MEMBER (in group (groups_of @viewer)) (= person @p))
                (exists MEMBER (= person @p) (sees_members group))))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
-
-; @g is an event, a school day or a part of one
-(define (calendar_kind @g)
-  (in @g.kind "event" "day" "day_part"))
 
 ; the viewer is @p or in a family with @p
 (define (self_or_household @p)
@@ -184,6 +174,18 @@ const PolicySource = `
       (exists RECIPIENT (= message @m) (= person @viewer))
       (manages @m.group)))
 
+;; Consent
+
+; a person shows when they are a guest, or consented to the directory and are not hidden; a row naming one who doesn't show doesn't show either
+(show PERSON (or (= source "guest") (and (= consent "listed") (not hidden))))
+; a family shows when it consented to the directory; a row naming one that doesn't show doesn't show either
+(show GROUP (or (!= kind "family") (= consent "listed")))
+
+;; Import mode
+
+; a super admin in import mode sees every row, shown or not
+(reveal (and (super_admin) (mode "import")))
+
 ;; Everyone
 
 ; people the viewer may see
@@ -197,9 +199,9 @@ const PolicySource = `
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
    photo_updated vc_bio)
   true)
-; a person's birthday, to the Birthdays team and the sync
-(read PERSON (birthday) (or (birthday_team) (system "import")))
-; when a person last signed out everywhere and when the import dropped them, for the server alone
+; a person's birthday, to the Birthdays team
+(read PERSON (birthday) (birthday_team))
+; when a person last signed out everywhere and when the Veracross import dropped them, for the server and super admins
 (read PERSON (signed_out deactivated) false)
 ; whether the form shares a person's address and phone, to them and their family
 (read PERSON (address_consent phone_consent) (self_or_household @row))
@@ -350,7 +352,7 @@ const PolicySource = `
 (insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
-; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only the import changes
+; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only super admins change
 (set MEMBER.member
   (and (!= @old.group.kind "family")
        (or (and (or (self_or_household @old.person)
@@ -479,7 +481,7 @@ const PolicySource = `
 
 ;; Who? admins
 
-; every person, hidden or deactivated too
+; every person, deactivated too
 (read PERSON (admin_of "who"))
 ; which people are hidden
 (read PERSON (hidden) (admin_of "who"))
@@ -497,7 +499,7 @@ const PolicySource = `
 (read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
-; every person's emails, hidden or deactivated too
+; every person's emails, deactivated too
 (read PERSON_EMAIL (admin_of "who"))
 ; every picture's re-encode and crop, to crop it
 (read PHOTO (reencode crop) (admin_of "who"))
@@ -523,7 +525,7 @@ const PolicySource = `
 (set PERSON.facts_updated (admin_of "who"))
 ; date anyone's picture
 (set PERSON.photo_updated (admin_of "who"))
-; take anyone out of the directory and sign-in, or put them back
+; take anyone out of every view and sign-in; putting them back is for super admins in import mode
 (set PERSON.hidden (admin_of "who"))
 ; make someone a band's room parent
 (insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "band") (= @new.member "yes")))
@@ -688,7 +690,7 @@ const PolicySource = `
 
 ;; Mail lists
 
-; the viewer manages @g or is a super admin, unless it is a family, whose members only the import changes
+; the viewer manages @g or is a super admin, unless it is a family, whose members only super admins change
 (define (runs_list @g)
   (and (!= @g.kind "family") (or (manages @g) (super_admin))))
 
@@ -771,10 +773,8 @@ const PolicySource = `
 ; any wiki page with no sub-pages
 (delete DOCUMENT (and (admin_of "wiki") (= @old.kind "wiki") (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
 
-;; Super admins
+;; Old addresses
 
-; old IDs and the rows they now name
-(read ALIAS (super_admin))
 ; an old name of a person the viewer may see, so an old link still finds their page
 (read ALIAS (exists PERSON @p (= id @row.target) (person_visible @p)))
 ; an old name of a group the viewer may see, so an old link still finds its page
@@ -783,772 +783,32 @@ const PolicySource = `
 (read ALIAS (exists MEMBER @m (= id @row.target) (person_visible @m.person)))
 ; every column of an alias
 (read ALIAS (id alias target) true)
-; old paths and where they now go
-(read REDIRECT (super_admin))
 ; the wiki's old page addresses, so an old link still finds its page
 (read REDIRECT (= app "wiki"))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
-; every group's and person's search entry
-(read SEARCH (super_admin))
-; every column of a search entry
+; every column of a search entry, to whoever may read it
 (read SEARCH (id target source terminal input summary chunks object made failures) true)
-; delete a search entry, so it is built again
-(delete SEARCH (or (super_admin) (system "import")))
-; every document, whoever it was sent to
-(read DOCUMENT (super_admin))
-; every document's groups
-(read DOCUMENT_GROUP (super_admin))
-; every stored file
-(read CONTENT (super_admin))
-; every bug report and idea, to triage
-(read REPORT (super_admin))
-; every group
-(read GROUP (super_admin))
-; every group's members by hand and kept off
-(read MEMBER (super_admin))
-; every group's effective members
-(read EFFECTIVE_MEMBER (super_admin))
-; the rules that pick every group's members
-(read RULE (super_admin))
-; all mail to every group
-(read MESSAGE (super_admin))
-; every delivery of mail to every group
-(read RECIPIENT (super_admin))
-; name the group that manages any group
-(set GROUP.managed_by (super_admin))
-; make a plain group, to manage a group
-(insert GROUP (and (super_admin) (= @new.kind "group")))
 
-;; System: mailer, the mail lists' mail
+;; Super admins
 
-; every group, each a mail list
-(read GROUP (system "mailer"))
-; every group's other addresses
-(read ALIAS (and (system "mailer") (exists GROUP (= id @row.target))))
-; who is in every group by hand or kept off it
-(read MEMBER (system "mailer"))
-; every group's effective members
-(read EFFECTIVE_MEMBER (system "mailer"))
-; everyone, to match a sender and address each copy
-(read PERSON (system "mailer"))
-; everyone's addresses
-(read PERSON_EMAIL (system "mailer"))
-; every post to a mail list
-(read MESSAGE (and (system "mailer") (= kind "post")))
-; take in a post, or send one on to its list
-(insert MESSAGE (and (system "mailer") (= @new.kind "post")))
-; where a post stands
-(set MESSAGE.state (and (system "mailer") (= @old.kind "post")))
-; why a post was dropped or failed
-(set MESSAGE.detail (and (system "mailer") (= @old.kind "post")))
-; the raw mail of every post
-(read CONTENT (and (system "mailer") (exists MESSAGE (= content @row) (= kind "post"))))
-; keep a post's raw mail
-(insert CONTENT (and (system "mailer") (= @new.mime "message/rfc822")))
-; every copy of every post
-(read RECIPIENT (and (system "mailer") (= message.kind "post")))
-; send a copy of a post to one person
-(insert RECIPIENT (and (system "mailer") (= @new.message.kind "post")))
-; when the mail provider took a copy
-(set RECIPIENT.sent (and (system "mailer") (= @old.message.kind "post")))
-; the mail provider's ID for a copy
-(set RECIPIENT.provider_id (and (system "mailer") (= @old.message.kind "post")))
-; when a copy was delivered
-(set RECIPIENT.delivered (and (system "mailer") (= @old.message.kind "post")))
-; when a copy failed
-(set RECIPIENT.failed (and (system "mailer") (= @old.message.kind "post")))
-; why a copy failed
-(set RECIPIENT.detail (and (system "mailer") (= @old.message.kind "post")))
-; make a group's unsubscribed group at its first unsubscribe: plain, hidden, under nothing, with no address
-(insert GROUP
-  (and (system "mailer") (= @new.kind "group") (blank @new.slug) (blank @new.parent) (blank @new.visible_to)))
-; name a group's unsubscribed group, once
-(set GROUP.unsubscribed (and (system "mailer") (blank @old.unsubscribed)))
-; unsubscribe someone: put them in the group's unsubscribed group
-(insert MEMBER (and (system "mailer") (= @new.member "yes") (exists GROUP (= unsubscribed @new.group))))
-; resubscribe someone: take them out of the group's unsubscribed group
-(delete MEMBER (and (system "mailer") (exists GROUP (= unsubscribed @old.group))))
-
-;; System: import
-
-; every person, withheld too, to match the Veracross export against
-(read PERSON (system "import"))
-; add a Veracross person new in the export
-(insert PERSON (and (system "import") (= @new.source "veracross")))
-; a person's name as Veracross has it
-(set PERSON.vc_name (system "import"))
-; a person's legal name as Veracross has it
-(set PERSON.vc_legal_name (system "import"))
-; a student's grade as Veracross has it
-(set PERSON.vc_grade (system "import"))
-; a student's classroom as Veracross has it
-(set PERSON.vc_classroom (system "import"))
-; a person's crew as Veracross has it
-(set PERSON.vc_crew (system "import"))
-; a staff member's department as Veracross has it
-(set PERSON.vc_department (system "import"))
-; a staff member's job title as Veracross has it
-(set PERSON.vc_job_title (system "import"))
-; a person's phone as Veracross has it
-(set PERSON.vc_phone (system "import"))
-; a staff member's bio as Veracross has it
-(set PERSON.vc_bio (system "import"))
-; Veracross's address privacy, shown on the profile to explain it
-(set PERSON.vc_address_visibility (system "import"))
-; Veracross's phone privacy, shown on the profile to explain it
-(set PERSON.vc_phone_visibility (system "import"))
-; a person's long name derived from Veracross's
-(set PERSON.vc_name_long (system "import"))
-; a person's short name derived from Veracross's
-(set PERSON.vc_name_short (system "import"))
-; a person's sort name derived from Veracross's
-(set PERSON.vc_name_sort (system "import"))
-; whether a person is deactivated, to compare with the export
-(read PERSON (deactivated) (system "import"))
-; deactivate a Veracross person gone from the export, or bring one back
-(set PERSON.deactivated (and (system "import") (= @old.source "veracross")))
-; a person's address in Who?, from their primary email; a guest has none
-(set PERSON.slug (and (system "import") (!= @old.source "guest")))
-; every person's alias, to skip one already written
-(read ALIAS (and (system "import") (exists PERSON (= id @row.target))))
-; a person's old address in Who?, when their slug changes
-(insert ALIAS (and (system "import") (exists PERSON (= id @new.target))))
-; whether the opt-in form lists a person
-(set PERSON.consent (system "import"))
-; whether the opt-in form shares a person's address
-(set PERSON.address_consent (system "import"))
-; whether the opt-in form shares a person's phone
-(set PERSON.phone_consent (system "import"))
-; every email, to match the export's people by
-(read PERSON_EMAIL (system "import"))
-; add an email new in the export
-(insert PERSON_EMAIL (and (system "import") (= @new.source "veracross")))
-; change an imported email the export changed
-(set PERSON_EMAIL.address (and (system "import") (= @old.source "veracross")))
-; remove an imported email gone from the export
-(delete PERSON_EMAIL (and (system "import") (= @old.source "veracross")))
-; every photo, to skip those already imported
-(read PHOTO (system "import"))
-; add a portrait from Veracross or the website, or a picture the old sheets held
-(insert PHOTO (system "import"))
-; every directory group the import keeps, withheld families too
-(read GROUP (and (system "import") (or (in kind "family" "classroom" "crew" "grade" "band" "department") (role_group @row) (grade_parents @row))))
-; add a family, role group, grade Parents group, classroom, crew, grade, band or department new in the export
-(insert GROUP (and (system "import") (or (in @new.kind "family" "classroom" "crew" "grade" "band" "department") (role_group @new) (grade_parents @new))))
-; every grade Parents group's rules, to keep each its grade's parents
-(read RULE (and (system "import") (grade_parents group)))
-; make a grade Parents group take in its grade's parents
-(insert RULE (and (system "import") (grade_parents @new.group)))
-; stop a grade Parents group taking in anything but its grade's parents
-(delete RULE (and (system "import") (grade_parents @old.group)))
-; put a classroom under the band of its students' grades
-(set GROUP.parent (and (system "import") (= @old.kind "classroom")))
-; a classroom's address in Who?, its name in lower case
-(set GROUP.slug (and (system "import") (= @old.kind "classroom")))
-; every band's rules, to compare with the grades and classrooms under it
-(read RULE (and (system "import") (= group.kind "band")))
-; make a band take in a grade or classroom under it
-(insert RULE (and (system "import") (= @new.group.kind "band")))
-; stop a band taking in a grade or classroom no longer under it
-(delete RULE (and (system "import") (= @old.group.kind "band")))
-; make a family manage itself
-(set GROUP.managed_by (and (system "import") (= @old.kind "family") (= @new.managed_by @old.id)))
-; a family's address as Veracross has it
-(set GROUP.vc_address (and (system "import") (= @old.kind "family")))
-; a family's phone as Veracross has it
-(set GROUP.vc_phone (and (system "import") (= @old.kind "family")))
-; whether the form lists all of a family's adults
-(set GROUP.consent (and (system "import") (= @old.kind "family")))
-; whether the form shares all of a family's adults' addresses
-(set GROUP.address_consent (and (system "import") (= @old.kind "family")))
-; whether the form shares all of a family's adults' phones
-(set GROUP.phone_consent (and (system "import") (= @old.kind "family")))
-; every family and role group membership, to compare with the export
-(read MEMBER (and (system "import") (or (= group.kind "family") (role_group group))))
-; add a family or role group membership new in the export
-(insert MEMBER (and (system "import") (or (= @new.group.kind "family") (role_group @new.group))))
-; whether someone is in a family or role group
-(set MEMBER.member (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
-; remove a family or role group membership gone from the export
-(delete MEMBER (and (system "import") (or (= @old.group.kind "family") (role_group @old.group))))
-
-;; System: import, the geocoder
-
-; every placed address, to look up only those not yet placed
-(read GEOCODE (system "import"))
-; place a family's shared address on the map
-(insert GEOCODE (system "import"))
-; remove a pin for an address with no street number, which places only a city
-(delete GEOCODE (system "import"))
-
-;; System: import, the calendar
-
-; every event, day and day part, to compare with the school's calendars
-(read GROUP (and (system "import") (calendar_kind @row)))
-; add an event, day or day part
-(insert GROUP (and (system "import") (calendar_kind @new)))
-; a calendar group's name as its source has it
-(set GROUP.name (and (system "import") (calendar_kind @old)))
-; a calendar group's start as its source has it
-(set GROUP.start (and (system "import") (calendar_kind @old)))
-; a calendar group's end as its source has it
-(set GROUP.end (and (system "import") (calendar_kind @old)))
-; whether a calendar group runs all day, as its source has it
-(set GROUP.all_day (and (system "import") (calendar_kind @old)))
-; a calendar group's location as its source has it
-(set GROUP.location (and (system "import") (calendar_kind @old)))
-; a calendar group's description as its source has it
-(set GROUP.description (and (system "import") (calendar_kind @old)))
-; the recurring event an event is an instance of
-(set GROUP.parent (and (system "import") (calendar_kind @old)))
-; remove a calendar group its sources no longer state
-(delete GROUP (and (system "import") (calendar_kind @old)))
-; where every calendar group came from
-(read GROUP_SOURCE (system "import"))
-; record where a calendar group came from
-(insert GROUP_SOURCE (and (system "import") (calendar_kind @new.group)))
-; a source's name as it reads now
-(set GROUP_SOURCE.name (and (system "import") (calendar_kind @old.group)))
-; a source's start as it reads now
-(set GROUP_SOURCE.start (and (system "import") (calendar_kind @old.group)))
-; a source's end as it reads now
-(set GROUP_SOURCE.end (and (system "import") (calendar_kind @old.group)))
-; whether a source runs all day as it reads now
-(set GROUP_SOURCE.all_day (and (system "import") (calendar_kind @old.group)))
-; a source's location as it reads now
-(set GROUP_SOURCE.location (and (system "import") (calendar_kind @old.group)))
-; a source's description as it reads now
-(set GROUP_SOURCE.description (and (system "import") (calendar_kind @old.group)))
-; the version of the year calendar a source now comes from
-(set GROUP_SOURCE.document (and (system "import") (calendar_kind @old.group)))
-; the hash of what the classifier was last given for a source
-(set GROUP_SOURCE.hash (and (system "import") (calendar_kind @old.group)))
-; remove a source the school's calendars no longer state
-(delete GROUP_SOURCE (and (system "import") (calendar_kind @old.group)))
-; every category, to classify into and file under
-(read GROUP (and (system "import") (= kind "category")))
-; the rules saying who every calendar group is for
-(read RULE (and (system "import") (calendar_kind group)))
-; say who a calendar group is for
-(insert RULE (and (system "import") (calendar_kind @new.group)))
-; take back who a calendar group was for
-(delete RULE (and (system "import") (calendar_kind @old.group)))
-; the people of every calendar group, to remove them with it
-(read MEMBER (and (system "import") (calendar_kind group)))
-; remove someone from a calendar group being removed
-(delete MEMBER (and (system "import") (calendar_kind @old.group)))
-; let go of a calendar group's Going group, to remove it with the group
-(set GROUP.rsvp_yes (and (system "import") (calendar_kind @old) (blank @new.rsvp_yes)))
-; let go of a calendar group's Not Going group, to remove it with the group
-(set GROUP.rsvp_no (and (system "import") (calendar_kind @old) (blank @new.rsvp_no)))
-; remove an answer in the Going or Not Going group of a calendar group being removed
-(delete MEMBER (and (system "import") (= @old.group.kind "group") (calendar_kind @old.group.parent)))
-; remove the Going or Not Going group of a calendar group being removed
-(delete GROUP (and (system "import") (= @old.kind "group") (calendar_kind @old.parent)))
-; unlink a document from a calendar group being removed
-(delete DOCUMENT_GROUP (and (system "import") (calendar_kind @old.group)))
-; the old IDs naming every calendar group, to remove them with it
-(read ALIAS (and (system "import") (exists GROUP (= id @row.target) (in kind "event" "day" "day_part"))))
-; remove an old ID naming a calendar group being removed
-(delete ALIAS (and (system "import") (exists GROUP (= id @old.target) (in kind "event" "day" "day_part"))))
-; add a version of the school's year calendar
-(insert DOCUMENT (and (system "import") (= @new.kind "calendar")))
-; a version of the school's year calendar's title
-(set DOCUMENT.name (and (system "import") (= @old.kind "calendar")))
-; add a file the school or HCA shared, such as a slide deck
-(insert DOCUMENT (and (system "import") (= @new.kind "file")))
-; store the bytes of a shared file: a PDF, such as a version of the year calendar or a slide deck, or a page
-(insert CONTENT (and (system "import") (in @new.mime "application/pdf" "text/html")))
-; add a mail message the community received
-(insert DOCUMENT (and (system "import") (= @new.kind "mail")))
-; say which groups a mail message was sent to
-(insert DOCUMENT_GROUP (and (system "import") (= @new.relation "sent_to") (= @new.document.kind "mail")))
-; every document, to find the mail already uploaded
-(read DOCUMENT (system "import"))
-; every document's groups, to find the mail whose groups are not yet said
-(read DOCUMENT_GROUP (system "import"))
-; every search entry, to find the ones to build again
-(read SEARCH (system "import"))
-; an image or a link of an email's HTML part, still to fetch or judged not worth it, for HTML extracted before extraction placed them
-(insert DOCUMENT (and (system "import") (in @new.relation "image" "linked") (= @new.parent.relation "part") (blank @new.content)))
-; fill an image or a link still to fetch with what a fetch run with someone's own credentials got
-(set DOCUMENT.content (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
-; say why fetching an image or a link stopped, or that it no longer has
-(set DOCUMENT.fetch (and (system "import") (in @old.relation "image" "linked") (blank @old.content)))
-; drop a fetched page's bytes, to refuse it as the fetcher would now or to fetch it again
-(set DOCUMENT.content (and (system "import") (= @old.relation "linked") (blank @new.content) (or (= @new.fetch "refused") (blank @new.fetch))))
-; refuse such a page, or leave it to fetch again
-(set DOCUMENT.fetch (and (system "import") (= @old.relation "linked") (blank @new.content) (or (= @new.fetch "refused") (blank @new.fetch))))
-; mark an image placed before images had a relation of their own
-(set DOCUMENT.relation (and (system "import") (= @old.relation "linked") (= @new.relation "image")))
-; store the bytes of an image, a pdf or a page such a fetch got
-(insert CONTENT (and (system "import") (in @new.mime "image/png" "image/jpeg" "image/gif" "image/webp" "image/bmp" "image/x-icon" "application/pdf" "text/html; charset=utf-8")))
-; start a wiki page with no author, for the wiki's own import
-(insert DOCUMENT (and (system "import") (= @new.kind "wiki") (blank @new.author) (wiki_content @new.content)))
-; add a side card to a wiki page
-(insert DOCUMENT (and (system "import") (= @new.relation "side") (= @new.parent.kind "wiki") (wiki_content @new.content)))
-; remove a text read out of a document, so that it can be read again
-(delete DOCUMENT (and (system "import") (= @old.relation "extract")))
-; mark a document as still to read, so the extractor reads it again
-(set DOCUMENT.extracted (and (system "import") (blank @new.extracted)))
-
-;; System: import, the sync from the old sheets, until the cutover
-
-; every membership, to compare the old sites' with
-(read MEMBER (system "import"))
-; every group's effective members, to compare the old sites' with
-(read EFFECTIVE_MEMBER (system "import"))
-; every rule, to compare the old sites' with
-(read RULE (system "import"))
-; every alias, to find what an earlier sync wrote
-(read ALIAS (system "import"))
-; an old ID and the row it now names
-(insert ALIAS (system "import"))
-; a person's long name as the old directory overrode it
-(set PERSON.name_long_override (system "import"))
-; a person's short name as the old directory overrode it
-(set PERSON.name_short_override (system "import"))
-; a person's sort name, built from the old directory's long name
-(set PERSON.name_sort_override (system "import"))
-; a person's pronouns
-(set PERSON.pronouns (system "import"))
-; a person's facts
-(set PERSON.facts (system "import"))
-; when a person's facts were last written
-(set PERSON.facts_updated (system "import"))
-; when a person's photo was last changed
-(set PERSON.photo_updated (system "import"))
-; a person's recorded name
-(set PERSON.pronunciation (system "import"))
-; a person's grade as the old directory overrode it
-(set PERSON.grade_override (system "import"))
-; a person's classroom as the old directory overrode it
-(set PERSON.classroom_override (system "import"))
-; a person's crew as the old directory overrode it
-(set PERSON.crew_override (system "import"))
-; a person's job title as the old directory overrode it
-(set PERSON.job_title_override (system "import"))
-; a person's phone as the old directory overrode it
-(set PERSON.phone_override (system "import"))
-; whether a person is hidden and when they last signed out, to compare with the old directory
-(read PERSON (hidden signed_out) (system "import"))
-; hide a person the old directory hid
-(set PERSON.hidden (system "import"))
-; when a person last signed out everywhere
-(set PERSON.signed_out (system "import"))
-; another address the old directory knew for a person
-(insert PERSON_EMAIL (and (system "import") (= @new.source "manual")))
-; where the old directory cropped a photo: its left edge
-(set PHOTO.crop_left (system "import"))
-; where the old directory cropped a photo: its top edge
-(set PHOTO.crop_top (system "import"))
-; where the old directory cropped a photo: its width
-(set PHOTO.crop_width (system "import"))
-; where the old directory cropped a photo: its height
-(set PHOTO.crop_height (system "import"))
-; a photo's place among a person's or group's photos as the old directory showed them
-(set PHOTO.order (system "import"))
-; a family's address as the old directory overrode it
-(set GROUP.address_override (and (system "import") (= @old.kind "family")))
-; a family's phone as the old directory overrode it
-(set GROUP.phone_override (and (system "import") (= @old.kind "family")))
-; a family photo's caption
-(set GROUP.description (and (system "import") (= @old.kind "family")))
-; a family's recorded name
-(set GROUP.pronunciation (and (system "import") (= @old.kind "family")))
-; a classroom's or grade's color
-(set GROUP.color (and (system "import") (in @old.kind "classroom" "grade")))
-; every plain group and admins group, to find what an earlier sync added
-(read GROUP (and (system "import") (in kind "group" "admins")))
-; add a tag, a band's room parents, an admins group or a party's waitlist
-(insert GROUP (and (system "import") (in @new.kind "group" "admins")))
-; the memberships of plain groups and admins groups
-(read MEMBER (and (system "import") (in group.kind "group" "admins")))
-; add someone to a tag, a band's room parents, an admins group or a party's waitlist
-(insert MEMBER (and (system "import") (in @new.group.kind "group" "admins")))
-; the rules of admins groups
-(read RULE (and (system "import") (= group.kind "admins")))
-; let super admins into an app's admins group
-(insert RULE (and (system "import") (= @new.group.kind "admins")))
-; every app, to find its admins group
-(read APP (system "import"))
-; add an app, naming its admins group
-(insert APP (system "import"))
-; who sees an app, as the old Apps sheet's Audience tab has it
-(set APP.visible_to (system "import"))
-; add an app setting the old sheets held
-(insert SETTING (system "import"))
-; change an app setting to what the old sheets hold
-(set SETTING.value (system "import"))
-; a Loop list's address, as the old sheet has it
-(set GROUP.slug (and (system "import") (= @old.kind "group")))
-; a Loop list's name, as the old sheet has it
-(set GROUP.name (and (system "import") (= @old.kind "group")))
-; a Loop list's description, as the old sheet has it
-(set GROUP.description (and (system "import") (= @old.kind "group")))
-; who sees a Loop list, as the old sheet has it
-(set GROUP.visible_to (and (system "import") (in @old.kind "group" "admins")))
-; who sees an admins group's members, which a new admins group sets to itself
-(set GROUP.members_visible_to (and (system "import") (= @old.kind "admins")))
-; who may post to any group's email list
-(set GROUP.posting (system "import"))
-; who may reply on any group's email list
-(set GROUP.replying (system "import"))
-; the rules of plain groups, to compare a Loop list's with the old sheet's
-(read RULE (and (system "import") (= group.kind "group")))
-; a Loop list's rule
-(insert RULE (and (system "import") (= @new.group.kind "group")))
-; someone a Loop list's manager added by address alone
-(insert PERSON (and (system "import") (= @new.source "guest")))
-; the address of someone a Loop list's manager added
-(insert PERSON_EMAIL (and (system "import") (= @new.source "guest")))
-; Loop's mail, to find what an earlier sync added
-(read MESSAGE (and (system "import") (= group.kind "group")))
-; a post to a Loop list, and the copy it sent out
-(insert MESSAGE (and (system "import") (= @new.group.kind "group")))
-; where a Loop post the old sheet holds stands
-(set MESSAGE.state (and (system "import") (= @old.kind "post")))
-; why a Loop post the old sheet holds was dropped or failed
-(set MESSAGE.detail (and (system "import") (= @old.kind "post")))
-; every stored file, to find a Loop post's message an earlier sync stored
-(read CONTENT (system "import"))
-; a Loop post's message as it arrived
-(insert CONTENT (and (system "import") (= @new.mime "message/rfc822")))
-; Loop's deliveries, to find what an earlier sync added
-(read RECIPIENT (and (system "import") (= message.group.kind "group")))
-; a copy of a Loop post that went to one person
-(insert RECIPIENT (and (system "import") (= @new.message.group.kind "group")))
-; a copy of a Loop post recorded on someone who can't be shown, now on their guest
-(delete RECIPIENT (and (system "import") (= @old.message.group.kind "group")))
-; every activity, to find what an earlier sync added
-(read GROUP (and (system "import") (= kind "activity")))
-; add a school year, an activity or a heading of an event's activities
-(insert GROUP (and (system "import") (= @new.kind "activity")))
-; an activity's place in its tree, as the old sheet has it
-(set GROUP.parent (and (system "import") (= @old.kind "activity")))
-; an activity's name, as the old sheet has it
-(set GROUP.name (and (system "import") (= @old.kind "activity")))
-; an activity's description, as the old sheet has it
-(set GROUP.description (and (system "import") (= @old.kind "activity")))
-; an activity's stub, as the old sheet has it
-(set GROUP.slug (and (system "import") (= @old.kind "activity")))
-; whether an activity is open or done, as the old sheet has it
-(set GROUP.status (and (system "import") (= @old.kind "activity")))
-; whether an activity is hidden, as the old sheet has it
-(set GROUP.visible_to (and (system "import") (= @old.kind "activity")))
-; when an activity starts, as the old sheet has it
-(set GROUP.start (and (system "import") (= @old.kind "activity")))
-; when an activity ends, as the old sheet has it
-(set GROUP.end (and (system "import") (= @old.kind "activity")))
-; when an activity happens, in words, as the old sheet has it
-(set GROUP.timing (and (system "import") (= @old.kind "activity")))
-; where an activity happens, as the old sheet has it
-(set GROUP.location (and (system "import") (= @old.kind "activity")))
-; how many volunteers an activity takes, as the old sheet has it
-(set GROUP.capacity (and (system "import") (= @old.kind "activity")))
-; how volunteers join an activity, as the old sheet has it
-(set GROUP.join (and (system "import") (= @old.kind "activity")))
-; who sees an activity's volunteers, as the old sheet has it
-(set GROUP.members_visible_to (and (system "import") (= @old.kind "activity")))
-; who may add activities under an activity, as the old sheet has it
-(set GROUP.adding (and (system "import") (= @old.kind "activity")))
-; whether an activity needs a co-chair, as the old sheet has it
-(set GROUP.lead_needed (and (system "import") (= @old.kind "activity")))
-; whether an activity is a priority, as the old sheet has it
-(set GROUP.priority (and (system "import") (= @old.kind "activity")))
-; an activity's flyer, as the old sheet has it
-(set GROUP.flyer (and (system "import") (= @old.kind "activity")))
-; an activity's place among its siblings, as the old sheet has it
-(set GROUP.order (and (system "import") (= @old.kind "activity")))
-; who added an activity, as the old sheet has it
-(set GROUP.added_by (and (system "import") (= @old.kind "activity")))
-; the volunteers and co-chairs of activities
-(read MEMBER (and (system "import") (= group.kind "activity")))
-; add a volunteer or co-chair the old sheet has
-(insert MEMBER (and (system "import") (= @new.group.kind "activity")))
-; remove a volunteer or co-chair the old sheet no longer has
-(delete MEMBER (and (system "import") (= @old.group.kind "activity")))
-; add a category the old tables or sheets held
-(insert GROUP (and (system "import") (= @new.kind "category")))
-; a category's name, as the old tables or sheets have it
-(set GROUP.name (and (system "import") (= @old.kind "category")))
-; a category's description, as the old tables or sheets have it
-(set GROUP.description (and (system "import") (= @old.kind "category")))
-; a category's place among the others, as the old tables or sheets have it
-(set GROUP.order (and (system "import") (= @old.kind "category")))
-; a category's place in the tree, as the old tables or sheets have it
-(set GROUP.parent (and (system "import") (= @old.kind "category")))
-; whether a category is on its app's page, as the old tables or sheets have it
-(set GROUP.listed (and (system "import") (= @old.kind "category")))
-; whether a When category is on by default, as the old tables have it
-(set GROUP.default (and (system "import") (= @old.kind "category")))
-; a category's color, as the old tables have it
-(set GROUP.color (and (system "import") (= @old.kind "category")))
-; whether a heading is hidden, as the old sheet has it
-(set GROUP.visible_to (and (system "import") (= @old.kind "category")))
-; how volunteers join the activities under a heading, as the old sheet has it
-(set GROUP.join (and (system "import") (= @old.kind "category")))
-; who sees the volunteers of the activities under a heading, as the old sheet has it
-(set GROUP.members_visible_to (and (system "import") (= @old.kind "category")))
-; who may add activities under a heading, as the old sheet has it
-(set GROUP.adding (and (system "import") (= @old.kind "category")))
-; every redirect, to find what an earlier sync added
-(read REDIRECT (system "import"))
-; add an old path the old sheets redirect
-(insert REDIRECT (system "import"))
-; where an old path goes, as the old sheets have it
-(set REDIRECT.new (system "import"))
-; every app setting of people, to find what an earlier sync added
-(read PERSON_SETTING (system "import"))
-; add a person's app setting the old sheets hold
-(insert PERSON_SETTING (system "import"))
-; a person's app setting, as the old sheets hold it
-(set PERSON_SETTING.value (system "import"))
-; a guest's address that the old Celebrate sheet says has moved
-(set PERSON_EMAIL.address (and (system "import") (= @old.source "guest")))
-; every party and celebration, to find what an earlier sync added
-(read GROUP (and (system "import") (in kind "party" "celebration")))
-; add a celebration or a party
-(insert GROUP (and (system "import") (in @new.kind "party" "celebration")))
-; a party's category or celebration, as the old sheet has it
-(set GROUP.parent (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's address on the site, as the old sheet has it
-(set GROUP.slug (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's name, as the old sheet has it
-(set GROUP.name (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's subtitle, as the old sheet has it
-(set GROUP.subtitle (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's description, as the old sheet has it
-(set GROUP.description (and (system "import") (in @old.kind "party" "celebration")))
-; where a party or celebration is, in words, as the old sheet has it
-(set GROUP.location (and (system "import") (in @old.kind "party" "celebration")))
-; a party's or celebration's street address, as the old sheet has it
-(set GROUP.address_override (and (system "import") (in @old.kind "party" "celebration")))
-; when a party or celebration starts, as the old sheet has it
-(set GROUP.start (and (system "import") (in @old.kind "party" "celebration")))
-; when a party or celebration ends, as the old sheet has it
-(set GROUP.end (and (system "import") (in @old.kind "party" "celebration")))
-; whether a party or celebration runs all day, as the old sheet has it
-(set GROUP.all_day (and (system "import") (in @old.kind "party" "celebration")))
-; whether a party is pending, as the old sheet has it
-(set GROUP.status (and (system "import") (in @old.kind "party" "celebration")))
-; whether a party is hidden, as the old sheet has it
-(set GROUP.visible_to (and (system "import") (in @old.kind "party" "celebration")))
-; whether a party's tickets are on sale, as the old sheet has it
-(set GROUP.join (and (system "import") (= @old.kind "party")))
-; what a party's ticket is for, as the old sheet has it
-(set GROUP.unit (and (system "import") (= @old.kind "party")))
-; a party's ticket price, as the old sheet has it
-(set GROUP.price (and (system "import") (= @old.kind "party")))
-; how many tickets a party has, as the old sheet has it
-(set GROUP.capacity (and (system "import") (= @old.kind "party")))
-; how many tickets a party needs to go ahead, as the old sheet has it
-(set GROUP.minimum (and (system "import") (= @old.kind "party")))
-; a party's flyer, as the old sheet has it
-(set GROUP.flyer (and (system "import") (= @old.kind "party")))
-; a party's waitlist, set when the old sheet has it take one
-(set GROUP.waitlist (and (system "import") (= @old.kind "party")))
-; who may come to a party, as the old sheet has it
-(set GROUP.eligible (and (system "import") (= @old.kind "party")))
-; whether kids may be dropped off at a party, as the old sheet has it
-(set GROUP.drop_off_allowed (and (system "import") (= @old.kind "party")))
-; whether a parent who stays needs a ticket, as the old sheet has it
-(set GROUP.parent_ticket_required (and (system "import") (= @old.kind "party")))
-; who posted a party, as the old sheet has it
-(set GROUP.added_by (and (system "import") (= @old.kind "party")))
-; when a party was posted, as the old sheet has it
-(set GROUP.added (and (system "import") (= @old.kind "party")))
-; the hosts and ticket holders of every party
-(read MEMBER (and (system "import") (= group.kind "party")))
-; add a host or a ticket the old sheet has
-(insert MEMBER (and (system "import") (= @new.group.kind "party")))
-; what a ticket cost, to compare with the old sheet
-(read MEMBER (price) (system "import"))
-; remove someone waiting for a party the old sheet no longer has
-(delete MEMBER (and (system "import") (party_waitlist @old.group)))
-; move a membership to the guest a same-named guest is merged into
-(set MEMBER.person (and (system "import") (= @old.person.source "guest")))
-; move a purchase to the guest a same-named guest is merged into
-(set MEMBER.guest_of (and (system "import") (= @old.guest_of.source "guest")))
-; remove a merged guest's membership that the guest it joins already holds
-(delete MEMBER (and (system "import") (= @old.person.source "guest")))
-; the group that runs a tag, list, activity or party, as the old sheets have it
-(set GROUP.managed_by (and (system "import") (in @old.kind "group" "activity" "party" "event")))
-; the group that runs an admins group: super-admins runs itself and every other
-(set GROUP.managed_by (and (system "import") (= @old.kind "admins")))
-; whether someone is in a tag, list, admins group, activity, party or event, as the old sheets have it
-(set MEMBER.member (and (system "import") (in @old.group.kind "group" "admins" "activity" "party" "event")))
-; whether a volunteer co-chairs an activity, as the old sheet has it
-(set MEMBER.lead (and (system "import") (= @old.group.kind "activity")))
-; move a merged guest's address to the guest it joins
-(set PERSON_EMAIL.person (and (system "import") (= @old.source "guest")))
-; whether a moved guest address is the guest's main one
-(set PERSON_EMAIL.primary (and (system "import") (= @old.source "guest")))
-; point an old ID at the row a merged guest's membership collapsed into
-(set ALIAS.target (system "import"))
-; remove a merged guest once nothing names it
-(delete PERSON (and (system "import") (= @old.source "guest")))
-; remove an old ID naming a row the sync removed
-(delete ALIAS (system "import"))
-; a hand-added event's status, as the old calendar has it
-(set GROUP.status (and (system "import") (calendar_kind @old)))
-; whether a hand-added event is listed, as the old calendar has it
-(set GROUP.listed (and (system "import") (calendar_kind @old)))
-; who sees an event, as the old calendar has it
-(set GROUP.visible_to (and (system "import") (calendar_kind @old)))
-; who sees an event's guests, as the old calendar has it
-(set GROUP.members_visible_to (and (system "import") (calendar_kind @old)))
-; a hand-added event's link, as the old calendar has it
-(set GROUP.url (and (system "import") (calendar_kind @old)))
-; an event's friendly address, as the old calendar has it
-(set GROUP.slug (and (system "import") (calendar_kind @old)))
-; who may add guests to an event, as the old calendar has it
-(set GROUP.adding (and (system "import") (calendar_kind @old)))
-; an event's flyer, as the old calendar has it
-(set GROUP.flyer (and (system "import") (calendar_kind @old)))
-; who added a hand-added event, as the old calendar has it
-(set GROUP.added_by (and (system "import") (calendar_kind @old)))
-; when a hand-added event was added, as the old calendar has it
-(set GROUP.added (and (system "import") (calendar_kind @old)))
-; who said they are coming to an event, party or activity, as the old calendar has it
-(set GROUP.rsvp_yes (and (system "import") (in @old.kind "event" "party" "activity")))
-; who said they are not coming to an event, party or activity, as the old calendar has it
-(set GROUP.rsvp_no (and (system "import") (in @old.kind "event" "party" "activity")))
-; a guest on an event's list or someone kept off it, as the old calendar has it
-(insert MEMBER (and (system "import") (calendar_kind @new.group)))
-; when someone first opened their invitation, as the old calendar has it
-(set MEMBER.opened (and (system "import") (in @old.group.kind "event" "party" "activity")))
-; every invitation, to compare with the old calendar's
-(read MESSAGE (and (system "import") (= kind "invitation")))
-; an invitation the old calendar sent or holds unsent
-(insert MESSAGE (and (system "import") (= @new.kind "invitation")))
-; every copy of an invitation, to compare with the old calendar's
-(read RECIPIENT (and (system "import") (= message.kind "invitation")))
-; a copy of an invitation the old calendar sent or holds unsent
-(insert RECIPIENT (and (system "import") (= @new.message.kind "invitation")))
-; every collection, to compare with the old calendar's saved calendars and hidden events
-(read COLLECTION (system "import"))
-; a saved calendar or set of hidden events from the old calendar
-(insert COLLECTION (system "import"))
-; a saved calendar's name, as the old calendar has it
-(set COLLECTION.name (system "import"))
-; a saved calendar's mark, as the old calendar has it
-(set COLLECTION.emoji (system "import"))
-; a saved calendar's place, as the old calendar has it
-(set COLLECTION.order (system "import"))
-; whether a saved calendar is the one When opens to, as the old calendar has it
-(set COLLECTION.default (system "import"))
-; every collection's groups, to compare with the old calendar's filters
-(read COLLECTION_GROUP (system "import"))
-; a saved calendar's filter or a hidden event from the old calendar
-(insert COLLECTION_GROUP (system "import"))
-; every front-page widget, to find what an earlier sync added
-(read WIDGET (system "import"))
-; add a front-page widget the old Apps sheet has
-(insert WIDGET (system "import"))
-; who sees a widget, as the old Apps sheet's Audience tab has it
-(set WIDGET.visible_to (system "import"))
-; a widget's place on the page, as the old Apps sheet has it
-(set WIDGET.order (system "import"))
-; a section's group of links, as the old Apps sheet has it
-(set WIDGET.group (system "import"))
-; a section's heading, as the old Apps sheet has it
-(set WIDGET.name (system "import"))
-; a section's mark, as the old Apps sheet has it
-(set WIDGET.icon (system "import"))
-; how a section is laid out, as the old Apps sheet has it
-(set WIDGET.style (system "import"))
-; whether a section shows descriptions, as the old Apps sheet has it
-(set WIDGET.descriptions (system "import"))
-; whether a widget shows in the rail, as the old Apps sheet has it
-(set WIDGET.sidebar (system "import"))
-; what an app is called, as the old Apps sheet has it
-(set APP.name (system "import"))
-; the line under an app's name, as the old Apps sheet has it
-(set APP.subtitle (system "import"))
-; an app's place in the switch, as the old Apps sheet has it
-(set APP.order (system "import"))
-; where a front-page link goes, as the old Apps sheet has it
-(set GROUP.url (and (system "import") (= @old.kind "group")))
-; the section a front-page link sits in, as the old Apps sheet has it
-(set GROUP.parent (and (system "import") (= @old.kind "group")))
-; a front-page link's place in its section, as the old Apps sheet has it
-(set GROUP.order (and (system "import") (= @old.kind "group")))
-; a staff member's birthday, as the old Birthdays sheet has it
-(set PERSON.birthday (system "import"))
-; every birthday year, to find what an earlier sync added
-(read BIRTHDAY_YEAR (system "import"))
-; add a staff member's birthday year the old Birthdays sheet has
-(insert BIRTHDAY_YEAR (system "import"))
-; who has a birthday, as the old sheet has it
-(set BIRTHDAY_YEAR.assigned_to (system "import"))
-; when a birthday was assigned, as the old sheet has it
-(set BIRTHDAY_YEAR.assigned (system "import"))
-; the day to ask the last invite named, as the old sheet has it
-(set BIRTHDAY_YEAR.ask_by (system "import"))
-; when the staff member was asked, as the old sheet has it
-(set BIRTHDAY_YEAR.contacted (system "import"))
-; who asked the staff member, as the old sheet has it
-(set BIRTHDAY_YEAR.contacted_by (system "import"))
-; how the staff member takes part, as the old sheet has it
-(set BIRTHDAY_YEAR.participation (system "import"))
-; the charity chosen, as the old sheet has it
-(set BIRTHDAY_YEAR.charity (system "import"))
-; the staff member's words about their charity, as the old sheet has it
-(set BIRTHDAY_YEAR.note (system "import"))
-; when the charity was recorded, as the old sheet has it
-(set BIRTHDAY_YEAR.recorded (system "import"))
-; who recorded the charity, as the old sheet has it
-(set BIRTHDAY_YEAR.recorded_by (system "import"))
-; when the newsletter copy took it, as the old sheet has it
-(set BIRTHDAY_YEAR.published (system "import"))
-; who copied it for the newsletter, as the old sheet has it
-(set BIRTHDAY_YEAR.published_by (system "import"))
-; every charity, to find what an earlier sync added
-(read CHARITY (system "import"))
-; add a charity the old Birthdays sheet has
-(insert CHARITY (system "import"))
-; a charity's name, as the old sheet has it
-(set CHARITY.name (system "import"))
-; a charity's sentence for the newsletter, as the old sheet has it
-(set CHARITY.description (system "import"))
-; where a donation to a charity is made, as the old sheet has it
-(set CHARITY.url (system "import"))
-; a charity's EIN, as the old sheet has it
-(set CHARITY.ein (system "import"))
-; whether a charity may be chosen, as the old sheet has it
-(set CHARITY.allowed (system "import"))
-; why a charity may not be chosen, as the old sheet has it
-(set CHARITY.not_allowed_reason (system "import"))
-; when a charity was added, as the old sheet has it
-(set CHARITY.added (system "import"))
-; every calendar invite, to compare with the old Birthdays sheet's
-(read MESSAGE (and (system "import") (= kind "calendar")))
-; a calendar invite the old Birthdays sheet sent an assignee
-(insert MESSAGE (and (system "import") (= @new.kind "calendar")))
-; every copy of a calendar invite, to compare with the old Birthdays sheet's
-(read RECIPIENT (and (system "import") (= message.kind "calendar")))
-; the copy of a calendar invite that went to an assignee
-(insert RECIPIENT (and (system "import") (= @new.message.kind "calendar")))
-; every bug report and idea, to find what an earlier sync added
-(read REPORT (system "import"))
-; add a bug report or idea the old Feedback sheet has
-(insert REPORT (system "import"))
-; where a report's triage stands, as the old sheet has it
-(set REPORT.status (system "import"))
-; the GitHub issue a report became, as the old sheet has it
-(set REPORT.issue (system "import"))
-; when a report was triaged, as the old sheet has it
-(set REPORT.handled (system "import"))
-; who triaged a report, as the old sheet has it
-(set REPORT.handled_by (system "import"))
+; every row of every table
+(read * (super_admin))
+; every column of every table; private ones only in import mode, since the consent view has none
+(read * (*) (super_admin))
+; add a row to any table
+(insert * (super_admin))
+; change any column of any table
+(set *.* (super_admin))
+; remove a row from any table
+(delete * (super_admin))
 `
 
 type grant struct {
 	cond    cond
 	comment string
 	gated   bool
+	every   bool
 }
 
 type policySet struct {
@@ -1557,6 +817,8 @@ type policySet struct {
 	insert  map[string][]grant
 	set     map[string][]grant
 	delete  map[string][]grant
+	show    map[string]cond
+	reveal  []grant
 	clauses []Clause
 }
 
@@ -1578,7 +840,7 @@ type Clause struct {
 	rest      cond
 }
 
-var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "birthday_team": true, "system": true}
+var actorHeads = map[string]bool{"admin_of": true, "super_admin": true, "birthday_team": true, "mode": true}
 
 func splitActor(c *sexp) (*sexp, *sexp) {
 	if actorHeads[c.head()] {
@@ -1628,7 +890,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		return nil, nil, err
 	}
 	cx := &compiler{policy: true, defines: map[string]*define{}}
-	out := &policySet{read: map[string][]grant{}, open: map[string]bool{}, insert: map[string][]grant{}, set: map[string][]grant{}, delete: map[string][]grant{}, clauses: []Clause{}}
+	out := &policySet{read: map[string][]grant{}, open: map[string]bool{}, insert: map[string][]grant{}, set: map[string][]grant{}, delete: map[string][]grant{}, show: map[string]cond{}, reveal: []grant{}, clauses: []Clause{}}
 	for i, form := range forms {
 		head := form.head()
 		described := Clause{Section: notes[i].section, Comment: notes[i].comment, Kind: head, Form: form.render(0)}
@@ -1641,17 +903,35 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			out.clauses = append(out.clauses, described)
 			continue
 		}
+		if head == "show" {
+			if err := cx.showClause(form, &described, out); err != nil {
+				return nil, nil, err
+			}
+			out.clauses = append(out.clauses, described)
+			continue
+		}
+		if head == "reveal" {
+			if err := cx.revealClause(form, &described, out); err != nil {
+				return nil, nil, err
+			}
+			out.clauses = append(out.clauses, described)
+			continue
+		}
 		if head == "read" && len(form.list) == 4 {
 			c, err := cx.columnGrant(form, notes[i].comment, out)
 			if err != nil {
 				return nil, nil, err
 			}
 			described.Kind, described.Table, described.Condition, described.cond = "read columns", form.list[1].text, form.list[3].render(0), c
-			t, err := tableNamed(form.list[1])
-			if err != nil {
-				return nil, nil, err
+			var sc *scope
+			if form.list[1].text != "*" {
+				t, err := tableNamed(form.list[1])
+				if err != nil {
+					return nil, nil, err
+				}
+				sc = &scope{table: t, name: "row"}
 			}
-			if err := cx.parts(&described, form.list[3], &scope{table: t, name: "row"}); err != nil {
+			if err := cx.parts(&described, form.list[3], sc); err != nil {
 				return nil, nil, err
 			}
 			for _, item := range form.list[2].list {
@@ -1662,6 +942,13 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		}
 		if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
 			return nil, nil, form.errorf("a policy is (%s TABLE[.column] condition)", head)
+		}
+		if form.list[1].text == "*" || form.list[1].text == "*.*" {
+			if err := cx.wildcard(form, &described, out); err != nil {
+				return nil, nil, err
+			}
+			out.clauses = append(out.clauses, described)
+			continue
 		}
 		tableName, column, hasColumn := strings.Cut(form.list[1].text, ".")
 		t, err := tableNamed(&sexp{text: tableName, pos: form.list[1].pos})
@@ -1701,7 +988,8 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	}
 	for _, t := range Tables {
 		for _, c := range t.Columns {
-			if _, ok := out.read[t.Name+"."+c.Name]; !ok && !c.Private {
+			named := slices.ContainsFunc(out.read[t.Name+"."+c.Name], func(g grant) bool { return !g.every })
+			if !named && !c.Private {
 				return nil, nil, fmt.Errorf("%s.%s has no read grant", t.Name, c.Name)
 			}
 		}
@@ -1720,9 +1008,99 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 	return out, cx.defines, nil
 }
 
+func (cx *compiler) showClause(form *sexp, d *Clause, out *policySet) error {
+	if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
+		return form.errorf("a show clause is (show TABLE condition)")
+	}
+	t, err := tableNamed(form.list[1])
+	if err != nil {
+		return err
+	}
+	if t.Generated {
+		return form.list[1].errorf("%s is generated, so it shows as the rows it is made from do", t.Name)
+	}
+	if _, dup := out.show[t.Name]; dup {
+		return form.errorf("%s has two show clauses", t.Name)
+	}
+	cx.rowOnly = true
+	c, err := cx.cond(form.list[2], &scope{table: t, name: "row"})
+	cx.rowOnly = false
+	if err != nil {
+		return err
+	}
+	out.show[t.Name] = c
+	d.Table, d.Condition, d.Rest, d.cond, d.rest = t.Name, form.list[2].render(0), form.list[2].render(0), c, c
+	return nil
+}
+
+func (cx *compiler) revealClause(form *sexp, d *Clause, out *policySet) error {
+	if len(form.list) != 2 {
+		return form.errorf("a reveal clause is (reveal condition)")
+	}
+	c, err := cx.cond(form.list[1], nil)
+	if err != nil {
+		return err
+	}
+	out.reveal = append(out.reveal, grant{cond: c, comment: d.Comment})
+	d.Condition, d.cond = form.list[1].render(0), c
+	return cx.parts(d, form.list[1], nil)
+}
+
+func (cx *compiler) wildcard(form *sexp, d *Clause, out *policySet) error {
+	head, every := form.head(), form.list[1].text == "*.*"
+	if (head == "set") != every || !slices.Contains([]string{"read", "insert", "delete", "set"}, head) {
+		return form.errorf("a policy on every table is read *, insert *, delete * or set *.*")
+	}
+	c, err := cx.cond(form.list[2], nil)
+	if err != nil {
+		return err
+	}
+	actor, _ := splitActor(form.list[2])
+	g := grant{cond: c, comment: d.Comment, gated: head == "read" && actor != nil}
+	for _, t := range Tables {
+		switch {
+		case head == "read":
+			out.read[t.Name] = append(out.read[t.Name], g)
+		case t.Generated:
+		case head == "insert":
+			out.insert[t.Name] = append(out.insert[t.Name], g)
+		case head == "delete":
+			out.delete[t.Name] = append(out.delete[t.Name], g)
+		default:
+			for _, col := range t.Columns {
+				if !col.Generated {
+					out.set[t.Name+"."+col.Name] = append(out.set[t.Name+"."+col.Name], g)
+				}
+			}
+		}
+	}
+	d.Table, d.Condition, d.cond = "*", form.list[2].render(0), c
+	if every {
+		d.Column = "*"
+	}
+	return cx.parts(d, form.list[2], nil)
+}
+
 func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (cond, error) {
 	if form.list[1].isList || form.list[1].kind != atomName || !form.list[2].isList || len(form.list[2].list) == 0 {
 		return cond{}, form.errorf("a column grant is (read TABLE (column…) condition)")
+	}
+	if form.list[1].text == "*" {
+		if len(form.list[2].list) != 1 || form.list[2].list[0].isList || form.list[2].list[0].text != "*" {
+			return cond{}, form.errorf("a column grant on every table is (read * (*) condition)")
+		}
+		c, err := cx.cond(form.list[3], nil)
+		if err != nil {
+			return cond{}, err
+		}
+		for _, t := range Tables {
+			for _, col := range t.Columns {
+				if !col.Private {
+					out.read[t.Name+"."+col.Name] = append(out.read[t.Name+"."+col.Name], grant{cond: c, comment: comment, every: true})
+				}
+			}
+		}
+		return c, nil
 	}
 	t, err := tableNamed(form.list[1])
 	if err != nil {
@@ -1742,7 +1120,7 @@ func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (con
 			return cond{}, err
 		}
 		if col.Private {
-			return cond{}, item.errorf("%s.%s is private, kept from everyone but the import by the consent step", t.Name, col.Name)
+			return cond{}, item.errorf("%s.%s is private, kept from every view but the whole tables by the consent step", t.Name, col.Name)
 		}
 		key := t.Name + "." + col.Name
 		out.read[key] = append(out.read[key], grant{cond: c, comment: comment})
@@ -1806,6 +1184,9 @@ func (r *run) check(name string, grants []grant, f *frame) bool {
 }
 
 func (r *run) readable(t *Table, row store.Row) bool {
+	if r.system != "" {
+		return true
+	}
 	key := cellKey{table: t.Name, id: row["id"]}
 	if seen, ok := r.rows[key]; ok {
 		r.policy.Tally(t.Name).Inc("cached")
@@ -1817,8 +1198,8 @@ func (r *run) readable(t *Table, row store.Row) bool {
 }
 
 func (r *run) columnReadable(t *Table, row store.Row, c Column) bool {
-	if c.Private {
-		// The consent step strips private columns from every view but the import's.
+	if c.Private || r.system != "" {
+		// The consent step strips private columns from every view but the whole tables.
 		return true
 	}
 	key := cellKey{table: t.Name, column: c.Name, id: row["id"]}
@@ -1892,6 +1273,9 @@ func (m *Model) Authorize(env Env, c Change) error {
 	t, ok := Lookup(c.Table)
 	if !ok || t.Generated && (c.Old == nil || c.New != nil) {
 		return access.Forbidden("no table %s to change", c.Table)
+	}
+	if env.System != "" {
+		return nil
 	}
 	r := m.newRun(env)
 	old := &frame{table: t, row: c.Old, name: "old", run: r}

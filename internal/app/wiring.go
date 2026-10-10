@@ -56,9 +56,8 @@ type Config struct {
 	Bucket        *blob.Bucket
 	Store         *blob.Store
 	IDKey         []byte
-	ImportKey     []byte
 	ChatKey       []byte
-	MCPKey        []byte
+	AccessKey     []byte
 	BrowserKey    string
 	ImageSearch   imagesearch.Search
 	Mail          *mail.Mailgun
@@ -232,12 +231,18 @@ func NewCore(cfg Config) *Core {
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
 	schoolNow := func() time.Time { return time.Now().In(model.Location) }
+	tokens := auth.Tokens{
+		Key:      cfg.AccessKey,
+		Sessions: models,
+		SignedIn: func(email string) bool { return dataStore.Model().SignedIn(email) != "" },
+		Now:      schoolNow,
+	}
 	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: model.Origin(cfg.Domain), Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, mcp.Deps{
 		Data:     dataStore,
 		Tools:    shared,
-		Key:      cfg.MCPKey,
+		Key:      cfg.AccessKey,
 		Sessions: models,
 		Now:      schoolNow,
 	})
@@ -273,8 +278,8 @@ func NewCore(cfg Config) *Core {
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		registry.Register(a.Mux)
-		db.Register(a.Mux, dataStore, queue, pictures, cfg.ImportKey, schoolNow)
-		db.RegisterSearch(a.Mux, dataStore, search, cfg.ImportKey, schoolNow)
+		db.Register(a.Mux, dataStore, queue, pictures, tokens, schoolNow)
+		db.RegisterSearch(a.Mux, dataStore, search, tokens, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
 		suggestions.Register(a.Mux)
@@ -284,9 +289,9 @@ func NewCore(cfg Config) *Core {
 		}
 		blob.Register(a.Mux, cfg.Store, folders...)
 	}
-	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
-	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, schoolNow)
-	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
+	db.RegisterCompose(adminMux, dataStore, cfg.Composer, tokens, schoolNow)
+	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, tokens, schoolNow)
+	db.RegisterQueues(adminMux, dataStore, queue, tokens, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
 	external.Register(adminMux, cfg.Hooks)
@@ -361,8 +366,8 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	}
 	chatKey := hmac.New(sha256.New, []byte(sessionKey))
 	chatKey.Write([]byte("ask chats"))
-	mcpKey := hmac.New(sha256.New, []byte(sessionKey))
-	mcpKey.Write([]byte("mcp tokens"))
+	accessKey := hmac.New(sha256.New, []byte(sessionKey))
+	accessKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	geocoder := geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY"))
 	github := githubApp()
@@ -374,9 +379,8 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Bucket:        bucket,
 		Store:         store,
 		IDKey:         []byte(env.Required("ID_KEY")),
-		ImportKey:     []byte(env.Required("IMPORT_KEY")),
 		ChatKey:       chatKey.Sum(nil),
-		MCPKey:        mcpKey.Sum(nil),
+		AccessKey:     accessKey.Sum(nil),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     describe.New(anthropicKey, spend),

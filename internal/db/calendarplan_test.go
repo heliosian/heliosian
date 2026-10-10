@@ -43,8 +43,8 @@ func apply(t *testing.T, s *Store, queue *store.Queue, edits []Edit) {
 	if len(edits) == 0 {
 		return
 	}
-	env := Env{System: importReader, Now: testNow}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), env, Batch{Batch: edits}); err != nil {
+	env := setupEnv
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(env.System), env, Batch{Batch: edits}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/serve"
@@ -33,12 +34,12 @@ type stored struct {
 	Hash   string   `json:"hash"`
 }
 
-func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
-	registerWiki(mux, s, queue, pics, importKey, now)
-	registerGuest(mux, s, queue, pics, now)
-	registerUnsubscribe(mux, s, queue, pics, now)
+func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+	registerWiki(mux, s, queue, pics, tokens, now)
+	registerGuest(mux, s, queue, pics, tokens, now)
+	registerUnsubscribe(mux, s, queue, pics, tokens, now)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}
@@ -88,7 +89,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
 	})
 	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}
@@ -136,7 +137,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(rec.name, "."+rec.ext)})
 	})
 	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}
@@ -180,7 +181,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/fetched", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}
@@ -251,7 +252,7 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 			return fetchedAnswer{}, err
 		}
 	}
-	whole := env.System == importReader
+	whole := m.whole(env)
 	authorize := func(m *Model, c Change) error {
 		return m.Authorize(env, c)
 	}
@@ -378,8 +379,8 @@ func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 	if err != nil {
 		return "", err
 	}
-	env := Env{System: importReader, Now: time.Now()}
-	document, hash, err := storeRoot(ctx, s, queue, pics, access.System(importReader), env, raw, "message/rfc822", root, sentTo)
+	env := Env{System: "mail", Now: time.Now()}
+	document, hash, err := storeRoot(ctx, s, queue, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo)
 	if err != nil {
 		return "", err
 	}

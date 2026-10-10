@@ -51,7 +51,7 @@ func (m *Model) unplaced() []string {
 		held[row["address"]] = true
 	}
 	out := []string{}
-	for _, row := range m.Table("GROUP").All() {
+	for _, row := range m.Shown("GROUP").All() {
 		if row["kind"] == "family" && Placeable(row["address"]) && !held[row["address"]] && !slices.Contains(out, row["address"]) {
 			out = append(out, row["address"])
 		}
@@ -111,8 +111,8 @@ func (g *geocoder) run() {
 		if len(edits) == 0 {
 			continue
 		}
-		env := Env{System: importReader, Now: time.Now()}
-		if _, err := Write(context.Background(), g.s, g.queue, g.pics, access.System(importReader), env, Batch{Batch: edits}); err != nil {
+		env := Env{System: "geocoder", Now: time.Now()}
+		if _, err := Write(context.Background(), g.s, g.queue, g.pics, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 			slog.Error("geocode: record", "placed", placed, "removed", len(gone), "error", err)
 			for _, key := range slices.Concat(addresses, gone) {
 				g.failed[key] = true

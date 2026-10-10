@@ -10,7 +10,7 @@ import (
 )
 
 type client struct {
-	qclient.Client
+	*qclient.Client
 }
 
 func (c client) table(name string, where ...any) (table, string, error) {

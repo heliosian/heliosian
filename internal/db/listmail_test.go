@@ -108,7 +108,7 @@ func (h *listMailHarness) settled(group string) store.Row {
 
 func (h *listMailHarness) addMember(group, person, member string) {
 	h.t.Helper()
-	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -225,7 +225,7 @@ func TestPostsTheListDoesNotTakeAreDropped(t *testing.T) {
 
 func TestRepliesFollowTheListsReplying(t *testing.T) {
 	h := newListMailHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	first := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "first@example.org", "Plan", "")
@@ -233,7 +233,7 @@ func TestRepliesFollowTheListsReplying(t *testing.T) {
 	if post := h.settled(parentsList); post["state"] != postDropped {
 		t.Fatalf("a member's new post to a managers-only list reads %v", post)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
 		t.Fatal(err)
 	}
 	reply := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "reply@example.org", "Re: Plan", "<first@example.org>")
@@ -303,7 +303,7 @@ func TestARestartResumesAPostNotYetSentOn(t *testing.T) {
 	if err := h.mailer.pics.bucket.Put(context.Background(), content, mailType, []byte(raw)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": "resume", "blob": content, "mime": mailType, "size": "10"}},
 		{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": parentsList, "content": "@content", "created": "2026-10-09 09:00", "state": postReceived}},
 	}}); err != nil {
@@ -340,7 +340,7 @@ func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
 
 func TestAnAliasWithAnUppercaseLetterReachesNoList(t *testing.T) {
 	h := newListMailHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(importReader), Env{System: importReader, Now: testNow}, Batch{Batch: []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "0dLdEoHQT2eB-V2dRFe5TA", "target": parentsList}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "0dLdEoHQT2eB-V2dRFe5TA", "target": parentsList}}}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, to := range []string{"0dLdEoHQT2eB-V2dRFe5TA", "0dldeohqt2eb-v2drfe5ta"} {

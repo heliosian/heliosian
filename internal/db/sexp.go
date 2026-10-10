@@ -39,7 +39,7 @@ func (s *sexp) errorf(format string, args ...any) error {
 }
 
 func isNameRune(r rune) bool {
-	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_.=!<>", r)
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_.=!<>*", r)
 }
 
 func readSexp(src string) (*sexp, error) {

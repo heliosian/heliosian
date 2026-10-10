@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/serve"
 	"heliosian/internal/trace"
@@ -38,7 +39,7 @@ func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mi
 	return name, mimeType, name != ""
 }
 
-func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byte, now func() time.Time) {
+func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("GET "+blobPath+"{id}/{column}", func(w http.ResponseWriter, r *http.Request) {
 		root := trace.New("request")
 		defer func() {
@@ -51,7 +52,7 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, importKey []byt
 		m := s.Model()
 		waiting.End()
 		signing := root.Start("caller")
-		env, _, ok := caller(w, r, m, importKey, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		signing.End()
 		if !ok {
 			return

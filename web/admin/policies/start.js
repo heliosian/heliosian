@@ -26,6 +26,8 @@ function groupHeading(key, defined) {
     h.append('everyone', el('span', 'note', 'the row decides'));
   } else if (key === 'nobody') {
     h.append('nobody', el('span', 'note', 'the server alone'));
+  } else if (key === 'consent') {
+    h.append('consent', el('span', 'note', 'which rows show, before any rule'));
   } else {
     h.append(highlight(key, defined));
   }
@@ -73,7 +75,13 @@ function part(name, cards) {
 function tableBlock(table, entries, defined) {
   const out = el('div', 'table-block');
   const h = el('h3');
-  h.append(link(`/resources#${table}`, '', table));
+  if (table === '*') {
+    h.append('every table');
+  } else if (table) {
+    h.append(link(`/resources#${table}`, '', table));
+  } else {
+    h.append('every request');
+  }
   out.append(h);
   const rows = entries.filter(([c]) => !onColumns(c));
   const columns = entries.filter(([c]) => onColumns(c));

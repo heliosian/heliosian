@@ -7,14 +7,15 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
-func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, now func() time.Time) {
+func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/unsubscribe", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, nil, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}

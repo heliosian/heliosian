@@ -64,14 +64,14 @@ func (m *Model) explain(env, self Env, id string) (explanation, bool) {
 	f := &frame{table: t, row: row, name: "row", run: r}
 	out := explanation{Table: t.Name, ID: id, Readable: readable, Clauses: []verdict{}, Columns: []columnVerdict{}}
 	for i, c := range policies.clauses {
-		if c.Kind == "read" && c.Table == t.Name {
+		if c.Kind == "read" && (c.Table == t.Name || c.Table == "*") {
 			out.Clauses = append(out.Clauses, judge(i, c, f))
 		}
 	}
 	for _, col := range t.Columns {
 		cv := columnVerdict{Column: col.Name, Private: col.Private, Clauses: []verdict{}}
 		for i, c := range policies.clauses {
-			if c.Kind == "read columns" && c.Table == t.Name && slices.Contains(c.Columns, col.Name) {
+			if c.Kind == "read columns" && (c.Table == t.Name && slices.Contains(c.Columns, col.Name) || c.Table == "*" && !col.Private) {
 				v := judge(i, c, f)
 				cv.Clauses = append(cv.Clauses, v)
 				cv.Readable = cv.Readable || v.Holds
@@ -82,20 +82,17 @@ func (m *Model) explain(env, self Env, id string) (explanation, bool) {
 	return out, true
 }
 
-func registerExplain(mux *http.ServeMux, s *Store, importKey []byte, now func() time.Time) {
+func registerExplain(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("GET /api/policies", func(w http.ResponseWriter, r *http.Request) {
 		serve.Write(w, r, http.StatusOK, policyList{Clauses: policies.clauses})
 	})
 	mux.HandleFunc("GET /api/explain/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, importKey, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}
-		self := env
-		if env.System == "" {
-			self = Env{Viewer: m.SignedIn(auth.RealEmail(r)), Now: env.Now}
-		}
+		self := Env{Viewer: m.SignedIn(auth.RealEmail(r)), Now: env.Now}
 		out, ok := m.explain(env, self, r.PathValue("id"))
 		if !ok {
 			http.NotFound(w, r)

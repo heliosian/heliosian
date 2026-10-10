@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,53 +9,102 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 	"heliosian/internal/trace"
 )
 
-const testImportKey = "test-import-key"
+var testTokens = testkit.Tokens(func(string) bool { return true })
 
-func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body string) *httptest.ResponseRecorder {
+const (
+	superAdmin = "maya.lindqvist@example.org"
+	importing  = "import:" + superAdmin
+)
+
+var setupEnv = Env{System: "test", Whole: true, Now: testNow}
+
+func serveAs(mux http.Handler, rec *httptest.ResponseRecorder, r *http.Request, as string) {
+	if email, ok := strings.CutPrefix(as, "import:"); ok {
+		r.Header.Set("Authorization", "Bearer "+testTokens.Issue(email))
+		r.Header.Set(ModeHeader, "import")
+		mux.ServeHTTP(rec, r)
+		return
+	}
+	if token, ok := strings.CutPrefix(as, "bearer:"); ok {
+		r.Header.Set("Authorization", "Bearer "+token)
+		mux.ServeHTTP(rec, r)
+		return
+	}
+	auth.Fixed(as, mux).ServeHTTP(rec, r)
+}
+
+func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body string, headers ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(method, "/api/q", strings.NewReader(body))
 	if kind != "" {
 		r.Header.Set("Content-Type", kind)
 	}
-	rec := httptest.NewRecorder()
-	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
-		r.Header.Set("Authorization", "Bearer "+key)
-		mux.ServeHTTP(rec, r)
-		return rec
+	for i := 0; i+1 < len(headers); i += 2 {
+		r.Header.Set(headers[i], headers[i+1])
 	}
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	rec := httptest.NewRecorder()
+	serveAs(mux, rec, r, as)
 	return rec
 }
 
-func TestImportKey(t *testing.T) {
+func TestTokens(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	code, out, body := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "PERSON"}`)
+	hide := Batch{Batch: []Edit{{Set: "per00000000001", Cells: map[string]any{"hidden": "Yes"}}}}
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, hide); err != nil {
+		t.Fatal(err)
+	}
+	code, out, body := ask(t, s, "application/json", importing, `{"from": "PERSON"}`)
 	if code != http.StatusOK || len(out.Result) != 4 {
-		t.Fatalf("the import sees every person, but got %d %s", code, body)
+		t.Fatalf("a super admin in import mode sees every person, the hidden one too, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testImportKey, `{"from": "DOCUMENT_GROUP"}`); len(out.Result) != 1 {
-		t.Fatalf("the import sees %d of the one document tie, which it reads to find mail not yet sent to its groups", len(out.Result))
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `{"from": "PERSON"}`); len(out.Result) != 3 {
+		t.Fatalf("a super admin's token without import mode sees %d people, want the 3 the consent view holds", len(out.Result))
 	}
-	rec := send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
+	if _, out, _ := ask(t, s, "application/json", superAdmin, `{"from": "MEMBER", "where": [{"=": [{"path": "person"}, "per00000000001"]}]}`); len(out.Result) != 0 {
+		t.Fatalf("a super admin in the browser sees %d of a hidden person's memberships", len(out.Result))
+	}
+	rec := send(t, s, queue, http.MethodPost, "application/json", importing, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("the import setting a vc_ column got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("a super admin setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"department_override": "grp00000000010"}}]}`)
+	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), `{"batch": [{"set": "per00000000003", "cells": {"vc_name": "Maya Berg"}}]}`)
 	if rec.Code != http.StatusForbidden {
-		t.Fatalf("the import setting a department override got %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("a parent's token setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
 	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
-		t.Fatalf("a wrong key got %d %s", code, body)
+		t.Fatalf("a forged token got %d %s", code, body)
 	}
 	if code, _, _ := ask(t, s, "application/json", "bearer:", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
-		t.Fatalf("an empty key got %d", code)
+		t.Fatalf("an empty token got %d", code)
+	}
+}
+
+func TestSpoof(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	query := `{"from": "PERSON"}`
+	rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "rowan.ashdown@example.org")
+	var spoofed answer
+	if err := json.Unmarshal(rec.Body.Bytes(), &spoofed); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("a super admin spoofing got %d %s", rec.Code, rec.Body.String())
+	}
+	_, parent, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), query)
+	if len(spoofed.Result) != len(parent.Result) {
+		t.Fatalf("spoofing Rowan, import mode or not, sees %d people; Rowan sees %d", len(spoofed.Result), len(parent.Result))
+	}
+	if rec := send(t, s, queue, "QUERY", "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), query, SpoofHeader, superAdmin); rec.Code != http.StatusForbidden {
+		t.Fatalf("a parent spoofing got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "nobody@example.org"); rec.Code != http.StatusForbidden {
+		t.Fatalf("spoofing an address nobody has got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -225,13 +275,20 @@ func TestServeSeveralQueries(t *testing.T) {
 }
 
 func TestServeQueryAsTheViewer(t *testing.T) {
-	s := sample(t)
+	s, queue := sampleWithQueue(t)
 	q := `{"from": "COLLECTION"}`
 	if _, out, _ := ask(t, s, "application/json", "rowan@example.com", q); len(out.Result) != 1 {
 		t.Fatalf("Rowan's second address sees %d collections", len(out.Result))
 	}
-	if _, out, _ := ask(t, s, "application/json", "maya.lindqvist@example.org", q); len(out.Result) != 0 {
-		t.Fatalf("Maya sees %d of Rowan's collections", len(out.Result))
+	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 1 {
+		t.Fatalf("Maya, a super admin, sees %d of Rowan's collections", len(out.Result))
+	}
+	demote := Batch{Batch: []Edit{{Delete: "mem00000000007"}}}
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, demote); err != nil {
+		t.Fatal(err)
+	}
+	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 0 {
+		t.Fatalf("Maya, no longer a super admin, sees %d of Rowan's collections", len(out.Result))
 	}
 }
 
@@ -339,11 +396,11 @@ func TestServeWrites(t *testing.T) {
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "cells": {"member":"sure"}}]}`, "not one of", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": [{"set": "mem00000000014", "delete": "mem00000000014"}]}`, "one of insert", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"batch": []}`, "empty", http.StatusBadRequest},
-		{"bearer:" + testImportKey, `{"batch": [{"insert": "GROUP", "row": {"id": "grp00000000099", "kind": "family"}}]}`, "minted by the server", http.StatusBadRequest},
-		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "cells": {"vc_classroom": "@nowhere"}}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
-		{"bearer:" + testImportKey, `{"batch": [{"delete": "@nowhere"}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
-		{"bearer:" + testImportKey, `{"batch": [{"set": "per00000000001", "as": "x", "cells": {"vc_name": "x"}}]}`, "as names an insert", http.StatusBadRequest},
-		{"bearer:" + testImportKey, `{"batch": [{"delete": "` + Derive(EffectiveMemberPrefix, "grp00000000020", "per00000000001") + `"}]}`, "EFFECTIVE_MEMBER is generated", http.StatusBadRequest},
+		{importing, `{"batch": [{"insert": "GROUP", "row": {"id": "grp00000000099", "kind": "family"}}]}`, "minted by the server", http.StatusBadRequest},
+		{importing, `{"batch": [{"set": "per00000000001", "cells": {"vc_classroom": "@nowhere"}}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
+		{importing, `{"batch": [{"delete": "@nowhere"}]}`, "@nowhere names no earlier insert", http.StatusBadRequest},
+		{importing, `{"batch": [{"set": "per00000000001", "as": "x", "cells": {"vc_name": "x"}}]}`, "as names an insert", http.StatusBadRequest},
+		{importing, `{"batch": [{"delete": "` + Derive(EffectiveMemberPrefix, "grp00000000020", "per00000000001") + `"}]}`, "EFFECTIVE_MEMBER is generated", http.StatusBadRequest},
 		{"rowan.ashdown@example.org", `{"writes": []}`, "shape", http.StatusBadRequest},
 	} {
 		code, body := write(c.as, c.batch)

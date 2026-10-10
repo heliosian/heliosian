@@ -28,7 +28,9 @@ type Query struct {
 
 type Env struct {
 	Viewer string
+	Mode   string
 	System string
+	Whole  bool
 	Now    time.Time
 }
 
@@ -64,6 +66,7 @@ type run struct {
 	m       *Model
 	whole   bool
 	viewer  store.Row
+	mode    string
 	system  string
 	now     time.Time
 	rows    map[cellKey]bool
@@ -138,6 +141,7 @@ type define struct {
 
 type compiler struct {
 	policy  bool
+	rowOnly bool
 	defines map[string]*define
 	hidden  int
 	touched []*scope
@@ -560,12 +564,15 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 				return found
 			})
 		}}, nil
-	case "system":
+	case "mode":
 		if len(args) != 1 || args[0].isList || args[0].kind != atomString {
-			return cond{}, s.errorf("system takes one quoted name")
+			return cond{}, s.errorf("mode takes one quoted name")
+		}
+		if cx.rowOnly {
+			return cond{}, s.errorf("a show clause decides from the row alone, not the request's mode")
 		}
 		name := args[0].text
-		return cond{eval: func(f *frame) bool { return f.run.system == name }, cheap: true}, nil
+		return cond{eval: func(f *frame) bool { return f.run.mode == name }, cheap: true}, nil
 	case "":
 		return cond{}, s.errorf("a condition starts with its operator")
 	default:
@@ -1159,6 +1166,9 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 		text = rest
 		startName = name
 		if name == "viewer" {
+			if cx.rowOnly {
+				return operand{}, s.errorf("a show clause decides from the row alone, not @viewer")
+			}
 			start, _ = Lookup("PERSON")
 			local = false
 		} else {
@@ -1275,12 +1285,28 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 	return out, nil
 }
 
+func (m *Model) bareRun(whole bool, now time.Time) *run {
+	return &run{m: m, whole: whole, now: wallClock(now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
+}
+
 func (m *Model) newRun(env Env) *run {
-	r := &run{m: m, whole: env.System == importReader, system: env.System, now: wallClock(env.Now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
+	r := m.bareRun(false, env.Now)
+	r.mode, r.system = env.Mode, env.System
 	if env.Viewer != "" {
 		r.viewer, _ = r.table("PERSON").Get(env.Viewer)
 	}
+	if env.System != "" {
+		r.whole = env.Whole
+		return r
+	}
+	if holds(policies.reveal, &frame{run: r}, nil) {
+		r.whole, r.memo = true, map[string]any{}
+	}
 	return r
+}
+
+func (m *Model) whole(env Env) bool {
+	return m.newRun(env).whole
 }
 
 func (r *run) table(name string) *View {

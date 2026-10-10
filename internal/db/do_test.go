@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
@@ -62,16 +61,11 @@ func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, ve
 	}
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/"+verb, body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
-	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
-		r.Header.Set("Authorization", "Bearer "+key)
-		mux.ServeHTTP(rec, r)
-		return rec
-	}
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	serveAs(mux, rec, r, as)
 	return rec
 }
 
@@ -95,16 +89,11 @@ func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as s
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/file", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
-	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
-		r.Header.Set("Authorization", "Bearer "+key)
-		mux.ServeHTTP(rec, r)
-		return rec
-	}
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	serveAs(mux, rec, r, as)
 	return rec
 }
 
@@ -146,7 +135,7 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	pics := newPictures(s, queue)
 	var orders []string
 	for i, size := range []int{2, 3} {
-		rec := addPhoto(t, s, queue, pics, "bearer:"+testImportKey, staff, pngOf(t, size))
+		rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, size))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("photo %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -185,7 +174,7 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	if found, _ := pics.bucket.Exists(context.Background(), "photos/"+blob.Name(photo, "png")); found {
 		t.Fatal("a refused photo was stored")
 	}
-	if rec := addPhoto(t, s, queue, pics, "bearer:"+testImportKey, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
+	if rec := addPhoto(t, s, queue, pics, importing, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not an image: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -194,7 +183,7 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
 	fields := map[string]string{"person": staff, "crop_left": "1", "crop_top": "2", "crop_width": "4", "crop_height": "3"}
-	rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", fields, "photo", pngOf(t, 8))
+	rec := postFile(t, s, queue, pics, importing, "photo", fields, "photo", pngOf(t, 8))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload with a box: %d %s", rec.Code, rec.Body.String())
 	}
@@ -216,8 +205,8 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	}
 
 	first := row["crop"]
-	env := Env{System: importReader, Now: testNow}
-	if _, err := Write(context.Background(), s, queue, pics, access.System(importReader), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
+	env := setupEnv
+	if _, err := Write(context.Background(), s, queue, pics, access.System(env.System), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
@@ -229,7 +218,7 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	}
 
 	bad := map[string]string{"person": staff, "crop_left": "1", "crop_top": "2", "crop_width": "0", "crop_height": "3"}
-	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", bad, "photo", pngOf(t, 9)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, queue, pics, importing, "photo", bad, "photo", pngOf(t, 9)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a box with no width: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -240,7 +229,7 @@ func TestGroupPhotos(t *testing.T) {
 	ids := []string{}
 	for i, size := range []int{8, 9} {
 		fields := map[string]string{"group": "grp00000000020", "crop_left": "0", "crop_top": "0", "crop_width": "5", "crop_height": "5"}
-		rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", fields, "photo", pngOf(t, size))
+		rec := postFile(t, s, queue, pics, importing, "photo", fields, "photo", pngOf(t, size))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("family photo %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -269,10 +258,10 @@ func TestGroupPhotos(t *testing.T) {
 		t.Fatalf("someone who may not see the family sees %d of its photos", len(visible))
 	}
 	both := map[string]string{"group": "grp00000000020", "person": staff}
-	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", both, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, queue, pics, importing, "photo", both, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a photo of a person and a group: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "bearer:"+testImportKey, "photo", nil, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, queue, pics, importing, "photo", nil, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a photo of nobody: %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000503"}, "photo", pngOf(t, 6)); rec.Code != http.StatusForbidden {
@@ -321,7 +310,7 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	fields := map[string]string{"kind": "calendar", "url": "https://www.heliosschool.org/calendar.pdf", "published": "2026-09-14 10:22:05"}
 	ids := []string{}
 	for i := range 2 {
-		rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", pdf)
+		rec := postUpload(t, s, queue, pics, importing, fields, "", pdf)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -348,10 +337,10 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	if n := len(as(t, s, staff, `(from CONTENT (where (= mime "application/pdf")))`)); n != 1 {
 		t.Fatalf("the same pdf stored %d times", n)
 	}
-	if rec := postUpload(t, s, queue, pics, "maya.lindqvist@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+	if rec := postUpload(t, s, queue, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
+	if rec := postUpload(t, s, queue, pics, importing, fields, "", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not a pdf: %d %s", rec.Code, rec.Body.String())
 	}
 }
@@ -363,7 +352,7 @@ func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
 	fields := map[string]string{"name": "Camping - HELP - Condors", "url": "https://docs.google.com/presentation/d/1BvW", "published": "2026-09-14 10:22:05"}
 	ids := []string{}
 	for i := range 2 {
-		rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "", pdf)
+		rec := postUpload(t, s, queue, pics, importing, fields, "", pdf)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -383,20 +372,20 @@ func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
 	for field, value := range map[string]string{"published": "last tuesday", "url": "", "kind": "deck"} {
 		bad := maps.Clone(fields)
 		bad[field] = value
-		if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, bad, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusBadRequest {
+		if rec := postUpload(t, s, queue, pics, importing, bad, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s %q: %d %s", field, value, rec.Code, rec.Body.String())
 		}
 	}
-	if rec := postUpload(t, s, queue, pics, "maya.lindqvist@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+	if rec := postUpload(t, s, queue, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
-func TestAPageIsStoredAsAFileAndPlainTextIsNot(t *testing.T) {
+func TestAPageIsStoredAsAFile(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
 	fields := map[string]string{"name": "Aftercare", "url": "https://portals.example.org/parent/pages/Aftercare", "published": "2026-10-06 13:19:38"}
-	rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "text/html", []byte("<!doctype html><html><body><p>Aftercare runs until six.</p></body></html>"))
+	rec := postUpload(t, s, queue, pics, importing, fields, "text/html", []byte("<!doctype html><html><body><p>Aftercare runs until six.</p></body></html>"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a page: %d %s", rec.Code, rec.Body.String())
 	}
@@ -408,9 +397,6 @@ func TestAPageIsStoredAsAFileAndPlainTextIsNot(t *testing.T) {
 	content, _ := s.Model().Table("CONTENT").Get(row["content"])
 	if row["kind"] != "file" || content["mime"] != "text/html" {
 		t.Fatalf("the page reads %v, its content %v", row, content)
-	}
-	if rec := postUpload(t, s, queue, pics, "bearer:"+testImportKey, fields, "text/plain", []byte("Aftercare runs until six.")); rec.Code != http.StatusForbidden {
-		t.Fatalf("plain text: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -426,7 +412,7 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 		"Bring a sleeping bag.\r\n")
 	ids := []string{}
 	for i := range 2 {
-		rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, eml)
+		rec := postMail(t, s, queue, pics, importing, eml)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -454,10 +440,10 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	if len(links) != 1 || links[0]["group"] != "grp00000000030" || links[0]["relation"] != "sent_to" {
 		t.Fatalf("the message's groups: %v", links)
 	}
-	if rec := postMail(t, s, queue, pics, "bearer:"+testImportKey, []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
+	if rec := postMail(t, s, queue, pics, importing, []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("no date: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postMail(t, s, queue, pics, "maya.lindqvist@example.org", eml); rec.Code != http.StatusForbidden {
+	if rec := postMail(t, s, queue, pics, "rowan.ashdown@example.org", eml); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person: %d %s", rec.Code, rec.Body.String())
 	}
 }

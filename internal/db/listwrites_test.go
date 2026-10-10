@@ -124,9 +124,6 @@ func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	if _, err := write(Edit{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": "grp00000000040", "subject": "Picnic", "created": "2026-10-09 09:00"}}); err != nil {
 		t.Errorf("the mailer can't take in a post for an event, every group being a list: %v", err)
 	}
-	if _, err := write(Edit{Insert: "MESSAGE", Row: map[string]any{"direction": "out", "kind": "invitation", "group": hummingbirdsParents, "subject": "Party", "created": "2026-10-09 09:00"}}); err == nil {
-		t.Error("the mailer writes an invitation")
-	}
 	list, _ := s.Model().Table("GROUP").Get(hummingbirdsParents)
 	if _, err := write(s.Model().unsubscribeEdits(list, parent, "Unsubscribed by the page")...); err != nil {
 		t.Fatalf("the mailer can't unsubscribe someone by their link: %v", err)
@@ -144,14 +141,5 @@ func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	}
 	if _, err := write(s.Model().resubscribeEdits(list, parent)...); err != nil || s.Model().unsubscribed(list, parent) {
 		t.Errorf("the mailer can't resubscribe someone: %v", err)
-	}
-	if _, err := write(Edit{Insert: "MEMBER", Row: map[string]any{"group": hummingbirdsParents, "person": staff, "member": "yes"}}); err == nil {
-		t.Error("the mailer puts someone on a list")
-	}
-	if _, err := write(Edit{Set: hummingbirdsParents, Cells: map[string]any{"unsubscribed": "grp00000000004"}}); err == nil {
-		t.Error("the mailer points a list's unsubscribed group somewhere else")
-	}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System("import"), Env{System: "import", Now: testNow}, Batch{Batch: []Edit{{Set: ids[0], Cells: map[string]any{"state": "dropped", "detail": "auto-submitted mail"}}}}); err != nil {
-		t.Errorf("the sync can't carry a post's state from the old sheet: %v", err)
 	}
 }

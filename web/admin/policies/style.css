@@ -70,6 +70,8 @@ section h2 .note {
 .clause[data-kind="set"] { border-left-color: #ffd166; }
 .clause[data-kind="insert"] { border-left-color: #90be6d; }
 .clause[data-kind="delete"] { border-left-color: #ef476f; }
+.clause[data-kind="show"] { border-left-color: #f4a261; }
+.clause[data-kind="reveal"] { border-left-color: #f4a261; }
 
 .clause.here {
   border-color: var(--hit);
@@ -96,6 +98,8 @@ section h2 .note {
 .clause[data-kind="set"] .kind { color: #ffd166; }
 .clause[data-kind="insert"] .kind { color: #90be6d; }
 .clause[data-kind="delete"] .kind { color: #ef476f; }
+.clause[data-kind="show"] .kind,
+.clause[data-kind="reveal"] .kind { color: #f4a261; }
 
 .columns {
   display: flex;

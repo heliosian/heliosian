@@ -82,7 +82,7 @@ func TestTheImportStartsWikiPages(t *testing.T) {
 	pics := newPictures(s, queue)
 	ctx := context.Background()
 	save := func(page wikiPage) (string, error) {
-		id, _, err := saveWiki(ctx, s, queue, pics, access.System(importReader), Env{System: importReader, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, queue, pics, access.System(setupEnv.System), setupEnv, page)
 		return id, err
 	}
 	top, err := save(wikiPage{Name: "Academics", Body: "How the school teaches."})
@@ -146,7 +146,7 @@ func TestWikiSlugs(t *testing.T) {
 	if _, err := save(parent, wikiPage{Document: id, Name: "Pickup", Slug: "", Body: "At the side gate."}); err != nil || slugOf(id) != "" {
 		t.Fatalf("a wiki admin's removal of the slug: %v %q", err, slugOf(id))
 	}
-	imported, _, err := saveWiki(ctx, s, queue, pics, access.System(importReader), Env{System: importReader, Now: testNow}, wikiPage{Name: "Imported", Body: "From the doc."})
+	imported, _, err := saveWiki(ctx, s, queue, pics, access.System(setupEnv.System), setupEnv, wikiPage{Name: "Imported", Body: "From the doc."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func TestWikiPicturesAreServed(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		auth.Fixed("rowan.ashdown@example.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))

@@ -13,7 +13,7 @@ import (
 func getJSON(t *testing.T, s *Store, as, path string, into any) int {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, nil, nil, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, nil, nil, testTokens, func() time.Time { return testNow })
 	rec := httptest.NewRecorder()
 	auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	if rec.Code == http.StatusOK {
@@ -45,15 +45,21 @@ func TestThePoliciesAreListedWithTheirComments(t *testing.T) {
 	if c := found["read PERSON "]; c.Actor != "" || c.Rest != c.Condition {
 		t.Errorf("PERSON's read clause names an actor: %+v", c)
 	}
+	if c := found["show PERSON "]; c.Section != "Consent" || c.Actor != "" || c.Rest != c.Condition {
+		t.Errorf("PERSON's show clause: %+v", c)
+	}
+	if c := found["read * "]; c.Actor != `(super_admin)` {
+		t.Errorf("super admins' every-row clause: %+v", c)
+	}
 	for _, c := range out.Clauses {
 		switch c.Condition {
 		case `(and (admin_of "when") (in kind "event" "day" "day_part"))`:
 			if c.Actor != `(admin_of "when")` || c.Rest != `(in kind "event" "day" "day_part")` {
 				t.Errorf("When's calendar groups: %+v", c)
 			}
-		case `(and (system "import") (= @old.source "veracross"))`:
-			if c.Actor != `(system "import")` || c.Rest != `(= @old.source "veracross")` {
-				t.Errorf("the import's Veracross rows: %+v", c)
+		case `(and (super_admin) (mode "import"))`:
+			if c.Kind != "reveal" || c.Actor != `(super_admin)` || c.Rest != `(mode "import")` {
+				t.Errorf("import mode's reveal: %+v", c)
 			}
 		case `(super_admin)`:
 			if c.Actor != `(super_admin)` || c.Rest != "true" {

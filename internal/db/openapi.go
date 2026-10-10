@@ -99,7 +99,7 @@ func cellSchema(c Column) schema {
 	}
 	if c.Private {
 		out["x-private"] = true
-		notes = append(notes, "Private: answered to the import alone.")
+		notes = append(notes, "Private: answered in import mode alone.")
 	}
 	out["description"] = strings.Join(notes, " ")
 	return out
@@ -146,8 +146,8 @@ func failure(description string) schema {
 }
 
 func refusals(out schema) schema {
-	out["401"] = failure("A bearer key that is not the import's.")
-	out["403"] = failure("The caller is in no person's row, or a write the policies refuse.")
+	out["401"] = failure("A bearer token this server did not issue, has expired, or was signed out.")
+	out["403"] = failure("The caller is in no person's row, a spoof by someone who is not a super admin, or a write the policies refuse.")
 	out["413"] = failure("The body is too large.")
 	out["415"] = failure("The body is neither of the types this takes.")
 	return out
@@ -411,9 +411,9 @@ func spec() schema {
 			{"name": "write", "description": "Batches of inserts, sets and deletes."},
 			{"name": "do", "description": "Calls that are more than writing rows."},
 		},
-		"security":   []schema{{}, {"import": []string{}}},
+		"security":   []schema{{}, {"token": []string{}}},
 		"paths":      paths,
-		"components": schema{"schemas": schemas, "securitySchemes": schema{"import": schema{"type": "http", "scheme": "bearer", "description": "IMPORT_KEY, to run as the import."}}},
+		"components": schema{"schemas": schemas, "securitySchemes": schema{"token": schema{"type": "http", "scheme": "bearer", "description": "An access token from the OAuth server the MCP host runs, to run as the person it names; Helios-Mode and Helios-Spoof as for a session."}}},
 	}
 }
 

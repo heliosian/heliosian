@@ -34,7 +34,7 @@ func served(t *testing.T) specDoc {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
 	if rec.Code != http.StatusOK {
@@ -98,7 +98,7 @@ func TestEveryAnsweredCellFitsTheSpec(t *testing.T) {
 	spec := served(t)
 	s := sample(t)
 	for _, table := range Tables {
-		code, out, body := ask(t, s, "text/plain", "bearer:"+testImportKey, "(from "+table.Name+")")
+		code, out, body := ask(t, s, "text/plain", importing, "(from "+table.Name+")")
 		if code != http.StatusOK {
 			t.Fatalf("%s: %d %s", table.Name, code, body)
 		}

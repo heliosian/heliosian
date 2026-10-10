@@ -265,8 +265,8 @@ func (w *CalendarWatcher) sync(ctx context.Context) error {
 	if len(edits) == 0 {
 		return nil
 	}
-	env := Env{System: importReader, Now: time.Now()}
-	if _, err := Write(ctx, w.s, w.queue, w.pics, access.System(importReader), env, Batch{Batch: edits}); err != nil {
+	env := Env{System: "calendar", Whole: true, Now: time.Now()}
+	if _, err := Write(ctx, w.s, w.queue, w.pics, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 		return fmt.Errorf("write the calendar: %w", err)
 	}
 	slog.InfoContext(ctx, "calendar import: written", "edits", len(edits))

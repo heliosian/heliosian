@@ -17,7 +17,7 @@ import (
 
 func uploadMail(t *testing.T, s *Store, pics *Pictures, eml string) string {
 	t.Helper()
-	rec := postMail(t, s, pics.queue, pics, "bearer:"+testImportKey, []byte(eml))
+	rec := postMail(t, s, pics.queue, pics, importing, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}

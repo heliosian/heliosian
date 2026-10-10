@@ -14,6 +14,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
@@ -129,10 +130,10 @@ func (c *Composer) Compose(ctx context.Context, words string, today time.Time) (
 	return out, err
 }
 
-func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, importKey []byte, now func() time.Time) {
+func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/compose", func(w http.ResponseWriter, r *http.Request) {
 		at := now()
-		env, _, ok := caller(w, r, s.Model(), importKey, at)
+		env, _, ok := caller(w, r, s.Model(), tokens, at)
 		if !ok {
 			return
 		}

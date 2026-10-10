@@ -6,29 +6,22 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/store"
 )
 
 func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, nil, pics, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, nil, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodGet, blobPath+path, nil)
 	if etag != "" {
 		r.Header.Set("If-None-Match", etag)
 	}
 	rec := httptest.NewRecorder()
-	if key, ok := strings.CutPrefix(as, "bearer:"); ok {
-		r.Header.Set("Authorization", "Bearer "+key)
-		mux.ServeHTTP(rec, r)
-		return rec
-	}
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	serveAs(mux, rec, r, as)
 	return rec
 }
 
@@ -56,7 +49,7 @@ func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
 func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
-	rec := addPhoto(t, s, queue, pics, "bearer:"+testImportKey, staff, pngOf(t, 5))
+	rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, 5))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
@@ -81,7 +74,7 @@ func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
 	if original := fetchBlob(t, s, pics, reader, id+"/original", ""); original.Code != http.StatusNotFound {
 		t.Fatalf("a person fetching the private original: %d", original.Code)
 	}
-	if original := fetchBlob(t, s, pics, "bearer:"+testImportKey, id+"/original", ""); original.Code != http.StatusOK || original.Header().Get("Content-Type") != "image/png" {
+	if original := fetchBlob(t, s, pics, importing, id+"/original", ""); original.Code != http.StatusOK || original.Header().Get("Content-Type") != "image/png" {
 		t.Fatalf("the import fetching the original: %d %v", original.Code, original.Header())
 	}
 	for _, path := range []string{id + "/order", id + "/nothing", "pho00000000098/thumbnail", "nonsense/thumbnail"} {

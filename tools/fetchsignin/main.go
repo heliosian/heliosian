@@ -20,7 +20,6 @@ import (
 
 	"heliosian/internal/capture"
 	"heliosian/internal/db"
-	"heliosian/internal/env"
 	"heliosian/internal/logging"
 	"heliosian/internal/qclient"
 )
@@ -102,7 +101,7 @@ func host(address string) string {
 	return u.Host
 }
 
-func sendAgain(c qclient.Client, id string, body []byte, stop string) (answer, error) {
+func sendAgain(c *qclient.Client, id string, body []byte, stop string) (answer, error) {
 	wait := sendWait
 	for try := 1; ; try++ {
 		got, err := send(c, id, body, stop)
@@ -116,7 +115,7 @@ func sendAgain(c qclient.Client, id string, body []byte, stop string) (answer, e
 	}
 }
 
-func send(c qclient.Client, id string, body []byte, stop string) (answer, error) {
+func send(c *qclient.Client, id string, body []byte, stop string) (answer, error) {
 	buf := &bytes.Buffer{}
 	form := multipart.NewWriter(buf)
 	if err := form.WriteField("document", id); err != nil {
@@ -143,7 +142,10 @@ func send(c qclient.Client, id string, body []byte, stop string) (answer, error)
 }
 
 func main() {
-	c := qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}
+	c, err := qclient.SignedIn(qclient.ImportMode, "")
+	if err != nil {
+		logging.Fatal("sign in", "error", err)
+	}
 	if _, err := capture.Start(); err != nil {
 		logging.Fatal("start capture browser", "error", err)
 	}

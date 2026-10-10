@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -27,10 +28,10 @@ type queueReport struct {
 	LastRefresh time.Time    `json:"lastRefresh"`
 }
 
-func RegisterQueues(mux *http.ServeMux, s *Store, queue *store.Queue, importKey []byte, now func() time.Time) {
+func RegisterQueues(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("GET /api/queues", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, importKey, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}

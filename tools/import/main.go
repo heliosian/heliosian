@@ -27,7 +27,11 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "print the batch the import would send, and send nothing")
 	flag.Parse()
 
-	c := client{qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}}
+	signedIn, err := qclient.SignedIn(qclient.ImportMode, "")
+	if err != nil {
+		logging.Fatal("sign in", "error", err)
+	}
+	c := client{signedIn}
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	exporter := env.Required("VCEXPORT")
 	website := env.Required("WEBEXPORT")

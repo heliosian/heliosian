@@ -35,8 +35,18 @@ func TestEveryTableHasAReadPolicy(t *testing.T) {
 func TestPoliciesRefuse(t *testing.T) {
 	for src, want := range map[string]string{
 		strings.Replace(PolicySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
-		PolicySource + `(read PERSON (vc_phone) (system "import"))`:                                                    "PERSON.vc_phone is private",
+		PolicySource + `(read PERSON (vc_phone) (mode "import"))`:                                                      "PERSON.vc_phone is private",
 		PolicySource + `(read MEMBER.price true)`:                                                                      "policies are define",
+		PolicySource + `(show MEMBER (= person @viewer))`:                                                              "not @viewer",
+		PolicySource + `(show MEMBER (mode "import"))`:                                                                 "not the request's mode",
+		PolicySource + `(show MEMBER (super_admin))`:                                                                   "not @viewer",
+		PolicySource + `(show PERSON true)`:                                                                            "PERSON has two show clauses",
+		PolicySource + `(show EFFECTIVE_MEMBER true)`:                                                                  "is generated",
+		PolicySource + `(set * true)`:                                                                                  "set *.*",
+		PolicySource + `(read *.* true)`:                                                                               "set *.*",
+		PolicySource + `(read * (id) true)`:                                                                            "(read * (*) condition)",
+		PolicySource + `(read * (= kind "family"))`:                                                                    "names no row",
+		PolicySource + `(reveal (= @row.kind "family"))`:                                                               "no row named @row",
 	} {
 		if _, _, err := compilePolicies(src); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("compilePolicies = %v, want %q", err, want)
@@ -52,8 +62,8 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_EMAIL":     {5, 5, 5, 5, 5},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
-		"COLLECTION":       {0, 0, 1, 0, 0},
-		"COLLECTION_GROUP": {0, 0, 2, 0, 0},
+		"COLLECTION":       {0, 0, 1, 1, 0},
+		"COLLECTION_GROUP": {0, 0, 2, 2, 0},
 		"GROUP":            {0, 26, 28, 29, 0},
 		"MEMBER":           {0, 21, 22, 22, 1},
 		"EFFECTIVE_MEMBER": {0, 27, 28, 29, 1},
@@ -148,7 +158,7 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 	}
 }
 
-func TestTheImportAddsImagesUnderParts(t *testing.T) {
+func TestSuperAdminsWriteAnythingAndServerJobsAreUnchecked(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, DocumentsSheet,
 		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
@@ -159,115 +169,30 @@ func TestTheImportAddsImagesUnderParts(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	linked := func(parent, content string) Change {
-		return Change{Table: "DOCUMENT", New: store.Row{"relation": "linked", "parent": parent, "content": content, "url": "https://example.org/clubs.png"}}
-	}
-	for _, c := range []struct {
-		name   string
-		system string
-		change Change
-		ok     bool
-	}{
-		{"place an image under a part", "import", linked("doc00000000011", ""), true},
-		{"place an image under a root", "import", linked("doc00000000010", ""), false},
-		{"place an image with its bytes", "import", linked("doc00000000011", "cnt00000000002"), false},
-		{"place an image as another system", "extract", linked("doc00000000011", ""), false},
-		{"store an image", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "30"}}, true},
-		{"store a page", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "text/html", "size": "30"}}, true},
-		{"store plain text", "import", Change{Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "text/plain", "size": "30"}}, false},
-		{"fill an image still to fetch", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "cnt00000000002", "fetch": ""}), true},
-		{"fill a part", "import", change(t, s, "DOCUMENT", []string{"doc00000000011"}, store.Row{"content": "cnt00000000001"}), false},
-		{"fill an image as another system", "extract", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "cnt00000000002"}), false},
+	file, _ := s.Model().Table("DOCUMENT").Get("doc00000000010")
+	for name, c := range map[string]Change{
+		"place an image under a root":   {Table: "DOCUMENT", New: store.Row{"relation": "linked", "parent": "doc00000000010", "url": "https://example.org/clubs.png"}},
+		"store plain text":              {Table: "CONTENT", New: store.Row{"hash": "c3", "blob": "content/c3", "mime": "text/plain", "size": "30"}},
+		"fill an image still to fetch":  change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "cnt00000000002", "fetch": ""}),
+		"remove an email":               {Table: "DOCUMENT", Old: file},
+		"slug a guest":                  change(t, s, "PERSON", []string{"per00000000004"}, store.Row{"slug": "guest"}),
+		"alias a person's old slug":     {Table: "ALIAS", New: store.Row{"alias": "juni.a", "target": "per00000000001"}},
+		"set a name Veracross supplies": change(t, s, "PERSON", []string{"per00000000001"}, store.Row{"vc_name": "Juni Ashdown"}),
 	} {
-		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
-		if (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
+		if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, c); err != nil {
+			t.Errorf("a super admin may %s: %v", name, err)
+		}
+		if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, c); err == nil {
+			t.Errorf("a parent may %s", name)
+		}
+		if err := s.Model().Authorize(Env{System: "extract", Now: testNow}, c); err != nil {
+			t.Errorf("a server job is checked to %s: %v", name, err)
 		}
 	}
 }
 
-func TestTheImportRefusesAFetchedPage(t *testing.T) {
+func TestAPersonsSlugReads(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/dl/b33482", "content": "cnt00000000002"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		name   string
-		system string
-		change Change
-		ok     bool
-	}{
-		{"refuse a fetched page", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "refused"}), true},
-		{"blank a fetched page to fetch it again", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "extracted": ""}), true},
-		{"refuse a fetched page but keep its bytes", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"fetch": "refused"}), false},
-		{"mark a fetched page gone", "import", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "gone"}), false},
-		{"refuse a part", "import", change(t, s, "DOCUMENT", []string{"doc00000000011"}, store.Row{"content": "", "fetch": "refused"}), false},
-		{"refuse a fetched page as another system", "extract", change(t, s, "DOCUMENT", []string{"doc00000000012"}, store.Row{"content": "", "fetch": "refused"}), false},
-	} {
-		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
-		if (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
-		}
-	}
-}
-
-func TestTheImportSendsADocumentBackToBeRead(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "application/pdf", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/markdown", "size": "20"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001", "name": "Updates", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "extract", "parent": "doc00000000010", "content": "cnt00000000002"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	docs := s.Model().Table("DOCUMENT")
-	extract, _ := docs.Get("doc00000000011")
-	file, _ := docs.Get("doc00000000010")
-	for _, c := range []struct {
-		name   string
-		system string
-		change Change
-		ok     bool
-	}{
-		{"remove an extract", "import", Change{Table: "DOCUMENT", Old: extract}, true},
-		{"remove a file", "import", Change{Table: "DOCUMENT", Old: file}, false},
-		{"remove an extract as another system", "extract", Change{Table: "DOCUMENT", Old: extract}, false},
-		{"mark a file still to read", "import", change(t, s, "DOCUMENT", []string{"doc00000000010"}, store.Row{"extracted": ""}), true},
-		{"mark a file read", "import", change(t, s, "DOCUMENT", []string{"doc00000000010"}, store.Row{"extracted": "2026-02-13 01:48:03"}), false},
-	} {
-		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
-		if (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
-		}
-	}
-}
-
-func TestTheImportSetsAPersonsSlug(t *testing.T) {
-	s := sample(t)
-	for _, c := range []struct {
-		name   string
-		system string
-		change Change
-		ok     bool
-	}{
-		{"slug a Veracross person", "import", change(t, s, "PERSON", []string{"per00000000001"}, store.Row{"slug": "juni.ashdown"}), true},
-		{"slug a guest", "import", change(t, s, "PERSON", []string{"per00000000004"}, store.Row{"slug": "guest"}), false},
-		{"slug a person as another system", "extract", change(t, s, "PERSON", []string{"per00000000001"}, store.Row{"slug": "juni.ashdown"}), false},
-		{"alias a person's old slug", "import", Change{Table: "ALIAS", New: store.Row{"alias": "juni.a", "target": "per00000000001"}}, true},
-		{"alias a person's old slug as another system", "extract", Change{Table: "ALIAS", New: store.Row{"alias": "juni.a", "target": "per00000000001"}}, false},
-	} {
-		err := s.Model().Authorize(Env{System: c.system, Now: testNow}, c.change)
-		if (err == nil) != c.ok {
-			t.Errorf("%s: %v", c.name, err)
-		}
-	}
 	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"slug": "juni.ashdown"})); err != nil {
 		t.Fatal(err)
 	}
@@ -620,7 +545,7 @@ func TestOnlyTheImportSeesWithheldRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	q := mustParse(t, `(from PERSON (where (= id "per00000000001")))`)
-	if n := len(s.Model().Run(t.Context(), q, Env{System: importReader, Now: testNow}).IDs); n != 1 {
+	if n := len(s.Model().Run(t.Context(), q, setupEnv).IDs); n != 1 {
 		t.Errorf("the import sees %d withheld students, want 1", n)
 	}
 	if n := len(s.Model().Run(t.Context(), q, Env{System: "other", Now: testNow}).IDs); n != 0 {
@@ -659,7 +584,7 @@ func TestPriceAndToken(t *testing.T) {
 			t.Errorf("the guest's price as %s = %q, want %q", viewer, got, want)
 		}
 	}
-	for viewer, want := range map[string]string{parent: "tok00000000001", staff: ""} {
+	for viewer, want := range map[string]string{parent: "tok00000000001", staff: "tok00000000001"} {
 		if got := cellAs(t, s, viewer, `(from RECIPIENT)`, "token"); got != want {
 			t.Errorf("the token as %s = %q, want %q", viewer, got, want)
 		}
@@ -674,8 +599,8 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	if n := len(as(t, s, parent, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
 		t.Fatal("a hidden person is listed")
 	}
-	if got := cellAs(t, s, parent, `(from MEMBER (where (= id "mem00000000008")))`, "person"); got != "" {
-		t.Fatalf("a classroom row names a hidden person: %q", got)
+	if n := len(as(t, s, parent, `(from MEMBER (where (= id "mem00000000008")))`)); n != 0 {
+		t.Fatal("a classroom row naming a hidden person shows")
 	}
 	if n := len(as(t, s, parent, `(from MEMBER (where (= person.name_short "Juni")))`)); n != 0 {
 		t.Fatal("a path reached a hidden person")
@@ -683,31 +608,41 @@ func TestHiddenPersonIsUnreachable(t *testing.T) {
 	if n := len(as(t, s, parent, `(from GROUP @g (where (exists MEMBER (= group @g) (= person "per00000000001"))))`)); n != 0 {
 		t.Fatal("exists probed a hidden person")
 	}
-	if n := len(as(t, s, student, `(from PERSON (where (= id "per00000000001")))`)); n != 1 {
-		t.Fatal("a hidden person can't see themselves")
+	if n := len(as(t, s, student, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
+		t.Fatal("a hidden person sees themselves")
 	}
-	if n := len(as(t, s, staff, `(from PERSON (where (= id "per00000000001")))`)); n != 1 {
-		t.Fatal("Who?'s admin can't see a hidden person")
+	if n := len(as(t, s, staff, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
+		t.Fatal("a super admin outside import mode sees a hidden person")
 	}
+	if n := len(importingAs(t, s, staff, `(from PERSON (where (= id "per00000000001")))`)); n != 1 {
+		t.Fatal("a super admin in import mode can't see a hidden person")
+	}
+	if n := len(importingAs(t, s, parent, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
+		t.Fatal("a parent asking for import mode sees a hidden person")
+	}
+}
+
+func importingAs(t *testing.T, s *Store, viewer, src string) []store.Row {
+	t.Helper()
+	return s.Model().Run(t.Context(), mustParse(t, src), Env{Viewer: viewer, Mode: "import", Now: testNow}).Rows()
 }
 
 func TestPersonFlagsAreKeptFromReaders(t *testing.T) {
 	s := sample(t)
 	if err := commit(s, PeopleSheet,
-		store.Update("PERSON", store.Row{"id": student}, store.Row{"hidden": "Yes", "deactivated": "2026-09-30 12:00"}),
+		store.Update("PERSON", store.Row{"id": student}, store.Row{"deactivated": "2026-09-30 12:00"}),
 		store.Update("PERSON", store.Row{"id": parent}, store.Row{"signed_out": "2026-09-30 11:00"})); err != nil {
 		t.Fatal(err)
 	}
 	juni := `(from PERSON (where (= id "per00000000001")))`
+	rowan := `(from PERSON (where (= id "per00000000002")))`
 	for _, c := range []struct {
 		viewer, query, column, want string
 	}{
-		{staff, juni, "hidden", "Yes"},
-		{student, juni, "hidden", ""},
-		{staff, juni, "deactivated", ""},
 		{student, juni, "deactivated", ""},
-		{parent, `(from PERSON (where (= id "per00000000002")))`, "signed_out", ""},
-		{staff, `(from PERSON (where (= id "per00000000002")))`, "signed_out", ""},
+		{staff, juni, "deactivated", "2026-09-30 12:00"},
+		{parent, rowan, "signed_out", ""},
+		{staff, rowan, "signed_out", "2026-09-30 11:00"},
 	} {
 		if got := cellAs(t, s, c.viewer, c.query, c.column); got != c.want {
 			t.Errorf("%s as %s = %q, want %q", c.column, c.viewer, got, c.want)
@@ -857,8 +792,8 @@ func TestClientsGetThePolicyLanguage(t *testing.T) {
 			t.Errorf("%s answered %v, its body %v", call, got, want)
 		}
 	}
-	if got := ids(`(from GROUP (where (system "import")))`); len(got) != 0 {
-		t.Errorf("a person's query is the import's: %v", got)
+	if got := ids(`(from GROUP (where (mode "import")))`); len(got) != 0 {
+		t.Errorf("a query with no mode holds in import mode: %v", got)
 	}
 	if _, err := Parse(`(from GROUP @viewer)`); err == nil || !strings.Contains(err.Error(), "can't name a row") {
 		t.Errorf("naming a row @viewer: %v", err)
@@ -866,7 +801,7 @@ func TestClientsGetThePolicyLanguage(t *testing.T) {
 }
 
 func TestTheJSONFormCarriesDefinitionsAndAncestors(t *testing.T) {
-	text := `(from GROUP @g (where (in parent (ancestors @g)) (visible @g) (contains name "picnic") (exists MEMBER (= group @g) (in person (household @viewer))) (system "import")))`
+	text := `(from GROUP @g (where (in parent (ancestors @g)) (visible @g) (contains name "picnic") (exists MEMBER (= group @g) (in person (household @viewer))) (mode "import")))`
 	q, err := Parse(text)
 	if err != nil {
 		t.Fatal(err)

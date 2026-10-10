@@ -47,7 +47,7 @@ The clauses are in `policySource` (`internal/db/policy.go`), under Everyone, Wik
 
 - Anyone signed in reads every page, as for any document sent to no group.
 - Anyone but a guest starts a page, as its author, giving it a slug or not, and renames, rewrites, moves or reorders any page, and adds, changes, reorders or removes its side cards. Its content must be Markdown that no document but a wiki page holds.
-- The import key (`docs/datamodel.md`, The query API) starts pages with no author, and their side cards, for loading a document into the wiki; since it is no guest, the clauses above let it rename, rewrite and move pages too.
+- A super admin, writing anything (`docs/datamodel.md`, Permissions), starts pages with no author, and their side cards, for loading a document into the wiki.
 - A page's author, and a wiki admin, hide it or make it public again through its `hidden`.
 - A page's author, and a wiki admin, give it a slug, change it or take it away; anyone else's save keeps the page's slug as it is. A page with no author, as the import makes, gets its slug from a wiki admin.
 - Anyone signed in reads the `wiki` rows of `REDIRECT`, so an old address finds its page; the other apps' redirects stay a super admin's.

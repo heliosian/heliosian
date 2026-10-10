@@ -108,7 +108,7 @@ var (
 	}
 	consents = []Value{
 		v("listed", "consented: shown"),
-		v("withheld", "not consented, or no answer: never shown to anyone but the import"),
+		v("withheld", "not consented, or no answer: never shown outside import mode"),
 	}
 	shares = []Value{
 		v("shared", "shown to whoever sees the row"),
@@ -230,8 +230,8 @@ var Tables = []Table{
 			col("photo_updated", Date).about("When their picture last changed."),
 			col("vc_bio", Text).about("A staff member's bio from the school website's staff page. Written by the import."),
 			col("birthday", Date).about("A staff member's birthday, for Staff Birthdays; the year is not used."),
-			enum("consent", consents...).private().about("Whether they consented to be in the directory, from the opt-in form; written by the consent import. Hidden from everyone but the import."),
-			col("hidden", Bool).about("Out of the directory and refused at sign-in without being deactivated. Seen by Who?'s admins alone."),
+			enum("consent", consents...).private().about("Whether they consented to be in the directory, from the opt-in form; written by the consent import. Shown in import mode alone."),
+			col("hidden", Bool).about("Out of every view but import mode's, with every row naming them, and refused at sign-in without being deactivated."),
 			col("deactivated", Moment).about("When they stopped being part of the community. A deactivated person can't sign in and is in no group's effective members."),
 			col("signed_out", Moment).about("When they last signed out everywhere; sessions from before it are refused."),
 		},
@@ -353,7 +353,7 @@ var Tables = []Table{
 			ident(GroupPrefix),
 			ref("parent", "GROUP").about("The group it sits under: its category, the event or activity it is part of, a recurring event for an instance, its celebration, its band or classroom, its day."),
 			enum("kind",
-				v("family", "a household: it manages itself, its students its children and everyone else its parents; only the import changes who is in it"),
+				v("family", "a household: it manages itself, its students its children and everyone else its parents; only super admins, through the Veracross import, change who is in it"),
 				v("classroom", "a school classroom, kept from people's classrooms"),
 				v("grade", "a school grade, kept from people's grades"),
 				v("band", "a band of grades and classrooms; it takes in each grade and classroom under it by a rule the import keeps"),

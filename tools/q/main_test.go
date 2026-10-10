@@ -13,9 +13,10 @@ import (
 	"heliosian/internal/db"
 	"heliosian/internal/qclient"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
-func sampleClient(t *testing.T) qclient.Client {
+func sampleClient(t *testing.T) *qclient.Client {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
@@ -23,11 +24,12 @@ func sampleClient(t *testing.T) qclient.Client {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), []byte("key"), time.Now)
+	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), tokens, time.Now)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return qclient.Client{Base: srv.URL, Key: "key"}
+	return &qclient.Client{Base: srv.URL, Token: tokens.Issue("maya.lindqvist@example.org"), Mode: qclient.ImportMode}
 }
 
 func TestReadShowsTables(t *testing.T) {

@@ -10,7 +10,11 @@ export function policyList() {
 
 export function clauseQuery(clause) {
   const t = clause.table;
+  if (!t || t === '*') {
+    return '';
+  }
   switch (clause.kind) {
+    case 'show':
     case 'read':
     case 'read columns':
       return `(from ${t} @row (where ${clause.condition}))`;
@@ -35,6 +39,9 @@ export function clauseHref(index) {
 export function actorOf(c) {
   if (c.kind === 'define') {
     return 'definitions';
+  }
+  if (c.kind === 'show') {
+    return 'consent';
   }
   if (c.actor) {
     return c.actor;

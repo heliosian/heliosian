@@ -97,7 +97,7 @@ func resolve(text string, names map[string]string) (string, error) {
 
 func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, b Batch) ([]string, error) {
 	written := []string{}
-	whole := env.System == importReader
+	whole := s.Model().whole(env)
 	span := trace.From(ctx)
 	authorizing, staging, firing := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire")
 	var authorized time.Duration

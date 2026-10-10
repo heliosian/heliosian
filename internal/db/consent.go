@@ -266,8 +266,8 @@ func (c *Consent) apply() {
 	if len(writes) == 0 {
 		return
 	}
-	env := Env{System: importReader, Now: time.Now()}
-	if _, err := Write(context.Background(), c.s, c.queue, c.pics, access.System(importReader), env, Batch{Batch: writes}); err != nil {
+	env := Env{System: "consent", Whole: true, Now: time.Now()}
+	if _, err := Write(context.Background(), c.s, c.queue, c.pics, access.System(env.System), env, Batch{Batch: writes}); err != nil {
 		slog.Error("write consent", "people", len(writes), "error", err)
 		return
 	}

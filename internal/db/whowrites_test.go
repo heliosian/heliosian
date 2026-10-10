@@ -83,9 +83,6 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err == nil {
 		t.Error("a parent makes themselves a super admin")
 	}
-	if _, err := write(staff, Edit{Delete: superStaff}); err == nil {
-		t.Error("the last super admin leaves")
-	}
 	ids, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": whoAdmins, "person": parent, "member": "yes"}})
 	if err != nil {
 		t.Fatalf("a super admin can't make a Who? admin: %v", err)
@@ -96,11 +93,18 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 	if _, err := write(staff, Edit{Delete: ids[0]}); err != nil {
 		t.Errorf("a super admin can't remove the last Who? admin: %v", err)
 	}
-	if _, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err != nil {
+	promoted, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}})
+	if err != nil {
 		t.Fatalf("a super admin can't make another: %v", err)
 	}
 	if _, err := write(parent, Edit{Delete: superStaff}); err != nil {
 		t.Errorf("a super admin can't remove another while one stays: %v", err)
+	}
+	if _, err := write(parent, Edit{Delete: promoted[0]}); err != nil {
+		t.Errorf("the last super admin can't leave: %v", err)
+	}
+	if s.Model().SuperAdmin("rowan.ashdown@example.org") {
+		t.Error("the last super admin left and is still one")
 	}
 }
 
@@ -137,15 +141,15 @@ func TestWhoWrites(t *testing.T) {
 		{"a parent adds a greeting", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": parent}), true},
 		{"a parent adds a greeting as someone else", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": staff}), false},
 		{"a guest adds a greeting", guest, insert("GREETING", store.Row{"name": "Hi", "added_by": guest}), false},
-		{"Who?'s admin adds someone by hand", staff, insert("PERSON", store.Row{"source": "manual"}), false},
-		{"a super admin makes someone staff, as on any group but a family", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), true},
-		{"a super admin adds someone to a family", staff, insert("MEMBER", store.Row{"group": "grp00000000020", "person": staff, "member": "yes"}), false},
-		{"Who?'s admin deactivates someone", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), false},
+		{"a super admin adds someone by hand", staff, insert("PERSON", store.Row{"source": "manual"}), true},
+		{"a super admin makes someone staff", staff, insert("MEMBER", store.Row{"group": "grp00000000003", "person": student, "member": "yes"}), true},
+		{"a super admin adds someone to a family", staff, insert("MEMBER", store.Row{"group": "grp00000000020", "person": staff, "member": "yes"}), true},
+		{"a super admin deactivates someone", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), true},
 		{"Who?'s admin makes a room parent", staff, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), true},
 		{"a parent makes a room parent", parent, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), false},
 		{"Who?'s admin sets the staff color", staff, change(t, s, "SETTING", []string{"set00000000099"}, store.Row{"value": "#111111"}), true},
 		{"a parent sets the staff color", parent, change(t, s, "SETTING", []string{"set00000000099"}, store.Row{"value": "#111111"}), false},
-		{"Who?'s admin sets another app's setting", staff, change(t, s, "SETTING", []string{"set00000000001"}, store.Row{"value": "Hello"}), false},
+		{"a super admin sets another app's setting", staff, change(t, s, "SETTING", []string{"set00000000001"}, store.Row{"value": "Hello"}), true},
 	} {
 		err := s.Model().Authorize(Env{Viewer: c.viewer, Now: testNow}, c.change)
 		if (err == nil) != c.ok {
@@ -170,7 +174,7 @@ func postRecording(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, a
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/pronunciation", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()

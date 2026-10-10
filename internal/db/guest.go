@@ -8,15 +8,16 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
-func registerGuest(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, now func() time.Time) {
+func registerGuest(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/guest", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, actor, ok := caller(w, r, m, nil, now())
+		env, actor, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}

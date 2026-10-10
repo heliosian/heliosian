@@ -24,6 +24,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/serve"
@@ -257,7 +258,7 @@ func (m *Model) searchExcluded() map[string]bool {
 		if err != nil {
 			panic(fmt.Sprintf("search exclusion %s: %v", src, err))
 		}
-		for _, id := range m.Run(context.Background(), q, Env{System: importReader, Now: time.Now()}).IDs {
+		for _, id := range m.Run(context.Background(), q, Env{System: "search", Now: time.Now()}).IDs {
 			out[id] = true
 		}
 	}
@@ -1015,10 +1016,10 @@ func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchRef, error) {
 	return out, nil
 }
 
-func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, importKey []byte, now func() time.Time) {
+func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/search", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, importKey, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}

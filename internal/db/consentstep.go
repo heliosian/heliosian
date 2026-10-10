@@ -4,25 +4,25 @@ import (
 	"context"
 	"maps"
 	"slices"
-	"strings"
+	"time"
 
 	"heliosian/internal/store"
 	"heliosian/internal/trace"
 )
 
-// The consent step decides which rows may leave to anyone but the import, and nothing else.
-// It runs once per build, after every part; docs/datamodel.md, Consent step, says exactly what it hides.
 func consentStep(ctx context.Context, m *Model) error {
 	hiding := tallied(ctx, "hidden")
 	hidden := map[string]bool{}
-	for _, row := range m.Table("PERSON").All() {
-		if row["source"] != "guest" && !strings.EqualFold(row["consent"], "listed") {
-			hidden[row["id"]] = true
+	r := m.bareRun(true, time.Now())
+	for _, t := range Tables {
+		show, ok := policies.show[t.Name]
+		if !ok {
+			continue
 		}
-	}
-	for _, row := range m.Table("GROUP").All() {
-		if strings.EqualFold(row["kind"], "family") && !strings.EqualFold(row["consent"], "listed") {
-			hidden[row["id"]] = true
+		for _, row := range m.Table(t.Name).All() {
+			if !show.eval(&frame{table: &t, row: row, name: "row", run: r}) {
+				hidden[row["id"]] = true
+			}
 		}
 	}
 	passes := 0

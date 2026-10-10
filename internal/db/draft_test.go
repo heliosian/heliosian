@@ -17,7 +17,7 @@ import (
 func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), []byte(testImportKey), func() time.Time { return testNow })
+	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
 	ask := func(as, body string) (int, string) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "/api/do/guest", strings.NewReader(body))
@@ -58,7 +58,7 @@ func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
-	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), func() time.Time { return testNow })
+	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, func() time.Time { return testNow })
 	ask := func(as, body string) (*httptest.ResponseRecorder, draftAnswer) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "/api/do/draft-members", strings.NewReader(body))

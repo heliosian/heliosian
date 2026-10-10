@@ -15,7 +15,6 @@ import (
 	"unicode/utf8"
 
 	"heliosian/internal/db"
-	"heliosian/internal/env"
 	"heliosian/internal/logging"
 	"heliosian/internal/qclient"
 )
@@ -96,15 +95,19 @@ func show(w io.Writer, a qclient.Answer, columns []string) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
-		fmt.Fprintln(os.Stderr, "       go run ./tools/q write <batch>                   (a JSON batch; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
 	}
+	spoof := flag.String("spoof", "", "run as the person with this address, as a super admin's Spoof Mode does")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		flag.Usage()
 		os.Exit(2)
 	}
-	c := qclient.Client{Base: qclient.Production, Key: env.Required("IMPORT_KEY")}
+	c, err := qclient.SignedIn(qclient.ImportMode, *spoof)
+	if err != nil {
+		logging.Fatal("sign in", "error", err)
+	}
 	switch flag.Arg(0) {
 	case "read":
 		fs := flag.NewFlagSet("read", flag.ExitOnError)

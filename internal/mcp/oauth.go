@@ -26,7 +26,6 @@ import (
 
 const (
 	codeLength     = time.Minute
-	tokenLength    = 30 * 24 * time.Hour
 	maxRedirects   = 10
 	maxClientName  = 200
 	registerLimit  = 64 << 10
@@ -48,40 +47,17 @@ type grant struct {
 	Expires   int64  `json:"x"`
 }
 
-type bearer struct {
-	Email  string `json:"e"`
-	Issued int64  `json:"i"`
-}
-
 func origin(r *http.Request) string {
 	return "https://" + r.Host
 }
 
-func mac(key []byte, purpose, body string) string {
-	h := hmac.New(sha256.New, key)
-	h.Write([]byte(purpose + "\n" + body))
-	return base64.RawURLEncoding.EncodeToString(h.Sum(nil))
-}
-
-func seal(key []byte, purpose string, v any) string {
-	payload, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
+func (s *Server) tokens() auth.Tokens {
+	return auth.Tokens{
+		Key:      s.deps.Key,
+		Sessions: s.deps.Sessions,
+		SignedIn: func(email string) bool { return s.deps.Data.Model().SignedIn(email) != "" },
+		Now:      s.deps.Now,
 	}
-	body := base64.RawURLEncoding.EncodeToString(payload)
-	return body + "." + mac(key, purpose, body)
-}
-
-func unseal(key []byte, purpose, sealed string, v any) bool {
-	body, sig, ok := strings.Cut(sealed, ".")
-	if !ok || !hmac.Equal([]byte(mac(key, purpose, body)), []byte(sig)) {
-		return false
-	}
-	raw, err := base64.RawURLEncoding.DecodeString(body)
-	if err != nil {
-		return false
-	}
-	return json.Unmarshal(raw, v) == nil
 }
 
 func (s *Server) resource(path string) http.HandlerFunc {
@@ -160,7 +136,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if len(name) > maxClientName {
 		name = name[:maxClientName]
 	}
-	id := seal(s.deps.Key, "client", client{Name: name, Redirects: asked.Redirects, Nonce: rand.Text()})
+	id := auth.Seal(s.deps.Key, "client", client{Name: name, Redirects: asked.Redirects, Nonce: rand.Text()})
 	slog.InfoContext(r.Context(), "mcp: registered", "client", name, "redirects", asked.Redirects)
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusCreated, map[string]any{
@@ -187,7 +163,7 @@ func (s *Server) authorization(query string) (authorization, error) {
 		return authorization{}, access.Invalid("the request's address does not parse")
 	}
 	a := authorization{clientID: q.Get("client_id"), redirect: q.Get("redirect_uri"), state: q.Get("state"), pkce: q.Get("code_challenge")}
-	if !unseal(s.deps.Key, "client", a.clientID, &a.client) {
+	if !auth.Unseal(s.deps.Key, "client", a.clientID, &a.client) {
 		return authorization{}, access.Invalid("this client is not registered here; remove the connector and add it again")
 	}
 	if !slices.Contains(a.client.Redirects, a.redirect) {
@@ -258,7 +234,7 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 	if s.deps.Data.Model().SignedIn(email) == "" {
 		return onward{}, access.Forbidden("%s is not in the directory", email)
 	}
-	code := seal(s.deps.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Expires: s.deps.Now().Add(codeLength).Unix()})
+	code := auth.Seal(s.deps.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Expires: s.deps.Now().Add(codeLength).Unix()})
 	slog.InfoContext(r.Context(), "mcp: approved", "client", a.client.Name, "email", email)
 	return onward{Redirect: a.back(url.Values{"code": {code}, "iss": {origin(r)}})}, nil
 }
@@ -289,7 +265,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var g grant
-	if !unseal(s.deps.Key, "code", r.PostForm.Get("code"), &g) {
+	if !auth.Unseal(s.deps.Key, "code", r.PostForm.Get("code"), &g) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code is not one this server issued")
 		return
 	}
@@ -308,32 +284,20 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code_verifier does not match the challenge")
 		return
 	}
-	token := seal(s.deps.Key, "access", bearer{Email: g.Email, Issued: now.Unix()})
+	token := s.tokens().Issue(g.Email)
 	slog.InfoContext(r.Context(), "mcp: token issued", "email", g.Email)
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusOK, map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
-		"expires_in":   int(tokenLength.Seconds()),
+		"expires_in":   int(auth.AccessLength.Seconds()),
 	})
 }
 
-var errSignedOut = fmt.Errorf("%w: signed out, or no longer in the directory", sdkauth.ErrInvalidToken)
-
 func (s *Server) verify(_ context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
-	var a bearer
-	if !unseal(s.deps.Key, "access", token, &a) {
-		return nil, sdkauth.ErrInvalidToken
+	email, expires, err := s.tokens().Verify(token)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", sdkauth.ErrInvalidToken, err)
 	}
-	expires := time.Unix(a.Issued, 0).Add(tokenLength)
-	if s.deps.Now().After(expires) {
-		return nil, fmt.Errorf("%w: expired", sdkauth.ErrInvalidToken)
-	}
-	if out, ok := s.deps.Sessions.SignedOut(a.Email); ok && a.Issued <= out.Unix() {
-		return nil, errSignedOut
-	}
-	if s.deps.Data.Model().SignedIn(a.Email) == "" {
-		return nil, errSignedOut
-	}
-	return &sdkauth.TokenInfo{UserID: a.Email, Expiration: expires}, nil
+	return &sdkauth.TokenInfo{UserID: email, Expiration: expires}, nil
 }

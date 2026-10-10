@@ -3,7 +3,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -116,10 +115,14 @@ func body(w http.ResponseWriter, r *http.Request, limit int64) (string, []byte, 
 	return kind, raw, true
 }
 
-const importReader = "import"
+const (
+	ModeHeader  = "Helios-Mode"
+	SpoofHeader = "Helios-Spoof"
+)
 
-func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, at time.Time) (Env, access.Actor, bool) {
-	key, bearer := auth.Bearer(r)
+func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens, at time.Time) (Env, access.Actor, bool) {
+	mode := r.Header.Get(ModeHeader)
+	token, bearer := auth.Bearer(r)
 	if !bearer {
 		email := auth.Email(r)
 		viewer := m.SignedIn(email)
@@ -127,25 +130,39 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, importKey []byte, 
 			http.Error(w, "not in the directory", http.StatusForbidden)
 			return Env{}, access.Actor{}, false
 		}
-		return Env{Viewer: viewer, Now: at}, access.Actor{Email: email}, true
+		return Env{Viewer: viewer, Mode: mode, Now: at}, access.Actor{Email: email}, true
 	}
-	if len(importKey) == 0 || subtle.ConstantTimeCompare([]byte(key), importKey) != 1 {
-		http.Error(w, "unknown key", http.StatusUnauthorized)
+	email, _, err := tokens.Verify(token)
+	if err != nil {
+		http.Error(w, "unusable token: "+err.Error(), http.StatusUnauthorized)
 		return Env{}, access.Actor{}, false
 	}
-	return Env{System: importReader, Now: at}, access.System(importReader), true
+	if target := r.Header.Get(SpoofHeader); target != "" {
+		if !m.SuperAdmin(email) {
+			http.Error(w, "only a super admin may spoof", http.StatusForbidden)
+			return Env{}, access.Actor{}, false
+		}
+		address, _, ok := m.SignedInAs(target)
+		if !ok {
+			http.Error(w, "nobody in the directory has the address "+target, http.StatusForbidden)
+			return Env{}, access.Actor{}, false
+		}
+		slog.InfoContext(r.Context(), "spoof", "admin", email, "as", address)
+		email = address
+	}
+	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email}, true
 }
 
-func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
-	registerDo(mux, s, queue, pics, importKey, now)
-	registerBlobs(mux, s, pics, importKey, now)
-	registerExplain(mux, s, importKey, now)
+func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+	registerDo(mux, s, queue, pics, tokens, now)
+	registerBlobs(mux, s, pics, tokens, now)
+	registerExplain(mux, s, tokens, now)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		root := trace.New("request")
 		ctx := trace.With(r.Context(), root)
 		m := s.Model()
-		env, _, ok := caller(w, r, m, importKey, now())
+		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}
@@ -199,7 +216,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		respond(ctx, w, r, root, out)
 	})
 	mux.HandleFunc("POST /api/q", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}

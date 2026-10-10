@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/png"
 	"net/http"
@@ -13,11 +14,13 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/qclient"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit"
 )
 
 func TestFlattenBioSeparatesParagraphsAndDecodesEntities(t *testing.T) {
@@ -71,8 +74,6 @@ func TestEmailsSkipPlaceholders(t *testing.T) {
 	}
 }
 
-const testKey = "test-import-key"
-
 func sampleServer(t *testing.T) (client, *db.Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
@@ -81,11 +82,17 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	pics := db.NewPictures(s, queue, blob.NewMemoryBucket())
+	runner := db.Batch{Batch: []db.Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000005", "person": "per00000000002", "member": "yes"}}}}
+	if _, err := db.Write(context.Background(), s, queue, pics, access.System("test"), db.Env{System: "test"}, runner); err != nil {
+		t.Fatal(err)
+	}
+	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), []byte(testKey), func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
+	db.Register(mux, s, queue, pics, tokens, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return client{qclient.Client{Base: srv.URL, Key: testKey}}, s
+	return client{&qclient.Client{Base: srv.URL, Token: tokens.Issue("rowan.ashdown@example.org"), Mode: qclient.ImportMode}}, s
 }
 
 func writePNG(t *testing.T, dir string, size int) string {

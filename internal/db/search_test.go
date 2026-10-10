@@ -232,7 +232,7 @@ func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
 	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
 		t.Fatal("a parent deleted a search entry")
 	}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(importReader), Env{System: importReader, Now: testNow}, b); err != nil {
+	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, b); err != nil {
 		t.Fatal(err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
@@ -849,7 +849,7 @@ func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(s.Model().Run(t.Context(), parsed, Env{System: importReader, Now: testNow}).IDs); n != 1 {
+	if n := len(s.Model().Run(t.Context(), parsed, setupEnv).IDs); n != 1 {
 		t.Errorf("the import reads %d search entries, want 1", n)
 	}
 }
@@ -858,12 +858,11 @@ func TestSearchAnswersOnceByTable(t *testing.T) {
 	s, _, _, x := searcher(t)
 	makeAll(t, s, x)
 	mux := http.NewServeMux()
-	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
+	RegisterSearch(mux, s, x, testTokens, func() time.Time { return testNow })
 	req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(`{"words": "picnic"}`))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testImportKey)
 	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
+	serveAs(mux, rec, req, importing)
 	var got map[string][]SearchResult
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != http.StatusOK {
 		t.Fatalf("%d %s: %v", rec.Code, rec.Body, err)
@@ -901,13 +900,12 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 		t.Fatalf("limited to one group and no people, the search found %d and %d", len(got["GROUP"]), len(got["PERSON"]))
 	}
 	mux := http.NewServeMux()
-	RegisterSearch(mux, s, x, []byte(testImportKey), func() time.Time { return testNow })
+	RegisterSearch(mux, s, x, testTokens, func() time.Time { return testNow })
 	ask := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+testImportKey)
 		rec := httptest.NewRecorder()
-		mux.ServeHTTP(rec, req)
+		serveAs(mux, rec, req, importing)
 		return rec
 	}
 	rec := ask(`{"words": "picnic", "limits": {"GROUP": 1}}`)

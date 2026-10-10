@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/serve"
@@ -74,9 +75,9 @@ type markdown struct {
 	size int
 }
 
-func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, importKey []byte, now func() time.Time) {
+func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/wiki", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), importKey, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
 			return
 		}
@@ -93,7 +94,7 @@ func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictur
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{id}, Hash: hash})
 	})
 	mux.HandleFunc("GET /api/wiki/picture/{name}", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := caller(w, r, s.Model(), importKey, now()); !ok {
+		if _, _, ok := caller(w, r, s.Model(), tokens, now()); !ok {
 			return
 		}
 		object := "wiki-images/" + r.PathValue("name")

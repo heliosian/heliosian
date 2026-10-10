@@ -193,10 +193,10 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 		return rec.Code, answer
 	}
 	schedule := pngOf(t, 5)
-	if code, _ := post("maya.lindqvist@example.org", map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusForbidden {
+	if code, _ := post("rowan.ashdown@example.org", map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusForbidden {
 		t.Fatalf("a person filled a linked document: %d", code)
 	}
-	code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000012"}, schedule)
+	code, answer := post(importing, map[string]string{"document": "doc00000000012"}, schedule)
 	if code != http.StatusOK || answer.Hash == "" {
 		t.Fatalf("the import could not fill a linked document: %d %+v", code, answer)
 	}
@@ -205,16 +205,16 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	if filled["fetch"] != "" || content["mime"] != "image/png" || bytesOf(t, s, bucket, filled) != string(schedule) {
 		t.Fatalf("the filled document: %v, its content %v", filled, content)
 	}
-	if code, _ := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusBadRequest {
+	if code, _ := post(importing, map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a filled document was filled again: %d", code)
 	}
-	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000013", "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
+	if code, answer := post(importing, map[string]string{"document": "doc00000000013", "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
 		t.Fatalf("the import could not stop a fetch: %d %+v", code, answer)
 	}
-	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
+	if code, answer := post(importing, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
 		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
 	}
-	if code, answer := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000015"}, []byte("<html><body>"+strings.Repeat("The handbook says what families need to know. ", 6)+"</body></html>")); code != http.StatusOK || answer.Hash == "" {
+	if code, answer := post(importing, map[string]string{"document": "doc00000000015"}, []byte("<html><body>"+strings.Repeat("The handbook says what families need to know. ", 6)+"</body></html>")); code != http.StatusOK || answer.Hash == "" {
 		t.Fatalf("a link's page was not kept: %d %+v", code, answer)
 	}
 	if page, _ := s.Model().Table("DOCUMENT").Get("doc00000000015"); page["content"] == "" || page["fetch"] != "" {
@@ -225,7 +225,7 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 			t.Errorf("%s: %v, want fetch %s", id, row, want)
 		}
 	}
-	if code, _ := post("bearer:"+testImportKey, map[string]string{"document": "doc00000000011"}, schedule); code != http.StatusBadRequest {
+	if code, _ := post(importing, map[string]string{"document": "doc00000000011"}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a part was filled as a linked document: %d", code)
 	}
 }
@@ -249,7 +249,7 @@ func TestSignedInFetchesOfTheSameBytesShareContent(t *testing.T) {
 	wg := sync.WaitGroup{}
 	for i, id := range ids {
 		wg.Go(func() {
-			codes[i] = postFile(t, s, queue, pics, "bearer:"+testImportKey, "fetched", map[string]string{"document": id}, "body", picture).Code
+			codes[i] = postFile(t, s, queue, pics, importing, "fetched", map[string]string{"document": id}, "body", picture).Code
 		})
 	}
 	wg.Wait()
