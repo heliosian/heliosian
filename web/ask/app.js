@@ -111,6 +111,7 @@ function addTurn(role) {
 
 function talk(row) {
   const face = row.querySelector('.turn-bot');
+  face.classList.add('is-thinking');
   let frame = 0;
   const timer = setInterval(() => {
     frame = 1 - frame;
@@ -118,6 +119,7 @@ function talk(row) {
   }, 350);
   return () => {
     clearInterval(timer);
+    face.classList.remove('is-thinking');
     face.src = botFaces[0];
   };
 }

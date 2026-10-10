@@ -147,16 +147,32 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .turn-user { flex-direction: row-reverse; }
 
-.turn-avatar { flex-shrink: 0; width: 36px; height: 36px; }
+.turn-avatar { flex-shrink: 0; width: 44px; height: 44px; }
 
-.turn-user .turn-avatar { display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: var(--accent); color: #fff; font-size: 15px; font-weight: 700; }
+.turn-user .turn-avatar { display: flex; align-items: center; justify-content: center; overflow: hidden; border-radius: 50%; background: var(--accent); color: #fff; font-size: 18px; font-weight: 700; }
 
 .turn-user .turn-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-.turn-bot { object-fit: contain; }
+.turn-bot { object-fit: contain; transform-origin: 50% 60%; }
+
+.turn-bot.is-thinking { animation: bot-think 1.8s ease-in-out infinite; }
+
+@keyframes bot-think {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  12% { transform: translateY(-6px) rotate(0); }
+  24% { transform: translateY(0) rotate(0); }
+  40% { transform: translateY(-16px) rotate(0); }
+  70% { transform: translateY(-16px) rotate(360deg); }
+  86% { transform: translateY(0) rotate(360deg); }
+  99.9% { transform: translateY(0) rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-bot.is-thinking { animation: none; }
+}
 
 .turn-user .turn-body {
-  max-width: calc(78% - 48px);
+  max-width: calc(78% - 56px);
   padding: 10px 16px;
   border-radius: 18px 18px 4px 18px;
   /* The deep teal in both modes: dark mode pales --brand for text, and
@@ -167,7 +183,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
   overflow-wrap: anywhere;
 }
 
-.turn-assistant .turn-body { flex: 1; min-width: 0; max-width: 92%; padding-top: 6px; overflow-wrap: anywhere; }
+.turn-assistant .turn-body { flex: 1; min-width: 0; max-width: 92%; padding-top: 10px; overflow-wrap: anywhere; }
 
 .turn-assistant .turn-body > :first-child { margin-top: 0; }
 
