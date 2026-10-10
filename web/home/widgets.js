@@ -560,7 +560,7 @@ function schoolWidget() {
   const school = state.model.school;
   const card = el('article', 'widget widget-school');
   const head = el('header', 'widget-head');
-  head.append(widgetTitle('ask', 'Inbox'));
+  head.append(widgetTitle('ask', 'Inbox', widgetMarks.school));
   card.append(head);
   if (!school.length) {
     card.append(el('p', 'wg-empty', 'No school email in the last two weeks.'));
@@ -792,7 +792,7 @@ const widgetNames = {when: 'Upcoming', team: 'Team', celebrate: 'Celebrate', sch
 
 const widgetApps = {when: 'when', team: 'team', celebrate: 'celebrate', school: 'ask', birthday: 'birthday', todo: 'ask'};
 
-const widgetMarks = {todo: '/brand/reminders.png'};
+const widgetMarks = {todo: '/brand/reminders.png', school: '/brand/inbox.png'};
 
 function hasWork() {
   const birthday = state.model.birthday;
