@@ -19,6 +19,8 @@ import (
 const (
 	slowRequest = 750 * time.Millisecond
 	shownErrors = 50
+	streamLife  = time.Minute
+	streamRetry = time.Second
 )
 
 type tableSize struct {
@@ -82,6 +84,8 @@ func (b *board) stream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Accel-Buffering", "no")
+	fmt.Fprintf(w, "retry: %d\n\n", streamRetry.Milliseconds())
+	end := time.After(streamLife)
 	for {
 		encoded, err := json.Marshal(b.snapshot())
 		if err != nil {
@@ -94,6 +98,10 @@ func (b *board) stream(w http.ResponseWriter, r *http.Request) {
 		}
 		select {
 		case <-r.Context().Done():
+			return
+		case <-end:
+			fmt.Fprint(w, "event: bye\ndata: {}\n\n")
+			controller.Flush()
 			return
 		case <-changed:
 		}

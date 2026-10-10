@@ -375,8 +375,18 @@ function show(d) {
 }
 
 const events = new EventSource('/api/dashboard');
-events.addEventListener('message', e => show(JSON.parse(e.data)));
+let leaving = false;
+events.addEventListener('message', e => {
+  leaving = false;
+  show(JSON.parse(e.data));
+});
+events.addEventListener('bye', () => {
+  leaving = true;
+});
 events.addEventListener('error', () => {
+  if (leaving) {
+    return;
+  }
   summary.textContent = 'disconnected · reconnecting…';
   summary.classList.add('lost');
 });
