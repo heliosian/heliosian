@@ -624,6 +624,12 @@ var Tables = []Table{
 			col("header_id", Text).about("Its Message-ID header."),
 			ref("content", "CONTENT").about("Its raw mail."),
 			col("created", Moment).required().about("When it was received or written."),
+			enum("state",
+				v("received", "taken in and not yet sent on"),
+				v("sent", "sent on to the list"),
+				v("dropped", "kept from the list: an auto-reply, mail that fails its checks, a sender the list doesn't take"),
+				v("failed", "not sent on because something went wrong")).about("Where a received Loop post stands."),
+			col("detail", Text).about("Why a Loop post was dropped or failed, or which of its copies failed."),
 		},
 	},
 	{

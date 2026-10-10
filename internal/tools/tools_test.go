@@ -139,7 +139,7 @@ func TestEveryHrefIsNotedWithItsRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for href, id := range map[string]string{
-		"https://who.heliosian.com/classrooms/grp00000000010":    "grp00000000010",
+		"https://who.heliosian.com/classrooms/hummingbirds":      "grp00000000010",
 		"https://who.heliosian.com/people/" + maya:               maya,
 		"https://loop.heliosian.com/groups/jayvens-room-parents": "grp00000000502",
 	} {

@@ -137,7 +137,7 @@ func TestLingoReadsTheModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3; Hummingbirds)", "- Hummingbirds (https://who.heliosian.com/classrooms/grp00000000010; Jayvens; 3; teachers Maya Lindqvist; crews Robins)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Spring Celebration 2027."} {
+	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3; Hummingbirds)", "- Hummingbirds (https://who.heliosian.com/classrooms/hummingbirds; Jayvens; 3; teachers Maya Lindqvist; crews Robins)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Spring Celebration 2027."} {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
 		}
@@ -383,7 +383,7 @@ func TestToolsRunTogether(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if _, ok := tr.found.of("https://who.heliosian.com/classrooms/grp00000000010"); !ok {
+	if _, ok := tr.found.of("https://who.heliosian.com/classrooms/hummingbirds"); !ok {
 		t.Fatal("the tools' links were not noted for chips")
 	}
 }

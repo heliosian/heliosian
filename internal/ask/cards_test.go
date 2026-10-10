@@ -12,7 +12,7 @@ func TestClassroomChipsWearTheirColor(t *testing.T) {
 	if _, err := tr.run(context.Background(), "helios_classroom", json.RawMessage(`{"name": "Hummingbirds"}`)); err != nil {
 		t.Fatal(err)
 	}
-	card, ok := tr.linkCard("https://who.heliosian.com/classrooms/grp00000000010")
+	card, ok := tr.linkCard("https://who.heliosian.com/classrooms/hummingbirds")
 	if !ok || card.Kind != "classroom" || card.Color != "#5b8def" || card.Name != "Hummingbirds" {
 		t.Fatalf("Hummingbirds: %+v %v", card, ok)
 	}
