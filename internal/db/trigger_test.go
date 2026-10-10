@@ -110,7 +110,7 @@ func TestFamilyNameFollowsItsMembers(t *testing.T) {
 	name("Chang-Ashdown Family", "with Kai withheld")
 }
 
-func TestAReceivedPostIsFiledAsMail(t *testing.T) {
+func TestASentPostIsFiledAsMail(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(raw string) []string {
 		t.Helper()
@@ -134,7 +134,11 @@ func TestAReceivedPostIsFiledAsMail(t *testing.T) {
 	}
 	content := write(`{"batch": [{"insert": "CONTENT", "row": {"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}}]}`)[0]
 
-	post := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "from_person": "per00000000002", "subject": "Tide pools", "created": "2026-09-18 19:51", "content": "` + content + `"}}]}`)[0]
+	post := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "from_person": "per00000000002", "subject": "Tide pools", "created": "2026-09-18 19:51", "content": "` + content + `", "state": "received"}}]}`)[0]
+	if n := len(filed(post)); n != 0 {
+		t.Fatalf("a post not yet sent on was filed %d times", n)
+	}
+	write(`{"batch": [{"set": "` + post + `", "cells": {"state": "sent"}}]}`)
 	docs := filed(post)
 	if len(docs) != 1 {
 		t.Fatalf("the post was filed %d times", len(docs))
@@ -147,7 +151,12 @@ func TestAReceivedPostIsFiledAsMail(t *testing.T) {
 		t.Fatal("the post's document was not sent to its list")
 	}
 
-	bare := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "subject": "Raw message to come", "created": "2026-09-19 08:00"}}]}`)[0]
+	dropped := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "subject": "Accepted: Tide pools", "created": "2026-09-18 20:00", "content": "` + content + `", "state": "dropped", "detail": "auto-submitted mail"}}]}`)[0]
+	if n := len(filed(dropped)); n != 0 {
+		t.Fatalf("a dropped post was filed %d times", n)
+	}
+
+	bare := write(`{"batch": [{"insert": "MESSAGE", "row": {"direction": "in", "kind": "post", "group": "grp00000000030", "subject": "Raw message to come", "created": "2026-09-19 08:00", "state": "sent"}}]}`)[0]
 	if n := len(filed(bare)); n != 0 {
 		t.Fatalf("a post with no raw message was filed %d times", n)
 	}

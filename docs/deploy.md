@@ -106,7 +106,7 @@ Photos, pronunciation recordings, Heliosian's link images, the volunteer portal'
 
 Every read goes through the app's own sign-in gate, and no object may ever be publicly readable, which rests on the bucket's public access prevention (the `describe` above) and on its policy granting nothing to `allUsers` or `allAuthenticatedUsers` (`gcloud storage buckets get-iam-policy gs://heliosian-media --project heliosian`); the service reads and writes it as `directory@`.
 
-Helios Loop keeps every message its groups receive in a second bucket, `gs://heliosian-mail`, which needs the same settings as the media bucket (the same `describe` and `get-iam-policy`, with its name, read them), whole as it came, under `loop/<group name>/` (`docs/loop/data.md`, Mail). It is its own bucket because nothing in the media bucket's serving routes may ever reach a message: the mail bucket has no route at all, and the `Messages` tab of the Groups sheet is its index. Make it as the media bucket was made, with `roles/storage.objectAdmin` on it to `directory@`.
+Helios Loop keeps every post its email lists receive whole as `CONTENT` in the media bucket, under `content/` with the rest of the data model's bytes, served only to whoever may read the post (`docs/loop/data.md`, Mail). A second bucket, `gs://heliosian-mail`, holds the posts Loop's earlier mailer kept, under `loop/<group name>/`, indexed by the `Messages` tab of the Groups sheet; the service neither reads nor writes it, and the sync from the old sheets reads it to carry those posts into the data model. It needs the same settings as the media bucket (the same `describe` and `get-iam-policy`, with its name, read them).
 
 ## IAM
 

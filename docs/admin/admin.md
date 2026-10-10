@@ -17,7 +17,7 @@ Helios Admin, at `admin.heliosian.com`, holds views of the data behind the apps.
 - **Runtime**: heap, sys and CPU (cores used, from `getrusage`) as sparklines over a fixed last hour, now at the right edge, so a server younger than an hour fills only the right of each, plus goroutines and GC runs, from the sampler `internal/vitals` runs every 5 seconds wherever the server runs; each sample is also the `memory` log line.
 - **Queues**: the counts `/queues` shows, worked out again when the model changes, and when the sheets last refreshed.
 - **Requests**: per app over the last hour, the requests `logging.Requests` saw (media routes and event streams aside), how many failed, p50, p95 and max latency, and how many took 750ms or more.
-- **Data**: rows and cells (rows times stored columns) of the data-model tables, per spreadsheet, and the objects and bytes in `heliosian-media` and `heliosian-mail`, measured by listing each bucket.
+- **Data**: rows and cells (rows times stored columns) of the data-model tables, per spreadsheet, and the objects and bytes in `heliosian-media`, measured by listing the bucket.
 
 What comes from outside the server is `internal/ops`: commits and issues through the feedback GitHub App, builds through the Cloud Build API, the serving revision through the Cloud Run Admin API, spend through the Anthropic Admin API with `ANTHROPIC_ADMIN_KEY`, and the bucket sizes. Each is read once in the background and kept, so a dashboard never waits on one, and shows its own error in its tile when a read fails. Commits, issues, builds and the serving revision are read at start and again when something says they changed:
 

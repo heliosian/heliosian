@@ -20,33 +20,24 @@ var emailListsPages = []string{"/{$}", "/new", "/groups/{name}", "/admin"}
 type emailListsApp struct {
 	store     *Store
 	media     *blob.Store
-	mail      ListMail
-	mailer    *mailer
 	describer *describe.Describer
 }
 
 type EmailListsDeps struct {
 	Store     *Store
 	Media     *blob.Store
-	Mail      ListMail
 	Describer *describe.Describer
 	About     *sharecard.About
 }
 
 func RegisterEmailLists(mux *http.ServeMux, d EmailListsDeps) {
-	a := emailListsApp{store: d.Store, media: d.Media, mail: d.Mail, describer: d.Describer}
-	a.mailer = newMailer(d.Store, d.Mail)
+	a := emailListsApp{store: d.Store, media: d.Media, describer: d.Describer}
 	for _, page := range emailListsPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("POST /api/loop/preview", serve.JSON(a.preview))
 	mux.HandleFunc("POST /api/loop/describe", serve.JSON(a.describe))
-	mux.HandleFunc("POST /hooks/mail/mime", a.inbound)
-	mux.HandleFunc("POST /hooks/events", a.events)
 	mux.Handle("GET /open/share/about.png", d.About)
-	mux.HandleFunc("GET /open/unsubscribe/{token}", a.unsubscribePage)
-	mux.HandleFunc("POST /open/unsubscribe/{token}", a.unsubscribe)
-	a.mailer.recover()
 }
 
 func (a emailListsApp) page(w http.ResponseWriter, r *http.Request) {

@@ -94,17 +94,6 @@ func (in *DocumentFiler) hook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (in *DocumentFiler) Post(ctx context.Context, actor access.Actor, group string, raw []byte) error {
-	in.holder.Hold()
-	defer in.holder.Release()
-	m, err := ParseMail(raw)
-	if err != nil {
-		return err
-	}
-	m.Channel, m.Kind = group, DocumentKindGroup
-	return in.file(ctx, actor, m)
-}
-
 func (in *DocumentFiler) Remove(ctx context.Context, actor access.Actor, group string) error {
 	if err := in.store.Commit(ctx, actor, DocumentsApp, in.store.Model().Documents.removeGroup(actor, group)...); err != nil {
 		return err

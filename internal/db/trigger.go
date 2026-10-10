@@ -33,7 +33,10 @@ func receivedPost(row store.Row) bool {
 }
 
 func postDocument(m *Model, c Change) ([]Edit, error) {
-	if !receivedPost(c.New) || c.New["content"] == "" || (c.Old != nil && c.Old["content"] != "") {
+	if !receivedPost(c.New) || c.New["content"] == "" || c.New["state"] != postSent {
+		return nil, nil
+	}
+	if c.Old != nil && c.Old["content"] != "" && c.Old["state"] == postSent {
 		return nil, nil
 	}
 	if len(m.Table("DOCUMENT").Referencing("message", c.New["id"])) > 0 {

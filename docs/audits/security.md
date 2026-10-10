@@ -69,7 +69,7 @@ The people to think about:
 - The deploy path as an integration: a push to `main` is production, so who can push, what the build's service account can do, and what the GitHub connection grants are part of the system.
 - The real-data dev server: real community data on a laptop, the blob cache under `local/cache/blobs/`, and the rule that nothing else is written to disk.
 - What each outside service is sent, and whether it needs all of it: addresses to Places and the geocoder, questions and directory data to Anthropic, documents to Vertex AI, recipients and bodies to Mailgun, reports to GitHub, search words to the stock libraries.
-- What is kept for ever that need not be: received mail whole in the mail bucket, conversations, change logs with the old values in them, bounced addresses.
+- What is kept for ever that need not be: received mail whole in the media bucket, conversations, change logs with the old values in them, bounced addresses.
 
 ### Defense in depth that is missing and cheap
 

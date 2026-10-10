@@ -871,6 +871,8 @@ const PolicySource = `
 (insert MEMBER (and (system "loop") (mail_list @new.group) (= @new.member "excluded")))
 ; unsubscribe someone on a Loop list by hand, by the link or the address in their copy
 (set MEMBER.member (and (system "loop") (mail_list @old.group) (= @new.member "excluded")))
+; say how someone on a Loop list by hand unsubscribed
+(set MEMBER.note (and (system "loop") (mail_list @old.group)))
 
 ;; System: import
 

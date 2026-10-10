@@ -2,12 +2,14 @@ package model
 
 import (
 	"cmp"
+	netmail "net/mail"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"heliosian/internal/id"
+	"heliosian/internal/mail"
 )
 
 const (
@@ -54,6 +56,19 @@ func messageKey(id string) string {
 	return strings.Trim(strings.TrimSpace(id), "<>")
 }
 
+func senderName(from string) string {
+	a, err := netmail.ParseAddress(from)
+	if err != nil {
+		local, _, _ := strings.Cut(mail.AddressOf(from), "@")
+		return local
+	}
+	if a.Name != "" {
+		return a.Name
+	}
+	local, _, _ := strings.Cut(a.Address, "@")
+	return local
+}
+
 func eventTime(when string) time.Time {
 	t, _ := time.Parse(time.RFC3339, when)
 	return t
@@ -93,7 +108,7 @@ func (m *EmailLists) indexHistory() {
 		attempts[d.Group][key][d.Email] = append(attempts[d.Group][key][d.Email], Attempt{When: d.Timestamp, Event: d.Event, Detail: d.Detail})
 	}
 	for _, msg := range m.Messages {
-		if msg.State != stateSent || m.Group(msg.Group) == nil {
+		if msg.State != "sent" || m.Group(msg.Group) == nil {
 			continue
 		}
 		s := &Sent{ID: id.Of(m.idKey, kindMessage, msg.Group+"\x00"+msg.ID), Message: msg, Copies: []*Copy{}}

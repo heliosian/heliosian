@@ -285,35 +285,15 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 	}
 }
 
-func TestGroupMailIsFiledUnderEachGroupOnce(t *testing.T) {
-	in, _, sheet, queue := testInbox(t)
-	for _, group := range []string{"soccer-team", "soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), access.System("loop mailer"), group, []byte(personalMail)); err != nil {
-			t.Fatalf("%s: %v", group, err)
-		}
-	}
-	queue.Flush()
-	_, rows, err := sheet.Table(DocumentsApp, documentsTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("rows: %+v", rows)
-	}
-	for i, group := range []string{"soccer-team", "chess-club"} {
-		if rows[i]["Key"] != DocumentKey(group+"/personal-1@example.org") || rows[i]["Channel"] != group || rows[i]["Kind"] != DocumentKindGroup {
-			t.Errorf("row %d: %+v", i, rows[i])
-		}
-	}
-	if len(in.store.Model().Documents.Documents) != 2 {
-		t.Fatalf("the model holds %d documents, not the two filed", len(in.store.Model().Documents.Documents))
-	}
-}
-
 func TestRemovingAGroupsMailTakesItsRowsAndDocumentsAndLeavesTheObjects(t *testing.T) {
 	in, objects, sheet, queue := testInbox(t)
 	for _, group := range []string{"soccer-team", "chess-club"} {
-		if err := in.Post(context.Background(), access.System("loop mailer"), group, []byte(personalMail)); err != nil {
+		m, err := ParseMail([]byte(personalMail))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Channel, m.Kind = group, DocumentKindGroup
+		if err := in.file(context.Background(), access.System("loop mailer"), m); err != nil {
 			t.Fatalf("%s: %v", group, err)
 		}
 	}

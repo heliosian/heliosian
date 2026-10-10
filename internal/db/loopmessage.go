@@ -1,4 +1,4 @@
-package model
+package db
 
 import (
 	"bytes"
@@ -9,7 +9,10 @@ import (
 	"strings"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/store"
 )
+
+const loopHeader = "X-Helios-Loop"
 
 var droppedHeaders = map[string]bool{
 	"return-path": true, "bcc": true, "sender": true, "reply-to": true, "dkim-signature": true,
@@ -17,8 +20,6 @@ var droppedHeaders = map[string]bool{
 	"list-help": true, "list-subscribe": true, "list-archive": true, "list-owner": true,
 	"precedence": true, "x-helios-loop": true,
 }
-
-const loopHeader = "X-Helios-Loop"
 
 func held(lines []mail.HeaderLine) string {
 	for _, l := range lines {
@@ -41,6 +42,10 @@ func held(lines []mail.HeaderLine) string {
 
 var bracketed = regexp.MustCompile(`<([^<>]+)>`)
 
+func messageKey(id string) string {
+	return strings.Trim(strings.TrimSpace(id), "<>")
+}
+
 func referenced(lines []mail.HeaderLine) []string {
 	out := []string{}
 	for _, l := range lines {
@@ -55,12 +60,7 @@ func referenced(lines []mail.HeaderLine) []string {
 }
 
 func messageID(lines []mail.HeaderLine) string {
-	for _, l := range lines {
-		if l.Name == "message-id" {
-			return messageKey(l.Value())
-		}
-	}
-	return ""
+	return messageKey(mail.Header(lines, "message-id"))
 }
 
 func senderName(from string) string {
@@ -109,7 +109,7 @@ func prefixed(subject, title string) string {
 	}
 }
 
-func rewrite(lines []mail.HeaderLine, g EmailList) ([]byte, error) {
+func rewrite(lines []mail.HeaderLine, g store.Row) ([]byte, error) {
 	var from, replyTo, subject string
 	hasSubject := false
 	for _, l := range lines {
@@ -129,29 +129,29 @@ func rewrite(lines []mail.HeaderLine, g EmailList) ([]byte, error) {
 	if replyTo == "" {
 		replyTo = from
 	}
-	newFrom := (&netmail.Address{Name: senderName(from) + " via " + g.Title, Address: g.Address()}).String()
-	newSubject := "Subject: " + mime.QEncoding.Encode("utf-8", prefixed(decodeHeader(subject), g.Title))
+	title, address := g["name"], listAddress(g)
+	newSubject := "Subject: " + mime.QEncoding.Encode("utf-8", prefixed(decodeHeader(subject), title))
 	var b bytes.Buffer
 	for _, l := range lines {
 		switch {
 		case l.Name == "from":
-			b.WriteString("From: " + newFrom + "\r\n")
-		case l.Name == "subject" && g.Prefix:
+			b.WriteString("From: " + (&netmail.Address{Name: senderName(from) + " via " + title, Address: address}).String() + "\r\n")
+		case l.Name == "subject":
 			b.WriteString(newSubject + "\r\n")
 		case droppedHeaders[l.Name]:
 		default:
 			b.WriteString(l.Raw + "\r\n")
 		}
 	}
-	if !hasSubject && g.Prefix {
+	if !hasSubject {
 		b.WriteString(newSubject + "\r\n")
 	}
 	b.WriteString("Reply-To: " + replyTo + "\r\n")
 	b.WriteString("X-Original-From: " + from + "\r\n")
-	b.WriteString("List-Id: " + mime.QEncoding.Encode("utf-8", g.Title) + " <" + g.Name + "." + ListDomain + ">\r\n")
-	b.WriteString("List-Post: <mailto:" + g.Address() + ">\r\n")
+	b.WriteString("List-Id: " + mime.QEncoding.Encode("utf-8", title) + " <" + g["slug"] + "." + LoopDomain + ">\r\n")
+	b.WriteString("List-Post: <mailto:" + address + ">\r\n")
 	b.WriteString("Precedence: list\r\n")
-	b.WriteString(loopHeader + ": " + g.Name + "\r\n")
+	b.WriteString(loopHeader + ": " + g["slug"] + "\r\n")
 	return b.Bytes(), nil
 }
 

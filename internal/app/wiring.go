@@ -69,7 +69,7 @@ type Config struct {
 	FeedbackFiler *feedback.GitHubApp
 	FeedbackBase  string
 	Describer     *describe.Describer
-	Loop          model.ListMail
+	Loop          db.LoopMail
 	Asker         *ask.Claude
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
@@ -203,20 +203,18 @@ func NewCore(cfg Config) *Core {
 		Style:    celebrateStyle,
 	})
 	askMux := http.NewServeMux()
-	loopMail := cfg.Loop
 	documents := model.RegisterDocuments(askMux, models, cfg.Embedder, queue, cfg.ArtifactsMail, func(ctx context.Context, raw []byte) error {
 		_, err := db.FileMail(ctx, dataStore, queue, pictures, raw)
 		return err
 	})
-	loopMail.Documents = documents
 	loopMux := http.NewServeMux()
 	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
 		Store:     models,
 		Media:     cfg.Store,
-		Mail:      loopMail,
 		Describer: cfg.Describer,
 		About:     loopAbout,
 	})
+	loop := db.RegisterLoop(loopMux, dataStore, queue, pictures, cfg.Loop)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	for _, page := range []string{"resources", "query", "search", "queues", "policies", "erd"} {
@@ -289,7 +287,7 @@ func NewCore(cfg Config) *Core {
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, cfg.ImportKey, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, cfg.ImportKey, schoolNow)
-	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket, blob.MailBucket: cfg.Loop.Archive}
+	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
 	external.Register(adminMux, cfg.Hooks)
 	db.RegisterDashboard(adminMux, dataStore, queue, external)
@@ -298,6 +296,7 @@ func NewCore(cfg Config) *Core {
 	go func() {
 		<-queue.Refreshed()
 		pictures.Start()
+		loop.Start()
 	}()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")

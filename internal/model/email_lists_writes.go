@@ -116,6 +116,8 @@ func (m *EmailLists) DeleteGroup(actor access.Actor, groupID string) ([]store.Op
 	return []store.Op{store.Delete(groupsTab, store.Row{idColumn: current.ID})}, current, nil
 }
 
+const loopPage = "the email list's page in Loop"
+
 func (g EmailList) subscription(actor access.Actor, onList, subscribed bool) ([]store.Op, error) {
 	if !onList {
 		return nil, access.Forbidden("you are not on this email list")
@@ -153,21 +155,4 @@ func (m *EmailLists) archiving(actor access.Actor, g *EmailList, archived bool) 
 		return []store.Op{store.Upsert(archivedTab, match, store.Row{})}, nil
 	}
 	return []store.Op{store.Delete(archivedTab, match)}, nil
-}
-
-func recordMessage(actor access.Actor, messageID, groupID string, cells store.Row) []store.Op {
-	return []store.Op{store.Upsert(messagesTab, store.Row{"ID": messageID, "Group": groupID}, cells)}
-}
-
-func markMessage(actor access.Actor, messageID, groupID, state string, cells store.Row) []store.Op {
-	cells["State"] = state
-	return []store.Op{store.Update(messagesTab, store.Row{"ID": messageID, "Group": groupID}, cells)}
-}
-
-func recordDeliveries(actor access.Actor, rows []store.Row) []store.Op {
-	ops := []store.Op{}
-	for _, row := range rows {
-		ops = append(ops, store.Insert(deliveriesTab, row))
-	}
-	return ops
 }
