@@ -278,7 +278,7 @@ function showDeploy(d) {
     body('deploy').replaceChildren(waiting);
     return;
   }
-  const table = el('table', 'rows deploys');
+  const list = el('ol', 'deploys');
   const servingBuild = builds.value.find(b => b.digest && b.digest === serving.value.digest);
   let older = false;
   for (const c of commits.value) {
@@ -287,15 +287,16 @@ function showDeploy(d) {
     if (servingBuild && c.sha === servingBuild.sha) {
       older = true;
     }
-    const status = build?.logUrl ? link(build.logUrl, word) : el('span', '', word);
-    const tr = el('tr', tone);
-    const sha = el('td', 'sha');
-    sha.append(link(c.url, c.sha.slice(0, 7)));
-    tr.append(sha, el('td', 'what', c.message), el('td', 'where', `${c.author} · ${ago(c.time)}`), el('td', 'stage'));
-    tr.lastChild.append(status);
-    table.append(tr);
+    const li = el('li');
+    li.dataset.tone = tone;
+    const where = el('span', 'where');
+    where.append(link(c.url, c.sha.slice(0, 7), 'sha'), ` · ${c.author} · ${ago(c.time)}`);
+    const status = el('span', 'stage');
+    status.append(build?.logUrl ? link(build.logUrl, word) : word);
+    li.append(el('span', 'what', c.message), where, status);
+    list.append(li);
   }
-  body('deploy').replaceChildren(table);
+  body('deploy').replaceChildren(list);
 }
 
 function monthStart(iso) {

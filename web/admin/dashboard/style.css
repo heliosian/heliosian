@@ -87,41 +87,52 @@
   color: var(--faint);
 }
 
-table.deploys .sha {
-  width: 70px;
+.deploys {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
 }
 
-table.deploys .what {
+.deploys li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+.deploys .what {
+  grid-column: 1 / -1;
   color: var(--text);
 }
 
-table.deploys .where {
+.deploys .where {
   color: var(--dim);
   white-space: nowrap;
 }
 
-table.deploys .stage {
+.deploys .stage {
   text-align: right;
   white-space: nowrap;
 }
 
-table.deploys .stage a {
+.deploys .stage a {
   color: inherit;
 }
 
-table.deploys tr.good .stage {
+.deploys li[data-tone=good] .stage {
   color: var(--accent);
 }
 
-table.deploys tr.warn .stage {
+.deploys li[data-tone=warn] .stage {
   color: var(--hit);
 }
 
-table.deploys tr.bad .stage {
+.deploys li[data-tone=bad] .stage {
   color: var(--warn);
 }
 
-table.deploys tr.quiet td {
+.deploys li[data-tone=quiet] > span {
   color: var(--faint);
 }
 
