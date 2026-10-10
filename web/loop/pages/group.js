@@ -461,7 +461,7 @@ async function refreshPreview(ed) {
   try {
     const rules = draft.rules.filter(ruleSaysSomething);
     const preview = await api('POST', '/api/loop/preview', {id: draft.id, rules, additions: draft.additions, excluded: draft.excluded});
-    const members = preview.members.map(m => memberView(m, m.person ? state.dir.get(m.person) : null));
+    const members = preview.members.map(m => memberView(m, m.person ? {email: m.email, fullName: m.email} : null));
     const counts = preview.ruleCounts;
     renderChanges(ed, members, rules);
     showRuleCounts(ed, rules, counts || []);
