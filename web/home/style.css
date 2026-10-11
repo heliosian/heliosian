@@ -783,9 +783,13 @@ main {
 
 .widget-mark { display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--glass, #e1eeee); color: var(--brand); }
 
-.widget-mark svg, .widget-mark .icon-mask, .widget-mark .icon-image { width: 20px; height: 20px; }
+.widget-mark svg, .widget-mark .icon-mask { width: 20px; height: 20px; }
 
-.wg-party-pic.is-mark, .wg-grid-icon.is-mark, .wg-link-icon.is-mark { background: transparent; }
+.widget-mark:has(> .icon-image) { background: transparent; }
+
+.widget-mark .icon-image { width: 34px; height: 34px; }
+
+.wg-party-pic.is-mark, .wg-grid-icon.is-mark, .wg-link-icon.is-mark, .wg-grid-icon:has(> img), .wg-link-icon:has(> img) { background: transparent; }
 
 .wg-grid-icon.is-mark { width: 72px; height: 72px; }
 
