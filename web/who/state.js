@@ -172,12 +172,13 @@ export async function loadModel() {
       tagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
       managed: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
       joined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
-      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g ${listCondition}))) (columns group person))`,
-      rsvpMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes @g ${listCondition}))) (columns group person))`,
-      guests: `(from PERSON (where (= source "guest") (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id @g ${listCondition}))))) (columns ${personColumns}))`,    }),
+      mine: '(from EFFECTIVE_MEMBER (where (= person @viewer)) (columns group))',
+      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g (!= kind "event") ${listCondition}))) (include person) (columns group person))`,
+      rsvpMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes @g ${listCondition}))) (include person) (columns group person))`,
+    }),
     oldTarget(name),
   ]);
-  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, listMembers, rsvpMembers, guests} = answers;
+  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, mine, listMembers, rsvpMembers} = answers;
   model.email = who.email;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
   model.admin = admin.result.length > 0;
@@ -252,7 +253,7 @@ export async function loadModel() {
     }
   }
   loadTags(tagged, [tagMembers, tagManagers]);
-  loadLists(managed, joined, [listMembers, rsvpMembers], guests);
+  loadLists(managed, joined, [listMembers, rsvpMembers], mine);
   model.moved = movedTo(name, oldId);
   model.movedFrom = location.pathname + location.search;
 }
@@ -295,7 +296,7 @@ export function tagManagers(t) {
   return Object.keys(t.managerRows);
 }
 
-function loadLists(managed, joined, memberAnswers, guestRows) {
+function loadLists(managed, joined, memberAnswers, mineAnswer) {
   lists = {};
   const groups = {};
   for (const g of [...all(managed, 'GROUP'), ...all(joined, 'GROUP')]) {
@@ -309,10 +310,11 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
     return;
   }
   const guests = {};
-  for (const p of rowsOf(guestRows, 'PERSON')) {
+  for (const p of memberAnswers.flatMap(a => all(a, 'PERSON')).filter(p => p.source === 'guest')) {
     guests[p.id] = p;
     byId[p.id] = byId[p.id] || p;
   }
+  const mine = new Set(rowsOf(mineAnswer, 'EFFECTIVE_MEMBER').map(e => e.group));
   const people = {};
   const seen = new Set();
   for (const e of memberAnswers.flatMap(a => rowsOf(a, 'EFFECTIVE_MEMBER'))) {
@@ -336,7 +338,7 @@ function loadLists(managed, joined, memberAnswers, guestRows) {
       slug: g.slug || g.id,
       groupSlug: g.slug || '',
       run: running.has(g.id),
-      member: (people[g.id] || []).includes(model.viewer && model.viewer.id),
+      member: mine.has(g.id),
       start: dated ? dated.start : '',
       people: ids.filter(id => !guests[id]),
       guests: ids.filter(id => guests[id]).map(id => guests[id]),

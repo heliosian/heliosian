@@ -34,16 +34,15 @@ export function write(batch) {
 const lists = `(select GROUP.id @g ${viewerListCondition})`;
 
 function groupQueries(sel) {
-  const into = `(or (in group ${sel}) (in group (select GROUP.rsvp_yes (in id ${sel}))))`;
   return {
     groups: `(from GROUP @g (where (in id ${sel})) (order name asc))`,
     runs: `(from GROUP @g (where (in id ${sel}) (runs_list @g)) (columns slug))`,
-    members: `(from EFFECTIVE_MEMBER (where ${into}) (columns group person reasons))`,
-    hand: `(from MEMBER (where (in group ${sel})) (columns group person member note added))`,
+    members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${sel})))) (include person) (columns group person reasons))`,
+    going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${sel})))) (include person) (columns group person reasons))`,
+    hand: `(from MEMBER (where (in group ${sel})) (include person) (columns group person member note added))`,
     managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (in id ${sel})))) (columns group person))`,
     rules: `(from RULE (where (in group ${sel})) (order order asc) (include target within))`,
     aliases: `(from ALIAS (where (in target ${sel})))`,
-    guests: `(from PERSON (where (= source "guest") (or (in id (select MEMBER.person (in group ${sel}))) (in id (select EFFECTIVE_MEMBER.person ${into})))))`,
     guestEmails: `(from PERSON_EMAIL (where guest (in person (select MEMBER.person (in group ${sel})))) (columns person address))`,
     sent: `(from MESSAGE (where (= kind "post") (= direction "in") (= state "sent") (in group ${sel})) (columns group))`,
     unsubscribed: `(from MEMBER (where (= person @viewer) (in group (select GROUP.unsubscribed (in id ${sel})))) (columns group person))`,
@@ -86,8 +85,10 @@ const reasonOf = (rules, word) => {
 function buildGroups(answers) {
   const {viewer, everyone, people, guestEmails, groupNames} = state.model;
   const runs = new Set(answers.runs.result);
-  for (const p of rowsOf(answers.guests, 'PERSON')) {
-    people[p.id] = p;
+  for (const p of Object.values(answers.members.resources.PERSON || {})) {
+    if (p.source === 'guest') {
+      people[p.id] = p;
+    }
   }
   for (const e of rowsOf(answers.guestEmails, 'PERSON_EMAIL')) {
     guestEmails[e.person] = e.address;
@@ -102,7 +103,7 @@ function buildGroups(answers) {
     }
     return out;
   };
-  const members = by(answers.members, 'EFFECTIVE_MEMBER', 'group');
+  const members = {...by(answers.members, 'EFFECTIVE_MEMBER', 'group'), ...by(answers.going, 'EFFECTIVE_MEMBER', 'group')};
   const hand = by(answers.hand, 'MEMBER', 'group');
   const managers = by(answers.managers, 'MEMBER', 'group');
   const rules = by(answers.rules, 'RULE', 'group');
