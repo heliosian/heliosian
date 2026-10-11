@@ -178,6 +178,13 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 		for person := range m.resolve(target, stack) {
 			s[person] = true
 		}
+		if under, _ := cells.YesNo(rule["under"], false); under {
+			for _, g := range m.groupsUnder(target) {
+				for person := range m.resolve(g, stack) {
+					s[person] = true
+				}
+			}
+		}
 		narrow(s)
 	}
 	if person := rule["person"]; person != "" {
@@ -209,6 +216,29 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 		}
 	}
 	return picked
+}
+
+var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "unsubscribed"}
+
+func (m *Model) groupsUnder(group string) []string {
+	groups := m.Shown("GROUP")
+	out := []string{}
+	queue := []string{group}
+	for len(queue) > 0 {
+		g, ok := groups.Get(queue[0])
+		queue = queue[1:]
+		if !ok {
+			continue
+		}
+		for _, child := range groups.Referencing("parent", g["id"]) {
+			if slices.ContainsFunc(servingColumns, func(c string) bool { return g[c] == child["id"] }) {
+				continue
+			}
+			out = append(out, child["id"])
+			queue = append(queue, child["id"])
+		}
+	}
+	return out
 }
 
 func (m *Model) search(text string) map[string]bool {

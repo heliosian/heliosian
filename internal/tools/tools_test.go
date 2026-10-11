@@ -82,7 +82,7 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 		{"helios_events", `{"from": "tomorrow"}`, []string{"YYYY-MM-DD"}, true},
 		{"helios_days", `{}`, []string{`"type":"Regular"`, `"name":"School","start":"08:30","end":"15:00"`, `"about":"A full school day with aftercare."`, `"schoolYear":"2026-2027"`}, false},
 		{"helios_days", `{"date": "2026-09-27"}`, []string{`"plans":[]`, `"weekday":"Sunday"`}, false},
-		{"helios_activities", `{}`, []string{`"year":"2026 - 2027"`, `"International Night"`, `"heading":"Headline Events"`, `"leadNeeded":true`, `"leads":["Rowan Ashdown"]`, `"yourPlace":"co-chair"`, `"expenseForm":"https://example.com/expenses"`}, false},
+		{"helios_activities", `{}`, []string{`"year":"2026 - 2027"`, `"International Night"`, `"heading":"Headline Events"`, `"leads":["Rowan Ashdown"]`, `"yourPlace":"co-chair"`, `"expenseForm":"https://example.com/expenses"`}, false},
 		{"helios_activities", `{"year": "2019 - 2020"}`, []string{"holds no school year starting in 2019"}, true},
 		{"helios_parties", `{}`, []string{`"Taco Night"`, `"celebration":"Spring Celebration 2027"`, `"hosts":["Maya Lindqvist"]`, `"yourHouseholdTickets":["Rowan Ashdown"]`, `"currentCelebration":"Spring Celebration 2027"`, `"ticketNote"`}, false},
 		{"helios_lists", `{}`, []string{`"Hummingbirds Parents"`, `"address":"hummingbirds-parents@loop.heliosian.com"`, `"Jayvens Room Parents"`, `"youAreIn":true`}, false},

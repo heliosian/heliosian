@@ -74,14 +74,13 @@ type activity struct {
 	Description string   `json:"description,omitempty"`
 	Capacity    string   `json:"capacity,omitempty"`
 	Full        bool     `json:"full,omitempty"`
-	LeadNeeded  bool     `json:"leadNeeded,omitempty"`
 	Priority    bool     `json:"priority,omitempty"`
 	Leads       []string `json:"leads,omitempty"`
 	Volunteers  []string `json:"volunteers,omitempty"`
 	Yours       string   `json:"yourPlace,omitempty"`
 }
 
-var activities = define("helios_activities", "Looking at HCA-Team", "What Helios School's parents' association, the HCA, runs on HCA-Team in a school year - the current one unless another is named - and who has signed up: every activity under its heading, the shifts and roles under an activity naming it as under, each with its timing, place, spots, whether it is full, whether it still wants a co-chair, its co-chairs and volunteers as HCA-Team shows them to the viewer, and the viewer's own place; plus HCA-Team's introduction and expense form. What has already happened is left out unless asked for.", func(c *call, in placeIn) (any, error) {
+var activities = define("helios_activities", "Looking at HCA-Team", "What Helios School's parents' association, the HCA, runs on HCA-Team in a school year - the current one unless another is named - and who has signed up: every activity under its heading, the shifts and roles under an activity naming it as under, each with its timing, place, spots, whether it is full, its co-chairs and volunteers as HCA-Team shows them to the viewer, and the viewer's own place; plus HCA-Team's introduction and expense form. What has already happened is left out unless asked for.", func(c *call, in placeIn) (any, error) {
 	roots, _, err := c.rows(tree{"from": "GROUP", "as": "r", "where": []any{eq("kind", "activity"), tree{"!=": []any{path("parent.kind"), "activity"}}, tree{"exists": tree{"from": "GROUP", "where": []any{eq("parent", path("@r")), eq("kind", "category")}}}}, "order": asc("name")})
 	if err != nil {
 		return nil, err
@@ -154,7 +153,7 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 	}
 	out := []activity{}
 	for _, g := range kept {
-		a := activity{named: c.named("GROUP", g), Start: g["start"], End: g["end"], Timing: g["timing"], Location: g["location"], Description: clip(g["description"], clipped), Capacity: g["capacity"], Full: g["join"] == "none", LeadNeeded: g["lead_needed"] == "Yes", Priority: g["priority"] == "Yes"}
+		a := activity{named: c.named("GROUP", g), Start: g["start"], End: g["end"], Timing: g["timing"], Location: g["location"], Description: clip(g["description"], clipped), Capacity: g["capacity"], Full: g["join"] == "none", Priority: g["priority"] == "Yes"}
 		if g["status"] != "open" {
 			a.Status = g["status"]
 		}

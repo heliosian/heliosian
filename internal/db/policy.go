@@ -93,6 +93,10 @@ const PolicySource = `
                (exists MEMBER (= person @p) (sees_members group))))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
+; @p may join @g: @g names no eligible group, or @p is in effect a member of it
+(define (eligible_for @g @p)
+  (or (blank @g.eligible) (exists EFFECTIVE_MEMBER (= group @g.eligible) (= person @p))))
+
 ; the viewer is @p or in a family with @p
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
@@ -294,7 +298,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible capacity minimum waitlist rsvp_yes rsvp_no lead_needed priority price unit parent_ticket_required
+   eligible capacity minimum waitlist rsvp_yes rsvp_no priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -340,7 +344,7 @@ const PolicySource = `
 ; the rules of groups the viewer manages
 (read RULE (manages group))
 ; every column of a rule
-(read RULE (id group order exclude target person search property value replace_with within) true)
+(read RULE (id group order exclude target under person search property value replace_with within) true)
 ; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown
 (read MEMBER
   (or (self_or_household person)
@@ -358,6 +362,17 @@ const PolicySource = `
 (insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
+; join a group that takes joining and no payment and has room: oneself or one's household, or with join others anyone the viewer sees, each of them eligible
+(insert MEMBER
+  (and (visible @new.group) (in @new.group.join "direct" "others") (blank @new.group.price)
+       (= @new.member "yes") (not @new.lead) (= @new.added_by @viewer) (eligible_for @new.group @new.person)
+       (or (self_or_household @new.person)
+           (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
+       (or (blank @new.group.capacity)
+           (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
+; leave a group that takes joining and no payment, or take someone in one's family out of it, even once it is closed or full
+(delete MEMBER
+  (and (not (blank @old.group.join)) (blank @old.group.price) (self_or_household @old.person)))
 ; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only super admins change
 (set MEMBER.member
   (and (!= @old.group.kind "family")
@@ -729,10 +744,11 @@ const PolicySource = `
            (= @new.members_visible_to.slug "everyone"))))
 ; a mail list's managers close it, or open it again
 (set GROUP.status (and (runs_list @old) (in @new.status "open" "closed")))
-; a mail list's managers give it a rule naming only groups and people whose members they may see
+; a mail list's managers give it a rule naming only groups and people whose members they may see, and reaching under a group only one they manage
 (insert RULE
   (and (runs_list @new.group)
        (or (blank @new.target) (sees_members @new.target))
+       (or (not @new.under) (manages @new.target) (super_admin))
        (or (blank @new.within) (sees_members @new.within))
        (or (blank @new.person) (person_visible @new.person))))
 ; a mail list's managers reorder its rules
