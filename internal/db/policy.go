@@ -745,9 +745,9 @@ const PolicySource = `
   (and (= @new.source "guest") (= @new.person.source "guest") (!= @viewer.source "guest")
        (exists GROUP @l (runs_list @l))))
 ; a mail list's managers give it another address
-(insert ALIAS (exists GROUP @l (= id @new.target) (runs_list @l)))
-; a mail list's managers take one of its other addresses away
-(delete ALIAS (exists GROUP @l (= id @old.target) (runs_list @l)))
+(insert ALIAS (and (not @new.hidden) (exists GROUP @l (= id @new.target) (runs_list @l))))
+; a mail list's managers take one of its other addresses away, but never a past ID
+(delete ALIAS (and (not @old.hidden) (exists GROUP @l (= id @old.target) (runs_list @l))))
 
 ;; Home admins
 
@@ -782,7 +782,7 @@ const PolicySource = `
 ; an old ticket ID of a guest the viewer may see, so an old guest link still finds them
 (read ALIAS (exists MEMBER @m (= id @row.target) (person_visible @m.person)))
 ; every column of an alias
-(read ALIAS (id alias target) true)
+(read ALIAS (id alias target hidden) true)
 ; the wiki's old page addresses, so an old link still finds its page
 (read REDIRECT (= app "wiki"))
 ; every column of a redirect

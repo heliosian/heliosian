@@ -890,7 +890,7 @@ func (p *planner) slugs() {
 			continue
 		}
 		taken[current] = true
-		p.slugWrites = append(p.slugWrites, write{Insert: "ALIAS", Row: row{"alias": current, "target": person}})
+		p.slugWrites = append(p.slugWrites, write{Insert: "ALIAS", Row: row{"alias": current, "target": person, "hidden": "Yes"}})
 		p.counts["old slugs aliased"]++
 	}
 }

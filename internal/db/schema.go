@@ -788,6 +788,7 @@ var Tables = []Table{
 			ident(AliasPrefix),
 			col("alias", Text).required().about("The other name."),
 			ref("target", "").required().about("The row it names, in any table."),
+			col("hidden", Bool).about("A past ID or slug, kept so an old link still finds the row: left out of every list of the row's aliases."),
 		},
 	},
 	{
