@@ -29,6 +29,7 @@ import (
 	"heliosian/internal/geocode"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
+	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/mcp"
 	"heliosian/internal/model"
@@ -153,7 +154,7 @@ func NewCore(cfg Config) *Core {
 	}
 	whoAbout := who.About(appName("who"), taglineOf("who"))
 	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
-	loopAbout := model.EmailListsAbout(appName("loop"), taglineOf("loop"))
+	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
 	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
 	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
@@ -207,11 +208,7 @@ func NewCore(cfg Config) *Core {
 		return err
 	})
 	loopMux := http.NewServeMux()
-	model.RegisterEmailLists(loopMux, model.EmailListsDeps{
-		Store: models,
-		Media: cfg.Store,
-		About: loopAbout,
-	})
+	loop.Register(loopMux, loopAbout)
 	listMail := db.RegisterListMail(loopMux, dataStore, queue, pictures, cfg.ListMail)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
@@ -261,7 +258,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
-	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin, documents)
+	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin)
 	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,

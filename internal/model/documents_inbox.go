@@ -94,14 +94,6 @@ func (in *DocumentFiler) hook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (in *DocumentFiler) Remove(ctx context.Context, actor access.Actor, group string) error {
-	if err := in.store.Commit(ctx, actor, DocumentsApp, in.store.Model().Documents.removeGroup(actor, group)...); err != nil {
-		return err
-	}
-	slog.Info("artifacts: a group's mail removed", "group", group)
-	return nil
-}
-
 func (in *DocumentFiler) FileSaved(ctx context.Context, actor access.Actor, path string) error {
 	saved, err := ReadSaved(path)
 	if err != nil {

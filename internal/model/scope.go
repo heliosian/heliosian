@@ -10,11 +10,6 @@ import (
 type scope struct {
 	now time.Time
 
-	placedOnce  sync.Once
-	placed      placement
-	keysOnce    sync.Once
-	suggestions map[string]bool
-
 	eventsOnce sync.Once
 	events     []*Event
 	eventsByID map[string]*Event

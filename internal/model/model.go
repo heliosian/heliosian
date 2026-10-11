@@ -232,7 +232,6 @@ var adminApps = []adminApp{
 	{"birthday", birthdaysAppName, BirthdaysAdminAllowances, func(m *Model) []string { return m.Birthdays.admins }},
 	{"celebrate", partiesAppName, PartiesAdminAllowances, func(m *Model) []string { return m.Parties.admins }},
 	{"when", CalendarApp, CalendarAdminAllowances, func(m *Model) []string { return m.Calendar.admins }},
-	{"loop", emailListsAppName, EmailListsAdminAllowances, func(m *Model) []string { return m.EmailLists.admins }},
 	{"home", homeAppName, HomeAdminAllowances, func(m *Model) []string { return m.Home.admins }},
 }
 

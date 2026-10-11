@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"sort"
-	"time"
 
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
@@ -232,14 +231,6 @@ func main() {
 		fmt.Printf("    %s: %d classroom-days\n", d.Name, byType[d.ID])
 	}
 	fmt.Printf("calendar admins: %d\n", len(m.AdminList("when").Admins()))
-
-	groupModel := m.EmailLists
-	sources := m.Audience(time.Now().In(model.Location))
-	fmt.Println("groups:")
-	for _, g := range groupModel.Groups {
-		fmt.Printf("  %s %q: aliases %v, %d managers, %d rules, %d members, %d excluded, prefix %v, visibility %s, posting %s, replying %s\n", g.Address(), g.Title, g.Aliases, len(g.Managers), len(g.Rules), len(g.Members(sources)), len(g.Excluded), g.Prefix, g.Visibility, g.Posting, g.Replying)
-	}
-	fmt.Printf("groups admins: %d\n", len(m.AdminList("loop").Admins()))
 
 	documents := m.Documents.Documents
 	fmt.Printf("artifacts: %d documents\n", len(documents))

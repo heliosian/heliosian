@@ -29,19 +29,8 @@ func (g EmailList) Members(s AudienceSources) []string {
 	return g.audience().Members(s)
 }
 
-var (
-	SeeAllLists  = access.Named("loop.see-all")
-	ActAsManager = access.Named("loop.act-as-manager")
-)
-
-var EmailListsAdminAllowances = []access.Allowance{SeeAllLists, ActAsManager}
-
-func (g EmailList) Edits(v access.Actor) bool {
-	return v.May(ActAsManager) || g.Manages(v.Email)
-}
-
 func (g EmailList) Sees(v access.Actor) bool {
-	return v.May(SeeAllLists) || g.Manages(v.Email)
+	return g.Manages(v.Email)
 }
 
 func (g EmailList) VisibleTo(v access.Actor, s AudienceSources) bool {

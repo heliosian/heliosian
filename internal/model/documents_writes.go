@@ -16,7 +16,3 @@ func (m *Documents) Replace(actor access.Actor, doc *Document) []store.Op {
 func (m *Documents) Drop(actor access.Actor, key string) []store.Op {
 	return []store.Op{store.Delete(documentsTab, store.Row{"Key": key})}
 }
-
-func (m *Documents) removeGroup(actor access.Actor, group string) []store.Op {
-	return []store.Op{store.Delete(documentsTab, store.Row{"Kind": DocumentKindGroup, "Channel": group})}
-}

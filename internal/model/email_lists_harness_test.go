@@ -1,12 +1,13 @@
 package model
 
 import (
-	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
-	"time"
 
-	"heliosian/internal/artifacts"
+	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -14,16 +15,9 @@ import (
 )
 
 type harness struct {
-	t       *testing.T
-	mux     *http.ServeMux
-	dir     *data.Dir
-	store   *Store
-	sources func() AudienceSources
-	queue   *store.Queue
-}
-
-func (h *harness) lists() *EmailLists {
-	return h.store.Model().EmailLists
+	t     *testing.T
+	mux   *http.ServeMux
+	store *Store
 }
 
 func newHarness(t *testing.T) *harness {
@@ -37,46 +31,71 @@ func loopHarness(t *testing.T, team store.Tables) *harness {
 	sheet, queue = dir, store.NewQueue()
 	outsideSuperAdmin(t, dir)
 	linkRows(t, nil, team)
-	objects := blob.NewMemoryBucket()
-	embedder := vertex(t)
 	deps := sampleDeps(sampleKey)
 	deps.Static = testkit.Files("../../web/who")
-	deps.Objects = objects
-	deps.Embedder = embedder
+	deps.Objects = blob.NewMemoryBucket()
+	deps.Embedder = vertex(t)
 	s := sampleStore(t, dir, queue, deps)
-	sources := func() AudienceSources {
-		return s.Model().Audience(now())
-	}
-	filer := RegisterDocuments(http.NewServeMux(), s, embedder, queue, artifacts.Inbox{SigningKey: "key", Bucket: objects}, func(context.Context, []byte) error { return nil })
-	h := &harness{t: t, mux: http.NewServeMux(), dir: dir, store: s, sources: sources, queue: queue}
-	typedRegistry(s, queue, DirectoryResources(), EmailListResources(s, filer), MagicTagResources()).Register(h.mux)
-	RegisterEmailLists(h.mux, EmailListsDeps{
-		Store: s,
-		About: EmailListsAbout(func() string { return "Helios Loop" }, func() string { return "Email lists drawn from the directory" }),
-	})
+	h := &harness{t: t, mux: http.NewServeMux(), store: s}
+	typedRegistry(s, queue, DirectoryResources(), MagicTagResources()).Register(h.mux)
 	return h
 }
 
-func (h *harness) rows(tab string) []map[string]string {
-	_, rows, err := h.dir.Table(emailListsAppName, tab)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	return rows
+func (h *harness) as(email, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	auth.Fixed(email, h.mux).ServeHTTP(rec, req)
+	return rec
 }
 
-func (h *harness) waitFor(what string, ok func() bool) {
+type listReply struct {
+	Result    json.RawMessage                      `json:"result"`
+	Resources map[string]map[string]map[string]any `json:"resources"`
+}
+
+func (h *harness) get(as, path string) listReply {
 	h.t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if ok() {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
+	rec := h.as(as, http.MethodGet, path, "")
+	if rec.Code != http.StatusOK {
+		h.t.Fatalf("GET %s as %s: %d %s", path, as, rec.Code, rec.Body)
 	}
-	h.t.Fatalf("waited in vain for %s", what)
+	var out listReply
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		h.t.Fatalf("GET %s: %v", path, err)
+	}
+	return out
 }
 
-func (h *harness) members(name string) []string {
-	return h.lists().Named(name).Members(h.sources())
+func (h *harness) want(as, method, path, body string, code int) {
+	h.t.Helper()
+	if rec := h.as(as, method, path, body); rec.Code != code {
+		h.t.Fatalf("%s %s as %s: %d %s, want %d", method, path, as, rec.Code, rec.Body, code)
+	}
+}
+
+func (r listReply) ids(t *testing.T) []string {
+	t.Helper()
+	out := []string{}
+	if err := json.Unmarshal(r.Result, &out); err != nil {
+		t.Fatalf("result %s: %v", r.Result, err)
+	}
+	return out
+}
+
+func (r listReply) id(t *testing.T) string {
+	t.Helper()
+	var out string
+	if err := json.Unmarshal(r.Result, &out); err != nil {
+		t.Fatalf("result %s: %v", r.Result, err)
+	}
+	return out
+}
+
+func strings2(v any) []string {
+	out := []string{}
+	for _, s := range v.([]any) {
+		out = append(out, s.(string))
+	}
+	return out
 }

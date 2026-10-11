@@ -1,4 +1,4 @@
-package model
+package loop
 
 import (
 	"bytes"
@@ -9,9 +9,9 @@ import (
 	"testing"
 )
 
-func TestEmailListsAbout(t *testing.T) {
+func TestAbout(t *testing.T) {
 	t.Chdir("../..")
-	about := EmailListsAbout(func() string { return "Renamed" }, func() string { return "A new line" })
+	about := About(func() string { return "Renamed" }, func() string { return "A new line" })
 	tags := about.PreviewHead(httptest.NewRequest("GET", "https://loop.heliosian.com/some/page", nil))
 	for _, want := range []string{`og:site_name" content="Renamed"`, `og:title" content="Renamed"`, `content="A new line. Each email list is an address`, `og:image" content="https://loop.heliosian.com/open/share/about.png"`} {
 		if !strings.Contains(tags, want) {

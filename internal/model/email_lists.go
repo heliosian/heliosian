@@ -157,15 +157,11 @@ type EmailLists struct {
 	Groups     []EmailList
 	Messages   []ListMessage
 	Deliveries []ListDelivery
-	admins     []string
 	idKey      []byte
 	byID       map[string]int
 	byName     map[string]int
 	byAddress  map[string]int
 	archived   map[string]map[string]bool
-	sent       map[string][]*Sent
-	sentByID   map[string]*Sent
-	copyByID   map[string]*Copy
 }
 
 func (m *EmailLists) Archived(groupID, email string) bool {
@@ -362,26 +358,8 @@ func compareWhen(x, y Excluded) int {
 	return strings.Compare(x.When, y.When)
 }
 
-func ruleCells(groupID string, r Rule) store.Row {
-	cells := r.Cells()
-	cells["Group"] = groupID
-	return cells
-}
-
-func prefixCell(on bool) string {
-	if on {
-		return ""
-	}
-	return prefixOff
-}
-
-func groupCells(g EmailList) store.Row {
-	return store.Row{idColumn: g.ID, "Name": g.Name, "Title": g.Title, "Description": g.Description, "Created By": g.CreatedBy, "Created": g.Created, prefixColumn: prefixCell(g.Prefix), visibleColumn: g.Visibility, postingColumn: g.Posting, replyingColumn: g.Replying}
-}
-
 func BuildEmailLists(tables store.Tables, idKey []byte) (*EmailLists, error) {
 	m := &EmailLists{Groups: []EmailList{}, Messages: []ListMessage{}, Deliveries: []ListDelivery{}, idKey: idKey, byID: map[string]int{}, byName: map[string]int{}, archived: map[string]map[string]bool{}}
-	m.admins = ReadAdmins(tables)
 	for _, row := range tables[groupsTab] {
 		groupID, ok := id.Parse(row[idColumn])
 		if !ok {
@@ -497,6 +475,5 @@ func BuildEmailLists(tables store.Tables, idKey []byte) (*EmailLists, error) {
 			m.byAddress[local] = i
 		}
 	}
-	m.indexHistory()
 	return m, nil
 }

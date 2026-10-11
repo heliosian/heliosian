@@ -340,9 +340,6 @@ func TestWhoSeesAGroupAndWhoReadsItsMail(t *testing.T) {
 				t.Errorf("%s: %s sees rules %v", c.visibility, email, shown.Rules)
 			}
 		}
-		if !g.VisibleTo(access.Actor{Email: outsider, Allowances: access.Grant(EmailListsAdminAllowances)}, s) {
-			t.Errorf("%s: an admin does not see it", c.visibility)
-		}
 	}
 }
 

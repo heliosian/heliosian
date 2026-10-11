@@ -131,22 +131,8 @@ func MagicTagResources() []api.Type[*Model] {
 				}
 				return []string{m.magicTagID(t.Parent)}
 			}},
-			"email-lists": {Type: "email-lists", Many: true, List: func(m *Model, q api.Query, key string) []string {
-				t, ok := m.heldTag(q, key)
-				if !ok {
-					return nil
-				}
-				out := []string{}
-				for _, g := range m.EmailLists.naming(t.Key) {
-					if m.listVisible(g, q.Actor) {
-						out = append(out, g.ID)
-					}
-				}
-				return out
-			}},
-			"party":      {Type: "parties", List: sourceOf(MagicTagParty)},
-			"activity":   {Type: "activities", List: sourceOf(MagicTagActivity)},
-			"email-list": {Type: "email-lists", List: sourceOf(MagicTagGroup)},
+			"party":    {Type: "parties", List: sourceOf(MagicTagParty)},
+			"activity": {Type: "activities", List: sourceOf(MagicTagActivity)},
 		},
 	}}
 }

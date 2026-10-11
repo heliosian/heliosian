@@ -40,21 +40,6 @@ func emailListsSampleCache(t *testing.T) (*Store, *data.Dir) {
 	return sampleStore(t, dir, store.NewQueue(), sampleDeps(sampleKey)), dir
 }
 
-func logRows(t *testing.T, dir *data.Dir, tab string) int {
-	t.Helper()
-	_, rows, err := dir.Table(emailListsAppName, store.ChangeLogTab)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n := 0
-	for _, row := range rows {
-		if row["Tab"] == tab {
-			n++
-		}
-	}
-	return n
-}
-
 func TestSampleSheetLoads(t *testing.T) {
 	m, err := BuildEmailLists(emailListsTables(t), []byte("test"))
 	if err != nil {
@@ -183,90 +168,6 @@ func TestChecksRefuseBadGroups(t *testing.T) {
 	}
 }
 
-func TestSavingAGroupWritesOnlyWhatChanged(t *testing.T) {
-	cache, dir := emailListsSampleCache(t)
-	ctx := context.Background()
-	additions := cache.Count(emailListsAppName, additionsTab, nil)
-	chess := id.New(func(string) bool { return false })
-	g := NormalizeList(EmailList{ID: chess, Name: "chess.club", Aliases: []string{"Chess"}, Title: " Chess Club ", Visibility: " Members ", Managers: []string{"M@X.org", "m@x.org"}, Rules: []Rule{{Kind: "Include", Search: "  Kim ", Tags: []string{" tag:DTG0000000009 "}}},
-		Additions: []Addition{{Email: " Coach@Club.org ", Name: "  The  Coach "}, {Email: "coach@club.org", Name: "Again"}}})
-	manager := access.Actor{Email: "m@x.org"}
-	if err := cache.CommitAndWait(ctx, manager, emailListsAppName, groupOps(EmailList{}, g, true)...); err != nil {
-		t.Fatal(err)
-	}
-	m := cache.Model().EmailLists
-	got := m.Group(chess)
-	if len(m.Groups) != 4 || got.Name != "chess.club" || got.Title != "Chess Club" || got.Visibility != VisibilityMembers || len(got.Managers) != 1 || got.Rules[0].Kind != RuleInclude || got.Rules[0].Search != "kim" || got.Rules[0].Tags[0] != "tag:dtg0000000009" {
-		t.Fatalf("%+v", got)
-	}
-	if len(got.Additions) != 1 || got.Additions[0] != (Addition{Email: "coach@club.org", Name: "The Coach"}) {
-		t.Fatalf("additions: %+v", got.Additions)
-	}
-	if m.Resolve("chess") != got || cache.Count(emailListsAppName, id.AliasesTab, store.Row{id.AliasColumn: "chess", id.IDColumn: chess}) != 1 {
-		t.Fatal("the alias was not written against the group's ID")
-	}
-	for _, tab := range []string{managersTab, rulesTab, additionsTab} {
-		if cache.Count(emailListsAppName, tab, store.Row{"Group": chess}) != 1 || cache.Count(emailListsAppName, tab, store.Row{"Group": "chess.club"}) != 0 {
-			t.Fatalf("%s does not name the group by its ID", tab)
-		}
-	}
-	next := *got
-	next.Rules = append(slices.Clone(got.Rules), Rule{Kind: RuleExclude, Roles: []string{"Staff"}})
-	next.Additions = nil
-	next.Visibility = ""
-	if err := cache.CommitAndWait(ctx, manager, emailListsAppName, groupOps(*got, next, false)...); err != nil {
-		t.Fatal(err)
-	}
-	m = cache.Model().EmailLists
-	if len(m.Group(chess).Rules) != 2 || len(m.Groups) != 4 || len(m.Group(chess).Additions) != 0 || m.Group(chess).Visibility != VisibilityHidden {
-		t.Fatalf("second save: %+v", m.Group(chess))
-	}
-	if cache.Count(emailListsAppName, additionsTab, nil) != additions || cache.Count(emailListsAppName, managersTab, store.Row{"Group": chess}) != 1 {
-		t.Fatal("the additions or managers rows were not kept to the group")
-	}
-	if logRows(t, dir, managersTab) != 1 {
-		t.Fatalf("an unchanged manager was written again: %d log rows", logRows(t, dir, managersTab))
-	}
-	if err := cache.Commit(ctx, manager, emailListsAppName, store.Delete(groupsTab, store.Row{idColumn: chess})); err != nil {
-		t.Fatal(err)
-	}
-	if m = cache.Model().EmailLists; m.Group(chess) != nil || m.Resolve("chess") != nil || len(m.Groups) != 3 {
-		t.Fatal("the group was not removed")
-	}
-	if cache.Count(emailListsAppName, managersTab, store.Row{"Group": chess}) != 0 || cache.Count(emailListsAppName, rulesTab, store.Row{"Group": chess}) != 0 || cache.Count(emailListsAppName, id.AliasesTab, store.Row{id.IDColumn: chess}) != 0 {
-		t.Fatal("the group's rows outlived it")
-	}
-}
-
-func TestSavingANewGroupMintsItsID(t *testing.T) {
-	cache, _ := emailListsSampleCache(t)
-	m := cache.Model().EmailLists
-	actor := access.Actor{Email: "m@x.org"}
-	sources := AudienceSources{Directory: &Directory{}, MagicTags: func(string) []MagicTag { return nil }, EmailLists: m}
-	taken := func(key string) bool { return m.Group(key) != nil }
-	ops, g, action, err := m.SaveGroup(actor, sources, EmailList{Name: "chess.club", Title: "Chess Club", Rules: []Rule{{Kind: RuleInclude, Roles: []string{"Staff"}}}}, taken)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if parsed, ok := id.Parse(g.ID); !ok || parsed != g.ID || taken(g.ID) || action != "add" {
-		t.Fatalf("minted %q, action %s", g.ID, action)
-	}
-	if _, _, _, err := m.SaveGroup(actor, sources, EmailList{ID: g.ID, Name: "chess.club", Title: "Chess Club", Managers: []string{actor.Email}, Rules: g.Rules}, taken); err == nil {
-		t.Fatal("an edit to a group the sheet does not have was taken")
-	}
-	if err := cache.CommitAndWait(context.Background(), actor, emailListsAppName, ops...); err != nil {
-		t.Fatal(err)
-	}
-	if saved := cache.Model().EmailLists.Named("chess.club"); saved == nil || saved.ID != g.ID || cache.Model().EmailLists.Group(g.ID) != saved {
-		t.Fatalf("the saved group is %+v", saved)
-	}
-	current := *m.Group(soccerID)
-	current.Name = "soccer-team-2"
-	if _, _, _, err := m.SaveGroup(access.Actor{Email: current.Managers[0]}, sources, current, taken); err == nil {
-		t.Fatal("a group was renamed")
-	}
-}
-
 func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	m, err := BuildEmailLists(emailListsTables(t), []byte("test"))
 	if err != nil {
@@ -310,25 +211,6 @@ func TestAliasesReachTheirGroupAndStayUnique(t *testing.T) {
 	tables[rulesTab] = append(tables[rulesTab], store.Row{"Group": "grp0000000009", "Kind": "include", "Roles": "Staff"})
 	if _, err := BuildEmailLists(tables, []byte("test")); err == nil {
 		t.Error("accepted a group named for another group's alias")
-	}
-}
-
-func TestSuggestedIsEveryPartyAndActivityNoRuleNames(t *testing.T) {
-	groups := []EmailList{{Rules: []Rule{{Tags: []string{"party:p1"}}, {Tags: []string{"gardeners", "activity:e2"}}}}}
-	lists := []MagicTag{
-		{Key: "party:p1", Kind: MagicTagParty},
-		{Key: "party:p2", Kind: MagicTagParty},
-		{Key: "activity:e1", Kind: MagicTagActivity},
-		{Key: "activity:e2", Kind: MagicTagActivity},
-		{Key: "room:K", Kind: MagicTagRoom},
-		{Key: "group:tech", Kind: MagicTagGroup},
-	}
-	keys := []string{}
-	for _, l := range Suggested(lists, groups) {
-		keys = append(keys, l.Key)
-	}
-	if !slices.Equal(keys, []string{"party:p2", "activity:e1"}) {
-		t.Fatalf("suggested %v", keys)
 	}
 }
 
@@ -378,22 +260,5 @@ func TestArchivedIsOnePersonsAndFollowsTheGroup(t *testing.T) {
 		if _, err := BuildEmailLists(stray, []byte("test")); err == nil {
 			t.Fatalf("accepted an archived row naming %s", group)
 		}
-	}
-}
-
-func TestSuggestedTagsAreTheOwnersOwnNoRuleNames(t *testing.T) {
-	groups := []EmailList{{Rules: []Rule{{Tags: []string{TagKey("dtg0000000001")}}, {Tags: []string{TagKey("dtg0000000009")}}}}}
-	tags := []Tag{
-		{ID: "dtg0000000003", Name: "Book Club", People: []string{"c@x"}},
-		{ID: "dtg0000000001", Name: "Carpool", People: []string{"a@x"}},
-		{ID: "dtg0000000004", Name: "Empty", People: []string{}},
-		{ID: "dtg0000000002", Name: "Soccer Team", People: []string{"b@x"}},
-	}
-	got := []string{}
-	for _, tag := range SuggestedTags(tags, groups) {
-		got = append(got, tag.Name)
-	}
-	if !slices.Equal(got, []string{"Book Club", "Soccer Team"}) {
-		t.Fatalf("suggested %v", got)
 	}
 }

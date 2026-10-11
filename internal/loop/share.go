@@ -1,8 +1,8 @@
-package model
+package loop
 
 import "heliosian/internal/sharecard"
 
-func EmailListsAbout(name, tagline func() string) *sharecard.About {
+func About(name, tagline func() string) *sharecard.About {
 	return &sharecard.About{
 		Style: &sharecard.Style{Palette: sharecard.Standard, Name: name, Tagline: tagline, Lockup: "web/public/loop/brand/logo-lockup-horizontal.png"},
 		Desc:  "Each email list is an address at loop.heliosian.com - a class, a team, a committee, a party's guests - whose members follow from the directory, so it stays current as families come and go, and every message sent to it reaches them. Sign in with your school Google account.",

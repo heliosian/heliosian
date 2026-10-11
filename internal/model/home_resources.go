@@ -29,6 +29,11 @@ const (
 	schoolEmailsSince = SchoolMailWindow
 )
 
+type RuleView struct {
+	Rule
+	TagLabels []string `json:"tagLabels"`
+}
+
 type linkResource struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description,omitempty"`
