@@ -94,7 +94,7 @@ export function groupFilters(rerender) {
   }
   const sections = [
     {label: 'When', values: [comingUp, past, noDate], chosen: filters.when},
-    {label: 'Part Of', values: partOfOptions(), chosen: filters.partOf},
+    {label: 'Part of', values: partOfOptions(), chosen: filters.partOf},
     {label: 'Short name', values: [hasShortName, noShortName], chosen: filters.shortName},
   ];
   const facets = el('div', 'facet-filters');
