@@ -52,17 +52,19 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 	m := sample(t).Model()
 	root := trace.New("test")
+	bands := `(select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band"))))`
 	queries := []*Query{}
 	for _, src := range []string{
+		`(from EFFECTIVE_MEMBER (where (in group ` + bands + `)) (columns group person))`,
+		`(from GROUP @g (where (in id ` + bands + `) (sidebar_group @g)))`,
 		`(from GROUP @g (where (sidebar_group @g) (= kind "event")))`,
-		`(from GROUP @g (where (sidebar_group @g) (= kind "group")))`,
 		`(from GROUP @g (where (implementation_only @g)))`,
 	} {
 		queries = append(queries, mustParse(t, src))
 	}
 	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
-	if len(results[2].IDs) != 5 {
-		t.Fatalf("the third query found %v", results[2].IDs)
+	if len(results[3].IDs) != 5 {
+		t.Fatalf("the fourth query found %v", results[3].IDs)
 	}
 	passes := map[string]int{}
 	for _, run := range root.Children {
@@ -75,9 +77,12 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 			}
 		}
 	}
-	for _, table := range []string{"GROUP", "RULE", "APP", "WIDGET", "COLLECTION_GROUP", "PERSON"} {
-		if passes[table] != 1 {
-			t.Errorf("%s was scanned %d times for its selects, want once: %v", table, passes[table], passes)
+	if passes["GROUP"] != 1 {
+		t.Errorf("GROUP was scanned %d times for the bands select, want once: %v", passes["GROUP"], passes)
+	}
+	for _, table := range []string{"RULE", "APP", "WIDGET", "COLLECTION_GROUP", "PERSON"} {
+		if passes[table] != 0 {
+			t.Errorf("%s was scanned %d times for implementation_only's selects, which probe: %v", table, passes[table], passes)
 		}
 	}
 }
