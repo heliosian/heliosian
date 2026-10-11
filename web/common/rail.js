@@ -142,6 +142,12 @@ export function groupPathOf(item) {
   return '/groups/' + encodeURIComponent(item.slug || item.id);
 }
 
+let hiddenSections = new Set();
+
+export function initRail({hide}) {
+  hiddenSections = new Set(hide);
+}
+
 export function navSections({tags, lists}) {
   const backstage = l => l.run && !l.member && l.kind !== 'event';
   const shown = lists.filter(l => !backstage(l));
@@ -153,7 +159,7 @@ export function navSections({tags, lists}) {
     {key: 'upcoming', title: 'Coming Up', open: true, items: shown.filter(l => l.start).sort((a, b) => a.start.localeCompare(b.start)).map(listItem(true))},
     {key: 'joined', title: 'Joined', open: true, items: shown.filter(l => !l.run && !l.start).sort(byName).map(listItem(false))},
     {key: 'managing', title: 'Managing', open: false, items: lists.filter(backstage).sort(byName).map(listItem(false))},
-  ].filter(section => section.items.length);
+  ].filter(section => section.items.length && !hiddenSections.has(section.key));
 }
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});

@@ -1,6 +1,6 @@
 import {model, viewer, familyOf, resetPageState} from './state.js';
 import {segments, hue, firstName} from './dom.js';
-import {navSections, sectionHeading, listName, railRow, fillNav as drawRail, listPageRows, listsOpen, setListsOpen, groupActive, groupPathOf} from '/rail.js';
+import {initRail, navSections, sectionHeading, listName, railRow, fillNav as drawRail, listPageRows, listsOpen, setListsOpen, groupActive, groupPathOf} from '/rail.js';
 import {el, svg, link} from '/elements.js';
 import {loadNavScroll, saveNavScroll} from './storage.js';
 import {myFamily} from './families.js';
@@ -314,6 +314,7 @@ export function renderUserChrome() {
 }
 
 export function initChrome() {
+  initRail({hide: ['upcoming']});
   initShell({
     name: 'Helios Who?',
     me,

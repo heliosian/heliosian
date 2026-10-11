@@ -59,7 +59,7 @@ A copyable contact table for party planning and outreach: full name, email, role
 
 ### Lists
 
-The sidebar's Lists section holds the user's own tags and the lists their roles and sign-ups in the other apps give them, in four parts (`listSections` in `web/who/tags.js`):
+The sidebar's Lists section holds the user's own tags and the lists their roles and sign-ups in the other apps give them, in the shared rail's four parts (`navSections` in `web/common/rail.js`). An app hides parts by key when it starts (`initRail`); Who? hides Coming Up (`initChrome` in `web/who/chrome.js`), so its rail and its phone Lists menu show no dated lists, while Loop's rail shows all four.
 
 - Running: their tags (a shared one, which others manage too, with a people icon), then the undated lists they manage and are in - email lists, ongoing activities, room parent lists.
 - Coming Up: the dated parties and activities they are in and the events they manage or are going to, soonest first, each with its date on a small line under its name. A thing's day is its own start or, for an undated sub-activity, its nearest dated parent's; once that day (or its end) is past the list drops off. An event counts when it has a Going group: its list is that group, and it shows when they manage the event or are going. A repeating event shows once, at its next date.
