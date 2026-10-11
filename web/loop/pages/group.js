@@ -7,7 +7,7 @@ import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
 import {load, navigate} from '/router.js';
-import {openLayer} from '/modal.js';
+import {openLayer, popup} from '/modal.js';
 import {createPersonPicker} from '/picker.js';
 import {field, text as textInput, textarea as textAreaInput, select as selectInput} from '/form.js';
 import {tabStrip, tabParam, tabHref} from '/tabs.js';
@@ -80,7 +80,7 @@ function editor(g, isNew, closeModal, startTab) {
   form.addEventListener('submit', e => e.preventDefault());
   const ed = {
     g, isNew, closeModal, form, draft, original: JSON.parse(JSON.stringify(draft)),
-    nameInput: null, nameTouched: false, addressNote: el('small'),
+    nameInput: null, nameTouched: false, addressNote: el('small'), aliasList: null,
     ruleCounts: new Map(), summary: el('span', 'change-summary'),
     current: isNew ? [] : g.members, previewTimer: null, previewing: false, previewAgain: false, lastPreview: null,
   };
@@ -149,13 +149,12 @@ function groupTitleInput(ed) {
 
 function updateAddress(ed) {
   const {draft} = ed;
-  ed.addressNote.textContent = draft.slug ? `${draft.slug}@${domain}` : `The address is <name>@${domain}, and cannot change once made.`;
+  ed.addressNote.textContent = draft.slug ? `${draft.slug}@${domain}` : `The address is <name>@${domain}.`;
 }
 
 function addressField(ed, alias) {
   const {draft} = ed;
   const name = textInput(draft.slug, {maxLength: 40, placeholder: 'soccer-team'});
-  name.disabled = !ed.isNew;
   name.addEventListener('input', () => {
     ed.nameTouched = true;
     draft.slug = slug(name.value);
@@ -176,6 +175,7 @@ function addressField(ed, alias) {
 function aliasField(ed) {
   const {draft} = ed;
   const rows = el('div', 'alias-rows');
+  ed.aliasList = rows;
   const input = textInput('', {maxLength: 40, placeholder: 'another-name'});
   const status = el('span', 'save-status');
   const add = el('div', 'add-row alias-add');
@@ -667,6 +667,12 @@ async function changeGroup(ed) {
   if (draft.visibility !== original.visibility) {
     cells.visible_to = visibleTo(draft.visibility, g.id);
   }
+  if (draft.slug !== original.slug) {
+    if (reserved.includes(draft.slug)) {
+      throw new Error('That address cannot be used.');
+    }
+    cells.slug = draft.slug;
+  }
   const edits = Object.keys(cells).length ? [{set: g.id, cells}] : [];
   edits.push(...ruleEdits(ed, g.id), ...handEdits(ed, g.id), ...aliasEdits(ed, g.id));
   if (edits.length) {
@@ -675,7 +681,34 @@ async function changeGroup(ed) {
   await addGuests(ed, g.id);
 }
 
-async function saveGroup(ed, save, status) {
+function askKeepAddress(old, then) {
+  const node = el('div');
+  const actions = el('div', 'modal-actions');
+  node.append(el('p', '', `Keep ${old}@${domain} as an alias, so mail sent to it still reaches this email list?`), actions);
+  const {shut} = popup('Keep the old address?', node);
+  const answer = keep => () => {
+    shut();
+    then(keep);
+  };
+  actions.append(button('Yes', null, 'button', answer(true)), button('No', null, 'button button-secondary', answer(false)));
+}
+
+function saveGroup(ed, save, status) {
+  const {draft, original} = ed;
+  if (ed.isNew || !original.slug || !draft.slug || draft.slug === original.slug || draft.aliases.includes(original.slug)) {
+    writeGroup(ed, save, status);
+    return;
+  }
+  askKeepAddress(original.slug, keep => {
+    if (keep) {
+      draft.aliases.push(original.slug);
+      renderAliases(draft, ed.aliasList);
+    }
+    writeGroup(ed, save, status);
+  });
+}
+
+async function writeGroup(ed, save, status) {
   const {draft, isNew, closeModal} = ed;
   status.classList.remove('error');
   status.textContent = 'Saving…';
@@ -693,6 +726,12 @@ async function saveGroup(ed, save, status) {
       await loadModel();
       toast('Email list made');
       navigate(groupPath(draft));
+      return;
+    }
+    if (draft.slug !== ed.original.slug) {
+      await loadModel();
+      toast('Saved');
+      navigate(withTab(groupPath(draft)));
       return;
     }
     await load();

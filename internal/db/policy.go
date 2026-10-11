@@ -710,6 +710,8 @@ const PolicySource = `
        (or (blank @new.members_visible_to) (= @new.members_visible_to.slug "everyone"))))
 ; a mail list's managers rename it
 (set GROUP.name (runs_list @old))
+; a mail list's managers change its address or take it away
+(set GROUP.slug (and (runs_list @old) (= @old.kind "group")))
 ; a mail list's managers describe it
 (set GROUP.description (runs_list @old))
 ; a mail list's managers say who may post to it

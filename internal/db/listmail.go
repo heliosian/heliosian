@@ -128,7 +128,7 @@ func (m *Model) mailList(local string) store.Row {
 		if a["alias"] != local {
 			continue
 		}
-		if g, ok := groups.Get(a["target"]); ok && groupOpen(g) {
+		if g, ok := groups.Get(a["target"]); ok && groupOpen(g) && g["slug"] != "" {
 			return g
 		}
 	}
@@ -400,7 +400,7 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 			failures = append(failures, member["person"]+": no address")
 			continue
 		}
-		tok := unsubscribeToken(l.mail.Key, g["slug"], address)
+		tok := unsubscribeToken(l.mail.Key, g["id"], address)
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + LoopDomain + "?subject=" + tok + ">, <" + l.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := l.mail.Sender.SendRaw(ctx, listAddress(g), []string{address}, msg); err != nil {
@@ -554,8 +554,8 @@ func listAddress(g store.Row) string {
 	return g["slug"] + "@" + LoopDomain
 }
 
-func unsubscribeToken(key []byte, name, email string) string {
-	payload := name + "|" + email
+func unsubscribeToken(key []byte, list, email string) string {
+	payload := list + "|" + email
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + signature(key, payload)
 }
 
@@ -565,7 +565,7 @@ func signature(key []byte, payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func parseToken(key []byte, t string) (name, email string, ok bool) {
+func parseToken(key []byte, t string) (list, email string, ok bool) {
 	encoded, sig, found := strings.Cut(t, ".")
 	if !found {
 		return "", "", false
@@ -578,11 +578,11 @@ func parseToken(key []byte, t string) (name, email string, ok bool) {
 	if !hmac.Equal([]byte(signature(key, payload)), []byte(sig)) {
 		return "", "", false
 	}
-	name, email, found = strings.Cut(payload, "|")
-	if !found || name == "" || email == "" {
+	list, email, found = strings.Cut(payload, "|")
+	if !found || list == "" || email == "" {
 		return "", "", false
 	}
-	return name, email, true
+	return list, email, true
 }
 
 const unsubscribePage = `<!doctype html>
@@ -618,22 +618,21 @@ func writePage(w http.ResponseWriter, title, heading, body string) {
 	fmt.Fprintf(w, unsubscribePage, html.EscapeString(title), html.EscapeString(heading), body)
 }
 
-func (m *Model) listNamed(slug string) store.Row {
-	for _, g := range m.Table("GROUP").All() {
-		if groupOpen(g) && g["slug"] == slug {
-			return g
-		}
+func (m *Model) openList(id string) store.Row {
+	g, ok := m.Table("GROUP").Get(id)
+	if !ok || !groupOpen(g) {
+		return nil
 	}
-	return nil
+	return g
 }
 
 func (l *ListMailer) tokenList(w http.ResponseWriter, r *http.Request) (store.Row, string, bool) {
-	name, email, ok := parseToken(l.mail.Key, r.PathValue("token"))
+	list, email, ok := parseToken(l.mail.Key, r.PathValue("token"))
 	if !ok {
 		http.Error(w, "this link is not one Helios Loop made", http.StatusNotFound)
 		return nil, "", false
 	}
-	g := l.s.Model().listNamed(name)
+	g := l.s.Model().openList(list)
 	if g == nil {
 		http.Error(w, "this email list is gone", http.StatusNotFound)
 		return nil, "", false
@@ -741,17 +740,17 @@ func (l *ListMailer) unsubscribeByMail(ctx context.Context, subject, sender stri
 			tok = strings.TrimSpace(tok[len(prefix):])
 		}
 	}
-	name, email, ok := parseToken(l.mail.Key, tok)
+	list, email, ok := parseToken(l.mail.Key, tok)
 	if !ok {
 		slog.WarnContext(ctx, "list mail: unsubscribe mail with no token", "sender", sender, "subject", subject)
 		return
 	}
-	g := l.s.Model().listNamed(name)
+	g := l.s.Model().openList(list)
 	if g == nil {
-		slog.WarnContext(ctx, "list mail: unsubscribe mail for no list", "group", name, "email", email)
+		slog.WarnContext(ctx, "list mail: unsubscribe mail for no list", "group", list, "email", email)
 		return
 	}
 	if err := l.unsubscribeAddress(ctx, g, email, "mail from "+strings.ToLower(mail.AddressOf(sender))); err != nil {
-		slog.ErrorContext(ctx, "list mail: unsubscribe by mail", "group", name, "email", email, "error", err)
+		slog.ErrorContext(ctx, "list mail: unsubscribe by mail", "group", list, "email", email, "error", err)
 	}
 }

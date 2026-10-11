@@ -58,8 +58,14 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	if _, err := write(parent, Edit{Set: list, Cells: map[string]any{"visible_to": "grp00000000002"}}); err == nil {
 		t.Error("a list's manager shows it to another group")
 	}
-	if _, err := write(parent, Edit{Set: list, Cells: map[string]any{"slug": "renamed"}}); err == nil {
-		t.Error("a list's manager changes its address")
+	if _, err := write(parent, Edit{Set: list, Cells: map[string]any{"slug": "renamed"}}); err != nil {
+		t.Errorf("a list's manager can't change its address: %v", err)
+	}
+	if _, err := write(parent, Edit{Set: list, Cells: map[string]any{"slug": ""}}); err != nil {
+		t.Errorf("a list's manager can't take its address away: %v", err)
+	}
+	if _, err := write(student, Edit{Set: list, Cells: map[string]any{"slug": "mine"}}); err == nil {
+		t.Error("someone who doesn't manage a list changes its address")
 	}
 	if _, err := write(student, Edit{Set: list, Cells: map[string]any{"name": "Mine"}}); err == nil {
 		t.Error("someone who doesn't manage a list renames it")

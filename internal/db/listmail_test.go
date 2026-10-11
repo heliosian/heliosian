@@ -143,8 +143,8 @@ func TestAPostIsSentOnToEveryMemberOnceAndFiled(t *testing.T) {
 		if m == nil || m[1] != m[2] {
 			t.Fatalf("no matching unsubscribe forms in:\n%s", msg)
 		}
-		if name, email, ok := parseToken([]byte("key"), m[2]); !ok || name != "hummingbirds-parents" || email != s.To[0] {
-			t.Fatalf("the token reads %q %q %v", name, email, ok)
+		if list, email, ok := parseToken([]byte("key"), m[2]); !ok || list != parentsList || email != s.To[0] {
+			t.Fatalf("the token reads %q %q %v", list, email, ok)
 		}
 		for _, want := range []string{"Subject: Re: [Hummingbirds Parents] Field trip\r\n", "From: \"Rowan Ashdown via Hummingbirds Parents\" <hummingbirds-parents@loop.heliosian.com>\r\n", "X-Helios-Loop: hummingbirds-parents\r\n"} {
 			if !strings.Contains(msg, want) {
@@ -247,7 +247,7 @@ func TestRepliesFollowTheListsReplying(t *testing.T) {
 func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 	h := newListMailHarness(t)
 	h.addMember(parentsList, staff, "yes")
-	tok := unsubscribeToken([]byte("key"), "hummingbirds-parents", "rowan.ashdown@example.org")
+	tok := unsubscribeToken([]byte("key"), parentsList, "rowan.ashdown@example.org")
 	page := h.serve(httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok, nil))
 	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Stop getting mail from <strong>Hummingbirds Parents</strong>") {
 		t.Fatalf("the page answered %d: %s", page.Code, page.Body)
@@ -269,7 +269,7 @@ func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 		t.Fatalf("the page after reads %s", again.Body)
 	}
 
-	mayaTok := unsubscribeToken([]byte("key"), "hummingbirds-parents", "maya.lindqvist@example.org")
+	mayaTok := unsubscribeToken([]byte("key"), parentsList, "maya.lindqvist@example.org")
 	if rec := h.inbound(loopNotice("Subject: x\r\n\r\nbody\r\n", "unsubscribe@loop.heliosian.com")); rec.Code != http.StatusOK {
 		t.Fatalf("an unsubscribe mail with no token answered %d", rec.Code)
 	}
@@ -350,6 +350,16 @@ func TestAnAliasWithAnUppercaseLetterReachesNoList(t *testing.T) {
 	}
 	if g := h.s.Model().mailList("K7M2Q9X4V1BNC"); g == nil || g["id"] != parentsList {
 		t.Errorf("the lowercase alias, written in capitals, reached %v", g)
+	}
+}
+
+func TestAnAliasOfAListWithNoAddressReachesNoList(t *testing.T) {
+	h := newListMailHarness(t)
+	if _, err := Write(context.Background(), h.s, h.queue, h.mailer.pics, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"slug": ""}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if g := h.s.Model().mailList("k7m2q9x4v1bnc"); g != nil {
+		t.Errorf("the alias reached %s", g["id"])
 	}
 }
 
