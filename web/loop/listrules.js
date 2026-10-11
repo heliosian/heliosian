@@ -1,6 +1,7 @@
 import {el, button, iconButton} from '/elements.js';
 import {select as selectInput, text as textInput} from '/form.js';
-import {query, rowsOf, state, personView} from './state.js';
+import {rowsOf, state, personView} from './state.js';
+import {queries} from '/rail.js';
 
 const whoWords = {'': 'the people', parents: 'their parents', children: 'their children', household: 'their households'};
 
@@ -14,7 +15,7 @@ export async function ruleChoices() {
   if (choices) {
     return choices;
   }
-  const answers = await query({
+  const answers = await queries({
     groups: `(from GROUP @g (where (sees_members @g) (!= status "closed") (in kind ${Object.keys(kindWords).map(k => JSON.stringify(k)).join(' ')})) (order name asc) (columns name kind slug))`,
     roles: `(from GROUP (where (= kind "group") (in slug ${roleSlugs.map(s => JSON.stringify(s)).join(' ')})) (columns name slug))`,
   });

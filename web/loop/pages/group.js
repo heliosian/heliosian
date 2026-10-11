@@ -1,4 +1,5 @@
-import {state, groupPath, person, personView, loadModel, write, query, rowsOf, domain} from '../state.js';
+import {state, groupPath, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
+import {queries} from '/rail.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule} from '../listrules.js';
 import {pageHead} from '../dom.js';
 import {visibilityWords} from './groups.js';
@@ -1079,7 +1080,7 @@ function historyTab(g) {
     loaded = true;
     const id = JSON.stringify(g.id);
     try {
-      const answers = await query({
+      const answers = await queries({
         posts: `(from MESSAGE (where (= group ${id}) (= kind "post") (= direction "in")) (order created desc))`,
         outs: `(from MESSAGE (where (= group ${id}) (= kind "post") (= direction "out")) (columns parent))`,
         copies: `(from RECIPIENT (where (in message (select MESSAGE.id (= group ${id}) (= kind "post") (= direction "out")))) (columns message person sent delivered failed detail))`,

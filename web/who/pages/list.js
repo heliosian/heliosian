@@ -4,7 +4,7 @@ import {dataGrid} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagControl, onTagsChange, tagLabel, tagFacetOptions, listSource, sharedTag, otherManagers, manageControl, selectedGuests} from '../tags.js';
+import {tagControl, onTagsChange, tagLabel, tagFacetOptions, listSource, sharedTag, otherManagers, manageControl, selectedGuests, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter, tagRelationOptionsFor} from '../filters.js';
 import {facetDropdown, familyDropdown} from '/rules.js';
@@ -181,10 +181,10 @@ export function listPage() {
       tagsFacet = null;
     }
     if (!onTagPage && tagFacetOptions().length) {
-      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
+      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, paint);
       facetFilters.append(tagsFacet);
     }
-    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false});
+    const next = directoryFilter(paint, {role: false, city: false, pronouns: false});
     if (!onTagPage) {
       next.classList.add('mobile-filter');
     }
@@ -253,6 +253,9 @@ export function listPage() {
     for (const r of rows) {
       grid.append(personCard(r.p));
     }
+  }
+  function paint() {
+    ensureMembers().then(renderGrid);
   }
   renderGrid();
   // The router mounts the page after this returns.

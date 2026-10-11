@@ -1,7 +1,8 @@
-import {state, model, loadModel, groupKeyOf} from './state.js';
+import {state, model, lists, loadModel, groupKeyOf, loadMembers} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
-import {startApp, notFound} from '/router.js';
+import {el} from '/elements.js';
+import {startApp, notFound, render} from '/router.js';
 import {loadTagRelations} from './storage.js';
 import {familyEntries} from './families.js';
 import {initChrome, preparePage, showPage, renderUserChrome} from './chrome.js';
@@ -53,6 +54,10 @@ function group(parts) {
   state.filterTags = new Set([key]);
   state.filterTagRelations = loadTagRelations(key);
   state.tagListView = 'faces';
+  if (lists[key] && lists[key].people === null) {
+    loadMembers([key]).then(render);
+    return el('div', 'content container');
+  }
   return listPage();
 }
 

@@ -1,4 +1,4 @@
-import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath} from './state.js';
+import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
@@ -72,7 +72,11 @@ export function members(key) {
   if (tags[key]) {
     return tagPeople(tags[key]);
   }
-  return lists[key] ? lists[key].people : [];
+  return lists[key] ? lists[key].people || [] : [];
+}
+
+export function ensureMembers() {
+  return loadMembers([...state.filterTags]);
 }
 
 export function selectedGuests() {

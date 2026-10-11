@@ -1,6 +1,6 @@
 import {api, signedIn} from '/api.js';
 import {me as whoAmI} from '/data.js';
-import {tagCondition, viewerListCondition, runCondition, joinedCondition, listIncludes, listKinds, today, datedFrom, liveLists} from '/rail.js';
+import {tagCondition, navQueries, listKinds, today, datedFrom, liveLists, queries, fetchGroups} from '/rail.js';
 
 export {today};
 
@@ -52,19 +52,6 @@ export async function q(text) {
   return res.json();
 }
 
-async function qs(named) {
-  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  const answer = await res.json();
-  const out = {};
-  for (const name of Object.keys(named)) {
-    out[name] = {result: answer.results[name], resources: answer.resources};
-  }
-  return out;
-}
-
 export function rowsOf(answer, table) {
   return answer.result.map(id => answer.resources[table][id]);
 }
@@ -98,7 +85,6 @@ export function groupKeyOf(name) {
   return Object.keys(lists).find(key => lists[key].id === name || lists[key].groupSlug.toLowerCase() === lower) || '';
 }
 
-const listCondition = viewerListCondition;
 const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug ' +
   'grade_override grade classroom_override classroom crew_override crew department_override department job_title_override job_title ' +
   'phone phone_consent address_consent pronouns pronunciation facts facts_updated photo_updated';
@@ -156,7 +142,7 @@ export async function loadModel() {
   const name = oldName();
   const [who, answers, oldId] = await Promise.all([
     whoAmI(),
-    qs({
+    queries({
       viewer: '(from PERSON (where (= id @viewer)))',
       admin: '(from PERSON (where (= id @viewer) (admin_of "who")) (columns source))',
       people: `(from PERSON (where (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id (= slug "everyone"))))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
@@ -167,18 +153,12 @@ export async function loadModel() {
       effective: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band")))))) (include group) (columns group person))',
       coords: '(from GEOCODE)',
       settings: '(from SETTING (where (= app "platform")))',
-      tagged: `(from GROUP @g (where ${tagCondition}) (include managed_by))`,
       tagMembers: `(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))) (columns group person))`,
-      tagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
-      managed: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
-      joined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
-      mine: '(from EFFECTIVE_MEMBER (where (= person @viewer)) (columns group))',
-      listMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id @g (!= kind "event") ${listCondition}))) (include person) (columns group person))`,
-      rsvpMembers: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes @g ${listCondition}))) (include person) (columns group person))`,
+      ...navQueries(),
     }),
     oldTarget(name),
   ]);
-  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagged, tagMembers, tagManagers, managed, joined, mine, listMembers, rsvpMembers} = answers;
+  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagMembers, navTags, navTagManagers, navManaged, navJoined, navMine} = answers;
   model.email = who.email;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
   model.admin = admin.result.length > 0;
@@ -252,8 +232,8 @@ export async function loadModel() {
       (membersByGroup[e.group] = membersByGroup[e.group] || []).push(e.person);
     }
   }
-  loadTags(tagged, [tagMembers, tagManagers]);
-  loadLists(managed, joined, [listMembers, rsvpMembers], mine);
+  loadTags(navTags, [tagMembers, navTagManagers]);
+  loadLists(navManaged, navJoined, navMine);
   model.moved = movedTo(name, oldId);
   model.movedFrom = location.pathname + location.search;
 }
@@ -296,7 +276,7 @@ export function tagManagers(t) {
   return Object.keys(t.managerRows);
 }
 
-function loadLists(managed, joined, memberAnswers, mineAnswer) {
+function loadLists(managed, joined, mineAnswer) {
   lists = {};
   const groups = {};
   for (const g of [...all(managed, 'GROUP'), ...all(joined, 'GROUP')]) {
@@ -309,26 +289,11 @@ function loadLists(managed, joined, memberAnswers, mineAnswer) {
   if (!rows.length && !room.length) {
     return;
   }
-  const guests = {};
-  for (const p of memberAnswers.flatMap(a => all(a, 'PERSON')).filter(p => p.source === 'guest')) {
-    guests[p.id] = p;
-    byId[p.id] = byId[p.id] || p;
-  }
   const mine = new Set(rowsOf(mineAnswer, 'EFFECTIVE_MEMBER').map(e => e.group));
-  const people = {};
-  const seen = new Set();
-  for (const e of memberAnswers.flatMap(a => rowsOf(a, 'EFFECTIVE_MEMBER'))) {
-    if (seen.has(e.id)) {
-      continue;
-    }
-    seen.add(e.id);
-    (people[e.group] = people[e.group] || []).push(e.person);
-  }
   for (const g of rows) {
     if (tags[tagKey(g.id)]) {
       continue;
     }
-    const ids = people[g.kind === 'event' ? g.rsvp_yes : g.id] || [];
     const dated = datedFrom(g, groups);
     lists[listKey(g.id)] = {
       key: listKey(g.id),
@@ -337,11 +302,12 @@ function loadLists(managed, joined, memberAnswers, mineAnswer) {
       kind: listKinds[g.kind] || 'group',
       slug: g.slug || g.id,
       groupSlug: g.slug || '',
+      rsvp: g.rsvp_yes || '',
       run: running.has(g.id),
       member: mine.has(g.id),
       start: dated ? dated.start : '',
-      people: ids.filter(id => !guests[id]),
-      guests: ids.filter(id => guests[id]).map(id => guests[id]),
+      people: null,
+      guests: [],
     };
   }
   for (const g of room) {
@@ -356,7 +322,29 @@ function loadLists(managed, joined, memberAnswers, mineAnswer) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', run: true, member: true, start: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', rsvp: '', run: true, member: true, start: '', people: [...ids], guests: []};
+  }
+}
+
+export async function loadMembers(keys) {
+  const pending = keys.map(key => lists[key]).filter(l => l && l.people === null);
+  if (!pending.length) {
+    return;
+  }
+  const answers = await fetchGroups(`(select GROUP.id (in id ${pending.map(l => JSON.stringify(l.id)).join(' ')}))`);
+  const guests = {};
+  for (const p of all(answers.members, 'PERSON').filter(p => p.source === 'guest')) {
+    guests[p.id] = p;
+    byId[p.id] = byId[p.id] || p;
+  }
+  const people = {};
+  for (const e of [...rowsOf(answers.members, 'EFFECTIVE_MEMBER'), ...rowsOf(answers.going, 'EFFECTIVE_MEMBER')]) {
+    (people[e.group] = people[e.group] || []).push(e.person);
+  }
+  for (const l of pending) {
+    const ids = people[l.kind === 'event' ? l.rsvp : l.id] || [];
+    l.people = ids.filter(id => !guests[id]);
+    l.guests = ids.filter(id => guests[id]).map(id => guests[id]);
   }
 }
 

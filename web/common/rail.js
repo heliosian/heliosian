@@ -1,5 +1,39 @@
 import {el, svg, link} from '/elements.js';
 import {appOrigin, currentApp} from '/appswitch.js';
+import {signedIn} from '/api.js';
+
+export async function queries(named) {
+  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  const answer = await res.json();
+  const out = {};
+  for (const name of Object.keys(named)) {
+    out[name] = {result: answer.results[name], resources: answer.resources};
+  }
+  return out;
+}
+
+export function groupQueries(sel) {
+  return {
+    groups: `(from GROUP @g (where (in id ${sel})) (order name asc))`,
+    runs: `(from GROUP @g (where (in id ${sel}) (runs_list @g)) (columns slug))`,
+    members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${sel})))) (include person) (columns group person reasons))`,
+    going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${sel})))) (include person) (columns group person reasons))`,
+    hand: `(from MEMBER (where (in group ${sel})) (include person) (columns group person member note added))`,
+    managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (in id ${sel})))) (columns group person))`,
+    rules: `(from RULE (where (in group ${sel})) (order order asc) (include target within))`,
+    aliases: `(from ALIAS (where (in target ${sel}) (not hidden)))`,
+    guestEmails: `(from PERSON_EMAIL (where guest (in person (select MEMBER.person (in group ${sel})))) (columns person address))`,
+    sent: `(from MESSAGE (where (= kind "post") (= direction "in") (= state "sent") (in group ${sel})) (columns group))`,
+    unsubscribed: `(from MEMBER (where (= person @viewer) (in group (select GROUP.unsubscribed (in id ${sel})))) (columns group person))`,
+  };
+}
+
+export function fetchGroups(sel) {
+  return queries(groupQueries(sel));
+}
 
 export const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
 const viewerGroups = '(select EFFECTIVE_MEMBER.group (= person @viewer))';

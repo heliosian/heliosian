@@ -4,7 +4,7 @@ import {dataGrid} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';
-import {tagFacetOptions} from '../tags.js';
+import {tagFacetOptions, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, tagRelationOptionsFor} from '../filters.js';
 import {facetDropdown, clampFilterPanel} from '/rules.js';
@@ -406,7 +406,7 @@ function invitesControls(view, again, paint) {
     facetDropdown('Classroom', null, classroomOptions(), state.filterClassrooms, paint),
   );
   if (tagFacetOptions().length) {
-    controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, again));
+    controls.append(facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => ensureMembers().then(again)));
   }
   const relationOptions = state.filterTags.size === 1 ? tagRelationOptionsFor([...state.filterTags][0]) : [];
   if (relationOptions.length) {

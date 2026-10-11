@@ -3,7 +3,7 @@ import {firstName} from '../dom.js';
 import {el, svg, link} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
-import {tagFacetOptions, onTagsChange, selectedGuests} from '../tags.js';
+import {tagFacetOptions, onTagsChange, selectedGuests, ensureMembers} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter} from '../filters.js';
 import {facetDropdown} from '/rules.js';
 import {render} from '/router.js';
@@ -155,10 +155,10 @@ export function peoplePage() {
       tagsFacet = null;
     }
     if (isEveryone && tagFacetOptions().length) {
-      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, () => renderGrid());
+      tagsFacet = facetDropdown('Tags', null, tagFacetOptions(), state.filterTags, paint);
       facetFilters.append(tagsFacet);
     }
-    const next = directoryFilter(() => renderGrid(), {role: false, city: false, pronouns: false, tags: isEveryone});
+    const next = directoryFilter(paint, {role: false, city: false, pronouns: false, tags: isEveryone});
     next.classList.add('mobile-filter');
     if (mobileFilter) {
       mobileFilter.replaceWith(next);
@@ -171,7 +171,7 @@ export function peoplePage() {
   onTagsChange(() => {
     buildTagFilters();
     if (state.filterTags.size) {
-      renderGrid();
+      paint();
     }
   });
   header.append(controls);
@@ -187,7 +187,10 @@ export function peoplePage() {
       grid.append(el('div', 'empty', 'No matches.'));
     }
   }
-  renderGrid();
+  function paint() {
+    ensureMembers().then(renderGrid);
+  }
+  paint();
   // The router mounts the page after this returns.
   queueMicrotask(() => input.focus());
   return page;

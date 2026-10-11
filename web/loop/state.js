@@ -1,7 +1,7 @@
-import {api, signedIn} from '/api.js';
+import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
-import {navQueries, navLists, viewerListCondition} from '/rail.js';
+import {navQueries, navLists, viewerListCondition, queries, fetchGroups} from '/rail.js';
 
 export const domain = 'loop.heliosian.com';
 
@@ -9,19 +9,6 @@ export const state = {model: null, people: []};
 
 let byId = {};
 let bySlug = {};
-
-export async function query(named) {
-  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  const answer = await res.json();
-  const out = {};
-  for (const name of Object.keys(named)) {
-    out[name] = {result: answer.results[name], resources: answer.resources};
-  }
-  return out;
-}
 
 export function rowsOf(answer, table) {
   return answer.result.map(id => answer.resources[table][id]);
@@ -33,20 +20,28 @@ export function write(batch) {
 
 const lists = `(select GROUP.id @g ${viewerListCondition})`;
 
-function groupQueries(sel) {
-  return {
-    groups: `(from GROUP @g (where (in id ${sel})) (order name asc))`,
-    runs: `(from GROUP @g (where (in id ${sel}) (runs_list @g)) (columns slug))`,
-    members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${sel})))) (include person) (columns group person reasons))`,
-    going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${sel})))) (include person) (columns group person reasons))`,
-    hand: `(from MEMBER (where (in group ${sel})) (include person) (columns group person member note added))`,
-    managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (in id ${sel})))) (columns group person))`,
-    rules: `(from RULE (where (in group ${sel})) (order order asc) (include target within))`,
-    aliases: `(from ALIAS (where (in target ${sel})))`,
-    guestEmails: `(from PERSON_EMAIL (where guest (in person (select MEMBER.person (in group ${sel})))) (columns person address))`,
-    sent: `(from MESSAGE (where (= kind "post") (= direction "in") (= state "sent") (in group ${sel})) (columns group))`,
-    unsubscribed: `(from MEMBER (where (= person @viewer) (in group (select GROUP.unsubscribed (in id ${sel})))) (columns group person))`,
-  };
+function summaries(answers) {
+  const {everyone} = state.model;
+  const runs = new Set(answers.runs.result);
+  const mine = new Set(rowsOf(answers.navMine, 'EFFECTIVE_MEMBER').map(e => e.group));
+  const counts = {};
+  for (const e of [...rowsOf(answers.members, 'EFFECTIVE_MEMBER'), ...rowsOf(answers.going, 'EFFECTIVE_MEMBER')]) {
+    counts[e.group] = (counts[e.group] || 0) + 1;
+  }
+  return rowsOf(answers.groups, 'GROUP').map(g => {
+    const source = g.kind === 'event' && g.rsvp_yes ? g.rsvp_yes : g.id;
+    return {
+      id: g.id,
+      slug: g.slug,
+      title: g.name,
+      address: g.slug ? `${g.slug}@${domain}` : '',
+      description: g.description || '',
+      visibility: visibility(g, everyone),
+      run: runs.has(g.id),
+      member: mine.has(source),
+      count: counts[source] || 0,
+    };
+  });
 }
 
 export function personOf(id) {
@@ -107,7 +102,7 @@ function buildGroups(answers) {
   const hand = by(answers.hand, 'MEMBER', 'group');
   const managers = by(answers.managers, 'MEMBER', 'group');
   const rules = by(answers.rules, 'RULE', 'group');
-  const aliases = by({...answers.aliases, result: rowsOf(answers.aliases, 'ALIAS').filter(a => !/[A-Z]/.test(a.alias)).map(a => a.id)}, 'ALIAS', 'target');
+  const aliases = by(answers.aliases, 'ALIAS', 'target');
   const sent = by(answers.sent, 'MESSAGE', 'group');
   const off = new Set(rowsOf(answers.unsubscribed, 'MEMBER').map(m => m.group));
   return rowsOf(answers.groups, 'GROUP').map(g => {
@@ -149,11 +144,14 @@ function remember(g, ...keys) {
 }
 
 export async function loadModel() {
-  const [who, answers, people] = await Promise.all([whoAmI(), query({
+  const [who, answers, people] = await Promise.all([whoAmI(), queries({
     viewer: '(from PERSON (where (= id @viewer)))',
     everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
     grades: '(from GROUP (where (= kind "grade")) (columns name color))',
-    ...groupQueries(lists),
+    groups: `(from GROUP @g (where (in id ${lists})) (order name asc))`,
+    runs: `(from GROUP @g (where (in id ${lists}) (runs_list @g)) (columns slug))`,
+    members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${lists})))) (columns group))`,
+    going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${lists})))) (columns group))`,
     ...navQueries(),
   }), listed()]);
   await directory();
@@ -179,17 +177,14 @@ export async function loadModel() {
     gradeColors,
     groups: [],
   };
-  state.model.groups = buildGroups(answers);
+  state.model.groups = summaries(answers);
   byId = {};
   bySlug = {};
-  for (const g of state.model.groups) {
-    remember(g);
-  }
 }
 
 export async function fetchGroup(key) {
   const column = /^grp[0-9A-Za-z]{11}$/.test(key) ? 'id' : 'slug';
-  const [g] = buildGroups(await query(groupQueries(`(select GROUP.id (!= status "closed") (= ${column} ${JSON.stringify(key)}))`)));
+  const [g] = buildGroups(await fetchGroups(`(select GROUP.id (!= status "closed") (= ${column} ${JSON.stringify(key)}))`));
   if (g) {
     remember(g, key);
   }
