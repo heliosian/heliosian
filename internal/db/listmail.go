@@ -381,18 +381,14 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 		fail("rewrite", err)
 		return
 	}
-	out := map[string]any{"direction": "out", "kind": "post", "group": g["id"], "parent": id, "created": stamp(time.Now())}
+	created := stamp(time.Now())
+	out := map[string]any{"direction": "out", "kind": "post", "group": g["id"], "parent": id, "created": created}
 	for _, column := range []string{"subject", "header_id", "from_person"} {
 		if post[column] != "" {
 			out[column] = post[column]
 		}
 	}
-	ids, err := l.write(ctx, Edit{Insert: "MESSAGE", Row: out})
-	if err != nil {
-		fail("record", err)
-		return
-	}
-	copies, failures := []Edit{}, []string{}
+	queued, addresses, failures := []Edit{{Insert: "MESSAGE", As: "out", Row: out}}, []string{}, []string{}
 	members := slices.DeleteFunc(slices.Clone(m.effectiveRows(g["id"])), func(member store.Row) bool { return m.unsubscribed(g, member["person"]) })
 	for _, member := range members {
 		address := m.addressOf(member["person"])
@@ -400,20 +396,32 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 			failures = append(failures, member["person"]+": no address")
 			continue
 		}
+		addresses = append(addresses, address)
+		queued = append(queued, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": "@out", "person": member["person"], "created": created}})
+	}
+	ids, err := l.write(ctx, queued...)
+	if err != nil {
+		fail("record", err)
+		return
+	}
+	copies, sent := []Edit{}, 0
+	for i, address := range addresses {
+		row := ids[i+1]
 		tok := unsubscribeToken(l.mail.Key, g["id"], address)
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + LoopDomain + "?subject=" + tok + ">, <" + l.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
 		if err := l.mail.Sender.SendRaw(ctx, listAddress(g), []string{address}, msg); err != nil {
 			log.Error("list mail: send failed", "to", address, "error", err)
 			failures = append(failures, address+": "+err.Error())
+			copies = append(copies, Edit{Delete: row})
 			continue
 		}
-		at := stamp(time.Now())
-		copies = append(copies, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": ids[0], "person": member["person"], "created": at, "sent": at}})
+		sent++
+		copies = append(copies, Edit{Set: row, Cells: map[string]any{"sent": stamp(time.Now())}})
 	}
-	log.Info("list mail: forwarded", "members", len(members), "sent", len(copies), "failed", len(failures))
+	log.Info("list mail: forwarded", "members", len(members), "sent", sent, "failed", len(failures))
 	state := postSent
-	if len(copies) == 0 && len(members) > 0 {
+	if sent == 0 && len(members) > 0 {
 		state = postFailed
 	}
 	finish(state, strings.Join(failures, "; "), copies...)
@@ -519,6 +527,8 @@ func (l *ListMailer) delivery(from, messageID, recipient string, set map[string]
 				return
 			}
 		}
+		slog.Warn("list mail: delivery report for no copy", "message", post["id"], "recipient", recipient, "person", person)
+		return
 	}
 }
 
