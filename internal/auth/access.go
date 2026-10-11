@@ -51,6 +51,12 @@ func Unseal(key []byte, purpose, sealed string, v any) bool {
 	return json.Unmarshal(raw, v) == nil
 }
 
+func AccessKey(sessionKey []byte) []byte {
+	h := hmac.New(sha256.New, sessionKey)
+	h.Write([]byte("mcp tokens"))
+	return h.Sum(nil)
+}
+
 type Tokens struct {
 	Key      []byte
 	Sessions interface {

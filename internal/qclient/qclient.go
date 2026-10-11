@@ -2,12 +2,16 @@ package qclient
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
+
+	"heliosian/internal/auth"
 )
 
 const (
@@ -16,10 +20,18 @@ const (
 )
 
 type Client struct {
-	Base  string
-	Token string
-	Mode  string
-	Spoof string
+	Base     string
+	Token    string
+	Mode     string
+	Spoof    string
+	insecure bool
+}
+
+var devClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+
+func Local(base string, sessionKey []byte, email, mode, spoof string) *Client {
+	tokens := auth.Tokens{Key: auth.AccessKey(sessionKey), Now: time.Now}
+	return &Client{Base: base, Token: tokens.Issue(email), Mode: mode, Spoof: spoof, insecure: true}
 }
 
 type Answer struct {
@@ -64,7 +76,11 @@ func (c *Client) once(method, path, kind string, raw []byte, out any) (http.Head
 	if c.Spoof != "" {
 		req.Header.Set("Helios-Spoof", c.Spoof)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := http.DefaultClient
+	if c.insecure {
+		client = devClient
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}

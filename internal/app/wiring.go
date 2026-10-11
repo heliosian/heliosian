@@ -366,8 +366,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	}
 	chatKey := hmac.New(sha256.New, []byte(sessionKey))
 	chatKey.Write([]byte("ask chats"))
-	accessKey := hmac.New(sha256.New, []byte(sessionKey))
-	accessKey.Write([]byte("mcp tokens"))
 	anthropicKey := env.Required("ANTHROPIC_API_KEY")
 	geocoder := geocode.New(env.Required("GOOGLE_MAPS_SERVER_KEY"))
 	github := githubApp()
@@ -380,7 +378,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Store:         store,
 		IDKey:         []byte(env.Required("ID_KEY")),
 		ChatKey:       chatKey.Sum(nil),
-		AccessKey:     accessKey.Sum(nil),
+		AccessKey:     auth.AccessKey([]byte(sessionKey)),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
 		ImageSearch:   ImageSearchKeys(),
 		Describer:     describe.New(anthropicKey, spend),

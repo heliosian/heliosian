@@ -14,7 +14,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"heliosian/internal/app"
 	"heliosian/internal/db"
+	"heliosian/internal/env"
 	"heliosian/internal/logging"
 	"heliosian/internal/qclient"
 )
@@ -95,9 +97,10 @@ func show(w io.Writer, a qclient.Answer, columns []string) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--import] [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
-		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--import] [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--local email] [--import] [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--local email] [--import] [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
 	}
+	local := flag.String("local", "", "reach the dev server (go run ./tools/startserver --real) instead of production, signed in as the person with this address by a token minted from SESSION_KEY")
 	importing := flag.Bool("import", false, "run in import mode, which shows a super admin every row, withheld and hidden ones too")
 	spoof := flag.String("spoof", "", "run as the person with this address, as a super admin's Spoof Mode does")
 	flag.Parse()
@@ -109,9 +112,14 @@ func main() {
 	if *importing {
 		mode = qclient.ImportMode
 	}
-	c, err := qclient.SignedIn(mode, *spoof)
-	if err != nil {
-		logging.Fatal("sign in", "error", err)
+	var c *qclient.Client
+	if *local != "" {
+		c = qclient.Local("https://who."+app.DevDomain+":"+app.Port(), []byte(env.Required("SESSION_KEY")), *local, mode, *spoof)
+	} else {
+		var err error
+		if c, err = qclient.SignedIn(mode, *spoof); err != nil {
+			logging.Fatal("sign in", "error", err)
+		}
 	}
 	switch flag.Arg(0) {
 	case "read":
