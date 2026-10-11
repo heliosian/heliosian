@@ -2,6 +2,7 @@ package model
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/png"
 	"mime/multipart"
@@ -20,6 +21,37 @@ func TestWidgetsAnswerAParent(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("%s: %d %s", path, rec.Code, rec.Body)
 		}
+	}
+}
+
+func TestACategoryTakesAnUploadedIcon(t *testing.T) {
+	_, _, mux := homeServer(t)
+	var pic bytes.Buffer
+	if err := png.Encode(&pic, image.NewGray(image.Rect(0, 0, 8, 8))); err != nil {
+		t.Fatal(err)
+	}
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("image", "icon.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write(pic.Bytes())
+	form.Close()
+	req := httptest.NewRequest(http.MethodPost, "/api/apps/image", &body)
+	req.Header.Set("Content-Type", form.FormDataContentType())
+	rec := httptest.NewRecorder()
+	auth.Fixed(homeAdmin, mux).ServeHTTP(rec, req)
+	var made struct {
+		Name string `json:"name"`
+	}
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &made) != nil || made.Name == "" {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body)
+	}
+	write(t, mux, homeAdmin, "POST", "/api/link-categories/"+schoolID+"/edit", map[string]any{"emoji": "image:" + made.Name})
+	got := read(t, mux, homeAdmin, "/api/link-categories/"+schoolID).one(t, "link-categories", schoolID)
+	if got["emoji"] != "image:"+made.Name || got["imageUrl"] != "/"+made.Name {
+		t.Errorf("after saving an uploaded icon the category reads %v", got)
 	}
 }
 

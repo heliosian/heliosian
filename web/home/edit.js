@@ -173,11 +173,17 @@ function openCategoryEditor(category) {
   const emoji = category ? category.emoji || '' : '';
   categoryImage = imagePicker(emoji.startsWith('image:') ? emoji.slice('image:'.length) : '', category && category.imageUrl ? category.imageUrl : '', {
     plain: true,
-    label: 'Or your own icon',
+    label: 'Your own icon',
     hint: 'A square picture with a transparent background looks best.',
-    onChange: name => setEmoji(name ? 'image:' + name : ''),
+    onChange: name => {
+      showCustom(name ? '/' + name : '');
+      setEmoji(name ? 'image:' + name : '');
+    },
   });
-  document.querySelector('#category-image').replaceChildren(categoryImage.wrap);
+  const upload = document.querySelector('#category-image');
+  upload.replaceChildren(categoryImage.wrap);
+  upload.hidden = true;
+  showCustom(category && category.imageUrl ? category.imageUrl : '');
   setEmoji(emoji);
   setStatus('#category-status', '');
   showTab('category', 'details');
@@ -190,12 +196,28 @@ function setEmoji(value) {
   input.value = value;
   document.querySelector('#category-emoji-clear').hidden = !value;
   for (const button of document.querySelectorAll('#category-emoji-grid button')) {
-    button.classList.toggle('is-picked', button.dataset.icon === value);
+    button.classList.toggle('is-picked', button === customTile ? value.startsWith('image:') : button.dataset.icon === value);
   }
+}
+
+let customTile = null;
+
+function showCustom(url) {
+  const words = url ? 'Custom' : 'Upload';
+  let mark = svg('image');
+  if (url) {
+    mark = el('img', 'icon-image');
+    mark.src = url;
+    mark.alt = '';
+  }
+  customTile.replaceChildren(mark, el('span', '', words));
+  customTile.title = words;
+  customTile.setAttribute('aria-label', words);
 }
 
 function wireEmojiPicker() {
   const grid = document.querySelector('#category-emoji-grid');
+  const upload = document.querySelector('#category-image');
   for (const [name, words] of categoryIcons) {
     const button = el('button', 'icon-choice');
     button.type = 'button';
@@ -204,13 +226,24 @@ function wireEmojiPicker() {
     button.setAttribute('aria-label', words);
     button.append(categoryMark(name), el('span', '', words));
     button.addEventListener('click', () => {
-      categoryImage.clear();
+      upload.hidden = true;
       setEmoji('icon:' + name);
     });
     grid.append(button);
   }
+  customTile = el('button', 'icon-choice icon-choice-custom');
+  customTile.type = 'button';
+  customTile.addEventListener('click', () => {
+    if (!categoryImage.value()) {
+      categoryImage.wrap.querySelector('input[type=file]').click();
+      return;
+    }
+    upload.hidden = false;
+    setEmoji('image:' + categoryImage.value());
+  });
+  grid.prepend(customTile);
   document.querySelector('#category-emoji-clear').addEventListener('click', () => {
-    categoryImage.clear();
+    upload.hidden = true;
     setEmoji('');
   });
 }

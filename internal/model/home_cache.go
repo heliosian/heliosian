@@ -55,7 +55,7 @@ func (m *Model) HomeCategoriesFor(v access.Actor) []HomeCategory {
 		if !sectionMine && !admin {
 			continue
 		}
-		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, Style: category.Style, Descriptions: category.Descriptions, Order: category.Order, Links: []HomeLink{}, Rules: []Rule{}}
+		shown := HomeCategory{ID: category.ID, Title: category.Title, Emoji: category.Emoji, ImageURL: category.ImageURL, Style: category.Style, Descriptions: category.Descriptions, Order: category.Order, Links: []HomeLink{}, Rules: []Rule{}}
 		if admin {
 			shown.Rules = category.Rules
 		}

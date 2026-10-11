@@ -1358,6 +1358,16 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .icon-image { display: inline-block; flex-shrink: 0; object-fit: contain; }
 
+#category-image .image-row { display: flex; align-items: center; gap: 12px; }
+
+#category-image .image-row img { width: 56px; height: 56px; flex-shrink: 0; padding: 6px; border-radius: 12px; background: var(--input); object-fit: contain; }
+
+#category-image .image-placeholder { display: flex; flex-direction: row; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+
+#category-image [hidden] { display: none; }
+
+#category-image .image-placeholder svg { width: 22px; height: 22px; }
+
 .chip-initial .icon-image { width: 44px; height: 44px; }
 
 .tile-glyph .icon-image, .tile-image-blank .icon-image { width: 26px; height: 26px; }
@@ -1374,11 +1384,19 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
 .icon-choice { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; border: 1.5px solid transparent; border-radius: 10px; background: var(--input); font: inherit; font-size: 11px; color: var(--muted); cursor: pointer; }
 
-.icon-choice svg { width: 22px; height: 22px; color: var(--brand); }
+.icon-choice svg, .icon-choice .icon-image { width: 22px; height: 22px; color: var(--brand); }
 
 .icon-choice:hover { border-color: var(--line); background: var(--card); }
 
 .icon-choice.is-picked { border-color: var(--brand); background: var(--accent-wash, #fff); color: var(--brand); font-weight: 600; }
+
+.icon-choice-custom { border: 1.5px dashed var(--green-2); background: color-mix(in srgb, var(--lime) 18%, var(--card)); color: var(--green-3); font-weight: 600; }
+
+.icon-choice-custom svg { color: var(--green-3); }
+
+.icon-choice-custom:hover { border-color: var(--green-3); background: color-mix(in srgb, var(--lime) 30%, var(--card)); }
+
+.icon-choice-custom.is-picked { border-style: solid; }
 
 .field-emoji > span { display: flex; align-items: center; gap: 10px; }
 
