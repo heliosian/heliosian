@@ -86,7 +86,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .page-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding-bottom: 14px; }
 
-.page-lead { color: var(--muted); font-size: 16px; margin: 0 0 18px; }
+.page-lead { color: var(--muted); font-size: 16px; margin: 0 0 18px; white-space: pre-line; }
 
 .admin-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 
@@ -111,7 +111,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .save-status.error { color: var(--alert); }
 
-/* The rules read out, each behind its sign: a green plus, a red minus. */
 .rule-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .rule-sign { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; color: #fff; }
 .rule-sign svg { width: 16px; height: 16px; stroke-width: 3; }
@@ -128,10 +127,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .panel-empty { padding: 28px 16px; color: var(--muted); font-size: 15px; text-align: center; }
 
-/* The front page: one card per group. */
-/* Each card sits in a slot, and a card of an accent peeks out from behind
-   it, as the other apps' cards have - further on hover; the accents cycle
-   by place in the grid. */
 .group-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 40px 52px; }
 
 .group-list > :nth-child(5n+1) { --peek: var(--accent); }
@@ -195,9 +190,9 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .group-address > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.group-desc { color: var(--muted); font-size: 14px; }
+.group-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 14px; white-space: pre-line; }
 
-.group-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.group-meta { margin-top: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
 
 .chip { display: inline-block; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; color: var(--brand); background: var(--input); }
 

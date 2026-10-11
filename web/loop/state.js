@@ -206,7 +206,7 @@ export function group(slug) {
 }
 
 export function groupPath(g) {
-  return `/groups/${encodeURIComponent(g.slug)}`;
+  return `/groups/${encodeURIComponent(g.slug || g.id)}`;
 }
 
 export function matches(g, query) {
