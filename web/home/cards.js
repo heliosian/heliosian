@@ -1,12 +1,12 @@
 import {state, isAdmin, tagLabelsOf, linkCategories, holdsApps} from './state.js';
-import {iconOf, categoryMark} from './dom.js';
+import {categoryMarkOf} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
 import {act} from '/data.js';
 
 function categoryGlyph(category, className) {
   const wrap = el('span', className);
-  wrap.append(categoryMark(iconOf(category)));
+  wrap.append(categoryMarkOf(category));
   return wrap;
 }
 
@@ -19,7 +19,7 @@ function artwork(link, category, imageClass, initialClass) {
     return img;
   }
   const mark = el('div', initialClass + ' is-icon');
-  mark.append(categoryMark(iconOf(category)));
+  mark.append(categoryMarkOf(category));
   return mark;
 }
 

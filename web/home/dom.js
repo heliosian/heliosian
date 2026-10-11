@@ -32,6 +32,16 @@ export function categoryIcon(title) {
   return 'section';
 }
 
+export function categoryMarkOf(category) {
+  if (!category.imageUrl) {
+    return categoryMark(iconOf(category));
+  }
+  const img = el('img', 'icon-image');
+  img.src = category.imageUrl;
+  img.alt = '';
+  return img;
+}
+
 export function categoryMark(name) {
   if (!maskedIcons.includes(name)) {
     return svg(name);

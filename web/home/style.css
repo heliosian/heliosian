@@ -108,7 +108,7 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 .app-nav-pic svg { width: 13px; height: 13px; }
 
-.app-nav-heading svg, .app-nav-heading .icon-mask { width: 22px; height: 22px; }
+.app-nav-heading svg, .app-nav-heading .icon-mask, .app-nav-heading .icon-image { width: 22px; height: 22px; }
 
 .app-nav-items { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 6px 22px; padding-left: 10px; border-left: 1.5px solid rgba(255, 255, 255, 0.14); }
 
@@ -783,7 +783,7 @@ main {
 
 .widget-mark { display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--glass, #e1eeee); color: var(--brand); }
 
-.widget-mark svg, .widget-mark .icon-mask { width: 20px; height: 20px; }
+.widget-mark svg, .widget-mark .icon-mask, .widget-mark .icon-image { width: 20px; height: 20px; }
 
 .wg-party-pic.is-mark, .wg-grid-icon.is-mark, .wg-link-icon.is-mark { background: transparent; }
 
@@ -1355,6 +1355,14 @@ a.event-people:hover .event-person { text-decoration: underline; }
 .icon-choice .icon-mask { width: 22px; height: 22px; color: var(--brand); }
 
 .chip-initial .icon-mask { width: 44px; height: 44px; color: var(--brand); }
+
+.icon-image { display: inline-block; flex-shrink: 0; object-fit: contain; }
+
+.chip-initial .icon-image { width: 44px; height: 44px; }
+
+.tile-glyph .icon-image, .tile-image-blank .icon-image { width: 26px; height: 26px; }
+
+.category-row-image .icon-image { width: 20px; height: 20px; border-radius: 0; }
 
 .tile-glyph .icon-mask, .tile-image-blank .icon-mask { width: 26px; height: 26px; opacity: 0.6; }
 

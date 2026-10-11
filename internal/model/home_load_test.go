@@ -40,6 +40,23 @@ func TestTheLoadWantsAnEventsRow(t *testing.T) {
 	}
 }
 
+func TestACategoryWearsItsOwnIcon(t *testing.T) {
+	tables := store.Tables{homeCategoriesTab: {eventsRow("2"), categoryRow(schoolID, "School", "image:images/icon.png", StyleCards, "4"), categoryRow(chatsID, "Chats", "icon:chat", StyleCards, "6")}}
+	m, err := BuildHome(context.Background(), tables, testkit.All)
+	if err != nil {
+		t.Fatalf("a category with its own icon refused: %v", err)
+	}
+	if got := m.Categories[1]; got.ImageURL != "/images/icon.png" || got.Emoji != "image:images/icon.png" {
+		t.Errorf("the category with its own icon reads %+v", got)
+	}
+	if got := m.Categories[2]; got.ImageURL != "" {
+		t.Errorf("a category wearing a line drawing has the picture %q", got.ImageURL)
+	}
+	if _, err := BuildHome(context.Background(), tables, testkit.None); err == nil || !strings.Contains(err.Error(), `category "School"`) {
+		t.Errorf("a category naming a missing picture built: %v", err)
+	}
+}
+
 func TestTheLoadRefusesABlankOrder(t *testing.T) {
 	good := func() store.Tables {
 		return store.Tables{

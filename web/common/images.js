@@ -127,6 +127,11 @@ export function imageTools(apiBase, {state}) {
     const crop = el('button', 'link-button', 'Crop');
     crop.type = 'button';
     let name = current || '';
+    const changed = () => {
+      if (options.onChange) {
+        options.onChange(name);
+      }
+    };
     const show = url => {
       preview.hidden = !url;
       placeholder.hidden = Boolean(url);
@@ -151,6 +156,7 @@ export function imageTools(apiBase, {state}) {
         const made = await uploadImage(picked);
         name = made.name;
         show(made.url);
+        changed();
         setStatus('');
       } catch (err) {
         setStatus(err.message, true);
@@ -161,6 +167,7 @@ export function imageTools(apiBase, {state}) {
     remove.addEventListener('click', () => {
       name = '';
       show('');
+      changed();
     });
     crop.addEventListener('click', () => openCropTool(preview.src, false, async blob => {
       await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
@@ -174,6 +181,7 @@ export function imageTools(apiBase, {state}) {
       openImageSearch(options.query ? options.query() : '', picked => {
         name = picked.name;
         show(picked.url);
+        changed();
       });
     });
     if (dropzone) {
@@ -199,7 +207,10 @@ export function imageTools(apiBase, {state}) {
       row.append(preview, placeholder, choose, find, crop, remove);
     }
     wrap.append(row);
-    return {wrap, value: () => name};
+    return {wrap, value: () => name, clear: () => {
+      name = '';
+      show('');
+    }};
   }
 
   return {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker};

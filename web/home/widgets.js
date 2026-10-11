@@ -4,7 +4,7 @@ import {searchInput} from '/shell.js';
 import {el, svg, toast} from '/elements.js';
 import {act} from '/data.js';
 import {calendarMark, calendarMenu, categoryItems, dropdown, opensOutside, shownTo} from './cards.js';
-import {iconOf, categoryMark} from './dom.js';
+import {categoryMarkOf} from './dom.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 
@@ -704,7 +704,7 @@ function todoWidget() {
 function categoryTitle(category) {
   const title = el('h2', 'widget-title');
   const mark = el('span', 'widget-icon widget-mark');
-  mark.append(categoryMark(iconOf(category)));
+  mark.append(categoryMarkOf(category));
   title.append(mark, el('span', '', category.title));
   return title;
 }
@@ -804,7 +804,7 @@ export function widgetRows() {
     const meta = [shownTo(w.rules), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
     const category = categoryOf(w.key);
     if (category) {
-      return {widget: w, name: category.title, mark: categoryMark(iconOf(category)), meta};
+      return {widget: w, name: category.title, mark: categoryMarkOf(category), meta};
     }
     return {widget: w, name: widgetNames[w.key], mark: appIcon(widgetApps[w.key], widgetMarks[w.key]), meta};
   });

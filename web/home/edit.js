@@ -1,5 +1,5 @@
 import {state, linkCategories, tagLabelsOf, holdsApps, inGrid, widgetGrid, widgetKey, categoryOf, fraction} from './state.js';
-import {categoryIcons, iconOf, categoryMark} from './dom.js';
+import {categoryIcons, categoryMark, categoryMarkOf} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {load} from '/router.js';
 import {imageTools} from '/images.js';
@@ -26,6 +26,7 @@ const {imagePicker} = imageTools('/api/apps', {state});
 let editingLink = null;
 let editingCategory = null;
 let linkImage = null;
+let categoryImage = null;
 
 function setStatus(selector, message, error) {
   const status = document.querySelector(selector);
@@ -169,7 +170,15 @@ function openCategoryEditor(category) {
   const widget = category && widgetOf(category);
   document.querySelector('#category-sidebar').checked = Boolean(widget && widget.sidebar);
   categoryAudience = audienceCard(document.querySelector('#category-audience'), category ? category.rules : [], 'No rules means everyone; the whole section, links and all.', 'category:' + (category ? category.id : ''));
-  setEmoji(category ? category.emoji || '' : '');
+  const emoji = category ? category.emoji || '' : '';
+  categoryImage = imagePicker(emoji.startsWith('image:') ? emoji.slice('image:'.length) : '', category && category.imageUrl ? category.imageUrl : '', {
+    plain: true,
+    label: 'Or your own icon',
+    hint: 'A square picture with a transparent background looks best.',
+    onChange: name => setEmoji(name ? 'image:' + name : ''),
+  });
+  document.querySelector('#category-image').replaceChildren(categoryImage.wrap);
+  setEmoji(emoji);
   setStatus('#category-status', '');
   showTab('category', 'details');
   categoryModal.hidden = false;
@@ -194,10 +203,16 @@ function wireEmojiPicker() {
     button.title = words;
     button.setAttribute('aria-label', words);
     button.append(categoryMark(name), el('span', '', words));
-    button.addEventListener('click', () => setEmoji('icon:' + name));
+    button.addEventListener('click', () => {
+      categoryImage.clear();
+      setEmoji('icon:' + name);
+    });
     grid.append(button);
   }
-  document.querySelector('#category-emoji-clear').addEventListener('click', () => setEmoji(''));
+  document.querySelector('#category-emoji-clear').addEventListener('click', () => {
+    categoryImage.clear();
+    setEmoji('');
+  });
 }
 
 function closeModals() {
@@ -447,7 +462,7 @@ function categoryChildren(category) {
       group.append(itemRow(img, item.name, who, moves, () => openAppEditor(item), null));
       return;
     }
-    let mark = categoryMark(iconOf(category));
+    let mark = categoryMarkOf(category);
     if (item.imageUrl) {
       mark = el('img');
       mark.src = item.imageUrl;
@@ -689,7 +704,7 @@ async function removeCategory(category) {
 function categoryRow(category, moves) {
   const row = el('div', 'category-row');
   const mark = el('div', 'category-row-image');
-  mark.append(categoryMark(iconOf(category)));
+  mark.append(categoryMarkOf(category));
   row.append(mark);
   const body = el('div', 'category-row-body');
   body.append(el('div', 'category-row-title', category.title));

@@ -165,6 +165,7 @@ type HomeCategory struct {
 	ID           string     `json:"id"`
 	Title        string     `json:"title"`
 	Emoji        string     `json:"emoji,omitempty"`
+	ImageURL     string     `json:"imageUrl,omitempty"`
 	Style        string     `json:"style"`
 	Descriptions bool       `json:"descriptions"`
 	Order        string     `json:"order"`
@@ -338,10 +339,20 @@ func holdsApps(style string) bool {
 	return style == StyleApps || style == StyleAppsGrid
 }
 
-var iconValue = regexp.MustCompile(`^icon:[a-z]+$`)
+var (
+	iconValue  = regexp.MustCompile(`^icon:[a-z]+$`)
+	imageValue = regexp.MustCompile(`^image:(\S+)$`)
+)
+
+func emojiImage(cell string) string {
+	if m := imageValue.FindStringSubmatch(cell); m != nil {
+		return m[1]
+	}
+	return ""
+}
 
 func checkEmoji(cell string) error {
-	if cell == "" || iconValue.MatchString(cell) {
+	if cell == "" || iconValue.MatchString(cell) || imageValue.MatchString(cell) {
 		return nil
 	}
 	if utf8.RuneCountInString(cell) > 10 {
@@ -357,7 +368,13 @@ func checkEmoji(cell string) error {
 }
 
 func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*Home, error) {
-	if err := images.Prefetch(ctx, cells.ImageNames([]string{"Image"}, tables[homeLinksTab])); err != nil {
+	names := cells.ImageNames([]string{"Image"}, tables[homeLinksTab])
+	for _, row := range tables[homeCategoriesTab] {
+		if name := emojiImage(strings.TrimSpace(row["Emoji"])); name != "" {
+			names = append(names, name)
+		}
+	}
+	if err := images.Prefetch(ctx, names); err != nil {
 		return nil, err
 	}
 	audience := tables[homeAudienceTab]
@@ -419,12 +436,16 @@ func BuildHome(ctx context.Context, tables store.Tables, images blob.Checker) (*
 		if err != nil {
 			return nil, fmt.Errorf("category %q: descriptions %w", title, err)
 		}
+		image, err := cells.ImageURL(images, emojiImage(emoji))
+		if err != nil {
+			return nil, fmt.Errorf("category %q: %w", title, err)
+		}
 		rules, err := audienceRulesFor(audience, thingCategory+key)
 		if err != nil {
 			return nil, err
 		}
 		index[key] = len(m.Categories)
-		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, Style: style, Descriptions: descriptions, Order: order, Links: []HomeLink{}, Rules: rules})
+		m.Categories = append(m.Categories, HomeCategory{ID: key, Title: title, Emoji: emoji, ImageURL: image, Style: style, Descriptions: descriptions, Order: order, Links: []HomeLink{}, Rules: rules})
 	}
 	if !events {
 		return nil, fmt.Errorf("%s has no %s section; its row is %s (tools/createtabs seeds it)", homeCategoriesTab, StyleEvents, EventsCategoryID)

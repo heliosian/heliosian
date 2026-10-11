@@ -51,6 +51,7 @@ type linkResource struct {
 type linkCategoryResource struct {
 	Title        string     `json:"title"`
 	Emoji        string     `json:"emoji,omitempty"`
+	ImageURL     string     `json:"imageUrl,omitempty"`
 	Style        string     `json:"style"`
 	Descriptions bool       `json:"descriptions"`
 	Order        string     `json:"order"`
@@ -240,7 +241,7 @@ func (a homeApp) linkCategoriesType() api.Type[*Model] {
 			if !ok {
 				return nil, false
 			}
-			return linkCategoryResource{Title: c.Title, Emoji: c.Emoji, Style: c.Style, Descriptions: c.Descriptions, Order: c.Order, Rules: m.homeRules(q, c.Rules), ForMe: c.ForMe}, true
+			return linkCategoryResource{Title: c.Title, Emoji: c.Emoji, ImageURL: c.ImageURL, Style: c.Style, Descriptions: c.Descriptions, Order: c.Order, Rules: m.homeRules(q, c.Rules), ForMe: c.ForMe}, true
 		},
 		List: func(m *Model, q api.Query) []string {
 			out := []string{}
