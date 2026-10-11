@@ -34,7 +34,7 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
-.card.is-muted { opacity: 0.66; }
+.card-slot:has(> .card.is-muted) { opacity: 0.66; }
 
 .card-media { position: relative; display: block; line-height: 0; text-decoration: none; }
 
