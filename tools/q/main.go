@@ -95,16 +95,21 @@ func show(w io.Writer, a qclient.Answer, columns []string) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
-		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--import] [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--import] [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
 	}
+	importing := flag.Bool("import", false, "run in import mode, which shows a super admin every row, withheld and hidden ones too")
 	spoof := flag.String("spoof", "", "run as the person with this address, as a super admin's Spoof Mode does")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		flag.Usage()
 		os.Exit(2)
 	}
-	c, err := qclient.SignedIn(qclient.ImportMode, *spoof)
+	mode := ""
+	if *importing {
+		mode = qclient.ImportMode
+	}
+	c, err := qclient.SignedIn(mode, *spoof)
 	if err != nil {
 		logging.Fatal("sign in", "error", err)
 	}
