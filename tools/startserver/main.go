@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -62,18 +63,33 @@ func main() {
 	as := flag.String("as", "", "view as this directory address through Spoof Mode, for --capture")
 	snapshot := flag.Bool("snapshot", false, "serve the snapshot tools/snapshot took under "+snapshotRoot+", disconnected: writes stay in memory and the media bucket is read but never written")
 	email := flag.String("email", "", "the directory address to sign in as, for --snapshot")
+	run := flag.Bool("run", false, "start the server the other flags pick, run the command written after the flags against it, shut the server down, and exit with the command's status")
 	flag.Parse()
 	slog.SetDefault(logging.Console())
 
 	switch {
-	case *snapshot:
-		if *email == "" {
-			logging.Fatal("--snapshot needs --email, the directory address to sign in as")
+	case *run:
+		if flag.NArg() == 0 {
+			logging.Fatal("--run needs a command after the flags")
 		}
-		app.Serve(snapshotServer(*email))
-	case *real:
-		devcache.Install()
-		app.Serve(localTLS(app.Production(app.DevDomain, app.DevDomain+":"+app.Port())))
+		slog.SetDefault(logging.File(serverLog()))
+		fmt.Printf("log: %s\n", logPath)
+		server, queue := chosen(*real, *snapshot, *email)
+		status := 0
+		serving(server, queue, func() {
+			cmd := exec.Command(flag.Arg(0), flag.Args()[1:]...)
+			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+			err := cmd.Run()
+			var exit *exec.ExitError
+			switch {
+			case err == nil:
+			case errors.As(err, &exit):
+				status = exit.ExitCode()
+			default:
+				logging.Fatal("run the command", "error", err)
+			}
+		})
+		os.Exit(status)
 	case *detach:
 		detachReal()
 	case *capturePath != "":
@@ -83,8 +99,22 @@ func main() {
 		}
 		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: cookie, Click: *click, Settle: *settle}, *out)
 	default:
-		app.Serve(sampleServer())
+		app.Serve(chosen(*real, *snapshot, *email))
 	}
+}
+
+func chosen(real, snapshot bool, email string) (*http.Server, *store.Queue) {
+	switch {
+	case snapshot:
+		if email == "" {
+			logging.Fatal("--snapshot needs --email, the directory address to sign in as")
+		}
+		return snapshotServer(email)
+	case real:
+		devcache.Install()
+		return localTLS(app.Production(app.DevDomain, app.DevDomain+":"+app.Port()))
+	}
+	return sampleServer()
 }
 
 func sampleServer() (*http.Server, *store.Queue) {
@@ -193,13 +223,7 @@ func detachReal() {
 	env.Required("SESSION_KEY")
 	spreadsheets.IDs(spreadsheets.All)
 
-	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		logging.Fatal("create local directory", "error", err)
-	}
-	logFile, err := os.Create(logPath)
-	if err != nil {
-		logging.Fatal("create server log", "error", err)
-	}
+	logFile := serverLog()
 	self, err := os.Executable()
 	if err != nil {
 		logging.Fatal("resolve own binary", "error", err)
@@ -216,8 +240,37 @@ func detachReal() {
 	fmt.Printf("stop with: kill -- -%d\n", cmd.Process.Pid)
 }
 
+func serverLog() *os.File {
+	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
+		logging.Fatal("create local directory", "error", err)
+	}
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		logging.Fatal("create server log", "error", err)
+	}
+	return logFile
+}
+
 func captureOnce(opts capture.Options, out string) {
+	var png []byte
+	var captureErr error
 	server, queue := sampleServer()
+	serving(server, queue, func() {
+		png, captureErr = capture.PNG(opts)
+	})
+	if captureErr != nil {
+		logging.Fatal("capture", "error", captureErr)
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		logging.Fatal("create output dir", "error", err)
+	}
+	if err := os.WriteFile(out, png, 0o644); err != nil {
+		logging.Fatal("write capture", "out", out, "error", err)
+	}
+	slog.Info("captured", "url", opts.URL, "out", out)
+}
+
+func serving(server *http.Server, queue *store.Queue, work func()) {
 	served := make(chan error, 1)
 	go func() {
 		served <- app.ListenAndServe(server)
@@ -243,20 +296,10 @@ func captureOnce(opts capture.Options, out string) {
 		logging.Fatal("server did not become ready", "base", base)
 	}
 
-	png, captureErr := capture.PNG(opts)
+	work()
 	if err := server.Shutdown(context.Background()); err != nil {
 		slog.Error("shutdown", "error", err)
 	}
 	<-served
 	<-queue.Drain()
-	if captureErr != nil {
-		logging.Fatal("capture", "error", captureErr)
-	}
-	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-		logging.Fatal("create output dir", "error", err)
-	}
-	if err := os.WriteFile(out, png, 0o644); err != nil {
-		logging.Fatal("write capture", "out", out, "error", err)
-	}
-	slog.Info("captured", "url", opts.URL, "out", out)
 }

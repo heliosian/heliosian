@@ -3,6 +3,7 @@ package logging
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -117,6 +118,10 @@ func Console() *slog.Logger {
 	info, err := os.Stderr.Stat()
 	color := err == nil && info.Mode()&os.ModeCharDevice != 0
 	return slog.New(handler{tint.NewHandler(os.Stderr, &tint.Options{TimeFormat: "15:04:05.000", NoColor: !color})})
+}
+
+func File(w io.Writer) *slog.Logger {
+	return slog.New(handler{tint.NewHandler(w, &tint.Options{TimeFormat: "15:04:05.000", NoColor: true})})
 }
 
 func traceOf(header string) (string, string) {

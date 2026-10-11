@@ -147,9 +147,15 @@ const PolicySource = `
                  (select PERSON.department_override (= department_override @g)))
           1)))
 
+; two rows other than @g's own serving groups name @g as their audience, so @g serves more than one group
+(define (shared_audience @g)
+  (exists GROUP @a (= visible_to @g) (counted visible_to)
+    (exists GROUP @b (= visible_to @g) (counted visible_to) (!= id @a))))
+
 ; @g belongs in the rail's lists: open, not a day, a part of one or a category, and not there only to serve another group
 (define (sidebar_group @g)
-  (and (!= @g.status "closed") (not (in @g.kind "day" "day_part" "category")) (not (implementation_only @g))))
+  (and (!= @g.status "closed") (not (in @g.kind "day" "day_part" "category"))
+       (or (shared_audience @g) (not (implementation_only @g)))))
 
 ; the viewer manages @g, or is in it and it is not hidden from all but its managers
 (define (sees_mail @g)
