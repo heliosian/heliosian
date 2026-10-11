@@ -26,7 +26,7 @@ func TestTheGeocoderPlacesAFamilysSharedAddressOnce(t *testing.T) {
 	if got := s.Model().unplaced(); len(got) != 1 || got[0] != address {
 		t.Fatalf("unplaced: %v", got)
 	}
-	StartGeocoder(s, queue, newPictures(s, queue), geocode.New("test"))
+	StartGeocoder(s, queue, geocode.New("test"))
 	for deadline := time.Now().Add(5 * time.Second); len(s.Model().unplaced()) > 0 || len(s.Model().unplaceable()) > 0; time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("still unplaced: %v, still held though city-only: %v", s.Model().unplaced(), s.Model().unplaceable())

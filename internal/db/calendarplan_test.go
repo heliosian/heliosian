@@ -44,7 +44,7 @@ func apply(t *testing.T, s *Store, queue *store.Queue, edits []Edit) {
 		return
 	}
 	env := setupEnv
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(env.System), env, Batch{Batch: edits}); err != nil {
+	if _, err := Write(context.Background(), s, queue, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 		t.Fatal(err)
 	}
 }

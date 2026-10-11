@@ -85,7 +85,7 @@ func (l *ListMailer) ready() bool {
 }
 
 func (l *ListMailer) write(ctx context.Context, edits ...Edit) ([]string, error) {
-	return Write(ctx, l.s, l.queue, l.pics, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits})
+	return Write(ctx, l.s, l.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits})
 }
 
 func (l *ListMailer) enqueue(id string) {

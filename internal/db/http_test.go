@@ -59,7 +59,7 @@ func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body str
 func TestTokens(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	hide := Batch{Batch: []Edit{{Set: "per00000000001", Cells: map[string]any{"hidden": "Yes"}}}}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, hide); err != nil {
+	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, hide); err != nil {
 		t.Fatal(err)
 	}
 	code, out, body := ask(t, s, "application/json", importing, `{"from": "PERSON"}`)
@@ -284,7 +284,7 @@ func TestServeQueryAsTheViewer(t *testing.T) {
 		t.Fatalf("Maya, a super admin, sees %d of Rowan's collections", len(out.Result))
 	}
 	demote := Batch{Batch: []Edit{{Delete: "mem00000000007"}}}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, demote); err != nil {
+	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, demote); err != nil {
 		t.Fatal(err)
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 0 {

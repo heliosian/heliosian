@@ -198,7 +198,6 @@ func flatten(text string) (string, error) {
 type CalendarWatcher struct {
 	s        *Store
 	queue    *store.Queue
-	pics     *Pictures
 	calendar *gcal.Service
 	client   anthropic.Client
 	token    string
@@ -207,8 +206,8 @@ type CalendarWatcher struct {
 	channel  *gcal.Channel
 }
 
-func NewCalendarWatcher(s *Store, queue *store.Queue, pics *Pictures, calendar *gcal.Service, anthropicKey, token string) *CalendarWatcher {
-	return &CalendarWatcher{s: s, queue: queue, pics: pics, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, kick: make(chan struct{}, 1)}
+func NewCalendarWatcher(s *Store, queue *store.Queue, calendar *gcal.Service, anthropicKey, token string) *CalendarWatcher {
+	return &CalendarWatcher{s: s, queue: queue, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, kick: make(chan struct{}, 1)}
 }
 
 func (w *CalendarWatcher) Start() {
@@ -266,7 +265,7 @@ func (w *CalendarWatcher) sync(ctx context.Context) error {
 		return nil
 	}
 	env := Env{System: "calendar", Whole: true, Now: time.Now()}
-	if _, err := Write(ctx, w.s, w.queue, w.pics, access.System(env.System), env, Batch{Batch: edits}); err != nil {
+	if _, err := Write(ctx, w.s, w.queue, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 		return fmt.Errorf("write the calendar: %w", err)
 	}
 	slog.InfoContext(ctx, "calendar import: written", "edits", len(edits))

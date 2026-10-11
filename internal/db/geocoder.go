@@ -25,14 +25,13 @@ func Placeable(address string) bool {
 type geocoder struct {
 	s      *Store
 	queue  *store.Queue
-	pics   *Pictures
 	client *geocode.Client
 	failed map[string]bool
 	poke   chan struct{}
 }
 
-func StartGeocoder(s *Store, queue *store.Queue, pics *Pictures, client *geocode.Client) {
-	g := &geocoder{s: s, queue: queue, pics: pics, client: client, failed: map[string]bool{}, poke: make(chan struct{}, 1)}
+func StartGeocoder(s *Store, queue *store.Queue, client *geocode.Client) {
+	g := &geocoder{s: s, queue: queue, client: client, failed: map[string]bool{}, poke: make(chan struct{}, 1)}
 	go g.run()
 	queue.OnSwap(g.wake)
 	g.wake()
@@ -112,7 +111,7 @@ func (g *geocoder) run() {
 			continue
 		}
 		env := Env{System: "geocoder", Now: time.Now()}
-		if _, err := Write(context.Background(), g.s, g.queue, g.pics, access.System(env.System), env, Batch{Batch: edits}); err != nil {
+		if _, err := Write(context.Background(), g.s, g.queue, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 			slog.Error("geocode: record", "placed", placed, "removed", len(gone), "error", err)
 			for _, key := range slices.Concat(addresses, gone) {
 				g.failed[key] = true

@@ -84,7 +84,7 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 	}
 	pics := db.NewPictures(s, queue, blob.NewMemoryBucket())
 	runner := db.Batch{Batch: []db.Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000005", "person": "per00000000002", "member": "yes"}}}}
-	if _, err := db.Write(context.Background(), s, queue, pics, access.System("test"), db.Env{System: "test"}, runner); err != nil {
+	if _, err := db.Write(context.Background(), s, queue, access.System("test"), db.Env{System: "test"}, runner); err != nil {
 		t.Fatal(err)
 	}
 	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })

@@ -101,10 +101,25 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer may change @ph: a picture of themselves or someone in their family, or of a family they manage
+; the viewer manages @g, is a super admin, or is a Team admin and @g an activity or a heading under one, unless it is a family, whose members only super admins change
+(define (runs_list @g)
+  (and (!= @g.kind "family")
+       (or (manages @g) (super_admin)
+           (and (admin_of "team") (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity")))))))
+
+; the calendar import brings @g from a source, which keeps its times and place
+(define (sourced @g)
+  (exists GROUP_SOURCE (= group @g)))
+
+; @g is the kind of what it sits under, a heading, or under a heading the kind of what the heading sits under
+(define (child_kind @g)
+  (or (= @g.kind @g.parent.kind) (= @g.kind "category")
+      (and (= @g.parent.kind "category") (= @g.kind @g.parent.parent.kind))))
+
+; the viewer may change @ph: a picture of themselves or someone in their family, or of a group they manage or run
 (define (edits_photo @ph)
   (or (and (not (blank @ph.person)) (self_or_household @ph.person))
-      (and (not (blank @ph.group)) (= @ph.group.kind "family") (manages @ph.group))))
+      (and (not (blank @ph.group)) (or (manages @ph.group) (runs_list @ph.group)))))
 
 ; @g is a plain group someone may make and run: under nothing, linking nowhere, and seen by its managers alone
 (define (own_group @g)
@@ -298,7 +313,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible capacity minimum waitlist rsvp_yes rsvp_no priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -362,11 +377,11 @@ const PolicySource = `
 (insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
-; join a group that takes joining and no payment and has room: oneself or one's household, or with join others anyone the viewer sees, each of them eligible
+; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, once eligible oneself, anyone the viewer sees
 (insert MEMBER
   (and (visible @new.group) (in @new.group.join "direct" "others") (blank @new.group.price)
-       (= @new.member "yes") (not @new.lead) (= @new.added_by @viewer) (eligible_for @new.group @new.person)
-       (or (self_or_household @new.person)
+       (= @new.member "yes") (not @new.lead) (= @new.added_by @viewer)
+       (or (and (self_or_household @new.person) (eligible_for @new.group @new.person))
            (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
@@ -711,10 +726,6 @@ const PolicySource = `
 
 ;; Mail lists
 
-; the viewer manages @g or is a super admin, unless it is a family, whose members only super admins change
-(define (runs_list @g)
-  (and (!= @g.kind "family") (or (manages @g) (super_admin))))
-
 ; anyone but a guest makes a mail list, a plain group under nothing and linking nowhere, run by a group they are in, seen by its managers or by everyone
 (insert GROUP
   (and (= @new.kind "group") (blank @new.parent) (blank @new.url)
@@ -726,7 +737,7 @@ const PolicySource = `
 ; a mail list's managers rename it
 (set GROUP.name (runs_list @old))
 ; a mail list's managers change its address or take it away
-(set GROUP.slug (and (runs_list @old) (= @old.kind "group")))
+(set GROUP.slug (runs_list @old))
 ; a mail list's managers describe it
 (set GROUP.description (runs_list @old))
 ; a mail list's managers say who may post to it
@@ -742,8 +753,66 @@ const PolicySource = `
   (and (runs_list @old)
        (or (blank @new.members_visible_to) (= @new.members_visible_to @old.id)
            (= @new.members_visible_to.slug "everyone"))))
-; a mail list's managers close it, or open it again
-(set GROUP.status (and (runs_list @old) (in @new.status "open" "closed")))
+; a group's managers close it, open it again, approve it, or say it happened
+(set GROUP.status (and (runs_list @old) (in @new.status "open" "closed" "done")))
+; a group's managers say when it starts, unless the calendar import brings it
+(set GROUP.start (and (runs_list @old) (not (sourced @old))))
+; a group's managers say when it ends, unless the calendar import brings it
+(set GROUP.end (and (runs_list @old) (not (sourced @old))))
+; a group's managers say it runs whole days, unless the calendar import brings it
+(set GROUP.all_day (and (runs_list @old) (not (sourced @old))))
+; a group's managers say where it happens, unless the calendar import brings it
+(set GROUP.location (and (runs_list @old) (not (sourced @old))))
+; a group's managers say in words when it happens
+(set GROUP.timing (runs_list @old))
+; a group's managers say how many places it has
+(set GROUP.capacity (runs_list @old))
+; a group's managers give it a poster
+(set GROUP.flyer (runs_list @old))
+; a group's managers say who may join it by themselves and add others
+(set GROUP.join (runs_list @old))
+; a group's managers say whose members may join it, naming only a group whose members they see
+(set GROUP.eligible (and (runs_list @old) (or (blank @new.eligible) (sees_members @new.eligible))))
+; a group's managers say who may add groups under it
+(set GROUP.adding (runs_list @old))
+; a group's managers say who hears of sign-ups and additions on it and under it, naming only a group whose members they see
+(set GROUP.notify (and (runs_list @old) (or (blank @new.notify) (sees_members @new.notify))))
+; a group's managers place it among the groups beside it
+(set GROUP.order (runs_list @old))
+; a group's managers move it under another group they run
+(set GROUP.parent (and (runs_list @old) (not (blank @new.parent)) (runs_list @new.parent)))
+; a group's managers add a group or heading under it, live, seen as it is or by its managers alone
+(insert GROUP
+  (and (runs_list @new.parent) (child_kind @new) (= @new.status "open") (= @new.added_by @viewer)
+       (blank @new.managed_by) (blank @new.url)
+       (or (blank @new.visible_to) (= @new.visible_to @new.parent.visible_to))
+       (or (blank @new.members_visible_to) (= @new.members_visible_to @new.parent.members_visible_to))))
+; anyone who sees a group that takes additions adds one under it, live or waiting for its managers as its adding says, seen as it is
+(insert GROUP
+  (and (visible @new.parent) (in @new.parent.adding "anyone" "approval") (!= @new.kind "category") (child_kind @new)
+       (!= @viewer.source "guest") (= @new.added_by @viewer) (blank @new.managed_by) (blank @new.url)
+       (= @new.visible_to @new.parent.visible_to) (= @new.members_visible_to @new.parent.members_visible_to)
+       (or (and (= @new.parent.adding "anyone") (= @new.status "open")) (= @new.status "pending"))))
+; a group's managers remove one under it that holds no one and nothing
+(delete GROUP
+  (and (not (blank @old.parent)) (runs_list @old.parent)
+       (not (exists GROUP (= parent @old))) (not (exists MEMBER (= group @old))) (not (exists RULE (= group @old)))))
+; a group's managers say who leads it
+(set MEMBER.lead (runs_list @old.group))
+; whoever runs a group runs the plain group that manages it: makes someone a co-chair, or stops them being one
+(insert MEMBER
+  (and (= @new.group.kind "group") (not (role_group @new.group)) (= @new.member "yes")
+       (exists GROUP @s (= managed_by @new.group) (!= id @new.group) (runs_list @s))))
+; and takes someone out of it
+(delete MEMBER
+  (and (= @old.group.kind "group") (not (role_group @old.group))
+       (exists GROUP @s (= managed_by @old.group) (!= id @old.group) (runs_list @s))))
+; a group's managers give it a plain group of its own to manage it, one managing nothing else
+(set GROUP.managed_by
+  (and (runs_list @old) (= @new.managed_by.kind "group") (not (role_group @new.managed_by))
+       (not (exists GROUP (= managed_by @new.managed_by) (!= id @new.managed_by) (!= id @old.id)))))
+; Team admins mark an activity the community most needs hands for
+(set GROUP.priority (and (admin_of "team") (= @old.kind "activity")))
 ; a mail list's managers give it a rule naming only groups and people whose members they may see, and reaching under a group only one they manage
 (insert RULE
   (and (runs_list @new.group)

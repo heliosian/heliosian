@@ -124,6 +124,7 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
+	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Origin: model.Origin(cfg.Domain)})
 	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, model.Origin(cfg.Domain))
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
@@ -416,14 +417,14 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 		go func() {
 			<-core.Settled
-			db.StartConsent(core.Data, core.Queue, core.Pictures, sheet)
+			db.StartConsent(core.Data, core.Queue, sheet)
 			core.Search.StartMaking(anthropicKey)
 			watcher.Start()
 			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
-			db.StartGeocoder(core.Data, core.Queue, core.Pictures, geocoder)
+			db.StartGeocoder(core.Data, core.Queue, geocoder)
 		}()
 	}
 	return server, core.Queue
@@ -438,5 +439,5 @@ func calendarWatcher(core *Core, sessionKey, anthropicKey string) *db.CalendarWa
 	}
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
-	return db.NewCalendarWatcher(core.Data, core.Queue, core.Pictures, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
+	return db.NewCalendarWatcher(core.Data, core.Queue, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
 }

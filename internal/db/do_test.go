@@ -206,7 +206,7 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 
 	first := row["crop"]
 	env := setupEnv
-	if _, err := Write(context.Background(), s, queue, pics, access.System(env.System), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
+	if _, err := Write(context.Background(), s, queue, access.System(env.System), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)

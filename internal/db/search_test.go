@@ -229,10 +229,10 @@ func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
 	object := rows[0]["object"]
 	old := x.snapshot().entries[object]
 	b := Batch{Batch: []Edit{{Delete: rows[0]["id"]}}}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
+	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
 		t.Fatal("a parent deleted a search entry")
 	}
-	if _, err := Write(context.Background(), s, queue, newPictures(s, queue), access.System(setupEnv.System), setupEnv, b); err != nil {
+	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
 		t.Fatal(err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {

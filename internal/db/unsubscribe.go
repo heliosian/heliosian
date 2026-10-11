@@ -12,7 +12,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/unsubscribe", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, tokens, now())
@@ -41,7 +41,7 @@ func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, pics 
 			edits = m.resubscribeEdits(g, env.Viewer)
 		}
 		if len(edits) > 0 {
-			if _, err := Write(r.Context(), s, queue, pics, access.System(mailerSystem), Env{System: mailerSystem, Now: now()}, Batch{Batch: edits}); err != nil {
+			if _, err := Write(r.Context(), s, queue, access.System(mailerSystem), Env{System: mailerSystem, Now: now()}, Batch{Batch: edits}); err != nil {
 				serve.Error(w, r, err)
 				return
 			}

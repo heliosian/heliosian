@@ -37,6 +37,7 @@ type Model struct {
 	derived   *derived
 	consented map[string]*View
 	index     *SearchIndex
+	watchers  *watchers
 }
 
 type View struct {

@@ -18,7 +18,7 @@ func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 		t.Fatal(err)
 	}
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	join := func(viewer, group, person string, extra map[string]any) ([]string, error) {
 		row := map[string]any{"group": group, "person": person, "member": "yes", "added_by": viewer}
@@ -76,6 +76,32 @@ func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 	}
 	if _, err := write(student, Edit{Delete: inBooth[0]}); err != nil {
 		t.Errorf("someone can't leave once it is closed: %v", err)
+	}
+}
+
+func TestWhoeverMayJoinAGroupTakingOthersAddsAnyone(t *testing.T) {
+	const party = "grp00000000903"
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": party, "kind": "event", "status": "open", "name": "Birthday Party", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others", "eligible": party}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000903", "group": party, "person": student, "member": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	write := func(viewer string, edits ...Edit) ([]string, error) {
+		return Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+	}
+	join := func(viewer, person string) ([]string, error) {
+		return write(viewer, Edit{Insert: "MEMBER", Row: map[string]any{"group": party, "person": person, "member": "yes", "added_by": viewer}})
+	}
+	if _, err := join(parent, parent); err == nil {
+		t.Error("someone not on an invitee-only list puts themselves on it")
+	}
+	if _, err := join(student, parent); err != nil {
+		t.Errorf("someone on the list can't add a guest from outside it: %v", err)
+	}
+	if _, err := join(parent, staff); err != nil {
+		t.Errorf("a guest just added can't add another: %v", err)
 	}
 }
 

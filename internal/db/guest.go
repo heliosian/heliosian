@@ -14,7 +14,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func registerGuest(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+func registerGuest(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/guest", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, actor, ok := caller(w, r, m, tokens, now())
@@ -48,7 +48,7 @@ func registerGuest(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictu
 		if name != "" {
 			row["name_long_override"] = name
 		}
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{
 			{Insert: "PERSON", As: "guest", Row: row},
 			{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@guest", "address": address, "primary": true, "source": "guest"}},
 		}})

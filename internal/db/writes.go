@@ -95,7 +95,7 @@ func resolve(text string, names map[string]string) (string, error) {
 	return id, nil
 }
 
-func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, b Batch) ([]string, error) {
+func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
 	written := []string{}
 	whole := s.Model().whole(env)
 	span := trace.From(ctx)
@@ -140,7 +140,7 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, ac
 			if err != nil {
 				return err
 			}
-			pics.watch(tx, c)
+			s.Model().watched(tx, c, env)
 			written = append(written, id)
 		}
 		return nil

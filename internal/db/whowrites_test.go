@@ -20,7 +20,7 @@ import (
 func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	ids, err := write(parent,
 		Edit{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "name": "Soccer Managers", "status": "open", "added_by": parent}},
@@ -78,7 +78,7 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 	const superAdmins, whoAdmins, superStaff = "grp00000000005", "grp00000000006", "mem00000000007"
 	s, queue := sampleWithQueue(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err == nil {
 		t.Error("a parent makes themselves a super admin")

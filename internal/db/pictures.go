@@ -33,7 +33,9 @@ type Pictures struct {
 }
 
 func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
-	return &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	p := &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	watch(s, func(tx *store.Tx, c Change, _ Env) { p.watch(tx, c) })
+	return p
 }
 
 func (p *Pictures) Start() {

@@ -313,7 +313,7 @@ func TestAnAppsAdminsAppointManagers(t *testing.T) {
 		t.Fatal(err)
 	}
 	write := func(viewer string, edits ...Edit) error {
-		_, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 		return err
 	}
 	if err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}); err != nil {
@@ -497,7 +497,7 @@ func TestWritesCantReachWithheldRows(t *testing.T) {
 		"set":       {Edit{Set: student, Cells: map[string]any{"name_long_override": "Juni A."}}, "no PERSON " + student},
 		"reference": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "member": "yes"}}, "names no row " + student},
 	} {
-		_, err := Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
+		_, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s on the withheld student: %v, want %q", name, err, c.want)
 		}

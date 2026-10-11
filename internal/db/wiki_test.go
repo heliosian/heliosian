@@ -72,7 +72,7 @@ func TestWikiSideCards(t *testing.T) {
 	if len(cards(id)) != 1 {
 		t.Fatal("a save sending no cards changed them")
 	}
-	if _, err := Write(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Delete: after[0]["id"]}, {Delete: id}}}); err != nil {
+	if _, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Delete: after[0]["id"]}, {Delete: id}}}); err != nil {
 		t.Fatalf("deleting the page and its card: %v", err)
 	}
 }
@@ -229,7 +229,7 @@ func TestWikiHiddenPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	hide := func(viewer string, hidden bool) error {
-		_, err := Write(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"hidden": hidden}}}})
+		_, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"hidden": hidden}}}})
 		return err
 	}
 	hiddenOf := func() string {
@@ -284,7 +284,7 @@ func TestWikiPages(t *testing.T) {
 		return id, err
 	}
 	written := func(viewer string, e Edit) error {
-		_, err := Write(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{e}})
+		_, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{e}})
 		return err
 	}
 	bodyOf := func(id string) string {

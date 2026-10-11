@@ -16,7 +16,7 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 		t.Fatal(err)
 	}
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	makeList := func(viewer, slug string, rules ...map[string]any) ([]string, error) {
 		edits := []Edit{
@@ -112,7 +112,7 @@ func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	const hummingbirdsParents = "grp00000000030"
 	s, queue := sampleWithQueue(t)
 	write := func(edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, newPictures(s, queue), access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, queue, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: edits})
 	}
 	ids, err := write(
 		Edit{Insert: "MESSAGE", As: "in", Row: map[string]any{"direction": "in", "kind": "post", "group": hummingbirdsParents, "subject": "Field trip", "created": "2026-10-09 09:00", "state": "received"}},

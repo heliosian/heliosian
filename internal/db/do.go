@@ -36,8 +36,8 @@ type stored struct {
 
 func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	registerWiki(mux, s, queue, pics, tokens, now)
-	registerGuest(mux, s, queue, pics, tokens, now)
-	registerUnsubscribe(mux, s, queue, pics, tokens, now)
+	registerGuest(mux, s, queue, tokens, now)
+	registerUnsubscribe(mux, s, queue, tokens, now)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
@@ -80,7 +80,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 				cells[k] = v
 			}
 		}
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Insert: "PHOTO", Row: cells}}})
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "PHOTO", Row: cells}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -128,7 +128,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		ids, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation": updated["pronunciation"]}}}})
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation": updated["pronunciation"]}}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -215,7 +215,7 @@ type fetchedAnswer struct {
 
 func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, id, relation string) (fetchedAnswer, error) {
 	stop := func(why, reason string) (fetchedAnswer, error) {
-		if _, err := Write(r.Context(), s, queue, pics, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
+		if _, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
 			return fetchedAnswer{}, err
 		}
 		return fetchedAnswer{Result: []string{id}, Fetch: why, Why: reason}, nil
@@ -265,7 +265,7 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 			if err := fire(s, tx, c, "fetched"); err != nil {
 				return "", err
 			}
-			pics.watch(tx, c)
+			s.Model().watched(tx, c, env)
 			return written, nil
 		}
 		held, err := stageContent(s, tx, stage, map[string]string{}, hash, mimeType, len(content))
@@ -336,7 +336,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 				}
 			}
 			if len(edits) > 0 {
-				if _, err := Write(ctx, s, queue, pics, actor, env, Batch{Batch: edits}); err != nil {
+				if _, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits}); err != nil {
 					return "", "", err
 				}
 			}
@@ -361,7 +361,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	for _, group := range sentTo {
 		edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@document", "group": group, "relation": "sent_to"}})
 	}
-	ids, err := Write(ctx, s, queue, pics, actor, env, Batch{Batch: edits})
+	ids, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits})
 	if err != nil {
 		if !found {
 			dropUnheld(s, pics.bucket, []string{"content/" + hash})

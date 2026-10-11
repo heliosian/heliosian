@@ -14,7 +14,7 @@ import (
 type Store = store.Store[Model]
 
 func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index *SearchIndex) (*Store, error) {
-	return store.New(parts(index), consentStep, source, writer, queue)
+	return store.New(parts(index, &watchers{}), consentStep, source, writer, queue)
 }
 
 const ChangesTab = "CHANGES"
@@ -29,7 +29,7 @@ var changeLog = &store.ChangeLog{Tab: ChangesTab, Columns: ChangesColumns, Row: 
 	}
 }}
 
-func parts(index *SearchIndex) []store.Part[Model] {
+func parts(index *SearchIndex, w *watchers) []store.Part[Model] {
 	out := []store.Part[Model]{}
 	for _, sheet := range Sheets {
 		tabs := []store.Tab{}
@@ -38,7 +38,7 @@ func parts(index *SearchIndex) []store.Part[Model] {
 				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: []string{"id"}, AppendOnly: t.AppendOnly})
 			}
 		}
-		part := store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index), Loaded: loaded(sheet)}
+		part := store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, w), Loaded: loaded(sheet)}
 		// Mail reads every other sheet so that a change to any of them rebuilds it,
 		// and its build checks the references across all five.
 		if sheet == MailSheet {
@@ -49,9 +49,10 @@ func parts(index *SearchIndex) []store.Part[Model] {
 	return out
 }
 
-func build(sheet string, index *SearchIndex) func(context.Context, store.Tables, *Model) error {
+func build(sheet string, index *SearchIndex, w *watchers) func(context.Context, store.Tables, *Model) error {
 	return func(ctx context.Context, tables store.Tables, m *Model) error {
 		m.index = index
+		m.watchers = w
 		built := Sheet{}
 		for i := range Tables {
 			t := &Tables[i]
