@@ -3,9 +3,9 @@ import {appOrigin, currentApp} from '/appswitch.js';
 
 export const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
 const viewerGroups = '(select EFFECTIVE_MEMBER.group (= person @viewer))';
-export const runCondition = '(sidebar_group @g) (manages @g)';
-export const joinedCondition = `(sidebar_group @g) (not (manages @g)) (or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
-export const viewerListCondition = `(sidebar_group @g) (or (manages @g) (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups}))`;
+export const runCondition = '(manages @g) (sidebar_group @g)';
+export const joinedCondition = `(or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups})) (not (manages @g)) (sidebar_group @g)`;
+export const viewerListCondition = `(or (manages @g) (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups})) (sidebar_group @g)`;
 export const listIncludes = '(include parent parent.parent parent.parent.parent)';
 
 export const listKinds = {party: 'party', activity: 'activity', event: 'event', admins: 'admins'};

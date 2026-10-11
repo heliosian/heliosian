@@ -160,8 +160,8 @@ func BenchmarkSidebar(b *testing.B) {
 	mine := `(select EFFECTIVE_MEMBER.group (= person @viewer))`
 	queries := []*Query{}
 	for _, src := range []string{
-		`(from GROUP @g (where (sidebar_group @g) (manages @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
-		`(from GROUP @g (where (sidebar_group @g) (not (manages @g)) (or (in id ` + mine + `) (in rsvp_yes ` + mine + `))) (order name asc) (include parent parent.parent parent.parent.parent))`,
+		`(from GROUP @g (where (manages @g) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
+		`(from GROUP @g (where (or (in id ` + mine + `) (in rsvp_yes ` + mine + `)) (not (manages @g)) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
 	} {
 		q, err := Parse(src)
 		if err != nil {
