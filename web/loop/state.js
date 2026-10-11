@@ -1,7 +1,7 @@
 import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
-import {navQueries, navLists, viewerListCondition, queries, fetchGroups} from '/rail.js';
+import {navQueries, navLists, viewerListCondition, listIncludes, queries, fetchGroups} from '/rail.js';
 
 export const domain = 'loop.heliosian.com';
 
@@ -148,7 +148,7 @@ export async function loadModel() {
     viewer: '(from PERSON (where (= id @viewer)))',
     everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
     grades: '(from GROUP (where (= kind "grade")) (columns name color))',
-    groups: `(from GROUP @g (where (in id ${lists})) (order name asc))`,
+    groups: `(from GROUP @g (where (in id ${lists})) (order name asc) ${listIncludes})`,
     runs: `(from GROUP @g (where (in id ${lists}) (runs_list @g)) (columns slug))`,
     members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${lists})))) (columns group))`,
     going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${lists})))) (columns group))`,
@@ -175,6 +175,7 @@ export async function loadModel() {
     guestEmails: {},
     groupNames: {},
     gradeColors,
+    groupRows: answers.groups.resources.GROUP || {},
     groups: [],
   };
   state.model.groups = summaries(answers);
@@ -207,11 +208,4 @@ export function group(slug) {
 
 export function groupPath(g) {
   return `/groups/${encodeURIComponent(g.slug || g.id)}`;
-}
-
-export function matches(g, query) {
-  if (!query) {
-    return true;
-  }
-  return `${g.title} ${g.address} ${g.description || ''}`.toLowerCase().includes(query);
 }
