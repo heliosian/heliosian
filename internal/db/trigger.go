@@ -22,6 +22,7 @@ var triggers = []trigger{
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
 	{table: "GROUP", fire: servingNames},
+	{table: "GROUP", fire: groupSlugMoved},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
@@ -81,6 +82,19 @@ func wikiAddressMoved(m *Model, c Change) ([]Edit, error) {
 		return []Edit{{Set: row["id"], Cells: map[string]any{"new": now}}}, nil
 	}
 	return []Edit{{Insert: "REDIRECT", Row: map[string]any{"app": "wiki", "old": old, "new": now}}}, nil
+}
+
+func groupSlugMoved(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["slug"] == "" || strings.EqualFold(c.Old["slug"], c.New["slug"]) {
+		return nil, nil
+	}
+	old := strings.ToLower(c.Old["slug"])
+	for _, a := range m.Table("ALIAS").All() {
+		if a["alias"] == old {
+			return nil, nil
+		}
+	}
+	return []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": old, "target": c.New["id"], "hidden": true}}}, nil
 }
 
 func oneAnswer(m *Model, c Change) ([]Edit, error) {

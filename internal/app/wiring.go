@@ -38,6 +38,7 @@ import (
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
+	"heliosian/internal/team"
 	"heliosian/internal/tools"
 	"heliosian/internal/vitals"
 	"heliosian/internal/who"
@@ -157,7 +158,7 @@ func NewCore(cfg Config) *Core {
 	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
 	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
 	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
-	teamStyle := model.ActivitiesCardStyle(appName("team"), taglineOf("team"))
+	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	digest.Start(models, queue, cfg.Digest)
@@ -184,14 +185,19 @@ func NewCore(cfg Config) *Core {
 	})
 	feedbackAdmin := model.RegisterFeedbackAdmin(homeMux, models, cfg.Bucket, cfg.FeedbackFiler)
 	teamMux := http.NewServeMux()
-	activities := model.RegisterActivities(teamMux, model.ActivitiesDeps{
-		Store:     models,
+	activities := model.NewActivities(model.ActivitiesDeps{
+		Store:    models,
+		Images:   teamImages,
+		Calendar: hooks,
+		Mailer:   cfg.Mail,
+	})
+	teamSite := team.Register(teamMux, team.Deps{
+		Data:      dataStore,
+		Bucket:    cfg.Bucket,
 		Images:    teamImages,
-		Calendar:  hooks,
 		Search:    cfg.ImageSearch,
-		Mailer:    cfg.Mail,
-		Style:     teamStyle,
 		Describer: cfg.Describer,
+		Style:     teamStyle,
 	})
 	birthdayMux := http.NewServeMux()
 	celebrateMux := http.NewServeMux()
@@ -247,9 +253,7 @@ func NewCore(cfg Config) *Core {
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: model.ActivitiesPreviewHead(models, teamStyle), Wrap: func(next http.Handler) http.Handler {
-			return model.ActivitiesRedirected(models, next)
-		}},
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: teamSite.PreviewHead, Wrap: teamSite.Redirected},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: model.PartiesPreviewHead(models, celebrateStyle)},
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},

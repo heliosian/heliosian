@@ -1,8 +1,9 @@
-import {state, loadModel, resolvePath, isFamily, allows} from './state.js';
+import {state, loadModel, resolvePath, resolveAlias, isFamily, allows} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {initModal} from '/modal.js';
-import {startApp, load, notFound} from '/router.js';
+import {startApp, load, notFound, render} from '/router.js';
+import {el} from '/elements.js';
 import {signUpPage} from './pages/signup.js';
 import {myPage} from './pages/my.js';
 import {calendarPage} from './pages/calendar.js';
@@ -10,12 +11,32 @@ import {activityPage} from './pages/detail.js';
 import {adminPage} from './pages/admin.js';
 import {approvalsPage} from './pages/approvals.js';
 
+const missing = new Set();
+
 function activity(parts) {
   const act = resolvePath(location.pathname);
-  if (act && act.path !== location.pathname) {
-    history.replaceState(null, '', act.path);
+  if (act) {
+    if (act.path !== location.pathname) {
+      history.replaceState(null, '', act.path);
+    }
+    return activityPage(act);
   }
-  return act ? activityPage(act) : notFound(parts[0] === 'v' ? 'That address' : 'That activity');
+  const path = location.pathname;
+  if (missing.has(path)) {
+    return notFound(parts[0] === 'v' ? 'That address' : 'That activity');
+  }
+  resolveAlias(path).then(found => {
+    if (location.pathname !== path) {
+      return;
+    }
+    if (found) {
+      history.replaceState(null, '', found.path);
+    } else {
+      missing.add(path);
+    }
+    render();
+  });
+  return el('div', 'list-page');
 }
 
 const routes = {

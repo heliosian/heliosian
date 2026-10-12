@@ -75,7 +75,7 @@ Heliosian, in `docs/home/`:
 HCA-Team, in `docs/team/`:
 
 - [team.md](docs/team/team.md) — the volunteer portal spec
-- [data.md](docs/team/data.md) — the Events sheet and its rules
+- [data.md](docs/team/data.md) — how the portal's data sits in the data model
 
 Helios Staff Birthdays, in `docs/birthday/`:
 

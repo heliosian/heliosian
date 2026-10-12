@@ -1,4 +1,5 @@
-import {state, me, allows, longDate, whenLabel, years, allYears, activity, parentOf, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, UNCATEGORIZED, isFamily} from './state.js';
+import {state, me, allows, longDate, whenLabel, years, allYears, activity, parentOf, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, isFamily, selectedYear, write} from './state.js';
+import * as writes from './writes.js';
 
 import {whenEditor, treeFilter} from './dom.js';
 import {dataGrid} from '/datagrid.js';
@@ -9,7 +10,6 @@ import {createPersonPicker} from '/picker.js';
 import {listed, known, emailOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
-import {act, create, remove} from '/data.js';
 import {openModal, closeModal} from '/modal.js';
 import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented} from '/form.js';
@@ -17,43 +17,16 @@ import {tabbedFields} from '/tabs.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
 
-async function writeActivity(body) {
-  const {id, ...fields} = body;
-  if (id) {
-    await act('activities', id, 'edit', fields);
-    return {id};
-  }
-  if (fields.category && fields.category !== UNCATEGORIZED) {
-    return act('activity-categories', fields.category, 'add', fields);
-  }
-  if (fields.parent) {
-    return act('activities', fields.parent, 'add', fields);
-  }
-  return create('activities', fields);
-}
-
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activity(body.id).path : null;
-  let saved;
-  try {
-    saved = await writeActivity(body);
-  } catch (err) {
-    const c = err.conflict;
-    if (!c || !c.prior) {
-      throw err;
-    }
-    if (!confirm(`“${body.prettyId}” is the address of “${c.title}” from ${c.year}. Rename that one to “${c.renamed}” and use “${body.prettyId}” here?`)) {
-      throw new Error('Pick another address, or agree to rename the old one.');
-    }
-    saved = await writeActivity({...body, takeOver: true});
-  }
+  const id = await writes.saveActivity(body);
   await load();
   const now = body.id ? activity(body.id) : null;
   if (before && now && location.pathname === before && now.path !== before) {
     history.replaceState(null, '', now.path);
     render();
   }
-  return saved.id;
+  return id;
 }
 
 function settingCard(label, hint, ...controls) {
@@ -105,9 +78,6 @@ function signUpForm(node, existing, someoneElse) {
   emailField.hidden = who.value !== 'other';
   const isChair = Boolean(existing && existing.position === 'Co-Chair');
   const positions = [{label: 'Volunteer', value: 'Volunteer'}];
-  if (node.coLeaderNeeded || (existing && existing.position === 'Open to Co-Chair')) {
-    positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
-  }
   if (editor) {
     positions.push({label: 'Co-Chair', value: 'Co-Chair'});
   }
@@ -176,7 +146,7 @@ function signUpForm(node, existing, someoneElse) {
     const appoint = button(isChair ? 'Remove as co-chair' : 'Make co-chair', isChair ? 'close' : 'plus',
       'button button-secondary button-small', async () => {
         try {
-          await act('volunteers', existing.id, 'edit', {position: isChair ? 'Volunteer' : 'Co-Chair', note: note.value});
+          await writes.setChair(node, existing, !isChair);
           closeModal();
           await load();
           toast(isChair ? `${existing.name} is no longer a co-chair` : `${existing.name} is now a co-chair`);
@@ -194,13 +164,14 @@ function signUpForm(node, existing, someoneElse) {
       if (!existing && who.value === 'other' && !picker.value) {
         throw new Error('Pick who to sign up from the directory');
       }
-      return act('activities', where ? where.value : node.id, 'sign-up', {
+      const target = where ? activity(where.value) : node;
+      return writes.signUp(target, {
         from: where && where.value !== node.id ? node.id : '',
         email: existing ? existing.email : (who.value === 'other' ? picker.value : ''),
         position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
       });
     },
-    onDelete: existing && existing.can.delete ? () => remove('volunteers', existing.id) : null,
+    onDelete: existing && existing.can.delete ? () => writes.removeSignUp(node, existing) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${existing.name} from ${node.title}?` : '',
   };
@@ -211,88 +182,11 @@ export async function removeVolunteer(node, volunteer) {
     return;
   }
   try {
-    await remove('volunteers', volunteer.id);
+    await writes.removeSignUp(node, volunteer);
     await load();
   } catch (err) {
     toast(err.message);
   }
-}
-
-function highlightInputs(current) {
-  const wrap = el('div', 'highlight-inputs');
-  const headline = text(current ? current.headline : '', {maxLength: 80, placeholder: 'Performances'});
-  const body = textarea(current ? current.body : '', 4);
-  body.placeholder = 'A few lines people should not miss. **Double stars** make words bold.';
-  const icon = text(current ? current.icon || '' : '', {maxLength: 8, placeholder: '📣'});
-  icon.classList.add('highlight-icon-input');
-  const picks = el('div', 'emoji-picks');
-  const usual = [
-    '📣', '📢', '⭐', '✨', '⚠️', '❗', '💡', '✅', '📌', '📅', '⏰', '🗓️',
-    '🎉', '🎊', '🎈', '🎂', '🎁', '❤️', '🙏', '👏', '🤝', '🙋', '👋', '👨‍👩‍👧',
-    '🎭', '🎶', '🎤', '🎨', '📸', '🎬', '📚', '✏️', '🏫', '🎓', '🔬', '🧩',
-    '🍕', '🍪', '☕', '🧁', '🥗', '🍎', '🌮', '🍜', '🍿', '🧃',
-    '🏃', '⚽', '🚴', '🥾', '🌳', '🌸', '🌍', '☀️', '🌧️', '🔥',
-    '🛠️', '🧹', '📦', '🚗', '🅿️', '🎟️', '💰', '🛍️', '🧺', '🪑',
-  ];
-  const paintPicks = () => {
-    picks.querySelectorAll('.emoji-pick').forEach(b => b.classList.toggle('is-active', b.textContent === icon.value));
-  };
-  for (const e of usual) {
-    const b = el('button', 'emoji-pick', e);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      icon.value = e;
-      paintPicks();
-    });
-    picks.append(b);
-  }
-  icon.addEventListener('input', paintPicks);
-  paintPicks();
-  const iconRow = el('div', 'emoji-row');
-  iconRow.append(icon, picks);
-  wrap.append(field('Headline', headline), field('Body', body), field('Emoji', iconRow));
-  wrap.focus = () => headline.focus();
-  return {
-    wrap,
-    clear: () => {
-      headline.value = '';
-      body.value = '';
-      icon.value = '';
-      paintPicks();
-    },
-    value: () => {
-      if (!headline.value.trim() && !body.value.trim()) {
-        return null;
-      }
-      return {headline: headline.value.trim(), body: body.value.trim(), icon: icon.value.trim()};
-    },
-  };
-}
-
-function highlightFields(current) {
-  const wrap = el('div', 'highlight-fields');
-  const inputs = highlightInputs(current);
-  const add = button('Add Highlight Section', 'plus', 'button button-secondary button-small', () => {
-    section.hidden = false;
-    add.hidden = true;
-    inputs.wrap.focus();
-  });
-  const section = el('div', 'setting-card highlight-editor');
-  section.hidden = !current;
-  add.hidden = Boolean(current);
-  const remove = button('Remove highlight', 'trash', 'button button-secondary button-small', () => {
-    inputs.clear();
-    section.hidden = true;
-    add.hidden = false;
-  });
-  section.append(el('div', 'setting-label', 'Highlight section'),
-    el('div', 'setting-hint', 'A callout under the description for the one thing people must read.'),
-    inputs.wrap, remove);
-  wrap.append(add, section);
-  return {
-    wrap,
-    value: () => (section.hidden ? null : inputs.value()),
-  };
 }
 
 function whenFields(act, parent) {
@@ -340,7 +234,7 @@ export function openActivity(act, options) {
   const underField = field('Parent Event', parentSelect, 'What this is part of, if anything');
   const runsHere = currentParent || root;
   const editor = admin || Boolean(runsHere && runsHere.canEdit);
-  const headings = headingChoices(c => editor || c.can.add).filter(c => editor || c.value !== UNCATEGORIZED);
+  const headings = [...(editor ? [{label: 'Uncategorized', value: ''}] : []), ...headingChoices(yearOf, c => editor || c.can.add)];
   const category = select(headings,
     act ? act.category : (opts.category || (headings[0] ? headings[0].value : '')));
   const own = root ? eventCategories(root).filter(c => editor || c.can.add) : [];
@@ -352,14 +246,13 @@ export function openActivity(act, options) {
   const signMe = select([
     {label: 'Choose one…', value: ''},
     {label: 'Volunteer', value: 'Volunteer'},
-    {label: 'Volunteer, and offer to co-chair', value: 'Open to Co-Chair'},
     {label: 'Nothing', value: 'none'},
   ], '');
   signMe.required = true;
   const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
   const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
-  const addressBase = () => `${location.origin}${under ? root.path + '/' : '/v/'}`;
+  const addressBase = () => `${location.origin}/v/`;
   const addressLine = el('div', 'address-line');
   const addressText = el('code', 'address-text');
   const addressCopy = button('Copy', 'copy', 'button button-secondary button-small', () => {
@@ -428,9 +321,9 @@ export function openActivity(act, options) {
   const describeLine = el('div', 'describe-line');
   describeLine.append(generate, describeStatus);
   const describeBox = el('div');
-  describeBox.append(description, describeLine);
+  describeBox.append(description, describeLine, el('div', 'setting-hint', 'Markdown works: **bold**, *italic*, - a list, [words](https://a.link).'));
   fields.push(field('Description', describeBox));
-  const highlight = highlightFields(act ? act.highlight : null);
+  const reach = act && act.canEdit ? checkbox('Its email list reaches everyone signed up for anything under it, and their students’ parents', act.reachesUnder) : null;
   let body;
   if (!suggesting) {
     const basics = [settingRow('Title', 'What this is called.', title)];
@@ -450,15 +343,14 @@ export function openActivity(act, options) {
     }
     const about = settingRow('Description', 'What people should know before they sign up.', describeBox);
     about.classList.add('is-stacked');
-    basics.push(about, highlight.wrap);
+    basics.push(about);
     body = [tabbedFields([
       {label: 'Basics', icon: svg('doc'), fields: basics},
       {label: 'When', icon: svg('calendar'), fields: [...(yearField ? [yearField] : []), when.wrap]},
-      {label: 'Address', icon: svg('link'), fields: [
-        settingCard('Friendly address', under
-          ? 'A short address for this activity, under its event. Letters, digits and hyphens; unique among the things beside it.'
-          : 'A short address for this event. Letters, digits and hyphens; one address per event, across every year.',
-        pretty, addressLine),
+      {label: 'Short name', icon: svg('link'), fields: [
+        settingCard('Short name',
+          'Its page address and its email list, short-name@loop.heliosian.com. Letters, digits and hyphens; no two groups share one.',
+          pretty, addressLine, ...(reach ? [reach.wrap] : [])),
       ]},
     ])];
     if (signMeRow) {
@@ -486,9 +378,8 @@ export function openActivity(act, options) {
     category: parentSelect.value ? eventCategory.value : category.value,
     status: act ? act.status : '',
     description: description.value, image: suggesting && under ? suggestImage.value() : (act ? act.image || '' : ''), flyer: act ? act.flyer || '' : '', timing: scheduled.timing,
-    highlight: highlight.value(),
     start: scheduled.start, end: scheduled.end, location: act ? act.location || '' : '', spots: act ? act.spots || 0 : 0,
-    coLeaderNeeded: act ? Boolean(act.coLeaderNeeded) : true, volunteersComplete: Boolean(act && act.volunteersComplete),
+    volunteersComplete: Boolean(act && act.volunteersComplete),
     priority: Boolean(act && act.priority),
     signUp: act ? '' : signMe.value, prettyId: pretty.value.trim().toLowerCase(), allowAdding: act ? act.allowAddingOwn || '' : '',
   });
@@ -504,8 +395,12 @@ export function openActivity(act, options) {
       }
       const body = formBody(scheduled);
       if (act) {
+        if (reach && reach.input.checked !== act.reachesUnder) {
+          await writes.setReach(act, reach.input.checked);
+        }
         const changed = Object.keys(body).filter(key => JSON.stringify(body[key]) !== JSON.stringify(opened[key]));
         if (!changed.length) {
+          await load();
           return;
         }
         await saveActivity(Object.fromEntries([['id', act.id], ...changed.map(key => [key, body[key]])]));
@@ -517,28 +412,9 @@ export function openActivity(act, options) {
         navigate(made.path);
       }
     },
-    onDelete: act && act.can.delete ? () => remove('activities', act.id) : null,
-    confirmDelete: act ? `Delete “${act.title}” (${act.year})? Its links go with it.` : '',
+    onDelete: act && act.can.delete ? () => writes.deleteActivity(act) : null,
+    confirmDelete: act ? `Delete “${act.title}” (${act.year})?` : '',
     afterDelete: () => navigate(currentParent ? currentParent.path : '/'),
-  });
-}
-
-export function openLink(node, item) {
-  const title = text(item ? item.title : '', {required: true, maxLength: 120});
-  const url = text(item ? item.url : '', {type: 'url', required: true, placeholder: 'https://'});
-  const description = textarea(item ? item.description || '' : '', 2);
-  const image = imagePicker(item ? item.image : '', item ? item.imageUrl : '');
-  openModal(item ? 'Edit Resource' : 'Add Resource', [
-    field('Title', title), field('URL', url),
-    field('Description', description, 'A line about what people will find there'),
-    image.wrap,
-  ], {
-    submit: () => {
-      const fields = {title: title.value, url: url.value, description: description.value, image: image.value()};
-      return item ? act('activity-links', item.id, 'edit', fields) : create('activity-links', {activity: node.id, ...fields});
-    },
-    onDelete: item && item.can.delete ? () => remove('activity-links', item.id) : null,
-    confirmDelete: item ? `Remove the link “${item.title}”?` : '',
   });
 }
 
@@ -587,15 +463,14 @@ export function openVolunteerSettings(node, replace) {
     return b;
   };
   const yesNo = on => (on ? 'Yes' : 'No');
-  const flip = v => ({Yes: 'No', No: 'Yes'})[v] || '';
-  const visibility = () => [{label: 'Default', value: ''}, {label: 'Visible', value: 'Yes'}, {label: 'Hidden', value: 'No'}];
-  const addingChoices = () => [{label: 'Default', value: ''}, {label: 'Allowed', value: ADDING.yes}, {label: 'Approval needed', value: ADDING.approval}, {label: 'Prohibited', value: ADDING.no}];
-  const choice = (options, value, disabledWhy, save, resolved) => {
+  const visibility = () => [{label: 'Visible', value: 'Yes'}, {label: 'Hidden', value: 'No'}];
+  const addingChoices = () => [{label: 'Allowed', value: ADDING.yes}, {label: 'Approval needed', value: ADDING.approval}, {label: 'Prohibited', value: ADDING.no}];
+  const choice = (options, value, disabledWhy, save) => {
     const input = select(options, value);
     input.disabled = Boolean(disabledWhy);
     input.title = disabledWhy || '';
     const tint = () => {
-      input.dataset.value = ({Yes: 'yes', unlimited: 'yes', limited: 'approval', No: 'no', [ADDING.approval]: 'approval'})[input.value || resolved];
+      input.dataset.value = ({Yes: 'yes', unlimited: 'yes', limited: 'approval', No: 'no', complete: 'no', [ADDING.approval]: 'approval'})[input.value];
     };
     tint();
     let was = value;
@@ -660,26 +535,27 @@ export function openVolunteerSettings(node, replace) {
     });
     return chip;
   };
-  const volunteering = (n, own, top, locked, save, resolved) => {
-    const options = own([{label: 'Default', value: ''}, {label: 'Unlimited', value: 'unlimited'}, {label: 'Limited', value: 'limited'}, {label: 'No More', value: 'No'}]);
-    const allowed = n.directSignUpOwn || (top ? yesNo(n.directSignUp) : '');
-    const value = allowed === 'Yes' ? (n.spots > 0 ? 'limited' : 'unlimited') : allowed;
-    const changes = {'': {directSignUp: ''}, unlimited: {directSignUp: 'Yes', spots: 0}, limited: {directSignUp: 'Yes', spots: n.spots || 5}, No: {directSignUp: 'No'}};
-    const cell = choice(options, value, locked, v => save(changes[v]), resolved);
+  const volunteering = (n, locked, save) => {
+    const options = [{label: 'Unlimited', value: 'unlimited'}, {label: 'Limited', value: 'limited'}, {label: 'No More', value: 'No'}];
+    if (n.volunteersComplete) {
+      options.push({label: 'Complete', value: 'complete'});
+    }
+    const value = n.volunteersComplete ? 'complete' : (n.directSignUp ? (n.spots > 0 ? 'limited' : 'unlimited') : 'No');
+    const changes = {
+      unlimited: {directSignUp: 'Yes', spots: 0, volunteersComplete: false},
+      limited: {directSignUp: 'Yes', spots: n.spots || 5, volunteersComplete: false},
+      No: {directSignUp: 'No', volunteersComplete: false},
+      complete: {volunteersComplete: true},
+    };
+    const cell = choice(options, value, locked, v => save(changes[v]));
     cell.classList.add('vol-settings-volunteering');
     if (value === 'limited') {
       cell.append(limitChip(n, locked, save));
     }
     return cell;
   };
-  const inherited = n => {
-    if (!n.parent) {
-      return null;
-    }
-    return (n.parent === root.id && cats.find(c => c.id === n.category)) || activity(n.parent);
-  };
-  const saveCategory = async (cat, flags) => {
-    await act('activity-categories', cat.id, 'settings', {flags});
+  const saveCategory = async (cat, fields) => {
+    await writes.saveHeading(cat, fields);
     await load();
   };
   const closedAbove = n => {
@@ -777,7 +653,7 @@ export function openVolunteerSettings(node, replace) {
       after.nextElementSibling.querySelector('input').focus();
       return;
     }
-    const box = adder('New category name', title => create('activity-categories', {eventId: node.id, title, allowAdding: ''}).then(load));
+    const box = adder('New category name', title => writes.saveHeading(null, {title, allowAdding: node.allowAdding}, node.id).then(load));
     box.classList.add('is-inline');
     box.style.setProperty('--depth', 1);
     after.after(box);
@@ -837,7 +713,7 @@ export function openVolunteerSettings(node, replace) {
       after.nextElementSibling.querySelector('input').focus();
       return;
     }
-    const box = adder('New activity name', title => saveActivity({year: parent.year, title, parent: parent.id, category, coLeaderNeeded: true}));
+    const box = adder('New activity name', title => saveActivity({year: parent.year, title, parent: parent.id, category}));
     box.classList.add('is-inline');
     box.style.setProperty('--depth', depth);
     after.after(box);
@@ -923,9 +799,9 @@ export function openVolunteerSettings(node, replace) {
   const slot = async (moved, target, after) => {
     const parent = activity(target.parent);
     await place(moved, parent, parent.id === root.id ? target.category || '' : '');
-    const ids = activity(parent.id).children.map(c => c.id).filter(id => id !== moved.node.id);
-    ids.splice(ids.indexOf(target.id) + (after ? 1 : 0), 0, moved.node.id);
-    await act('activities', parent.id, 'order', {ids});
+    const siblings = activity(parent.id).children.filter(c => c.id !== moved.node.id);
+    const at = siblings.findIndex(c => c.id === target.id) + (after ? 1 : 0);
+    await writes.reorder(activity(parent.id).children, moved.node.id, siblings[at] ? siblings[at].id : '');
     await load();
   };
   const row = (n, depth, below, parent) => {
@@ -969,20 +845,14 @@ export function openVolunteerSettings(node, replace) {
     if (!hiding && n.status === 'Pending') {
       hiding = 'Waiting for approval';
     }
-    const above = n.parent ? activity(n.parent) : null;
-    const source = inherited(n);
-    const top = !n.parent;
-    const own = options => (top ? options.filter(o => o.value) : options);
     const save = changes => saveActivity({id: n.id, ...changes});
     r.classList.toggle('is-hidden', n.status === 'Hidden' || Boolean(closedAbove(n)));
     r.append(
       eye(n.status !== 'Hidden', closedAbove(n), hiding, open => save({status: open ? 'Open' : 'Hidden'})),
       name,
-      volunteering(n, own, top, locked, save, yesNo(source ? source.directSignUp : true)),
-      choice(own(visibility()), flip(n.volunteersHiddenOwn) || (top ? yesNo(!n.volunteersHidden) : ''), locked, v => save({volunteersHidden: flip(v)}),
-        yesNo(source ? !source.volunteersHidden : true)),
-      choice(own(addingChoices()), n.allowAddingOwn || (top ? n.allowAdding || ADDING.no : ''), locked, v => save({allowAdding: v}),
-        above ? above.allowAdding || ADDING.no : ADDING.no),
+      volunteering(n, locked, save),
+      choice(visibility(), yesNo(!n.volunteersHidden), locked, v => save({volunteersHidden: v === 'Yes' ? 'No' : 'Yes'})),
+      choice(addingChoices(), n.allowAdding || ADDING.no, locked, v => save({allowAdding: v})),
     );
     list.append(r);
     if (!below || folded(key)) {
@@ -1014,10 +884,7 @@ export function openVolunteerSettings(node, replace) {
     }
     if (managing) {
       const pencil = editPencil(`Rename ${cat.title}`);
-      pencil.addEventListener('click', () => rename(words, cat.title, async next => {
-        await act('activity-categories', cat.id, 'edit', {title: next, description: cat.description || '', image: cat.image || '', allowAdding: cat.allowAddingOwn || ''});
-        await load();
-      }));
+      pencil.addEventListener('click', () => rename(words, cat.title, next => saveCategory(cat, {title: next})));
       name.append(pencil);
     }
     if (node.canEdit) {
@@ -1040,11 +907,11 @@ export function openVolunteerSettings(node, replace) {
     const locked = root.canEdit ? '' : 'Only the event’s organizers can change this';
     heading.classList.toggle('is-hidden', Boolean(cat.hidden) || root.status === 'Hidden');
     heading.append(
-      eye(!cat.hidden, root.status === 'Hidden' ? root.title : '', locked, open => saveCategory(cat, {hidden: open ? '' : 'Yes'})),
+      eye(!cat.hidden, root.status === 'Hidden' ? root.title : '', locked, open => saveCategory(cat, {hidden: !open})),
       name,
-      choice([{label: 'Default', value: ''}, {label: 'Unlimited', value: 'Yes'}, {label: 'No More', value: 'No'}], cat.directSignUpOwn || '', locked, v => saveCategory(cat, {directSignUp: v}), yesNo(root.directSignUp)),
-      choice(visibility(), flip(cat.volunteersHiddenOwn), locked, v => saveCategory(cat, {volunteersHidden: flip(v)}), yesNo(!root.volunteersHidden)),
-      choice(addingChoices(), cat.allowAddingOwn || '', locked, v => saveCategory(cat, {allowAdding: v}), root.allowAdding || ADDING.no),
+      el('span'),
+      el('span'),
+      choice(addingChoices(), cat.allowAdding || ADDING.no, locked, v => saveCategory(cat, {allowAdding: v})),
     );
     list.append(heading);
     if (folded('c:' + cat.id)) {
@@ -1073,7 +940,7 @@ export function openVolunteerSettings(node, replace) {
       }
     }
   }
-  openModal(`${node.title}: Volunteer settings`, [el('p', 'vol-settings-lead', 'Configure sign up and visibility settings for activities and categories. Activities and categories can override its parent’s settings, or default to them.'), list], {wide: 'table', replace});
+  openModal(`${node.title}: Volunteer settings`, [el('p', 'vol-settings-lead', 'Configure sign up and visibility settings for activities and categories. Each setting applies to that row alone; hiding one hides everything under it.'), list], {wide: 'table', replace});
 }
 
 export async function openVolunteerGrid(root, nodes, pathOf) {
@@ -1179,12 +1046,11 @@ export function openCategory(category, eventId, after) {
   const image = imagePicker(category ? category.image : '', category ? category.imageUrl : '',
     {dropzone: true, hint: 'Add an image to represent this category (optional).'});
   const policies = [
-    ...(eventId ? [{label: 'Same as the event', value: ''}] : []),
     {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
     {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
     {label: 'No - only organizers add here', value: ADDING.no},
   ];
-  const adding = select(policies, category ? category.allowAddingOwn || '' : (eventId ? '' : ADDING.no));
+  const adding = select(policies, category ? category.allowAdding : ADDING.no);
   const addingWrap = el('div', 'status-select policy-select');
   const paintAdding = () => {
     addingWrap.dataset.policy = adding.value || 'inherit';
@@ -1207,32 +1073,32 @@ export function openCategory(category, eventId, after) {
   openModal(category ? 'Edit Category' : 'Add Category', fields, {
     replace: true,
     saveLabel: category ? 'Save changes' : 'Add',
-    submit: () => {
-      const fields = {
-        title: title.value, description: description.value, image: image.value(), allowAdding: adding.value,
-        showOnMain: onMain ? onMain.input.checked : true,
-      };
-      return category ? act('activity-categories', category.id, 'edit', fields) : create('activity-categories', {eventId: eventId || '', ...fields});
+    submit: async () => {
+      const fields = {title: title.value, description: description.value, allowAdding: adding.value, ...(onMain ? {showOnMain: onMain.input.checked} : {})};
+      const owner = eventId || writes.yearOwner(selectedYear());
+      const id = await writes.saveHeading(category, fields, owner);
+      const picked = image.value();
+      if (picked && picked !== (category ? category.image : '')) {
+        await writes.setPicture(id, picked, category ? category.image : '');
+      }
+      await load();
     },
     afterSave: after,
-    onDelete: category && category.can.delete ? () => remove('activity-categories', category.id) : null,
+    onDelete: category && category.can.delete ? () => writes.deleteHeading(category) : null,
     confirmDelete: category ? `Delete the category “${category.title}”?` : '',
     afterDelete: after,
   });
 }
 
 function addingWords(category) {
-  const own = category.allowAddingOwn || '';
-  const word = {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only organizers add here'}[category.allowAdding] || '';
-  return own ? word : (category.eventId ? `${word} (same as the event)` : word);
+  return {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only organizers add here'}[category.allowAdding] || '';
 }
 
 async function moveCategory(eventId, list, from, to, after) {
-  const ids = list.map(c => c.id);
-  const [moved] = ids.splice(from, 1);
-  ids.splice(to, 0, moved);
+  const moved = list[from];
+  const rest = list.filter((_, i) => i !== from);
   try {
-    await (eventId ? act('activities', eventId, 'order-categories', {ids}) : act('team-settings', state.model.settingsId, 'order-categories', {ids}));
+    await writes.reorder(list, moved.id, rest[to] ? rest[to].id : '');
     await load();
     if (after) {
       after();
@@ -1245,7 +1111,7 @@ async function moveCategory(eventId, list, from, to, after) {
 export function categoryList(root, after) {
   const wrap = el('div', 'category-list');
   const eventId = root ? root.id : '';
-  const list = root ? eventCategories(root) : state.model.categories.filter(c => !c.builtIn);
+  const list = root ? eventCategories(root) : state.model.categories.filter(c => c.year === selectedYear());
   const move = (from, to) => moveCategory(eventId, list, from, to, after);
   list.forEach((category, i) => {
     const row = el('div', 'admin-row');
@@ -1269,7 +1135,7 @@ export function categoryList(root, after) {
     wrap.append(el('div', 'panel-empty', root ? `${root.title} has no categories of its own yet.` : 'No categories yet.'));
   }
   if (!root) {
-    wrap.append(el('div', 'hint', 'Uncategorized is built in: it collects events whose category is blank or names nothing here.'));
+    wrap.append(el('div', 'hint', `The headings of ${selectedYear()}. Uncategorized collects that year's events filed under no heading.`));
   }
   const add = el('div', 'add-row');
   add.append(button('Add Category', 'plus', 'button', () => openCategory(null, eventId, after)));
@@ -1282,7 +1148,11 @@ export function openSettings() {
   const expense = text(settings.expenseFormUrl, {type: 'url', required: true});
   const intro = textarea(settings.intro, 4);
   openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Shown under the Sign Up heading')], {
-    submit: () => act('team-settings', state.model.settingsId, 'settings', {expenseFormUrl: expense.value, intro: intro.value}),
+    submit: async () => {
+      await writes.saveSetting('Expense Form URL', expense.value);
+      await writes.saveSetting('Intro', intro.value);
+      await load();
+    },
   });
 }
 
@@ -1293,8 +1163,10 @@ export function openRedirect(item) {
     field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /v/word.'),
     field('Send them to', to, 'A page here, as its path, or a whole address on another site. A link into what sits under the old address follows along.'),
   ], {
-    submit: () => (item ? act('activity-redirects', item.id, 'edit', {old: old.value, new: to.value}) : create('activity-redirects', {old: old.value, new: to.value})),
-    onDelete: item && item.can.delete ? () => remove('activity-redirects', item.id) : null,
+    submit: () => write([item
+      ? {set: item.id, cells: {old: old.value.trim(), new: to.value.trim()}}
+      : {insert: 'REDIRECT', row: {app: 'team', old: old.value.trim(), new: to.value.trim(), added: new Date().toISOString().slice(0, 10)}}]),
+    onDelete: item ? () => write([{delete: item.id}]) : null,
     confirmDelete: item ? `Remove the redirect from ${item.old}? Anyone holding that link will get Not found.` : '',
     deleteLabel: 'Remove',
   });
@@ -1305,7 +1177,7 @@ export async function copyToNextYear(node) {
     return;
   }
   try {
-    await act('activities', node.id, 'copy');
+    await writes.copyToYear(node, years().next);
     await load();
     toast(`Copied to ${years().next}`);
   } catch (err) {

@@ -72,10 +72,11 @@ const PolicySource = `
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
 
-; @g is not closed, and the viewer manages it or, unless it is pending, is an effective member of the group it is visible to
+; @g is not closed, and the viewer manages it, added it while it is pending or, unless it is pending, is an effective member of the group it is visible to
 (define (visible @g)
   (and (!= @g.status "closed")
        (or (manages @g)
+           (and (= @g.status "pending") (= @g.added_by @viewer))
            (and (!= @g.status "pending")
                 (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))
 
@@ -670,6 +671,18 @@ const PolicySource = `
 (delete MEMBER (and (admin_of "team") (managers_for @old.group "activity")))
 ; every activity's effective volunteers
 (read EFFECTIVE_MEMBER (and (admin_of "team") (in group.kind "activity")))
+; Team's introduction and expense form
+(set SETTING.value (and (admin_of "team") (= @old.app "team")))
+; a Team setting not yet written
+(insert SETTING (and (admin_of "team") (= @new.app "team")))
+; an old Team address and where it goes now
+(insert REDIRECT (and (admin_of "team") (= @new.app "team")))
+; where an old Team address goes
+(set REDIRECT.new (and (admin_of "team") (= @old.app "team")))
+; which old Team address it is
+(set REDIRECT.old (and (admin_of "team") (= @old.app "team")))
+; an old Team address no longer kept
+(delete REDIRECT (and (admin_of "team") (= @old.app "team")))
 ; the rules that say who activities are for
 (read RULE (and (admin_of "team") (in group.kind "activity")))
 ; all mail about activities
@@ -876,8 +889,8 @@ const PolicySource = `
 (read ALIAS (exists MEMBER @m (= id @row.target) (person_visible @m.person)))
 ; every column of an alias
 (read ALIAS (id alias target hidden) true)
-; the wiki's old page addresses, so an old link still finds its page
-(read REDIRECT (= app "wiki"))
+; the wiki's and Team's old page addresses, so an old link still finds its page
+(read REDIRECT (in app "wiki" "team"))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
 ; every column of a search entry, to whoever may read it

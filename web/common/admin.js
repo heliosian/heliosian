@@ -1,7 +1,8 @@
 import {el} from '/elements.js';
 import {query, act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
-import {listed, emailOf} from '/directory.js';
+import {listed, emailOf, known, directory} from '/directory.js';
+import {api} from '/api.js';
 
 let remembered = '';
 
@@ -104,6 +105,44 @@ export function appAdmins(app) {
     },
     save: admins => act('admin-lists', app, 'edit', {admins}),
   };
+}
+
+export function groupMembers(group) {
+  let rows = [];
+  let id = '';
+  const load = async () => {
+    const [{people}, answer] = await Promise.all([directory(), api('QUERY', '/api/q', {
+      from: 'MEMBER', where: [{'=': [{path: 'member'}, 'yes']}, {in: [{path: 'group'}, {select: {from: 'GROUP', column: 'id', where: group}}]}],
+    })]);
+    rows = answer.result.map(r => answer.resources.MEMBER[r]);
+    const groups = await api('QUERY', '/api/q', {from: 'GROUP', where: group, columns: ['name']});
+    id = groups.result[0] || '';
+    const byId = new Map(people.map(p => [p.id, p]));
+    return rows.map(r => byId.get(r.person)).filter(Boolean).map(emailOf);
+  };
+  const save = async emails => {
+    const batch = [];
+    for (const r of rows) {
+      if (!emails.includes(emailOf({id: r.person}))) {
+        batch.push({delete: r.id});
+      }
+    }
+    const have = new Set(rows.map(r => r.person));
+    for (const email of emails) {
+      const p = known(email);
+      if (!p) {
+        throw new Error(`${email} is not in the directory`);
+      }
+      if (!have.has(p.id)) {
+        batch.push({insert: 'MEMBER', row: {group: id, person: p.id, member: 'yes'}});
+      }
+    }
+    if (batch.length) {
+      await api('POST', '/api/q', {batch});
+    }
+    await load();
+  };
+  return {load, save};
 }
 
 export function adminsCard({hint, title = 'Admins', load, save}) {

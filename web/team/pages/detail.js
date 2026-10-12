@@ -1,18 +1,18 @@
 import {state, me, family, allows, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, matches, shownVolunteers, listHidden, listRevealed, addLabel} from '../state.js';
 import {badge, searchBox, treeFilter} from '../dom.js';
-import {el, link, svg, imageThumb, button, copyText, toast} from '/elements.js';
+import {el, link, svg, button, toast} from '/elements.js';
+import {render as markdown} from '/markdown.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';
 import {approvalButtons} from './approvals.js';
 import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
-import {appOrigin} from '/appswitch.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {detailHero} from '/heroimage.js';
-import {personTile, peopleRow, offerTile, andList} from '/people.js';
+import {personTile, peopleRow, andList} from '/people.js';
 import {personRow} from '/personrow.js';
-import {act, query} from '/data.js';
-import {openSignUp, openActivity, openLink, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid, editPencil} from '../edit.js';
+import {reorder} from '../writes.js';
+import {openSignUp, openActivity, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -67,8 +67,8 @@ function sideRow(icon, title, lines) {
   return row;
 }
 
-function factsCard(node, save) {
-  const rows = [whenRow(node), chairsRow(node, save)].filter(Boolean);
+function factsCard(node) {
+  const rows = [whenRow(node), chairsRow(node)].filter(Boolean);
   if (!rows.length) {
     return null;
   }
@@ -103,74 +103,17 @@ function whenRow(node) {
   return sideRow('calendar', 'Date & Time', when);
 }
 
-function chairsRow(node, save) {
+function chairsRow(node) {
   const chairs = coChairs(node);
-  const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
-  if (!chairs.length && !node.coLeaderNeeded && !options.length && !node.canEdit) {
+  if (!chairs.length && !node.canEdit) {
     return null;
   }
-  const after = [];
-  if (options.length) {
-    const list = el('div', 'person-tiles');
-    for (const v of options) {
-      const tile = volunteerTile(node, v, false, false, true);
-      list.append(node.canEdit ? offerTile(tile, makeChairButton(node, v)) : tile);
-    }
-    after.push(el('div', 'side-subtitle', 'Co-Chair Options'), list);
-  }
-  after.push(...coChairAsk(node, save));
   return peopleRow({
     title: chairs.length === 1 ? 'Chair' : 'Co-Chairs',
     line: chairs.length ? andList(chairs.map(v => v.name)) : 'Nobody yet.',
     tiles: chairs.map(v => volunteerTile(node, v, false)),
-    after,
+    after: [],
   });
-}
-
-function makeChairButton(node, v) {
-  return button('Make co-chair', 'check', 'button button-small', async () => {
-    if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
-      return;
-    }
-    try {
-      await act('volunteers', v.id, 'edit', {position: 'Co-Chair', note: v.note || ''});
-      await load();
-      toast(`${v.name} is now a co-chair`);
-    } catch (err) {
-      toast(err.message);
-    }
-  });
-}
-
-function coChairAsk(node, save) {
-  if (node.canEdit) {
-    const ask = el('div', 'side-ask');
-    const wants = el('label', 'side-switch');
-    wants.append(checkbox(Boolean(node.coLeaderNeeded), on => save({coLeaderNeeded: on})), el('span', '', 'Still looking for a co-chair?'));
-    const pencil = editPencil('Edit this page');
-    pencil.addEventListener('click', () => openActivity(node));
-    ask.append(wants, pencil);
-    return [ask];
-  }
-  if (!node.coLeaderNeeded) {
-    return [];
-  }
-  const mine = mySignUp(node);
-  const nodes = [mine && mine.position === 'Open to Co-Chair'
-    ? el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!')
-    : el('div', 'side-line side-need', 'A co-chair is needed - could that be you?')];
-  if (!mine || mine.position === 'Volunteer') {
-    nodes.push(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
-      try {
-        await act('activities', node.id, 'sign-up', {position: 'Open to Co-Chair', note: mine ? mine.note : ''});
-        await load();
-        toast('Thank you - the organizers will be in touch.');
-      } catch (err) {
-        toast(err.message);
-      }
-    }));
-  }
-  return nodes;
 }
 
 function signedUpWords(owner, v) {
@@ -237,7 +180,7 @@ function familyBox(node) {
   const list = el('div', 'fam-list');
   for (const {n, v} of rows) {
     const where = n === node ? n.title : chainBelow(node, n);
-    const role = v.position === 'Co-Chair' ? 'Co-chair of ' : (v.position === 'Open to Co-Chair' ? 'Open to co-chairing ' : '');
+    const role = v.position === 'Co-Chair' ? 'Co-chair of ' : '';
     list.append(personRow(v, {
       className: 'fam-row',
       open: true,
@@ -378,11 +321,7 @@ function ownVolunteers(view, labelled) {
     for (const v of chairs) {
       grid.append(volunteerTile(node, v, false, true));
     }
-    const isOption = v => v.position === 'Open to Co-Chair';
-    for (const v of showPeople.filter(isOption)) {
-      grid.append(volunteerTile(node, v, false, false, true));
-    }
-    for (const v of showPeople.filter(v => !isOption(v))) {
+    for (const v of showPeople) {
       grid.append(volunteerTile(node, v, false));
     }
     if (labelled) {
@@ -417,70 +356,6 @@ function priorityButton(node, save) {
   b.append(checkbox(on, checked => save({priority: checked})), el('span', '', 'High Priority'));
   b.title = on ? 'Listed under High Priority here and on Heliosian\u2019s front page.' : 'Lists it under High Priority here and on Heliosian\u2019s front page.';
   return b;
-}
-
-function resourcesCard(node) {
-  const editing = Boolean(node.canEdit);
-  if (!node.links.length && !editing) {
-    return null;
-  }
-  const card = sideCard();
-  const links = el('div', 'side-links');
-  card.append(links);
-  for (const item of node.links) {
-    const row = link(item.url, 'side-link');
-    row.removeAttribute('data-link');
-    row.target = '_blank';
-    row.rel = 'noopener';
-    row.append(imageThumb(item.imageUrl || node.imageUrl || rootOf(node).imageUrl, item.title, 'side-link-thumb'));
-    const body = el('div', 'side-row-body');
-    body.append(el('div', 'side-link-title', item.title));
-    body.append(el('div', 'side-link-desc', item.description || item.url.replace(/^https?:\/\//, '').replace(/\/$/, '')));
-    row.append(body, svg('open'));
-    if (!editing) {
-      links.append(row);
-      continue;
-    }
-    const line = el('div', 'side-link-row');
-    const edit = el('button', 'icon-round side-link-edit');
-    edit.type = 'button';
-    edit.title = `Edit “${item.title}”`;
-    edit.setAttribute('aria-label', edit.title);
-    edit.append(svg('edit'));
-    edit.addEventListener('click', () => openLink(node, item));
-    line.append(row, edit);
-    links.append(line);
-  }
-  if (editing) {
-    card.append(button('Add a Resource', 'plus', 'button button-secondary button-small side-button',
-      () => openLink(node, null)));
-  }
-  return card;
-}
-
-function highlightCard(node) {
-  const h = node.highlight;
-  if (!h) {
-    return null;
-  }
-  const card = el('div', 'highlight-card');
-  if (h.icon) {
-    card.append(el('div', 'highlight-icon', h.icon));
-  }
-  const body = el('div', 'highlight-body');
-  if (h.headline) {
-    body.append(el('div', 'highlight-headline', h.headline));
-  }
-  for (const para of (h.body || '').split(/\n\s*\n/).filter(t => t.trim())) {
-    const p = el('p', 'highlight-text');
-    para.trim().split(/(\*\*[^*]+\*\*)/).forEach(part => {
-      const bold = part.match(/^\*\*([^*]+)\*\*$/);
-      p.append(bold ? el('strong', '', bold[1]) : part);
-    });
-    body.append(p);
-  }
-  card.append(body);
-  return card;
 }
 
 function flyerCard(node, save) {
@@ -523,44 +398,6 @@ function flyerCard(node, save) {
     }
     card.append(bar);
   }
-  return card;
-}
-
-function emailListPath(node, list) {
-  if (list) {
-    return appOrigin('loop') + '/groups/' + encodeURIComponent(list);
-  }
-  return appOrigin('loop') + '/new?from=' + encodeURIComponent('activity:' + node.id);
-}
-
-function fillEmailListCard(card, node, list) {
-  const address = list ? `${list}@loop.heliosian.com` : '';
-  const [title, words] = list
-    ? [`${node.title} Email List`, `${address} reaches everyone signed up for ${node.title}, and its co-chairs, as people join and leave.`]
-    : [`Email everyone in ${node.title}`, `Make an email list on Helios Loop of everyone signed up for ${node.title}, and its co-chairs. It keeps up as people join and leave.`];
-  card.append(el('div', 'side-title', title), el('div', 'side-line', words));
-  const a = el('a', 'button button-small side-button');
-  a.href = emailListPath(node, list);
-  if (!list) {
-    a.append(svg('mail'), el('span', '', 'Create Email List'));
-    card.append(a);
-    return;
-  }
-  a.append(svg('mail'), el('span', '', 'See List'));
-  const row = el('div', 'side-buttons');
-  row.append(button('Copy List', 'copy', 'button button-small side-button', () => copyText(address, 'Address copied')), a);
-  card.append(row);
-}
-
-function emailListCard(node) {
-  if (!node.runs && !allows('team.see-all')) {
-    return null;
-  }
-  const card = sideCard('side-card-invite');
-  query(`/api/magic-tags/activity:${node.id}?include=email-lists`).then(read => {
-    const lists = read.follow(read.get(read.result), 'email-lists');
-    fillEmailListCard(card, node, lists.length ? lists[0].name : '');
-  });
   return card;
 }
 
@@ -640,21 +477,14 @@ async function reorderChildren(section, id, before, categoryId) {
   }
   section.reordering = true;
   list.classList.add('is-reordering');
-  const ids = node.children.map(c => c.id).filter(x => x !== id);
-  let at = before ? ids.indexOf(before) : -1;
-  if (at < 0) {
-    at = ids.length;
-    for (let i = ids.length - 1; i >= 0; i--) {
-      const c = node.children.find(x => x.id === ids[i]);
-      if ((c.category || '') === categoryId) {
-        at = i + 1;
-        break;
-      }
-    }
+  const rest = node.children.filter(c => c.id !== id);
+  let next = before;
+  if (!next) {
+    const last = rest.map(c => (c.category || '') === categoryId).lastIndexOf(true);
+    next = last >= 0 && rest[last + 1] ? rest[last + 1].id : '';
   }
-  ids.splice(at, 0, id);
   try {
-    await act('activities', node.id, 'order', {ids});
+    await reorder(node.children, id, next);
     await load();
   } catch (err) {
     toast(err.message);
@@ -809,9 +639,6 @@ export function activityPage(node) {
   } else if (category(node.category)) {
     marks.append(el('span', 'card-chip is-inline ' + categoryClass(node.category), category(node.category).title));
   }
-  if (node.coLeaderNeeded) {
-    marks.append(el('span', 'need', 'Co-chair needed!'));
-  }
   if (node.status !== 'Open') {
     marks.append(badge(node.status === 'Pending' ? 'Needs approval' : node.status, node.status.toLowerCase()));
     if (node.status === 'Pending') {
@@ -826,26 +653,13 @@ export function activityPage(node) {
   const heading = el('div', 'detail-heading');
   heading.append(el('h1', 'detail-title', node.title));
   main.append(heading);
-  const blurb = el('div', 'detail-blurb');
-  if (node.description) {
-    for (const para of node.description.split(/\n\s*\n/).filter(t => t.trim())) {
-      blurb.append(el('p', 'detail-text', para.trim()));
-    }
-  }
-  if (blurb.children.length) {
+  if (node.description.trim()) {
+    const blurb = el('div', 'detail-blurb markdown');
+    blurb.append(markdown(node.description));
     main.append(blurb);
   }
 
-  const highlight = highlightCard(node);
-  if (highlight) {
-    main.append(highlight);
-  }
-  const resources = resourcesCard(node);
-  if (resources) {
-    resources.classList.add('resources-main');
-    main.append(resources);
-  }
-  const facts = factsCard(node, save);
+  const facts = factsCard(node);
   if (facts && phone.matches) {
     facts.classList.add('facts-inline');
     main.append(facts);
@@ -871,7 +685,7 @@ export function activityPage(node) {
   }
 
   const side = el('aside', 'detail-side');
-  for (const card of [emailListCard(node), phone.matches ? null : facts, flyerCard(node, save), helpCard(node)]) {
+  for (const card of [phone.matches ? null : facts, flyerCard(node, save), helpCard(node)]) {
     if (card) {
       side.append(card);
     }

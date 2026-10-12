@@ -1,0 +1,247 @@
+package team
+
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"heliosian/internal/blob"
+	"heliosian/internal/cells"
+	"heliosian/internal/db"
+	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
+)
+
+const (
+	needsCount    = 4
+	upcomingLead  = "Sign up for a shift, a booth or a committee."
+	upcomingEmpty = "Nothing needs hands just now - check back soon."
+	fallbackDesc  = "Sign up to help on HCA-Team, the HCA Volunteer Portal."
+)
+
+var (
+	markdownImage = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	markdownLink  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	markdownLead  = regexp.MustCompile(`(?m)^\s*(#{1,6}\s|>\s?|[-*+]\s+)`)
+	markdownMarks = strings.NewReplacer("**", "", "__", "", "*", "", "`", "")
+)
+
+func (t *Team) PreviewHead(r *http.Request) string {
+	tr := t.tree()
+	origin := "https://" + r.Host
+	var g store.Row
+	if first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]; first == "v" || first == "activities" {
+		g = tr.resolve(r.URL.Path)
+	}
+	if g == nil || !tr.shown(g) {
+		return t.upcomingHead(tr, origin, time.Now().In(db.School))
+	}
+	desc := blurb(g["description"])
+	if line := whenText(tr.timed(g)); line != "" {
+		if desc != "" {
+			desc = line + " — " + desc
+		} else {
+			desc = line
+		}
+	}
+	if desc == "" {
+		desc = fallbackDesc
+	}
+	title := g["name"]
+	if under := tr.lineage(g); under != "" {
+		title += " · " + under
+	}
+	return t.style.PreviewTags(title, desc, origin+tr.path(g), origin+"/open/share/"+g["id"]+".png")
+}
+
+func (t *Team) upcomingHead(tr tree, origin string, at time.Time) string {
+	desc := t.style.Tagline() + ". " + upcomingLead
+	if list := tr.needs(at); len(list) > 0 {
+		names := []string{}
+		for _, g := range list[:min(len(list), needsCount)] {
+			name := g["name"]
+			if note := tr.needNote(g); note != "" {
+				name += " (" + note + ")"
+			}
+			names = append(names, name)
+		}
+		desc = "Volunteers needed: " + strings.Join(names, "; ") + ". " + upcomingLead
+	}
+	return t.style.PreviewTags(t.style.Name(), desc, origin+"/", origin+"/open/share/upcoming.png")
+}
+
+func (t *Team) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+	tr := t.tree()
+	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
+	for _, g := range tr.needs(time.Now().In(db.School)) {
+		if len(listing.Items) == needsCount {
+			break
+		}
+		listing.Items = append(listing.Items, sharecard.Item{Title: g["name"], Note: tr.needNote(g)})
+	}
+	card := sharecard.Card{Title: t.style.Name(), Subtitle: t.style.Tagline(), Button: "See what's open", Listing: listing}
+	t.style.Serve(w, r, card, listing.Words()...)
+}
+
+func (t *Team) shareCard(w http.ResponseWriter, r *http.Request) {
+	tr := t.tree()
+	g := tr.group(strings.TrimSuffix(r.PathValue("id"), ".png"))
+	if !tr.shown(g) {
+		http.NotFound(w, r)
+		return
+	}
+	name, whole := tr.picture(g)
+	var picture []byte
+	if name != "" {
+		content, _, err := t.bucket.Get(r.Context(), name)
+		if err != nil && !errors.Is(err, blob.ErrNotFound) {
+			slog.ErrorContext(r.Context(), "team: read a share card's picture", "group", g["id"], "name", name, "error", err)
+		}
+		picture = content
+	}
+	under := tr.lineage(g)
+	day, hours := whenLines(tr.timed(g))
+	card := sharecard.Card{
+		Kicker: under, Title: g["name"], Picture: picture, Whole: whole,
+		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
+	}
+	t.style.Serve(w, r, card, g["name"], under, day, hours, name)
+}
+
+func (t tree) lineage(g store.Row) string {
+	names := []string{}
+	for _, a := range t.above(g) {
+		names = append([]string{a["name"]}, names...)
+	}
+	return strings.Join(names, " › ")
+}
+
+func (t tree) timed(g store.Row) store.Row {
+	for _, n := range append([]store.Row{g}, t.above(g)...) {
+		if n["start"] != "" || n["timing"] != "" {
+			return n
+		}
+	}
+	return g
+}
+
+func (t tree) picture(g store.Row) (string, bool) {
+	for _, n := range append([]store.Row{g}, t.above(g)...) {
+		if n["flyer"] != "" {
+			return n["flyer"], true
+		}
+		photos := t.m.Table("PHOTO").Referencing("group", n["id"])
+		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
+		for _, p := range photos {
+			if p["image"] != "" {
+				return p["image"], false
+			}
+		}
+	}
+	return "", false
+}
+
+func (t tree) needs(at time.Time) []store.Row {
+	year, today := schoolYear(at), at.Format(db.DateLayout)
+	dated, undated := []store.Row{}, []store.Row{}
+	for _, g := range t.groups.All() {
+		if !t.shown(g) || g["status"] != "open" || len(t.above(g)) > 0 || t.yearOf(g) != year || g["join"] == "none" {
+			continue
+		}
+		if spots, _ := strconv.Atoi(g["capacity"]); spots > 0 && t.takenIn(g) >= spots {
+			continue
+		}
+		if g["start"] == "" {
+			undated = append(undated, g)
+		} else if g["start"][:min(len(g["start"]), len(db.DateLayout))] >= today {
+			dated = append(dated, g)
+		}
+	}
+	slices.SortStableFunc(dated, func(x, y store.Row) int { return strings.Compare(x["start"], y["start"]) })
+	return append(dated, undated...)
+}
+
+func (t tree) needNote(g store.Row) string {
+	parts := []string{}
+	if day, _ := whenLines(g); day != "" {
+		parts = append(parts, day)
+	}
+	if spots, _ := strconv.Atoi(g["capacity"]); spots > 0 {
+		left := spots - t.takenIn(g)
+		if left == 1 {
+			parts = append(parts, "1 spot left")
+		} else {
+			parts = append(parts, fmt.Sprintf("%d spots left", left))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+func blurb(markdown string) string {
+	text := markdownImage.ReplaceAllString(markdown, "")
+	text = markdownLink.ReplaceAllString(markdownLead.ReplaceAllString(text, ""), "$1")
+	text = strings.Join(strings.Fields(markdownMarks.Replace(text)), " ")
+	if len(text) > 200 {
+		cut := strings.LastIndex(text[:200], " ")
+		if cut < 120 {
+			cut = 200
+		}
+		text = text[:cut] + "…"
+	}
+	return text
+}
+
+func whenText(g store.Row) string {
+	day, hours := whenLines(g)
+	if hours != "" {
+		return day + " · " + hours
+	}
+	return day
+}
+
+func whenLines(g store.Row) (string, string) {
+	if g["timing"] != "" {
+		return g["timing"], ""
+	}
+	if days, hours := spanLines(g); days != "" {
+		return days, hours
+	}
+	start, err := time.Parse(db.MomentLayout, g["start"])
+	if err != nil {
+		if day, err := time.Parse(db.DateLayout, g["start"]); err == nil {
+			return day.Format("Monday, January 2"), ""
+		}
+		return "", ""
+	}
+	day := start.Format("Monday, January 2")
+	end, err := time.Parse(db.MomentLayout, g["end"])
+	if err != nil {
+		return day, start.Format("3:04 PM")
+	}
+	return day, sharecard.Hours(start, end)
+}
+
+func spanLines(g store.Row) (string, string) {
+	start, err := cells.When(g["start"])
+	if err != nil {
+		return "", ""
+	}
+	end, err := cells.When(g["end"])
+	if err != nil || (end.Year() == start.Year() && end.YearDay() == start.YearDay()) {
+		return "", ""
+	}
+	days := start.Format("Monday, January 2") + " – " + end.Format("Monday, January 2")
+	if len(g["start"]) > len(db.DateLayout) && len(g["end"]) > len(db.DateLayout) {
+		return days, start.Format("Mon 3:04 PM") + " – " + end.Format("Mon 3:04 PM")
+	}
+	if len(g["start"]) > len(db.DateLayout) {
+		return days, start.Format("Mon 3:04 PM")
+	}
+	return days, ""
+}

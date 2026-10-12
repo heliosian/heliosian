@@ -121,7 +121,7 @@ func sampleServer() (*http.Server, *store.Queue) {
 	intercept.GoogleLogin("local/google")
 	bucket := blob.NewMemoryBucket()
 	fillSampleBucket(bucket)
-	core := localCore(&data.Dir{Root: "sampledata"}, bucket)
+	core := localCore(&data.Dir{Root: "sampledata"}, bucket, []byte("sample"))
 	saved, err := filepath.Glob("sampledata/artifacts/*.json")
 	if err != nil {
 		logging.Fatal("list the sample documents", "error", err)
@@ -141,12 +141,12 @@ func snapshotServer(email string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("media bucket", "error", err)
 	}
-	core := localCore(&data.Dir{Root: snapshotRoot}, blob.Overlay(base))
+	core := localCore(&data.Dir{Root: snapshotRoot}, blob.Overlay(base), []byte(env.Required("ID_KEY")))
 	slog.Info("serving the snapshot, disconnected", "dir", snapshotRoot, "as", email)
 	return localServer(core, email)
 }
 
-func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
+func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 	intercept.Install(mail.Host, mailFiles{dir: mailDir})
 	intercept.Install(intercept.ClaudeHost, intercept.Claude())
 	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
@@ -171,7 +171,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		Geocoder:      geocode.New("sample"),
 		Bucket:        bucket,
 		Store:         media,
-		IDKey:         []byte("sample"),
+		IDKey:         idKey,
 		ChatKey:       []byte("sample"),
 		AccessKey:     []byte("sample"),
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),

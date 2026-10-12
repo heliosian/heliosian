@@ -1,12 +1,12 @@
-import {pendingItems, rootOf, longDate} from '../state.js';
+import {pendingItems, rootOf, longDate, plain} from '../state.js';
 import {el, link, svg, imageThumb, button, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
-import {act} from '/data.js';
+import {approve} from '../writes.js';
 import {load} from '/router.js';
 
 async function decide(node, action) {
   try {
-    await act('activities', node.id, action);
+    await approve(node, action === 'approve');
   } catch (err) {
     toast(err.message);
   }
@@ -49,7 +49,7 @@ export function approvalsPage() {
     }
     body.append(title);
     if (act.description) {
-      body.append(el('div', 'row-text clamp', act.description));
+      body.append(el('div', 'row-text clamp', plain(act.description)));
     }
     row.append(body);
     const actions = el('div', 'row-actions');

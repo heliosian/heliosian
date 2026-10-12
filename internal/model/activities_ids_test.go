@@ -2,7 +2,6 @@ package model
 
 import (
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"heliosian/internal/id"
@@ -54,33 +53,6 @@ func TestOldIDsReachTheirThings(t *testing.T) {
 	}
 	if first := cache.Model().Activities.Activity("act0000000002").Children[0]; first.ID != "act0000000025" {
 		t.Fatalf("reorder by old ids put %s first", first.Title)
-	}
-}
-
-func TestOldPagePathsRedirect(t *testing.T) {
-	cache, mux := activitiesServer(t)
-	madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-redirects", map[string]string{"old": "/old-booth", "new": "/activities/E001/E020"}))
-	handler := ActivitiesRedirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
-	for _, c := range []struct {
-		path   string
-		status int
-		to     string
-	}{
-		{"/activities/E001", http.StatusMovedPermanently, "https://example.com/v/international-night"},
-		{"/activities/E001?x=1", http.StatusMovedPermanently, "https://example.com/v/international-night?x=1"},
-		{"/activities/E003/E026", http.StatusMovedPermanently, "https://example.com/activities/act0000000003/act0000000026"},
-		{"/activities/act0000000003/E026", http.StatusMovedPermanently, "https://example.com/activities/act0000000003/act0000000026"},
-		{"/v/international-night/E020", http.StatusMovedPermanently, "https://example.com/v/international-night/act0000000020"},
-		{"/old-booth", http.StatusFound, "https://example.com/v/international-night/act0000000020"},
-		{"/activities/act0000000003/act0000000026", http.StatusTeapot, ""},
-		{"/activities/act0000000001", http.StatusTeapot, ""},
-		{"/activities/E999", http.StatusTeapot, ""},
-	} {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest("GET", c.path, nil))
-		if rec.Code != c.status || rec.Header().Get("Location") != c.to {
-			t.Errorf("%s: %d %q, want %d %q", c.path, rec.Code, rec.Header().Get("Location"), c.status, c.to)
-		}
 	}
 }
 

@@ -12,6 +12,10 @@ function shownIn(year) {
     !state.category || (state.category === PRIORITY ? isPriority(a) : a.category === state.category));
 }
 
+function headingsOf(year) {
+  return [...state.model.categories.filter(c => c.year === year), {id: '', title: 'Uncategorized', showOnMain: true, can: {add: false}}];
+}
+
 function yearGrid(year) {
   const root = el('div');
   const items = shownIn(year).filter(a => {
@@ -24,8 +28,8 @@ function yearGrid(year) {
     root.append(panel);
     return root;
   }
-  for (const c of state.model.categories) {
-    const inGroup = items.filter(a => a.category === c.id);
+  for (const c of headingsOf(year)) {
+    const inGroup = items.filter(a => (a.category || '') === c.id);
     if (!inGroup.length) {
       continue;
     }
@@ -39,7 +43,7 @@ function yearGrid(year) {
       heading.append(el('p', 'group-note', c.description));
     }
     head.append(heading);
-    if (!c.builtIn && c.can.add) {
+    if (c.can.add) {
       const add = button(allows('team.curate') ? 'Add' : addLabel(c), 'plus', 'button button-secondary button-small group-add',
         () => openActivity(null, {category: c.id}));
       add.title = `Add to ${c.title}`;
@@ -119,7 +123,7 @@ function yearContent(year, thisYear) {
       add(PRIORITY, 'High Priority');
     }
     add('', 'All');
-    for (const c of state.model.categories) {
+    for (const c of state.model.categories.filter(c => c.year === year)) {
       if (present.has(c.id) && (c.showOnMain || state.category === c.id)) {
         add(c.id, c.title);
       }

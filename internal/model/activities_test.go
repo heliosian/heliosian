@@ -54,12 +54,11 @@ func activitiesServeWith(t *testing.T, mailer *mail.Mailgun) (*Store, *http.Serv
 	directory = s.Model().Directory
 	mux := http.NewServeMux()
 	calendar := calendarOver(s)
-	hooks := RegisterActivities(mux, ActivitiesDeps{
+	hooks := NewActivities(ActivitiesDeps{
 		Store:    s,
 		Images:   blob.NewImages(blob.New(blob.NewMemoryBucket()), "team"),
 		Calendar: calendar,
 		Mailer:   mailer,
-		Style:    activitiesTestStyle,
 	})
 	typedRegistry(s, queue, DirectoryResources(), calendar.Resources(), hooks.Resources()).Register(mux)
 	return s, mux
@@ -194,8 +193,6 @@ func activityAs(t *testing.T, mux http.Handler, as, activityID string) (activity
 	}
 	return a, true
 }
-
-var activitiesTestStyle = ActivitiesCardStyle(func() string { return "HCA-Team" }, func() string { return "HCA Volunteer Portal" })
 
 func activitiesServer(t *testing.T) (*Store, *http.ServeMux) {
 	t.Helper()
@@ -1608,24 +1605,8 @@ func TestPrettyIDs(t *testing.T) {
 	}
 }
 
-func TestActivitiesSharePreview(t *testing.T) {
-	cache, mux := activitiesServer(t)
-	previews := []testkit.Preview{{
-		URL: "https://team.heliosian.com/v/intl-night/",
-		Want: []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
-			`og:image" content="https://team.heliosian.com/open/share/act0000000001.png"`, `Thursday, September 24 · 4:00 – 6:00 PM — We invite you`},
-	}, {
-		URL:  "https://team.heliosian.com/v/international-night/act0000000020",
-		Want: []string{`og:title" content="India · International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`},
-	}}
-	for _, path := range []string{"/activities/act0000000006", "/my", "/"} {
-		previews = append(previews, testkit.Preview{
-			URL:   "https://team.heliosian.com" + path,
-			Want:  []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`, "Volunteers needed: "},
-			Never: []string{"act0000000006"},
-		})
-	}
-	testkit.Previews(t, ActivitiesPreviewHead(cache, activitiesTestStyle), previews...)
+func TestActivitiesNeeds(t *testing.T) {
+	cache, _ := activitiesServer(t)
 	list := needs(cache.Model().Activities, now())
 	if len(list) == 0 {
 		t.Fatalf("nothing needs hands in the sample")
@@ -1643,10 +1624,6 @@ func TestActivitiesSharePreview(t *testing.T) {
 		}
 		last = a.Start
 	}
-	if note := needNote(&Activity{Start: "2026-09-24", Spots: 3, Volunteers: []Volunteer{{}}}); note != "Thursday, September 24 · 2 spots left" {
-		t.Fatalf("note: %q", note)
-	}
-	testkit.Cards(t, mux, []string{"/open/share/act0000000001.png", "/open/share/upcoming.png"}, "/open/share/act0000000006.png")
 	for _, status := range []string{StatusHidden, StatusPending} {
 		next := activitiesTables(t)
 		for _, row := range next[activitiesTab] {
@@ -1769,28 +1746,6 @@ func TestRedirects(t *testing.T) {
 	}
 	if n := cache.Count(activitiesAppName, activityRedirectsTab, store.Row{"Type": "pretty", "Old": "/v/intl-nite"}); n != 1 {
 		t.Fatalf("the sample row's kind was not kept: %+v", cache.Model().Activities.Redirects)
-	}
-	madeBy(t, testkit.Call(t, mux, jordan, "POST", "/api/activity-redirects", map[string]string{"old": "/v/fair", "new": "/"}))
-	handler := ActivitiesRedirected(cache, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
-	for path, want := range map[string]string{
-		"/dl/signup/s/768d91/r/nsSPomxFcPrSfoRCAgzI?x=1": elsewhere + "/r/nsSPomxFcPrSfoRCAgzI?x=1",
-		"/v/intl-nite": "https://example.com/v/international-night", "/v/international-night": "", "/calendar": "", "/nowhere": "",
-		"/v/fair": "https://example.com/", "/v/fair/calendar": "https://example.com/calendar", "/v/fair//elsewhere.example": "", "/v/fair/\\elsewhere.example": "",
-	} {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
-		if want == "" {
-			if rec.Code != http.StatusTeapot {
-				t.Errorf("%s: %d, want served", path, rec.Code)
-			}
-		} else if rec.Code != http.StatusFound || rec.Header().Get("Location") != want {
-			t.Errorf("%s: %d %q, want %q", path, rec.Code, rec.Header().Get("Location"), want)
-		}
-	}
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest("POST", "/v/intl-nite", nil))
-	if rec.Code != http.StatusTeapot {
-		t.Errorf("a POST is never redirected: %d", rec.Code)
 	}
 	if rec := testkit.Call(t, mux, jordan, "DELETE", "/api/activity-redirects/"+redirectKeyOf("/dl/signup/s/768d91"), nil); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", rec.Code, rec.Body)

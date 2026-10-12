@@ -37,7 +37,7 @@ function navLink(item) {
 
 function suggestButton() {
   return button('Suggest an Idea', 'bulb', 'button nav-action', () => {
-    const ideas = state.model.categories.find(c => c.title === 'Just an Idea');
+    const ideas = state.model.categories.find(c => c.title === 'Just an Idea' && c.year === years().current);
     openActivity(null, {category: ideas ? ideas.id : ''});
   });
 }

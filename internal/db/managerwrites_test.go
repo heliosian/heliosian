@@ -25,6 +25,13 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"timing": "All evening", "capacity": "40", "join": "below", "adding": "managers", "start": "2027-02-06 17:30", "slug": "inight"}}); err != nil {
 		t.Errorf("a chair can't change their event: %v", err)
 	}
+	kept := false
+	for _, a := range s.Model().Table("ALIAS").All() {
+		kept = kept || (a["alias"] == "international-night" && a["target"] == night && a["hidden"] == "Yes")
+	}
+	if !kept {
+		t.Error("a group's old short name isn't kept as a hidden alias")
+	}
 	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"priority": true}}); err == nil {
 		t.Error("a chair marks their event a priority")
 	}
@@ -57,6 +64,20 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	}
 	if _, err := write(student, Edit{Set: suggested[0], Cells: map[string]any{"status": "open"}}); err == nil {
 		t.Error("someone approves their own suggestion")
+	}
+	row := map[string]any{"parent": night, "kind": "activity", "name": "Balloons", "status": "pending", "join": "others", "added_by": student, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}
+	balloons, err := write(student,
+		Edit{Insert: "GROUP", As: "s", Row: row},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@s", "person": student, "member": "yes", "added_by": student}},
+	)
+	if err != nil {
+		t.Fatalf("someone can't suggest a role and sign up for it at once: %v", err)
+	}
+	if len(as(t, s, student, `(from GROUP (where (= id "`+balloons[0]+`")))`)) != 1 {
+		t.Error("someone can't see the suggestion they made")
+	}
+	if len(as(t, s, guest, `(from GROUP (where (= id "`+balloons[0]+`")))`)) != 0 {
+		t.Error("someone sees a suggestion they neither made nor run")
 	}
 	if _, err := write(parent, Edit{Set: suggested[0], Cells: map[string]any{"status": "open"}}); err != nil {
 		t.Errorf("a chair can't approve a suggestion under their event: %v", err)

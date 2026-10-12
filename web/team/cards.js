@@ -1,4 +1,4 @@
-import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, mySignUp, signUpOf, rootOf, parentOf, category, UNCATEGORIZED} from './state.js';
+import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, mySignUp, signUpOf, rootOf, parentOf, category, plain} from './state.js';
 import {parseWhen} from '/datecard.js';
 import {badge} from './dom.js';
 import {el, link, svg, imageThumb, button} from '/elements.js';
@@ -30,8 +30,7 @@ function peopleLine(node, editing) {
     const lead = el('span', 'row-lead', `${v.name} (Lead)`);
     parts.push(lead);
   }
-  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair')
-    .map(v => (v.position === 'Open to Co-Chair' ? el('span', 'row-option', `${v.name} (Co-Chair Opt)`) : v.name));
+  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
   for (const sub of descendants(node)) {
     for (const v of shownVolunteers(sub, editing)) {
       names.push(`${v.name} (${sub.title})`);
@@ -84,15 +83,6 @@ export function completeBadge() {
   const mark = el('span', 'badge complete');
   mark.append(svg('check'), el('span', '', 'Volunteers Complete'));
   return mark;
-}
-
-function needChip(node) {
-  if (!node.coLeaderNeeded) {
-    return null;
-  }
-  const chip = el('span', 'need');
-  chip.append(svg('people'), el('span', '', 'Co-chair needed'));
-  return chip;
 }
 
 export function wanted(node) {
@@ -149,13 +139,9 @@ export function childRow(node, editing) {
   if (urgent) {
     title.append(urgent);
   }
-  const need = needChip(node);
-  if (need) {
-    title.append(need);
-  }
   body.append(title);
   if (node.description) {
-    body.append(el('div', 'row-text clamp', node.description));
+    body.append(el('div', 'row-text clamp', plain(node.description)));
   }
   if (node.children.length) {
     const under = node.children.filter(c => c.status !== 'Hidden' && c.status !== 'Pending');
@@ -191,27 +177,6 @@ export function childRow(node, editing) {
   const chevron = svg('chevron-right');
   chevron.classList.add('chevron');
   actions.append(chevron);
-  row.append(actions);
-  return row;
-}
-
-export function linkRow(act, item, editor, onEdit) {
-  const row = el('div', 'row');
-  row.append(imageThumb(item.imageUrl || act.imageUrl, item.title, 'small'));
-  const body = el('div', 'row-body');
-  body.append(el('div', 'row-title', item.title));
-  const anchor = el('a', 'row-text', item.url.replace(/^https?:\/\//, ''));
-  anchor.href = item.url;
-  anchor.target = '_blank';
-  anchor.rel = 'noopener';
-  body.append(anchor);
-  row.append(body);
-  const actions = el('div', 'row-actions');
-  const open = button('Open', 'open', 'button button-small', () => window.open(item.url, '_blank', 'noopener'));
-  actions.append(open);
-  if (editor) {
-    actions.append(button('Edit', 'edit', 'button button-small', onEdit));
-  }
   row.append(actions);
   return row;
 }
@@ -257,11 +222,6 @@ function activityCardBody(act, opts) {
   const card = el('div', 'card' + (act.status === 'Hidden' || act.status === 'Pending' ? ' is-muted' : ''));
   const media = link(act.path, 'card-media');
   media.append(imageThumb(act.imageUrl, act.title, 'card-image ' + categoryClass(act.category)));
-  if (act.coLeaderNeeded) {
-    const need = el('span', 'card-chip card-need');
-    need.append(svg('people'), el('span', '', 'Co-chair needed'));
-    media.append(need);
-  }
   const stamp = dateBadge(act);
   if (stamp) {
     media.append(stamp);
@@ -272,7 +232,7 @@ function activityCardBody(act, opts) {
   title.textContent = act.title;
   body.append(title);
   if (act.description) {
-    body.append(el('div', 'card-text clamp', act.description));
+    body.append(el('div', 'card-text clamp', plain(act.description)));
   }
   if (!opts.signUps) {
     const callout = priorityCallout(act);
@@ -295,8 +255,6 @@ function activityCardBody(act, opts) {
       const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
         item.append(roleTag('chair'));
-      } else if (mine && mine.position === 'Open to Co-Chair') {
-        item.append(roleTag('option'));
       }
       const when = node.whenFrom || node === act ? {} : whenParts(node);
       const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');
@@ -348,7 +306,7 @@ export function priorityRow(node) {
   }
   main.append(el('div', 'prio-title', node.title));
   if (node.description) {
-    main.append(el('div', 'prio-text clamp', node.description));
+    main.append(el('div', 'prio-text clamp', plain(node.description)));
   }
   const heading = category(root.category);
   if (heading) {
@@ -376,11 +334,7 @@ export function priorityRow(node) {
     }
   }
   row.append(when);
-  const people = el('div', 'prio-people');
-  if (!coChairs(node).length && node.coLeaderNeeded) {
-    people.append(el('span', 'prio-chair is-needed', 'Co-chair needed'));
-  }
-  row.append(people);
+  row.append(el('div', 'prio-people'));
   const act = el('div', 'prio-action');
   if (mySignUp(node)) {
     const done = button('Signed up', 'join', 'button button-secondary button-small');
@@ -436,9 +390,10 @@ function rolesLine(act) {
 }
 
 export function categoryClass(id) {
-  if (id === UNCATEGORIZED) {
+  const c = category(id);
+  if (!c) {
     return 'cat-none';
   }
-  const i = (state.model ? state.model.categories : []).findIndex(c => c.id === id);
+  const i = state.model.categories.filter(x => x.year === c.year).findIndex(x => x.id === id);
   return 'cat-' + (i < 0 ? 1 : i % 5 + 1);
 }

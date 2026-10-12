@@ -1,9 +1,8 @@
-import {state, allows, me} from '../state.js';
+import {state, allows, me, yearGroup, years} from '../state.js';
 import {el, button} from '/elements.js';
 import {categoryList, openSettings, openRedirect} from '../edit.js';
-import {act, query} from '/data.js';
-import {checkbox} from '/form.js';
-import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
+import {api} from '/api.js';
+import {adminPage as buildAdminPage, adminsCard, groupMembers} from '/admin.js';
 
 function categoriesCard() {
   const card = el('div', 'card');
@@ -32,60 +31,38 @@ function settingsCard() {
 }
 
 function notifyCard() {
-  const card = el('div', 'card');
-  card.append(el('h2', '', 'Email notifications'));
-  card.append(el('div', 'hint', 'Which of these you want an email about. These are yours alone; every admin picks their own.'));
-  const kinds = [
-    ['events', 'A new event is added', 'Someone adds an event to the Opportunities page, or suggests one.'],
-    ['activities', 'A new activity is added under an event', 'A committee, booth or shift is added or suggested under any event.'],
-    ['signups', 'Someone signs up', 'A new volunteer on any event or thing under one.'],
-    ['offers', 'Someone offers to co-chair', 'A volunteer marks themselves open to co-chairing.'],
-  ];
-  const stack = el('div', 'setting-stack notify-stack');
-  const status = el('span', 'save-status');
-  const boxes = {};
-  const persist = async () => {
-    status.classList.remove('error');
-    status.textContent = 'Saving…';
-    try {
-      await act('team-settings', state.model.settingsId, 'notify', {kinds: kinds.map(k => k[0]).filter(k => boxes[k].checked)});
-      status.textContent = 'Saved.';
-    } catch (err) {
-      status.classList.add('error');
-      status.textContent = err.message;
-    }
-  };
-  for (const [kind, label, hint] of kinds) {
-    const box = checkbox(label, false, hint);
-    box.input.disabled = true;
-    box.input.addEventListener('change', persist);
-    boxes[kind] = box.input;
-    stack.append(box.wrap);
+  const year = yearGroup(years().current);
+  if (!year || !year.notify) {
+    const card = el('div', 'card');
+    card.append(el('h2', '', 'Email notifications'), el('div', 'hint', `${years().current} names no group to hear of its sign-ups and additions.`));
+    return card;
   }
-  card.append(stack, status);
-  query('/api/team-settings').then(read => {
-    const notify = read.get(read.result[0]).notify || [];
-    for (const kind of Object.keys(boxes)) {
-      boxes[kind].checked = notify.includes(kind);
-      boxes[kind].disabled = false;
-    }
-  }).catch(err => {
-    status.classList.add('error');
-    status.textContent = err.message;
+  return adminsCard({
+    title: 'Email notifications',
+    hint: 'Everyone here gets an email for every sign-up and every addition this school year.',
+    ...groupMembers([{'=': [{path: 'id'}, year.notify]}]),
   });
-  return card;
+}
+
+function adminsList() {
+  return adminsCard({
+    hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.',
+    ...groupMembers([{in: [{path: 'id'}, {select: {from: 'APP', column: 'admins', where: [{'=': [{path: 'key'}, 'team']}]}}]}]),
+  });
 }
 
 function redirectsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Redirects'));
-  card.append(el('div', 'hint', 'Old addresses on this site and where they now lead, followed before sign-in. Renaming an event adds one on its own; add one here for a link from the old volunteer site, or any address that should land somewhere else.'));
+  card.append(el('div', 'hint', 'Old addresses on this site and where they now lead, followed before sign-in. Add one for a link from the old volunteer site, or any address that should land somewhere else.'));
   const rows = el('div');
   const status = el('span', 'save-status');
-  query('/api/activity-redirects').then(read => fillRedirects(rows, read.result.map(read.get))).catch(err => {
-    status.classList.add('error');
-    status.textContent = err.message;
-  });
+  api('QUERY', '/api/q', {from: 'REDIRECT', where: [{'=': [{path: 'app'}, 'team']}]})
+    .then(answer => fillRedirects(rows, answer.result.map(id => answer.resources.REDIRECT[id])))
+    .catch(err => {
+      status.classList.add('error');
+      status.textContent = err.message;
+    });
   const add = el('div', 'add-row');
   add.append(button('Add Redirect', 'plus', 'button', () => openRedirect(null)));
   card.append(rows, add, status);
@@ -93,7 +70,7 @@ function redirectsCard() {
 }
 
 function fillRedirects(rows, list) {
-  const redirects = list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || a.old.localeCompare(b.old));
+  const redirects = list.sort((a, b) => (b.added || '').localeCompare(a.added || '') || a.old.localeCompare(b.old));
   if (!redirects.length) {
     rows.append(el('div', 'hint', 'None yet.'));
   }
@@ -102,18 +79,9 @@ function fillRedirects(rows, list) {
     const body = el('div', 'grow');
     const line = el('div', 'redirect-line');
     line.append(el('code', 'redirect-old', item.old), el('span', 'redirect-arrow', '→'), el('code', 'redirect-new', item.new));
-    const sub = [];
-    if (item.type === 'Activity' || item.type === 'pretty') {
-      sub.push('From a rename');
-    } else if (item.type && item.type !== 'Admin') {
-      sub.push(item.type);
-    }
-    if (item.date) {
-      sub.push(item.date);
-    }
     body.append(line);
-    if (sub.length) {
-      body.append(el('div', 'sub', sub.join(' · ')));
+    if (item.added) {
+      body.append(el('div', 'sub', item.added));
     }
     row.append(body, button('Edit', 'edit', 'button button-secondary button-small', () => openRedirect(item)));
     rows.append(row);
@@ -127,7 +95,7 @@ const sections = [
   ]},
   {title: 'Editing & Control', tabs: [
     {key: 'notify', label: 'Email Notifications', card: notifyCard},
-    {key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.', ...appAdmins('team')})},
+    {key: 'admins', label: 'Admins', card: adminsList},
   ]},
   {title: 'Addresses', tabs: [
     {key: 'redirects', label: 'Redirects', card: redirectsCard},

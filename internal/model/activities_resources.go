@@ -97,7 +97,6 @@ type activitiesSettingsResource struct {
 	Today         string             `json:"today"`
 	Settings      ActivitiesSettings `json:"settings"`
 	GradeColors   map[string]string  `json:"gradeColors,omitempty"`
-	ImageSearch   bool               `json:"imageSearch"`
 	People        []PersonView       `json:"people,omitempty"`
 	Uncategorized *ActivityCategory  `json:"uncategorized,omitempty"`
 	Notify        []string           `json:"notify,omitempty"`
@@ -955,7 +954,6 @@ func (a activitiesApp) teamSettingsType() api.Type[*Model] {
 				Today:         q.Now.Format(DateFormat),
 				Settings:      acts.Settings,
 				GradeColors:   m.Config.GradeColors,
-				ImageSearch:   a.search.On(),
 				Uncategorized: acts.categories[UncategorizedID],
 			}
 			if q.Actor.May(SeeAllActivities) {
