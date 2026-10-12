@@ -796,11 +796,11 @@ const PolicySource = `
 (set GROUP.notify (and (runs_list @old) (or (blank @new.notify) (sees_members @new.notify))))
 ; a group's managers open it to offers to co-chair it, naming a group under it, or close it
 (set GROUP.chair_offers (and (runs_list @old) (or (blank @new.chair_offers) (= @new.chair_offers.parent @old.id))))
-; a group's managers give it a co-chair offers group: open, under it, joined directly by its own members alone, seen as it is
+; a group's managers give it a co-chair offers group: open, under it, joined directly by its own members alone, seen as it is, and who offered seen by its managers alone
 (insert GROUP
   (and (= @new.kind "group") (runs_list @new.parent) (= @new.status "open") (= @new.added_by @viewer)
        (blank @new.managed_by) (blank @new.url) (= @new.join "direct") (= @new.eligible @new.parent)
-       (= @new.visible_to @new.parent.visible_to) (= @new.members_visible_to @new.parent.members_visible_to)))
+       (= @new.visible_to @new.parent.visible_to) (blank @new.members_visible_to)))
 ; a group's managers place it among the groups beside it
 (set GROUP.order (runs_list @old))
 ; a group's managers move it under another group they run

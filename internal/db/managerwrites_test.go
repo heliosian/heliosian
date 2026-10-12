@@ -145,7 +145,10 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	offersRow := map[string]any{"kind": "group", "parent": night, "name": "International Night Co-Chair Offers", "status": "open", "join": "direct", "eligible": night,
-		"visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}
+		"visible_to": "grp00000000004", "posting": "none", "replying": "none"}
+	if _, err := write(parent, Edit{Insert: "GROUP", As: "o", Row: mergeRow(offersRow, map[string]any{"added_by": parent, "members_visible_to": "grp00000000004"})}, Edit{Set: night, Cells: map[string]any{"chair_offers": "@o"}}); err == nil {
+		t.Error("a chair opens offers that everyone sees")
+	}
 	if _, err := write(student, Edit{Insert: "GROUP", As: "o", Row: mergeRow(offersRow, map[string]any{"added_by": student})}, Edit{Set: night, Cells: map[string]any{"chair_offers": "@o"}}); err == nil {
 		t.Error("someone who doesn't run an event opens it to offers")
 	}
@@ -165,6 +168,12 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 		t.Fatalf("someone can't sign up and offer to co-chair at once: %v", err)
 	}
 	offer := joined[1:]
+	offered := `(from MEMBER (where (= group "` + offers + `")))`
+	for viewer, want := range map[string]int{student: 1, parent: 1, guest: 0} {
+		if got := len(as(t, s, viewer, offered)); got != want {
+			t.Errorf("%s sees %d offers, want %d", viewer, got, want)
+		}
+	}
 	signUp, _ := s.Model().Table("MEMBER").Find(night, student)
 	if _, err := write(student, Edit{Set: signUp["id"], Cells: map[string]any{"lead": true}}); err == nil {
 		t.Error("a volunteer makes themselves a co-chair")

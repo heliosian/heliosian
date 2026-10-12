@@ -232,7 +232,7 @@ export async function setOffers(node, open) {
   await write([
     {insert: 'GROUP', as: 'offers', row: {
       kind: 'group', parent: node.id, name: `${node.title} Co-Chair Offers`, status: 'open', join: 'direct', eligible: node.id,
-      visible_to: node.row.visible_to || '', members_visible_to: node.row.members_visible_to || '', posting: 'none', replying: 'none', added_by: me().id,
+      visible_to: node.row.visible_to || '', posting: 'none', replying: 'none', added_by: me().id,
     }},
     {set: node.id, cells: {chair_offers: '@offers'}},
   ]);

@@ -115,7 +115,7 @@ func TestAnOfferToCoChairNotifiesAndThanksNobody(t *testing.T) {
 		return ids
 	}
 	opened := write(parent,
-		Edit{Insert: "GROUP", As: "o", Row: map[string]any{"parent": decor, "kind": "group", "status": "open", "name": "Decor Co-Chair Offers", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none", "join": "direct", "eligible": decor, "added_by": parent}},
+		Edit{Insert: "GROUP", As: "o", Row: map[string]any{"parent": decor, "kind": "group", "status": "open", "name": "Decor Co-Chair Offers", "visible_to": "grp00000000004", "posting": "none", "replying": "none", "join": "direct", "eligible": decor, "added_by": parent}},
 		Edit{Set: decor, Cells: map[string]any{"chair_offers": "@o"}},
 	)
 	write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": opened[0], "person": student, "member": "yes", "added_by": student}})
