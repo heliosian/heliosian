@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"log/slog"
-	"slices"
 	"time"
 
 	"heliosian/internal/cells"
@@ -22,8 +21,18 @@ func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index 
 			in.deliver(delivery{change: Change{Table: tab, Old: before, New: after}, env: Env{System: refreshSystem, Now: time.Now()}})
 		}
 	}
-	s, err := store.New(parts(index, newServices(index), refreshed), consentStep, source, writer, queue)
+	s, err := store.New(parts(index, newServices(index), refreshed), finishModel, source, writer, queue)
 	return s, err
+}
+
+func finishModel(ctx context.Context, base, m *Model) error {
+	referenced := tallied(ctx, "check references")
+	err := m.checkReferences(base)
+	referenced()
+	if err != nil {
+		return err
+	}
+	return consentStep(ctx, m)
 }
 
 const ChangesTab = "CHANGES"
@@ -47,13 +56,7 @@ func parts(index *SearchIndex, sv *services, refreshed func(tab string, before, 
 				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: []string{"id"}, AppendOnly: t.AppendOnly})
 			}
 		}
-		part := store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv), Loaded: loaded(sheet), Refreshed: refreshed, Incremental: true}
-		// Mail reads every other sheet so that a change to any of them rebuilds it,
-		// and its build checks the references across all five.
-		if sheet == MailSheet {
-			part.Reads = slices.DeleteFunc(slices.Clone(Sheets), func(s string) bool { return s == MailSheet })
-		}
-		out = append(out, part)
+		out = append(out, store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv), Loaded: loaded(sheet), Refreshed: refreshed, Incremental: true})
 	}
 	return out
 }
@@ -98,11 +101,6 @@ func build(sheet string, index *SearchIndex, sv *services) func(context.Context,
 		}
 		checked()
 		*m.slot(sheet) = built
-		if sheet == MailSheet {
-			referenced := tallied(ctx, "check references")
-			defer referenced()
-			return m.checkReferences()
-		}
 		return nil
 	}
 }

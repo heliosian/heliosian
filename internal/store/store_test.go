@@ -23,7 +23,7 @@ type counts struct {
 	consents, reportAtConsent                   int
 }
 
-func consent(_ context.Context, m *counts) error {
+func consent(_ context.Context, _, m *counts) error {
 	m.consents++
 	m.reportAtConsent = m.report
 	return nil
@@ -420,7 +420,7 @@ func TestConsentRunsAfterEveryPart(t *testing.T) {
 
 func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 	f := newFixture(t)
-	refusing := func(_ context.Context, m *counts) error {
+	refusing := func(_ context.Context, _, m *counts) error {
 		if m.things > 2 {
 			return errors.New("three things")
 		}
@@ -431,7 +431,7 @@ func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	err = s.CommitAndWait(context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"}))
-	if err == nil || !strings.Contains(err.Error(), "consent: three things") {
+	if err == nil || !strings.Contains(err.Error(), "three things") {
 		t.Fatalf("a write the consent step refuses: %v", err)
 	}
 }

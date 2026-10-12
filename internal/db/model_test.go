@@ -196,6 +196,39 @@ func TestALoadRefusesRowsWithoutTheirOwnID(t *testing.T) {
 	}
 }
 
+func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
+	for name, edit := range map[string]func(dir *data.Dir) error{
+		"a person still named deleted": func(dir *data.Dir) error {
+			return dir.Delete(PeopleSheet, "PERSON", map[string]string{"id": "per00000000004"})
+		},
+		"a membership naming nobody added": func(dir *data.Dir) error {
+			return dir.Insert(GroupsSheet, "MEMBER", []map[string]string{{"id": "mem00000000999", "group": "grp00000000040", "person": "per99999999999", "member": "yes"}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.CopyFS(root, os.DirFS("../../sampledata")); err != nil {
+				t.Fatal(err)
+			}
+			dir := &data.Dir{Root: root}
+			queue := store.NewQueue()
+			s, err := NewStore(dir, dir, queue, NewSearchIndex())
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := s.Model()
+			if err := edit(dir); err != nil {
+				t.Fatal(err)
+			}
+			queue.Refresh()
+			queue.Flush()
+			if s.Model() != before {
+				t.Fatal("a refresh swapped in a model with a reference that names no row")
+			}
+		})
+	}
+}
+
 func TestCommitAcrossSheets(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	sam := apply(t, s, queue, []Edit{

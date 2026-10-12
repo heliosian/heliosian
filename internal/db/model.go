@@ -574,18 +574,53 @@ func checkGroupCycles(groups Sheet) error {
 	return fmt.Errorf("RULE: %s take in one another's members through their rules", strings.Join(names, ", "))
 }
 
-func (m *Model) checkReferences() error {
-	for _, t := range Tables {
+func (m *Model) checkReferences(base *Model) error {
+	refs := referrers()
+	for i := range Tables {
+		t := &Tables[i]
 		if t.Generated {
 			continue
 		}
-		for _, row := range m.Table(t.Name).rows {
-			for _, c := range t.Columns {
-				for _, value := range references(c, row[c.Name]) {
-					if !m.Has(value) {
-						return fmt.Errorf("%s %s: %s %s names no row", t.Name, row["id"], c.Name, value)
-					}
+		rows := m.Table(t.Name)
+		if base == nil {
+			for _, row := range rows.rows {
+				if err := m.rowReferences(t, row); err != nil {
+					return err
 				}
+			}
+			continue
+		}
+		old := base.Table(t.Name)
+		if old == rows {
+			continue
+		}
+		for _, row := range rows.rows {
+			if j, ok := old.byID[row["id"]]; ok && maps.Equal(old.rows[j], row) {
+				continue
+			}
+			if err := m.rowReferences(t, row); err != nil {
+				return err
+			}
+		}
+		for _, row := range old.rows {
+			if _, ok := rows.byID[row["id"]]; ok {
+				continue
+			}
+			for _, ref := range slices.Concat(refs[t.Name], refs[""]) {
+				if naming := m.Table(ref.table).Referencing(ref.column, row["id"]); len(naming) > 0 {
+					return fmt.Errorf("%s %s: %s %s names no row", ref.table, naming[0]["id"], ref.column, row["id"])
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model) rowReferences(t *Table, row store.Row) error {
+	for _, c := range t.Columns {
+		for _, value := range references(c, row[c.Name]) {
+			if !m.Has(value) {
+				return fmt.Errorf("%s %s: %s %s names no row", t.Name, row["id"], c.Name, value)
 			}
 		}
 	}

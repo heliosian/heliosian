@@ -204,7 +204,7 @@ func parts(deps Deps, documents *documentObjects) []store.Part[Model] {
 	}
 }
 
-func noConsentStep(context.Context, *Model) error {
+func noConsentStep(context.Context, *Model, *Model) error {
 	return nil
 }
 

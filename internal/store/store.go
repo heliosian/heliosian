@@ -32,21 +32,21 @@ type Part[M any] struct {
 }
 
 type Store[M any] struct {
-	parts   []Part[M]
-	consent func(ctx context.Context, m *M) error
-	books   map[string]*Book
-	queue   *Queue
-	mu      sync.RWMutex
-	tables  map[string]Tables
-	model   *M
+	parts  []Part[M]
+	finish func(ctx context.Context, base, m *M) error
+	books  map[string]*Book
+	queue  *Queue
+	mu     sync.RWMutex
+	tables map[string]Tables
+	model  *M
 }
 
-func New[M any](parts []Part[M], consent func(ctx context.Context, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
+func New[M any](parts []Part[M], finish func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
 	ordered, err := order(parts)
 	if err != nil {
 		return nil, err
 	}
-	s := &Store[M]{parts: ordered, consent: consent, books: map[string]*Book{}, queue: queue}
+	s := &Store[M]{parts: ordered, finish: finish, books: map[string]*Book{}, queue: queue}
 	for _, p := range ordered {
 		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer, queue)
 		if err != nil {
@@ -255,12 +255,16 @@ func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M,
 			changed[p.App] = true
 		}
 	}
+	prior := base
+	if changed == nil {
+		prior = nil
+	}
 	start := time.Now()
-	consent := building.Tally("consent")
-	err := s.consent(trace.With(ctx, consent), &next)
-	consent.Add(time.Since(start))
+	finishing := building.Tally("finish")
+	err := s.finish(trace.With(ctx, finishing), prior, &next)
+	finishing.Add(time.Since(start))
 	if err != nil {
-		return nil, fmt.Errorf("consent: %w", err)
+		return nil, err
 	}
 	return &next, nil
 }
