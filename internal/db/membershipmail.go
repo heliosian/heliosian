@@ -111,6 +111,11 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 	activity := g["kind"] == "activity"
 	switch change.what {
 	case placeJoined:
+		if served, ok := m.offersFor(g); ok {
+			mm.notice(ctx, m, served, change.actor, change.person, fmt.Sprintf("Offer to co-chair: %s for %s", m.nameOf(change.person), served["name"]),
+				fmt.Sprintf("%s offered to co-chair %s", m.nameOf(change.person), served["name"]), "Its co-chairs can make them one.", m.signUpRows(change))
+			return
+		}
 		if activity && change.lead {
 			mm.leads(ctx, m, g, change)
 		} else if activity {
@@ -128,7 +133,7 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 		}
 	case placeAdded:
 		parent, ok := m.Table("GROUP").Get(g["parent"])
-		if !ok {
+		if !ok || m.serves(g) {
 			return
 		}
 		rows := [][2]string{{"Status", g["status"]}}
@@ -138,6 +143,25 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 		mm.notice(ctx, m, parent, change.actor, "", "New: "+g["name"], g["name"],
 			fmt.Sprintf("Added under %s by %s.", parent["name"], m.nameOf(change.actor)), rows)
 	}
+}
+
+func (m *Model) serves(g store.Row) bool {
+	for _, column := range servingColumns {
+		for _, other := range m.Table("GROUP").Referencing(column, g["id"]) {
+			if other["id"] != g["id"] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (m *Model) offersFor(g store.Row) (store.Row, bool) {
+	served := m.Table("GROUP").Referencing("chair_offers", g["id"])
+	if len(served) == 0 {
+		return nil, false
+	}
+	return served[0], true
 }
 
 func (m *Model) nameOf(person string) string {

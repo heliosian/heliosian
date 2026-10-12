@@ -137,3 +137,60 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 		t.Errorf("a chair can't change the words of an event the calendar import brings: %v", err)
 	}
 }
+
+func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
+	const night, managers = "grp00000000512", "grp00000000513"
+	s, queue := sampleWithQueue(t)
+	write := func(viewer string, edits ...Edit) ([]string, error) {
+		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+	}
+	offersRow := map[string]any{"kind": "group", "parent": night, "name": "International Night Co-Chair Offers", "status": "open", "join": "direct", "eligible": night,
+		"visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}
+	if _, err := write(student, Edit{Insert: "GROUP", As: "o", Row: mergeRow(offersRow, map[string]any{"added_by": student})}, Edit{Set: night, Cells: map[string]any{"chair_offers": "@o"}}); err == nil {
+		t.Error("someone who doesn't run an event opens it to offers")
+	}
+	opened, err := write(parent, Edit{Insert: "GROUP", As: "o", Row: mergeRow(offersRow, map[string]any{"added_by": parent})}, Edit{Set: night, Cells: map[string]any{"chair_offers": "@o", "join": "others"}})
+	if err != nil {
+		t.Fatalf("a chair can't open their event to offers: %v", err)
+	}
+	offers := opened[0]
+	if _, err := write(guest, Edit{Insert: "MEMBER", Row: map[string]any{"group": offers, "person": guest, "member": "yes", "added_by": guest}}); err == nil {
+		t.Error("someone not signed up offers to co-chair")
+	}
+	joined, err := write(student,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": night, "person": student, "member": "yes", "added_by": student}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": offers, "person": student, "member": "yes", "added_by": student}},
+	)
+	if err != nil {
+		t.Fatalf("someone can't sign up and offer to co-chair at once: %v", err)
+	}
+	offer := joined[1:]
+	signUp, _ := s.Model().Table("MEMBER").Find(night, student)
+	if _, err := write(student, Edit{Set: signUp["id"], Cells: map[string]any{"lead": true}}); err == nil {
+		t.Error("a volunteer makes themselves a co-chair")
+	}
+	if _, err := write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "member": "yes"}}); err == nil {
+		t.Error("a volunteer puts themselves among the managers")
+	}
+	if _, err := write(parent,
+		Edit{Set: signUp["id"], Cells: map[string]any{"lead": true}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "member": "yes"}},
+		Edit{Delete: offer[0]},
+	); err != nil {
+		t.Fatalf("a chair can't make a volunteer who offered a co-chair: %v", err)
+	}
+	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"chair_offers": ""}}, Edit{Delete: offers}); err != nil {
+		t.Errorf("a chair can't close their event to offers: %v", err)
+	}
+}
+
+func mergeRow(a, b map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range a {
+		out[k] = v
+	}
+	for k, v := range b {
+		out[k] = v
+	}
+	return out
+}

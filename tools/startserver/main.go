@@ -147,7 +147,7 @@ func snapshotServer(email string) (*http.Server, *store.Queue) {
 }
 
 func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
-	intercept.Install(mail.Host, mailFiles{dir: mailDir})
+	intercept.Install(mail.Host, intercept.Mail(mailDir))
 	intercept.Install(intercept.ClaudeHost, intercept.Claude())
 	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
 	intercept.Install(intercept.PlacesHost, intercept.Places())
@@ -193,6 +193,10 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},
 	})
 	core.Search.StartMaking("sample")
+	go func() {
+		<-core.Settled
+		core.ListMail.Start()
+	}()
 	return core
 }
 

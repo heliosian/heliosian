@@ -28,6 +28,7 @@ import (
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/imagesearch"
+	"heliosian/internal/intercept"
 	"heliosian/internal/logging"
 	"heliosian/internal/loop"
 	"heliosian/internal/mail"
@@ -45,6 +46,8 @@ import (
 )
 
 const deployOverlap = 30 * time.Second
+
+const localMail = "local/mail"
 
 const OptInPath = "/optin"
 
@@ -95,6 +98,7 @@ type Core struct {
 	Search    *db.Searcher
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
+	ListMail  *db.ListMailer
 	Spoof     *auth.Spoof
 	Settled   <-chan struct{}
 	apps      []appSpec
@@ -303,14 +307,13 @@ func NewCore(cfg Config) *Core {
 	go func() {
 		<-queue.Refreshed()
 		pictures.Start()
-		listMail.Start()
 	}()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue,
+		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail,
 		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
@@ -352,6 +355,10 @@ func (c *Core) Aliased() map[string]http.Handler {
 }
 
 func Production(domain, site string) (*http.Server, *store.Queue) {
+	cloud := os.Getenv("K_SERVICE") != ""
+	if !cloud {
+		intercept.Install(mail.Host, intercept.Mail(localMail))
+	}
 	sessionKey := env.Required("SESSION_KEY")
 	sheet, err := data.NewSheet(spreadsheets.IDs(spreadsheets.All))
 	if err != nil {
@@ -414,13 +421,14 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
 	db.StartWarmer(core.Data, core.Queue)
-	if os.Getenv("K_SERVICE") != "" {
+	if cloud {
 		debug.SetMemoryLimit(memoryLimit)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
 		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
 		go func() {
 			<-core.Settled
+			core.ListMail.Start()
 			db.StartConsent(core.Data, core.Queue, sheet)
 			core.Search.StartMaking(anthropicKey)
 			watcher.Start()

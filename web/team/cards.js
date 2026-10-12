@@ -30,7 +30,8 @@ function peopleLine(node, editing) {
     const lead = el('span', 'row-lead', `${v.name} (Lead)`);
     parts.push(lead);
   }
-  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair').map(v => v.name);
+  const names = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair')
+    .map(v => (v.position === 'Open to Co-Chair' ? el('span', 'row-option', `${v.name} (Co-Chair Opt)`) : v.name));
   for (const sub of descendants(node)) {
     for (const v of shownVolunteers(sub, editing)) {
       names.push(`${v.name} (${sub.title})`);
@@ -255,6 +256,8 @@ function activityCardBody(act, opts) {
       const mine = signUpOf(node, opts.email || me().email);
       if (mine && mine.position === 'Co-Chair') {
         item.append(roleTag('chair'));
+      } else if (mine && mine.position === 'Open to Co-Chair') {
+        item.append(roleTag('option'));
       }
       const when = node.whenFrom || node === act ? {} : whenParts(node);
       const own = [when.words, when.day, when.time].filter(Boolean).join(' · ');

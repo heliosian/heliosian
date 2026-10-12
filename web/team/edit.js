@@ -78,6 +78,9 @@ function signUpForm(node, existing, someoneElse) {
   emailField.hidden = who.value !== 'other';
   const isChair = Boolean(existing && existing.position === 'Co-Chair');
   const positions = [{label: 'Volunteer', value: 'Volunteer'}];
+  if (node.offersOpen || (existing && existing.position === 'Open to Co-Chair')) {
+    positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
+  }
   if (editor) {
     positions.push({label: 'Co-Chair', value: 'Co-Chair'});
   }

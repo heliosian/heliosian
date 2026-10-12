@@ -1,4 +1,4 @@
-package main
+package intercept
 
 import (
 	"fmt"
@@ -18,14 +18,18 @@ type mailFiles struct {
 	dir string
 }
 
+func Mail(dir string) http.Handler {
+	return mailFiles{dir: dir}
+}
+
 func (f mailFiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := f.write(r); err != nil {
-		slog.Error("sample mailgun: write message", "path", r.URL.Path, "error", err)
+		slog.Error("intercepted mailgun: write message", "path", r.URL.Path, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	io.WriteString(w, `{"id":"<sample@example.org>","message":"Queued. Thank you."}`)
+	io.WriteString(w, `{"id":"<intercepted@example.org>","message":"Queued. Thank you."}`)
 }
 
 func (f mailFiles) write(r *http.Request) error {
@@ -47,7 +51,7 @@ func (f mailFiles) write(r *http.Request) error {
 			return err
 		}
 		name := base + to + ".eml"
-		slog.Info("sample mailgun: wrote raw message", "file", name, "to", form.Value["to"], "bytes", len(raw))
+		slog.Info("intercepted mailgun: wrote raw message, sent nothing", "file", name, "to", form.Value["to"], "bytes", len(raw))
 		return os.WriteFile(name, raw, 0o644)
 	}
 	name := base + "-" + slug(r.FormValue("subject")) + to
@@ -69,7 +73,7 @@ func (f mailFiles) write(r *http.Request) error {
 			return err
 		}
 	}
-	slog.Info("sample mailgun: wrote message", "file", name+".html", "to", form.Value["to"], "subject", r.FormValue("subject"), "attachments", len(form.File["attachment"]))
+	slog.Info("intercepted mailgun: wrote message, sent nothing", "file", name+".html", "to", form.Value["to"], "subject", r.FormValue("subject"), "attachments", len(form.File["attachment"]))
 	return nil
 }
 

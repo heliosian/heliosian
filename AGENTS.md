@@ -15,6 +15,7 @@ How code is written in this repository, for coding agents and the people driving
 ## Answers
 
 - Asked for a query, answer with a link to Helios Admin's Query page, `https://admin.heliosian.com/query?q=` and the query URL-encoded (`docs/admin/admin.md`, Query), and the query itself in a code block. Run it with `go run ./tools/q read` first to check that it parses and answers, but the answer is the link, not the tool's output.
+- A command written for the person to run assumes their shell already holds `tools/devenv`'s variables: write it without `eval "$(go run ./tools/devenv)"`, and don't mention devenv unless they ask or an error it would explain comes up.
 
 ## Code
 

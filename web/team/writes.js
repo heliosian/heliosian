@@ -92,7 +92,14 @@ export function activityCells(fields, node, edits) {
 }
 
 function hideEdits(node, open) {
-  return treeOf(node).map(n => ({set: n.id, cells: {visible_to: visibility(open)}}));
+  const edits = [];
+  for (const n of treeOf(node)) {
+    edits.push({set: n.id, cells: {visible_to: visibility(open)}});
+    if (n.row.chair_offers) {
+      edits.push({set: n.row.chair_offers, cells: {visible_to: visibility(open)}});
+    }
+  }
+  return edits;
 }
 
 export async function saveActivity(fields) {
@@ -171,6 +178,7 @@ export async function signUp(node, {email, position, note, from}) {
   }
   const existing = node.volunteers.find(v => v.person === person);
   const lead = position === 'Co-Chair';
+  const offering = position === 'Open to Co-Chair';
   if (existing) {
     edits.push({set: existing.id, cells: {note, lead}});
   } else {
@@ -181,19 +189,57 @@ export async function signUp(node, {email, position, note, from}) {
   } else if (existing && existing.position === 'Co-Chair' && node.canEdit) {
     edits.push(...unchairEdits(node, person));
   }
+  const offer = existing ? existing.offer : '';
+  if (offering && !offer && node.offersOpen) {
+    edits.push({insert: 'MEMBER', row: {group: node.row.chair_offers, person, member: 'yes', added_by: me().id, added: now()}});
+  } else if (!offering && offer) {
+    edits.push({delete: offer});
+  }
   await write(edits);
 }
 
 export async function setChair(node, volunteer, on) {
-  await write([{set: volunteer.id, cells: {lead: on}}, ...(on ? chairEdits(node, volunteer.person) : unchairEdits(node, volunteer.person))]);
+  await write([
+    {set: volunteer.id, cells: {lead: on}},
+    ...(on ? chairEdits(node, volunteer.person) : unchairEdits(node, volunteer.person)),
+    ...(on && volunteer.offer ? [{delete: volunteer.offer}] : []),
+  ]);
 }
 
 export async function removeSignUp(node, volunteer) {
-  await write([{delete: volunteer.id}, ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : [])]);
+  await write([
+    {delete: volunteer.id},
+    ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : []),
+    ...(volunteer.offer ? [{delete: volunteer.offer}] : []),
+  ]);
+}
+
+function closeOffersEdits(node) {
+  if (!node.row.chair_offers) {
+    return [];
+  }
+  return [...node.offerRows.map(m => ({delete: m.id})), {set: node.id, cells: {chair_offers: ''}}, {delete: node.row.chair_offers}];
+}
+
+export async function setOffers(node, open) {
+  if (!open) {
+    await write(closeOffersEdits(node));
+    return;
+  }
+  if (node.row.chair_offers) {
+    return;
+  }
+  await write([
+    {insert: 'GROUP', as: 'offers', row: {
+      kind: 'group', parent: node.id, name: `${node.title} Co-Chair Offers`, status: 'open', join: 'direct', eligible: node.id,
+      visible_to: node.row.visible_to || '', members_visible_to: node.row.members_visible_to || '', posting: 'none', replying: 'none', added_by: me().id,
+    }},
+    {set: node.id, cells: {chair_offers: '@offers'}},
+  ]);
 }
 
 export async function deleteActivity(node) {
-  await write([...(node.image ? [{delete: node.image}] : []), {delete: node.id}]);
+  await write([...closeOffersEdits(node), ...(node.image ? [{delete: node.image}] : []), {delete: node.id}]);
 }
 
 export async function reorder(list, id, before) {

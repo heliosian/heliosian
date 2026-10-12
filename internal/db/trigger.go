@@ -122,7 +122,7 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	writes := []Edit{}
-	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"unsubscribed", " Unsubscribed"}} {
+	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"unsubscribed", " Unsubscribed"}, {"chair_offers", " Co-Chair Offers"}} {
 		id, suffix := c.New[served.column], served.suffix
 		if id == "" || id == c.New["id"] {
 			continue

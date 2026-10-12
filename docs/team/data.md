@@ -28,7 +28,11 @@ Everything the portal shows is a `GROUP` under the top-level `Community` categor
 
 ## Sign-ups
 
-A sign-up is a `MEMBER` row of the activity, `member=yes`, with `note`, `added_by` and `added`. A co-chair is `lead` on that row plus a place in the activity's managers group; making or unmaking one writes both in one batch. Moving a sign-up to another activity is a delete and an insert in one batch. A person is on a thing once.
+A sign-up is a `MEMBER` row of the activity, `member=yes`, with `note`, `added_by` and `added`. A co-chair is `lead` on that row plus a place in the activity's managers group; making or unmaking one writes both in one batch. Someone open to co-chairing is a volunteer who is also in the activity's offers group (Offers to co-chair, below). Moving a sign-up to another activity is a delete and an insert in one batch. A person is on a thing once.
+
+## Offers to co-chair
+
+An activity open to offers names its offers group in `chair_offers` (`docs/datamodel.md`): a plain group under it, `<name> Co-Chair Offers`, `join` `direct`, `eligible` the activity, seen as the activity is, `posting` and `replying` `none`. Its co-chairs open and close it from the chairs card in the page's rail (Open to co-chair offers), which makes the group, or removes it with any offers in it. A sign-up as "Volunteer, and open to co-chairing" is the sign-up and a membership of the offers group, in one batch; going back to Volunteer, or removing the sign-up, takes the offer away. Make co-chair sets `lead`, adds the person to the managers group and deletes their offer, in one batch. Hiding an activity hides its offers group with it, and deleting one deletes the group first; a copy into the next year starts closed to offers.
 
 ## Hiding and approving
 

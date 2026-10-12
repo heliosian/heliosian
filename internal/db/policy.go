@@ -102,11 +102,13 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer manages @g, is a super admin, or is a Team admin and @g an activity or a heading under one, unless it is a family, whose members only super admins change
+; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers group, unless it is a family, whose members only super admins change
 (define (runs_list @g)
   (and (!= @g.kind "family")
        (or (manages @g) (super_admin)
-           (and (admin_of "team") (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity")))))))
+           (and (admin_of "team")
+                (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
+                    (and (= @g.kind "group") (= @g.parent.kind "activity") (exists GROUP (= chair_offers @g))))))))
 
 ; the calendar import brings @g from a source, which keeps its times and place
 (define (sourced @g)
@@ -126,11 +128,11 @@ const PolicySource = `
 (define (own_group @g)
   (and (= @g.kind "group") (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
 
-; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer or unsubscribed group
+; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed or co-chair offers group
 (define (counted c)
-  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id)))
+  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)))
 
-; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed or audience group, and nothing else names it
+; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers or audience group, and nothing else names it
 (define (implementation_only @g)
   (and (= (tally @g
                  (select GROUP.managed_by @r (= managed_by @g) (counted managed_by))
@@ -138,6 +140,7 @@ const PolicySource = `
                  (select GROUP.rsvp_yes @r (= rsvp_yes @g) (counted rsvp_yes))
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
+                 (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible)))
@@ -148,6 +151,7 @@ const PolicySource = `
                  (select GROUP.rsvp_yes @r (= rsvp_yes @g) (counted rsvp_yes))
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
+                 (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible))
@@ -314,7 +318,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -790,6 +794,13 @@ const PolicySource = `
 (set GROUP.adding (runs_list @old))
 ; a group's managers say who hears of sign-ups and additions on it and under it, naming only a group whose members they see
 (set GROUP.notify (and (runs_list @old) (or (blank @new.notify) (sees_members @new.notify))))
+; a group's managers open it to offers to co-chair it, naming a group under it, or close it
+(set GROUP.chair_offers (and (runs_list @old) (or (blank @new.chair_offers) (= @new.chair_offers.parent @old.id))))
+; a group's managers give it a co-chair offers group: open, under it, joined directly by its own members alone, seen as it is
+(insert GROUP
+  (and (= @new.kind "group") (runs_list @new.parent) (= @new.status "open") (= @new.added_by @viewer)
+       (blank @new.managed_by) (blank @new.url) (= @new.join "direct") (= @new.eligible @new.parent)
+       (= @new.visible_to @new.parent.visible_to) (= @new.members_visible_to @new.parent.members_visible_to)))
 ; a group's managers place it among the groups beside it
 (set GROUP.order (runs_list @old))
 ; a group's managers move it under another group they run

@@ -53,6 +53,7 @@ export async function loadModel() {
     managers: '(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (= kind "activity")))) (columns group person))',
     yes: '(from MEMBER (where (in group (select GROUP.rsvp_yes (= kind "activity")))) (columns group person))',
     no: '(from MEMBER (where (in group (select GROUP.rsvp_no (= kind "activity")))) (columns group person))',
+    offers: '(from MEMBER (where (= member "yes") (in group (select GROUP.chair_offers (= kind "activity")))) (columns group person))',
     photos: '(from PHOTO (where (in group (select GROUP.id (in kind "activity" "category")))) (order order asc) (columns group ready))',
     settings: '(from SETTING (where (= app "team")))',
     rules: '(from RULE (where under (= target group) (in group (select GROUP.id (= kind "activity")))) (columns group replace_with))',
@@ -79,6 +80,7 @@ export async function loadModel() {
       said[m.group + '/' + m.person] = word;
     }
   }
+  const offers = by(answers.offers, 'MEMBER', 'group');
   const reaching = new Set(rowsOf(answers.rules, 'RULE').map(r => r.group));
   const groups = {};
   for (const g of [...rowsOf(answers.activities, 'GROUP'), ...rowsOf(answers.headings, 'GROUP')]) {
@@ -135,10 +137,13 @@ export async function loadModel() {
     const taken = rows.filter(m => m.member === 'yes').length;
     const spots = Number(g.capacity) || 0;
     const chairs = new Set((managers[g.managed_by] || []).map(m => m.person));
+    const offerRows = offers[g.chair_offers] || [];
+    const offered = new Map(offerRows.map(m => [m.person, m.id]));
     const volunteers = rows.filter(m => m.member === 'yes').map(m => ({
       id: m.id, person: m.person, email: emailOf({id: m.person}), name: nameOf(m.person) || 'Someone',
       photoUrl: dir.byId[m.person] ? photoOf(dir.byId[m.person]) : '',
-      position: m.lead === 'Yes' || chairs.has(m.person) ? 'Co-Chair' : 'Volunteer',
+      position: m.lead === 'Yes' || chairs.has(m.person) ? 'Co-Chair' : offered.has(m.person) ? 'Open to Co-Chair' : 'Volunteer',
+      offer: offered.get(m.person) || '',
       note: m.note || '', added: m.added || '', addedBy: m.added_by ? emailOf({id: m.added_by}) : '', addedByName: nameOf(m.added_by),
       rsvp: said[g.rsvp_yes + '/' + m.person] || said[g.rsvp_no + '/' + m.person] || (g.rsvp_yes ? 'No RSVP yet' : ''),
       can: {delete: runs.has(g.id) || m.person === viewer.id || (dir.families[m.person] || []).some(f => (dir.families[viewer.id] || []).includes(f))},
@@ -159,6 +164,7 @@ export async function loadModel() {
       priority: g.priority === 'Yes', prettyId: g.slug || '', added: g.added || '', addedBy: nameOf(g.added_by),
       reachesUnder: reaching.has(g.id), path: `/v/${encodeURIComponent(g.slug || g.id)}`,
       canEdit: runs.has(g.id), runs: runs.has(g.id), children: [], volunteers, managerRows: managers[g.managed_by] || [],
+      offersOpen: Boolean(g.chair_offers), offerRows,
       can: {
         edit: runs.has(g.id), delete: runs.has(g.id) && !rows.length,
         add: runs.has(g.id) || g.adding === 'anyone' || g.adding === 'approval',

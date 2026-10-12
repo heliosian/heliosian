@@ -93,3 +93,38 @@ func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 		t.Errorf("recorded %d messages, want 5", got)
 	}
 }
+
+func TestAnOfferToCoChairNotifiesAndThanksNobody(t *testing.T) {
+	const year, night, decor, superAdmins = "grp00000000510", "grp00000000512", "grp00000000900", "grp00000000005"
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, GroupsSheet,
+		store.Update("GROUP", store.Row{"id": year}, store.Row{"notify": superAdmins}),
+		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}),
+		store.Insert("MEMBER", store.Row{"id": "mem00000000900", "group": decor, "person": student, "member": "yes"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	sender := mailtest.NewRecorder(mailtest.From)
+	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	write := func(viewer string, edits ...Edit) []string {
+		t.Helper()
+		ids, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	opened := write(parent,
+		Edit{Insert: "GROUP", As: "o", Row: map[string]any{"parent": decor, "kind": "group", "status": "open", "name": "Decor Co-Chair Offers", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none", "join": "direct", "eligible": decor, "added_by": parent}},
+		Edit{Set: decor, Cells: map[string]any{"chair_offers": "@o"}},
+	)
+	write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": opened[0], "person": student, "member": "yes", "added_by": student}})
+	notice := sender.Wait(t, 1)[0]
+	if notice.Subject != "Offer to co-chair: Juni Ashdown for Decor" || len(notice.To) != 1 || notice.To[0] != "maya.lindqvist@example.org" {
+		t.Errorf("an offer sent %q to %q", notice.Subject, notice.To)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := len(sender.Messages()); got != 1 {
+		t.Errorf("an offer sent %d messages, want the notice alone", got)
+	}
+}

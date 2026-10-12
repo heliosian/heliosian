@@ -218,7 +218,7 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	return picked
 }
 
-var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "unsubscribed"}
+var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "unsubscribed", "chair_offers"}
 
 func (m *Model) groupsUnder(group string) []string {
 	groups := m.Shown("GROUP")

@@ -9,9 +9,9 @@ import {dateCard, googleCalendarLink, parseWhen} from '/datecard.js';
 import {childRow, categoryClass, completeBadge} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {detailHero} from '/heroimage.js';
-import {personTile, peopleRow, andList} from '/people.js';
+import {personTile, peopleRow, offerTile, andList} from '/people.js';
 import {personRow} from '/personrow.js';
-import {reorder} from '../writes.js';
+import {reorder, setChair, setOffers, signUp} from '../writes.js';
 import {openSignUp, openActivity, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
@@ -105,15 +105,78 @@ function whenRow(node) {
 
 function chairsRow(node) {
   const chairs = coChairs(node);
-  if (!chairs.length && !node.canEdit) {
+  const options = shownVolunteers(node, node.canEdit).filter(v => v.position === 'Open to Co-Chair');
+  if (!chairs.length && !node.offersOpen && !options.length && !node.canEdit) {
     return null;
   }
+  const after = [];
+  if (options.length) {
+    const list = el('div', 'person-tiles');
+    for (const v of options) {
+      const tile = volunteerTile(node, v, false, false, true);
+      list.append(node.canEdit ? offerTile(tile, makeChairButton(node, v)) : tile);
+    }
+    after.push(el('div', 'side-subtitle', 'Co-Chair Options'), list);
+  }
+  after.push(...coChairAsk(node));
   return peopleRow({
     title: chairs.length === 1 ? 'Chair' : 'Co-Chairs',
     line: chairs.length ? andList(chairs.map(v => v.name)) : 'Nobody yet.',
     tiles: chairs.map(v => volunteerTile(node, v, false)),
-    after: [],
+    after,
   });
+}
+
+function makeChairButton(node, v) {
+  return button('Make co-chair', 'check', 'button button-small', async () => {
+    if (!confirm(`Make ${v.name} a co-chair of ${node.title}? They will be able to edit the page and manage everyone who signs up.`)) {
+      return;
+    }
+    try {
+      await setChair(node, v, true);
+      await load();
+      toast(`${v.name} is now a co-chair`);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+}
+
+function coChairAsk(node) {
+  if (node.canEdit) {
+    const ask = el('div', 'side-ask');
+    const open = el('label', 'side-switch');
+    open.append(checkbox(node.offersOpen, async on => {
+      try {
+        await setOffers(node, on);
+        await load();
+      } catch (err) {
+        toast(err.message);
+      }
+    }), el('span', '', 'Open to co-chair offers'));
+    ask.append(open);
+    return [ask];
+  }
+  if (!node.offersOpen) {
+    return [];
+  }
+  const mine = mySignUp(node);
+  if (mine && mine.position === 'Open to Co-Chair') {
+    return [el('div', 'side-line side-offered', 'You have offered to co-chair - thank you!')];
+  }
+  const nodes = [el('div', 'side-line side-need', 'Could you co-chair this?')];
+  if (!mine || mine.position === 'Volunteer') {
+    nodes.push(button('Offer to Co-Chair', 'people', 'button button-small side-offer', async () => {
+      try {
+        await signUp(node, {position: 'Open to Co-Chair', note: mine ? mine.note : ''});
+        await load();
+        toast('Thank you - the co-chairs will be in touch.');
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+  }
+  return nodes;
 }
 
 function signedUpWords(owner, v) {
@@ -180,7 +243,7 @@ function familyBox(node) {
   const list = el('div', 'fam-list');
   for (const {n, v} of rows) {
     const where = n === node ? n.title : chainBelow(node, n);
-    const role = v.position === 'Co-Chair' ? 'Co-chair of ' : '';
+    const role = v.position === 'Co-Chair' ? 'Co-chair of ' : (v.position === 'Open to Co-Chair' ? 'Open to co-chairing ' : '');
     list.append(personRow(v, {
       className: 'fam-row',
       open: true,
@@ -321,7 +384,11 @@ function ownVolunteers(view, labelled) {
     for (const v of chairs) {
       grid.append(volunteerTile(node, v, false, true));
     }
-    for (const v of showPeople) {
+    const isOption = v => v.position === 'Open to Co-Chair';
+    for (const v of showPeople.filter(isOption)) {
+      grid.append(volunteerTile(node, v, false, false, true));
+    }
+    for (const v of showPeople.filter(v => !isOption(v))) {
       grid.append(volunteerTile(node, v, false));
     }
     if (labelled) {
