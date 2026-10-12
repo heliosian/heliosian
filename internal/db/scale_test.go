@@ -186,14 +186,9 @@ func BenchmarkSidebar(b *testing.B) {
 }
 
 func BenchmarkRebuildDocuments(b *testing.B) {
-	s := scaleStore(b)
-	i := 0
-	for b.Loop() {
-		i++
-		if err := commit(s, DocumentsSheet, store.Update("DOCUMENT", store.Row{"id": "doc00000100001"}, store.Row{"name": fmt.Sprintf("Mail %d", i)})); err != nil {
-			b.Fatal(err)
-		}
-	}
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "doc00000100001", Cells: map[string]any{"name": fmt.Sprintf("Mail %d", i)}}}
+	})
 }
 
 func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
@@ -319,12 +314,7 @@ func BenchmarkRefreshUnchanged(b *testing.B) {
 }
 
 func BenchmarkRebuild(b *testing.B) {
-	s := scaleStore(b)
-	i := 0
-	for b.Loop() {
-		i++
-		if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000150"}, store.Row{"facts": fmt.Sprintf("fact %d", i)})); err != nil {
-			b.Fatal(err)
-		}
-	}
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "per00000000150", Cells: map[string]any{"facts": fmt.Sprintf("fact %d", i)}}}
+	})
 }

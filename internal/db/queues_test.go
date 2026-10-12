@@ -2,24 +2,20 @@ package db
 
 import (
 	"testing"
-
-	"heliosian/internal/store"
 )
 
 func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "300"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Not yet read"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/a.png"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/page", "fetch": "gone"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "linked", "parent": "doc00000000011", "url": "https://docs.example.org/locked", "fetch": "sign_in"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
+		{Insert: "CONTENT", Row: map[string]any{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "300"}},
+		{Insert: "DOCUMENT", As: "unread", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Not yet read"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@unread", "content": "@html"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/a.png"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://example.org/page", "fetch": "gone"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://docs.example.org/locked", "fetch": "sign_in"}},
+	})
 	m := s.Model()
 	counted := map[string]int{}
 	for _, q := range m.queueCounts() {

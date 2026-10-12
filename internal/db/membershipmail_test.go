@@ -8,19 +8,16 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
 )
 
 func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
-	const year, night, decor, superAdmins = "grp00000000510", "grp00000000512", "grp00000000900", "grp00000000005"
+	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet,
-		store.Update("GROUP", store.Row{"id": year}, store.Row{"notify": superAdmins}),
-		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	decor := apply(t, s, queue, []Edit{
+		{Set: year, Cells: map[string]any{"notify": superAdmins}},
+		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
+	})[1]
 	sender := mailtest.NewRecorder(mailtest.From)
 	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
 	write := func(env Env, edits ...Edit) []string {
@@ -99,15 +96,13 @@ func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 }
 
 func TestAnOfferToCoChairNotifiesAndThanksNobody(t *testing.T) {
-	const year, night, decor, superAdmins = "grp00000000510", "grp00000000512", "grp00000000900", "grp00000000005"
+	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet,
-		store.Update("GROUP", store.Row{"id": year}, store.Row{"notify": superAdmins}),
-		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}),
-		store.Insert("MEMBER", store.Row{"id": "mem00000000900", "group": decor, "person": student, "member": "yes"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	decor := apply(t, s, queue, []Edit{
+		{Set: year, Cells: map[string]any{"notify": superAdmins}},
+		{Insert: "GROUP", As: "decor", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@decor", "person": student, "member": "yes"}},
+	})[1]
 	sender := mailtest.NewRecorder(mailtest.From)
 	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
 	write := func(viewer string, edits ...Edit) []string {

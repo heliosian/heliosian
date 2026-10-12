@@ -11,7 +11,6 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
@@ -60,9 +59,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 		return `{"classrooms": [], "grades": [], "nobody": false}`
 	}))
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000033", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"})); err != nil {
-		t.Fatal(err)
-	}
+	gradeParents := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"}}})[0]
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
 	NewExtractor(s, queue, bucket, "test")
@@ -90,7 +87,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	for document, want := range map[string]string{trip: "grp00000000030", play: "grp00000000033", picnic: "grp00000000004", listed: "grp00000000002 grp00000000003"} {
+	for document, want := range map[string]string{trip: "grp00000000030", play: gradeParents, picnic: "grp00000000004", listed: "grp00000000002 grp00000000003"} {
 		if got := strings.Join(sentTo(s, document), " "); got != want {
 			t.Errorf("%s was sent to %s, want %s", document, got, want)
 		}

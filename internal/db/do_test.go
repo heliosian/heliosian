@@ -251,9 +251,7 @@ func TestGroupPhotos(t *testing.T) {
 	if visible := as(t, s, parent, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 2 {
 		t.Fatalf("a family member sees %d of the family's photos", len(visible))
 	}
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000020"}, store.Row{"visible_to": ""})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"visible_to": ""}}})
 	if visible := as(t, s, guest, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 0 {
 		t.Fatalf("someone who may not see the family sees %d of its photos", len(visible))
 	}
@@ -280,11 +278,9 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	if err := bucket.Put(context.Background(), name, "image/png", original); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, PeopleSheet, store.Insert("PHOTO", store.Row{"id": "pho00000000099", "person": staff, "original": name, "order": "m"})); err != nil {
-		t.Fatal(err)
-	}
+	photo := apply(t, s, queue, []Edit{{Insert: "PHOTO", Row: map[string]any{"person": staff, "original": name, "order": "m"}}})[0]
 	NewPictures(s, queue, bucket).Start()
-	if row := made(t, s, "PHOTO", "pho00000000099", "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
+	if row := made(t, s, "PHOTO", photo, "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
 		t.Fatalf("a photo left unmade before a restart reads %v", row)
 	}
 }
@@ -477,10 +473,8 @@ func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
 }
 
 func TestMailIsSentToItsListsGroups(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000031", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	jayvens := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"}}})[0]
 	m := s.Model()
 	for listID, want := range map[string]string{
 		"":                                   "mail",
@@ -490,7 +484,7 @@ func TestMailIsSentToItsListsGroups(t *testing.T) {
 		"Hummingbirds Parents <Hummingbirds.Parents.heliosns.org>": "mail grp00000000030",
 		"<2020-21.hummingbirds.parents.heliosns.org>":              "mail grp00000000030",
 		"<hummingbirds.students.heliosns.org>":                     "mail grp00000000010",
-		"<jaysandravens.heliosns.org>":                             "mail grp00000000031",
+		"<jaysandravens.heliosns.org>":                             "mail " + jayvens,
 		"<chat.heliosschool.org>":                                  "mail grp00000000004",
 		"<michelle-level3math.parents.heliosschool.org>":           "mail grp00000000004",
 		"<3064358178.560896@benchmarkemail.com>":                   "mail grp00000000004",

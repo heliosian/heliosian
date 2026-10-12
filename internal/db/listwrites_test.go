@@ -6,15 +6,12 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/store"
 )
 
 func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	const everyone, hummingbirds, hummingbirdsParents, nightManagers, picnic, picnicManagers = "grp00000000004", "grp00000000010", "grp00000000030", "grp00000000513", "grp00000000040", "grp00000000041"
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": picnicManagers}, store.Row{"members_visible_to": ""})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}

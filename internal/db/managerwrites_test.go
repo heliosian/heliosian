@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/store"
 )
 
 func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
@@ -52,9 +51,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	if _, err := child(student, map[string]any{"status": "pending"}); err == nil {
 		t.Error("someone suggests a role under an event that takes no additions")
 	}
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": night}, store.Row{"adding": "approval"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: night, Cells: map[string]any{"adding": "approval"}}})
 	if _, err := child(student, nil); err == nil {
 		t.Error("a suggestion under an event that wants approval goes live")
 	}
@@ -127,9 +124,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 		t.Errorf("a chair can't delete an empty role: %v", err)
 	}
 
-	if err := commit(s, GroupsSheet, store.Insert("GROUP_SOURCE", store.Row{"id": "src00000000900", "group": night, "calendar_event": "x"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Insert: "GROUP_SOURCE", Row: map[string]any{"group": night, "calendar_event": "x"}}})
 	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"start": "2027-02-07 17:30"}}); err == nil {
 		t.Error("a chair changes the time of an event the calendar import brings")
 	}
@@ -193,13 +188,11 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 }
 
 func TestAChairNamesAnActivitysLeads(t *testing.T) {
-	const night, decor = "grp00000000512", "grp00000000900"
+	const night = "grp00000000512"
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	decor := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
+	})[0]
 	write := func(viewer string, edits ...Edit) ([]string, error) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}

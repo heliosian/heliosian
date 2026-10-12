@@ -19,16 +19,17 @@ import (
 )
 
 func TestTheLoadRefusesWikiPagesInALoopOrUnderOtherDocuments(t *testing.T) {
-	s := sample(t)
-	loop := []store.Op{
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000091", "kind": "wiki", "name": "One", "parent": "doc00000000092"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000092", "kind": "wiki", "name": "Two", "parent": "doc00000000091"}),
+	s, queue := sampleWithQueue(t)
+	loop := []Edit{
+		{Insert: "DOCUMENT", As: "one", Row: map[string]any{"kind": "wiki", "name": "One"}},
+		{Insert: "DOCUMENT", As: "two", Row: map[string]any{"kind": "wiki", "name": "Two", "parent": "@one"}},
+		{Set: "@one", Cells: map[string]any{"parent": "@two"}},
 	}
-	if err := commit(s, DocumentsSheet, loop...); err == nil {
+	if _, err := applyErr(s, queue, loop); err == nil {
 		t.Fatal("two wiki pages under each other loaded")
 	}
 	mail := s.Model().Table("DOCUMENT").All()[0]
-	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000093", "kind": "wiki", "name": "Three", "parent": mail["id"]})); err == nil {
+	if _, err := applyErr(s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "wiki", "name": "Three", "parent": mail["id"]}}}); err == nil {
 		t.Fatalf("a wiki page under %s %s loaded", mail["kind"], mail["id"])
 	}
 }
@@ -245,7 +246,7 @@ func TestWikiHiddenPages(t *testing.T) {
 	if err := hide(parent, false); err != nil || hiddenOf() != "No" {
 		t.Fatalf("a wiki admin showing the page again: %v %q", err, hiddenOf())
 	}
-	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000094", "kind": "newsletter", "name": "News", "hidden": "Yes"})); err == nil {
+	if _, err := applyErr(s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "newsletter", "name": "News", "hidden": "Yes"}}}); err == nil {
 		t.Fatal("a hidden newsletter loaded")
 	}
 }

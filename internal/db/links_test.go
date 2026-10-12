@@ -10,7 +10,6 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
@@ -21,19 +20,16 @@ func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
 	if err := bucket.Put(t.Context(), "content/p1", "text/html; charset=utf-8", page); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "p1", "blob": "content/p1", "mime": "text/html; charset=utf-8", "size": "90"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Hot lunch", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000003", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000011", "url": "https://example.org/lunch", "content": "cnt00000000003"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	linked := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "page", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": "text/html; charset=utf-8", "size": "90"}},
+		{Insert: "DOCUMENT", As: "lunch", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Hot lunch", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@lunch", "content": "@page", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://example.org/lunch", "content": "@page"}},
+	})[4]
 	NewExtractor(s, queue, bucket, "test")
-	queue.Refresh()
-	made(t, s, "DOCUMENT", "doc00000000012", "extracted")
-	under := children(s, "doc00000000012")
+	made(t, s, "DOCUMENT", linked, "extracted")
+	under := children(s, linked)
 	if len(under) != 1 || under[0]["relation"] != "extract" {
 		t.Fatalf("the fetched page's children: %v", under)
 	}

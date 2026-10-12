@@ -8,8 +8,6 @@ import (
 	"slices"
 	"testing"
 	"time"
-
-	"heliosian/internal/store"
 )
 
 func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *httptest.ResponseRecorder {
@@ -31,13 +29,11 @@ func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
 	if err := pics.bucket.Put(context.Background(), "content/h1", "application/octet-stream", []byte("<script>alert(1)</script>")); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "25"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	got := fetchBlob(t, s, pics, "rowan.ashdown@example.org", "cnt00000000001/blob", "")
+	content := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "page", Row: map[string]any{"hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "25"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@page"}},
+	})[0]
+	got := fetchBlob(t, s, pics, "rowan.ashdown@example.org", content+"/blob", "")
 	if got.Code != http.StatusOK || got.Header().Get("Content-Type") != "text/html" || !slices.Contains(got.Header().Values("Content-Security-Policy"), "sandbox") {
 		t.Fatalf("a stored page: %d %v", got.Code, got.Header())
 	}

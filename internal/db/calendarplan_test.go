@@ -1,52 +1,27 @@
 package db
 
 import (
-	"context"
 	"maps"
 	"strings"
 	"testing"
 
-	"heliosian/internal/access"
 	"heliosian/internal/store"
 )
 
-const (
-	hummingbirds = "grp00000000010"
-	ospreys      = "grp00000000013"
-	conference   = "grp00000000070"
-)
+const hummingbirds = "grp00000000010"
 
-func calendarSample(t *testing.T) (*Store, *store.Queue) {
+func calendarSample(t *testing.T) (s *Store, queue *store.Queue, ospreys, conference string) {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
-	ops := []store.Op{
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": ospreys, "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}),
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": conference, "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}),
+	s, queue = sampleWithQueue(t)
+	edits := []Edit{
+		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}},
+		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}},
 	}
-	n := 70
 	for name := range DayTemplates {
-		n++
-		ops = append(ops, store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp000000000" + itoa2(n), "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}))
+		edits = append(edits, Edit{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}})
 	}
-	if err := commit(s, GroupsSheet, ops...); err != nil {
-		t.Fatal(err)
-	}
-	return s, queue
-}
-
-func itoa2(n int) string {
-	return string(rune('0'+n/10)) + string(rune('0'+n%10))
-}
-
-func apply(t *testing.T, s *Store, queue *store.Queue, edits []Edit) {
-	t.Helper()
-	if len(edits) == 0 {
-		return
-	}
-	env := setupEnv
-	if _, err := Write(context.Background(), s, queue, access.System(env.System), env, Batch{Batch: edits}); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, edits)
+	return s, queue, ids[0], ids[1]
 }
 
 func groupsOf(m *Model, kind string) []store.Row {
@@ -80,7 +55,7 @@ func sourcesKeyed(m *Model, key string) []store.Row {
 }
 
 func TestGooglePlan(t *testing.T) {
-	s, queue := calendarSample(t)
+	s, queue, ospreys, conference := calendarSample(t)
 	from, to := feedWindow(testNow)
 	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
 	early := GoogleEvent{CalendarItem: CalendarItem{Key: "b@google", Title: "Kindergarten early dismissal", Start: "2026-10-09", End: "2026-10-09", AllDay: true}}
@@ -176,7 +151,7 @@ func TestGooglePlan(t *testing.T) {
 }
 
 func TestARemovedEventTakesItsAnswers(t *testing.T) {
-	s, queue := calendarSample(t)
+	s, queue, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)
 	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
 	sync := func(feed []GoogleEvent) {
@@ -194,17 +169,15 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 	}
 	sync([]GoogleEvent{cafe})
 	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
-	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000901", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}),
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000902", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}),
-		store.Update("GROUP", store.Row{"id": event}, store.Row{"rsvp_yes": "grp00000000901", "rsvp_no": "grp00000000902"}),
-		store.Insert("MEMBER", store.Row{"id": "mem00000000901", "group": "grp00000000901", "person": "per00000000002", "member": "yes"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	answers := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "going", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}},
+		{Insert: "GROUP", As: "notGoing", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}},
+		{Set: event, Cells: map[string]any{"rsvp_yes": "@going", "rsvp_no": "@notGoing"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@going", "person": "per00000000002", "member": "yes"}},
+	})
 	sync(nil)
 	m := s.Model()
-	for _, id := range []string{event, "grp00000000901", "grp00000000902", "mem00000000901"} {
+	for _, id := range []string{event, answers[0], answers[1], answers[3]} {
 		if m.Has(id) {
 			t.Errorf("%s outlived its event leaving the feed", id)
 		}
@@ -212,10 +185,8 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 }
 
 func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
-	s, queue := calendarSample(t)
-	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue, ospreys, _ := calendarSample(t)
+	calendar := apply(t, s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}}})[0]
 	from, to := feedWindow(testNow)
 	both := []string{hummingbirds, ospreys}
 	early := GoogleEvent{CalendarItem: CalendarItem{Key: "early@google", Title: "Early dismissal", Start: "2026-10-07", End: "2026-10-07", AllDay: true}}
@@ -232,7 +203,7 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 		t.Helper()
 		rows := s.Model().calendarRows()
 		v, _ := NewVocabulary(rows)
-		cal := YearCalendar{Document: "doc00000000002", Year: "2026-2027", Hash: "reading", Entries: []YearEntry{
+		cal := YearCalendar{Document: calendar, Year: "2026-2027", Hash: "reading", Entries: []YearEntry{
 			{Key: "first", Title: "First day of school", Start: "2026-10-05", End: "2026-10-05", Classrooms: both, Marker: "first_day"},
 			{Key: "last", Title: "Last day of school", Start: "2026-10-09", End: "2026-10-09", Classrooms: both, Marker: "last_day"},
 		}, Shaded: []ShadedDay{{Date: "2026-10-07", DayType: "Early Dismissal"}}}
@@ -285,14 +256,13 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 }
 
 func TestPDFPlan(t *testing.T) {
-	s, queue := calendarSample(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000002", "kind": "calendar"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000003", "kind": "calendar"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000004", "kind": "calendar"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	s, queue, ospreys, _ := calendarSample(t)
+	versions := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
+	})
+	first, second, third := versions[0], versions[1], versions[2]
 	from, to := feedWindow(testNow)
 	btsnGoogle := GoogleEvent{CalendarItem: CalendarItem{Key: "btsn@google", Title: "Back to School Night", Start: "2026-08-27", End: "2026-08-27", AllDay: true}}
 	rows := s.Model().calendarRows()
@@ -338,7 +308,7 @@ func TestPDFPlan(t *testing.T) {
 		apply(t, s, queue, edits)
 	}
 
-	run(year("doc00000000002", btsn, picnic), false)
+	run(year(first, btsn, picnic), false)
 	btsnGroup := sourcesKeyed(s.Model(), btsnGoogle.Key)[0]["group"]
 	twins := 0
 	for _, g := range groupsOf(s.Model(), "event") {
@@ -349,7 +319,7 @@ func TestPDFPlan(t *testing.T) {
 	if twins != 2 {
 		t.Fatalf("%d Back to School Nights with no match, want the feed's and a pdf twin", twins)
 	}
-	run(year("doc00000000002", btsn, picnic), true)
+	run(year(first, btsn, picnic), true)
 	m := s.Model()
 	days := groupsOf(m, "day")
 	if len(days) != 9 {
@@ -390,9 +360,7 @@ func TestPDFPlan(t *testing.T) {
 			picnicGroup = g["id"]
 		}
 	}
-	if err := commit(s, ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000070", "alias": "oldpicnicid", "target": picnicGroup})); err != nil {
-		t.Fatal(err)
-	}
+	oldID := apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldpicnicid", "target": picnicGroup}}})[0]
 	dayIDs := func() map[string]string {
 		out := map[string]string{}
 		for _, d := range groupsOf(s.Model(), "day") {
@@ -406,7 +374,7 @@ func TestPDFPlan(t *testing.T) {
 	}
 	before := dayIDs()
 
-	run(year("doc00000000003", btsn), true)
+	run(year(second, btsn), true)
 	if after := dayIDs(); !maps.Equal(after, before) {
 		t.Fatalf("a new version with the same days remade them:\nbefore %v\nafter  %v", before, after)
 	}
@@ -414,14 +382,14 @@ func TestPDFPlan(t *testing.T) {
 	if n := len(groupsOf(m, "event")); n != events-1 {
 		t.Fatalf("%d events after the picnic left the pdf, want %d", n, events-1)
 	}
-	if _, ok := m.Table("ALIAS").Get("als00000000070"); ok {
+	if _, ok := m.Table("ALIAS").Get(oldID); ok {
 		t.Fatal("the old ID naming the picnic outlived it")
 	}
 	if _, ok := m.Table("GROUP").Get(btsnGroup); !ok {
 		t.Fatal("Back to School Night went with the old version")
 	}
 	for _, src := range m.Table("GROUP_SOURCE").All() {
-		if src["document"] == "doc00000000002" {
+		if src["document"] == first {
 			t.Fatalf("a source still names the old version: %v", src)
 		}
 	}
@@ -429,7 +397,7 @@ func TestPDFPlan(t *testing.T) {
 		t.Fatalf("%d days after the new version, want 9", n)
 	}
 
-	shaded := year("doc00000000004", btsn)
+	shaded := year(third, btsn)
 	shaded.Shaded = append(shaded.Shaded, ShadedDay{Date: "2026-09-03", DayType: "No School"})
 	run(shaded, true)
 	after := dayIDs()
@@ -448,7 +416,7 @@ func TestPDFPlan(t *testing.T) {
 		t.Fatalf("no No School day on the newly shaded date: %v", after)
 	}
 	for _, src := range s.Model().Table("GROUP_SOURCE").All() {
-		if src["document"] != "" && src["document"] != "doc00000000004" {
+		if src["document"] != "" && src["document"] != third {
 			t.Fatalf("a source still names an old version: %v", src)
 		}
 	}

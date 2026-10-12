@@ -27,7 +27,25 @@ const (
 
 var sampleNow = time.Date(2026, 9, 28, 9, 0, 0, 0, db.School)
 
-func sample(t *testing.T) (*Set, *db.Store, *db.Searcher) {
+func write(t *testing.T, s *db.Store, queue *store.Queue, edits ...db.Edit) []string {
+	t.Helper()
+	env := db.Env{System: "test", Whole: true, Now: sampleNow}
+	ids, err := db.Write(context.Background(), s, queue, access.System(env.System), env, db.Batch{Batch: edits})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
+func schoolDayEdits() []db.Edit {
+	edits := []db.Edit{}
+	for _, in := range testkit.SchoolDay() {
+		edits = append(edits, db.Edit{Insert: in.Table, As: in.As, Row: in.Row})
+	}
+	return edits
+}
+
+func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
 	t.Helper()
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
@@ -48,7 +66,7 @@ func sample(t *testing.T) (*Set, *db.Store, *db.Searcher) {
 	}
 	origin := func(app string) string { return "https://" + app + ".heliosian.com" }
 	search := db.NewSearcher(s, queue, bucket, vertex, origin)
-	return New(Deps{Data: s, Search: search, Bucket: bucket, Origin: origin, Now: func() time.Time { return sampleNow }}), s, search
+	return New(Deps{Data: s, Search: search, Bucket: bucket, Origin: origin, Now: func() time.Time { return sampleNow }}), s, queue
 }
 
 func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer, error) {
@@ -57,10 +75,8 @@ func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer
 }
 
 func TestEachToolAnswersTheSampleParent(t *testing.T) {
-	set, s, _ := sample(t)
-	if err := s.Commit(context.Background(), access.System("test"), db.GroupsSheet, testkit.SchoolDay()...); err != nil {
-		t.Fatal(err)
-	}
+	set, s, queue := sample(t)
+	write(t, s, queue, schoolDayEdits()...)
 	for _, c := range []struct {
 		tool, input string
 		wants       []string
@@ -109,17 +125,11 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 }
 
 func TestACityOnlyFamilyIsNeverMeasured(t *testing.T) {
-	set, s, _ := sample(t)
-	if err := s.Commit(context.Background(), access.System("test"), db.GroupsSheet,
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000540", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": "Moss Beach, CA", "address_consent": "shared", "consent": "listed"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.Commit(context.Background(), access.System("test"), db.ConfigSheet,
-		store.Insert("GEOCODE", store.Row{"id": "geo00000000009", "address": "Moss Beach, CA", "lat": "37.5272", "lng": "-122.5131"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	set, s, queue := sample(t)
+	vega := write(t, s, queue,
+		db.Edit{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": "Moss Beach, CA", "address_consent": "shared", "consent": "listed"}},
+		db.Edit{Insert: "GEOCODE", Row: map[string]any{"address": "Moss Beach, CA", "lat": "37.5272", "lng": "-122.5131"}},
+	)[0]
 	answer, err := run(t, set, s, "helios_nearby_families", `{}`)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +137,7 @@ func TestACityOnlyFamilyIsNeverMeasured(t *testing.T) {
 	if strings.Contains(answer.Text, "Vega Family") || !strings.Contains(answer.Text, "Lindqvist Family") {
 		t.Fatalf("nearby: %s", answer.Text)
 	}
-	if _, err := run(t, set, s, "helios_nearby_families", `{"family": "grp00000000540"}`); err == nil || !strings.Contains(err.Error(), "only a city") {
+	if _, err := run(t, set, s, "helios_nearby_families", `{"family": "`+vega+`"}`); err == nil || !strings.Contains(err.Error(), "only a city") {
 		t.Fatalf("measured from a city: %v", err)
 	}
 }

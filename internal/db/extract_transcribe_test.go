@@ -17,7 +17,6 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
@@ -39,19 +38,17 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 	if err := bucket.Put(t.Context(), "content/p1", pdfType, pdf); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "p1", "blob": "content/p1", "mime": pdfType, "size": fmt.Sprint(len(pdf))}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Supplies", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "filename": "supplies.pdf"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "calendar", "content": "cnt00000000002"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "pdf", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": pdfType, "size": fmt.Sprint(len(pdf))}},
+		{Insert: "DOCUMENT", As: "supplies", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Supplies", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "part", "parent": "@supplies", "content": "@pdf", "filename": "supplies.pdf"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": "@pdf"}},
+	})
+	part := ids[3]
 	NewExtractor(s, queue, bucket, "test")
-	queue.Refresh()
-	made(t, s, "DOCUMENT", "doc00000000011", "extracted")
-	under := children(s, "doc00000000011")
+	made(t, s, "DOCUMENT", part, "extracted")
+	under := children(s, part)
 	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "# Supply list\n\n- Pencils\n- Glue" {
 		t.Fatalf("the pdf's children: %v", under)
 	}
@@ -96,22 +93,20 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 	if err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25)); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "60"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "file", "content": "cnt00000000001", "name": "Updates", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "pages", "parent": "doc00000000010", "content": "cnt00000000002", "name": "pages 1–20 of 25", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "pages", "parent": "doc00000000010", "content": "cnt00000000003", "name": "pages 21–25 of 25", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "kind": "file", "content": "cnt00000000001", "name": "Updates again"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "whole", Row: map[string]any{"hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}},
+		{Insert: "CONTENT", As: "first", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "60"}},
+		{Insert: "CONTENT", As: "second", Row: map[string]any{"hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}},
+		{Insert: "DOCUMENT", As: "updates", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Updates", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@first", "name": "pages 1–20 of 25", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@second", "name": "pages 21–25 of 25", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Updates again"}},
+	})
+	copied := ids[6]
 	NewExtractor(s, queue, bucket, "test")
-	queue.Refresh()
-	made(t, s, "DOCUMENT", "doc00000000020", "extracted")
+	made(t, s, "DOCUMENT", copied, "extracted")
 	names := []string{}
-	for _, child := range children(s, "doc00000000020") {
+	for _, child := range children(s, copied) {
 		names = append(names, child["relation"]+" "+child["name"])
 	}
 	equalLines(t, "the copy's children", names, []string{"pages pages 1–20 of 25", "pages pages 21–25 of 25"})
@@ -140,20 +135,18 @@ func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 	if err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo); err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000003", "hash": "b1", "blob": "content/b1", "mime": "image/jpeg", "size": "1"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/photo.jpg", "content": "cnt00000000003"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
+		{Insert: "CONTENT", As: "photo", Row: map[string]any{"hash": "b1", "blob": "content/b1", "mime": "image/jpeg", "size": "1"}},
+		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@clubs", "content": "@html", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/photo.jpg", "content": "@photo"}},
+	})
+	pictured := ids[5]
 	NewExtractor(s, queue, bucket, "test")
-	queue.Refresh()
-	made(t, s, "DOCUMENT", "doc00000000020", "extracted")
-	if under := children(s, "doc00000000020"); len(under) != 0 {
+	made(t, s, "DOCUMENT", pictured, "extracted")
+	if under := children(s, pictured); len(under) != 0 {
 		t.Fatalf("a blocked answer was written: %v", under)
 	}
 	mu.Lock()
@@ -221,65 +214,57 @@ func TestImagesAreTranscribed(t *testing.T) {
 	}))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	ops := []store.Op{
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs", "extracted": "2026-02-12 01:48:03"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002", "extracted": "2026-02-12 01:48:03"}),
+	edits := []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
+		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@clubs", "content": "@html", "extracted": "2026-02-12 01:48:03"}},
 	}
+	files := []string{"schedule.gif", "logo.gif", "icon.gif", "flyer.bmp", "poster.webp", "chart.png", "sign.jpg"}
+	blobs := []string{"s1", "l1", "i1", "f1", "p1", "c1", "j1"}
 	for i, img := range [][]byte{schedule, logo, icon, flyer, poster, chart, sign} {
-		name := []string{"s1", "l1", "i1", "f1", "p1", "c1", "j1"}[i]
+		name := blobs[i]
 		mime := []string{"image/gif", "image/gif", "image/gif", "image/bmp", "image/webp", "image/png", "image/jpeg"}[i]
 		if err := bucket.Put(t.Context(), "content/"+name, mime, img); err != nil {
 			t.Fatal(err)
 		}
-		ops = append(ops, store.Insert("CONTENT", store.Row{"id": "cnt0000000020" + string(rune('0'+i)), "hash": name, "blob": "content/" + name, "mime": mime, "size": "1"}))
+		edits = append(edits, Edit{Insert: "CONTENT", As: name, Row: map[string]any{"hash": name, "blob": "content/" + name, "mime": mime, "size": "1"}})
 	}
-	ops = append(ops,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000020", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/schedule.gif", "content": "cnt00000000200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000021", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/logo.gif", "content": "cnt00000000201"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000022", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/icon.gif", "content": "cnt00000000202"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000024", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/flyer.bmp", "content": "cnt00000000203"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000025", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/poster.webp", "content": "cnt00000000204"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000026", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/chart.png", "content": "cnt00000000205"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000027", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/sign.jpg", "content": "cnt00000000206"}),
-	)
-	if err := commit(s, DocumentsSheet, ops...); err != nil {
-		t.Fatal(err)
+	for i, file := range files {
+		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/" + file, "content": "@" + blobs[i]}})
 	}
+	ids := apply(t, s, queue, edits)
+	images := ids[len(ids)-len(files):]
+	scheduleDoc, logoDoc, iconDoc, flyerDoc, posterDoc, chartDoc, signDoc := images[0], images[1], images[2], images[3], images[4], images[5], images[6]
 	NewExtractor(s, queue, bucket, "test")
-	queue.Refresh()
-	for _, id := range []string{"doc00000000020", "doc00000000021", "doc00000000022", "doc00000000024", "doc00000000025", "doc00000000026", "doc00000000027"} {
+	for _, id := range images {
 		made(t, s, "DOCUMENT", id, "extracted")
 	}
-	if flyerText := children(s, "doc00000000024"); len(flyerText) != 1 || bytesOf(t, s, bucket, flyerText[0]) != "Book fair Friday" {
+	if flyerText := children(s, flyerDoc); len(flyerText) != 1 || bytesOf(t, s, bucket, flyerText[0]) != "Book fair Friday" {
 		t.Fatalf("the BMP flyer's children: %v", flyerText)
 	}
-	if posterText := children(s, "doc00000000025"); len(posterText) != 1 || bytesOf(t, s, bucket, posterText[0]) != "Art show Thursday" {
+	if posterText := children(s, posterDoc); len(posterText) != 1 || bytesOf(t, s, bucket, posterText[0]) != "Art show Thursday" {
 		t.Fatalf("the WebP poster's children: %v", posterText)
 	}
-	if chartText := children(s, "doc00000000026"); len(chartText) != 1 || bytesOf(t, s, bucket, chartText[0]) != "Reading log: 20 minutes a night" {
+	if chartText := children(s, chartDoc); len(chartText) != 1 || bytesOf(t, s, bucket, chartText[0]) != "Reading log: 20 minutes a night" {
 		t.Fatalf("the PNG chart's children: %v", chartText)
 	}
-	if signText := children(s, "doc00000000027"); len(signText) != 1 || bytesOf(t, s, bucket, signText[0]) != "Pick-up moves to the north gate" {
+	if signText := children(s, signDoc); len(signText) != 1 || bytesOf(t, s, bucket, signText[0]) != "Pick-up moves to the north gate" {
 		t.Fatalf("the JPEG sign's children: %v", signText)
 	}
-	under := children(s, "doc00000000020")
+	under := children(s, scheduleDoc)
 	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "| Day | Club |\n|---|---|\n| Monday | Chess |" {
 		t.Fatalf("the schedule's children: %v", under)
 	}
-	if under := children(s, "doc00000000021"); len(under) != 0 {
+	if under := children(s, logoDoc); len(under) != 0 {
 		t.Fatalf("the logo was transcribed: %v", under)
 	}
-	if under := children(s, "doc00000000022"); len(under) != 0 {
+	if under := children(s, iconDoc); len(under) != 0 {
 		t.Fatalf("the icon was transcribed: %v", under)
 	}
-	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000023", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/again.gif", "content": "cnt00000000200"})); err != nil {
-		t.Fatal(err)
-	}
-	s.Model().services.inbox(extractInbox).wake.poke()
-	made(t, s, "DOCUMENT", "doc00000000023", "extracted")
-	again := children(s, "doc00000000023")
+	againDoc := apply(t, s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": ids[3], "url": "https://example.org/again.gif", "content": ids[4]}}})[0]
+	made(t, s, "DOCUMENT", againDoc, "extracted")
+	again := children(s, againDoc)
 	if len(again) != 1 || again[0]["content"] != under[0]["content"] {
 		t.Fatalf("the same image again: %v, want the first one's transcription %s", again, under[0]["content"])
 	}

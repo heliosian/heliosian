@@ -20,10 +20,16 @@ const night = "grp00000000512"
 
 var sampleRoot, _ = filepath.Abs("../../sampledata")
 
-func sample(t *testing.T) (*db.Store, *Team, *http.ServeMux) {
+type sampled struct {
+	data  *db.Store
+	queue *store.Queue
+}
+
+func sample(t *testing.T) (sampled, *Team, *http.ServeMux) {
 	t.Helper()
 	dir := &data.Dir{Root: sampleRoot}
-	s, err := db.NewStore(dir, dir, store.NewQueue(), db.NewSearchIndex())
+	queue := store.NewQueue()
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,12 +39,13 @@ func sample(t *testing.T) (*db.Store, *Team, *http.ServeMux) {
 		Data: s, Bucket: bucket, Images: blob.NewImages(blob.New(bucket), "team"),
 		Style: CardStyle(func() string { return "HCA-Team" }, func() string { return "HCA Volunteer Portal" }),
 	})
-	return s, site, mux
+	return sampled{data: s, queue: queue}, site, mux
 }
 
-func commit(t *testing.T, s *db.Store, sheet string, ops ...store.Op) {
+func write(t *testing.T, s sampled, edits ...db.Edit) {
 	t.Helper()
-	if err := s.Commit(context.Background(), access.System("test"), sheet, ops...); err != nil {
+	env := db.Env{System: "test", Whole: true, Now: time.Now()}
+	if _, err := db.Write(context.Background(), s.data, s.queue, access.System(env.System), env, db.Batch{Batch: edits}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -54,9 +61,9 @@ func TestPreviews(t *testing.T) {
 		testkit.Preview{URL: "https://team.heliosian.com/my", Want: []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + night + ".png", "/open/share/upcoming.png"}, "/open/share/grp00000000510.png", "/open/share/grp00000000040.png")
-	for _, cells := range []store.Row{{"visible_to": ""}, {"status": "pending"}} {
+	for _, cells := range []map[string]any{{"visible_to": ""}, {"status": "pending"}} {
 		s, site, mux := sample(t)
-		commit(t, s, db.GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000511"}, cells))
+		write(t, s, db.Edit{Set: "grp00000000511", Cells: cells})
 		testkit.Previews(t, site.PreviewHead, testkit.Preview{URL: "https://team.heliosian.com/v/international-night", Want: []string{`og:title" content="HCA-Team"`}, Never: []string{night}})
 		testkit.Cards(t, mux, nil, "/open/share/"+night+".png")
 	}
@@ -73,12 +80,12 @@ func TestNeeds(t *testing.T) {
 	if got := tr.needs(time.Date(2027, time.March, 1, 9, 0, 0, 0, db.School)); len(got) != 0 {
 		t.Fatalf("a past event is a need: %v", got)
 	}
-	commit(t, s, db.GroupsSheet, store.Update("GROUP", store.Row{"id": night}, store.Row{"capacity": "3"}))
+	write(t, s, db.Edit{Set: night, Cells: map[string]any{"capacity": "3"}})
 	tr = site.tree()
 	if note := tr.needNote(tr.group(night)); note != "Friday, February 5 · 2 spots left" {
 		t.Fatalf("note: %q", note)
 	}
-	commit(t, s, db.GroupsSheet, store.Update("GROUP", store.Row{"id": night}, store.Row{"capacity": "1"}))
+	write(t, s, db.Edit{Set: night, Cells: map[string]any{"capacity": "1"}})
 	if got := site.tree().needs(at); len(got) != 0 {
 		t.Fatalf("a full event is a need: %v", got)
 	}
@@ -86,11 +93,11 @@ func TestNeeds(t *testing.T) {
 
 func TestRedirects(t *testing.T) {
 	s, site, _ := sample(t)
-	commit(t, s, db.ConfigSheet,
-		store.Insert("ALIAS", store.Row{"id": "als00000000901", "alias": "E001", "target": night}),
-		store.Insert("REDIRECT", store.Row{"id": "rdr00000000901", "app": "team", "old": "/old-booth", "new": "/v/international-night"}),
-		store.Insert("REDIRECT", store.Row{"id": "rdr00000000902", "app": "team", "old": "https://hca.heliosian.com/fair", "new": "/"}),
-		store.Insert("REDIRECT", store.Row{"id": "rdr00000000903", "app": "team", "old": "/elsewhere", "new": "https://celebrate.heliosian.com/p/taco-night"}),
+	write(t, s,
+		db.Edit{Insert: "ALIAS", Row: map[string]any{"alias": "E001", "target": night}},
+		db.Edit{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/old-booth", "new": "/v/international-night"}},
+		db.Edit{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "https://hca.heliosian.com/fair", "new": "/"}},
+		db.Edit{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/elsewhere", "new": "https://celebrate.heliosian.com/p/taco-night"}},
 	)
 	handler := site.Redirected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for _, c := range []struct {

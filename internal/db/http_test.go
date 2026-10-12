@@ -309,13 +309,9 @@ func TestOnlyListedActivePeopleGetIn(t *testing.T) {
 	}
 	refused("stranger@example.org", "an address the sheets don't hold")
 	for column, value := range map[string]string{"hidden": "Yes", "deactivated": "2026-09-30 12:00", "consent": "withheld"} {
-		if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{column: value})); err != nil {
-			t.Fatal(err)
-		}
+		apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{column: value}}})
 		refused("rowan@example.com", "a parent with "+column+" "+value)
-		if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": parent}, store.Row{column: map[string]string{"consent": "listed"}[column]})); err != nil {
-			t.Fatal(err)
-		}
+		apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{column: map[string]string{"consent": "listed"}[column]}}})
 	}
 }
 
@@ -414,12 +410,12 @@ func TestServeWrites(t *testing.T) {
 }
 
 func TestEmailsAreLowerCase(t *testing.T) {
-	s := sample(t)
-	err := commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "Maya@Example.org", "person": staff, "source": "manual"}))
+	s, queue := sampleWithQueue(t)
+	_, err := applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "Maya@Example.org", "person": staff, "source": "manual"}}})
 	if err == nil || !strings.Contains(err.Error(), "lower case") {
 		t.Fatalf("a capitalised address: %v", err)
 	}
-	err = commit(s, PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni.ashdown.noemail@example.org", "person": student, "source": "manual"}))
+	_, err = applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "juni.ashdown.noemail@example.org", "person": student, "source": "manual"}}})
 	if err == nil || !strings.Contains(err.Error(), "placeholder") {
 		t.Fatalf("a placeholder address: %v", err)
 	}

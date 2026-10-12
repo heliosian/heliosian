@@ -12,28 +12,31 @@ import (
 )
 
 func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
-	s := sample(t)
-	group := func(id, name string, cells store.Row) store.Op {
-		row := store.Row{"id": id, "kind": "group", "name": name, "status": "open", "posting": "members", "replying": "members"}
+	s, queue := sampleWithQueue(t)
+	group := func(as, name string, cells map[string]any) Edit {
+		row := map[string]any{"kind": "group", "name": name, "status": "open", "posting": "members", "replying": "members"}
 		for k, v := range cells {
 			row[k] = v
 		}
-		return store.Insert("GROUP", row)
+		return Edit{Insert: "GROUP", As: as, Row: row}
 	}
-	if err := commit(s, GroupsSheet,
-		group("grp00000000801", "Tech Team", store.Row{"slug": "tech", "visible_to": "grp00000000801", "managed_by": "grp00000000802"}),
-		group("grp00000000802", "Tech Team Managers", store.Row{"visible_to": "grp00000000801", "managed_by": "grp00000000802"}),
-		group("grp00000000803", "Hummingbirds Chat Viewers", nil),
-		group("grp00000000804", "Hummingbirds Chat", store.Row{"visible_to": "grp00000000803", "managed_by": "grp00000000802"}),
-		group("grp00000000805", "Sci Oly Managers", store.Row{"managed_by": "grp00000000805"}),
-		group("grp00000000806", "Sci Oly Parents", store.Row{"managed_by": "grp00000000805"}),
-		group("grp00000000807", "Sci Oly Students", store.Row{"managed_by": "grp00000000805"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	made := apply(t, s, queue, []Edit{
+		group("tech", "Tech Team", map[string]any{"slug": "tech"}),
+		group("techManagers", "Tech Team Managers", map[string]any{"visible_to": "@tech"}),
+		{Set: "@tech", Cells: map[string]any{"visible_to": "@tech", "managed_by": "@techManagers"}},
+		{Set: "@techManagers", Cells: map[string]any{"managed_by": "@techManagers"}},
+		group("viewers", "Hummingbirds Chat Viewers", nil),
+		group("", "Hummingbirds Chat", map[string]any{"visible_to": "@viewers", "managed_by": "@techManagers"}),
+		group("sciOly", "Sci Oly Managers", nil),
+		{Set: "@sciOly", Cells: map[string]any{"managed_by": "@sciOly"}},
+		group("", "Sci Oly Parents", map[string]any{"managed_by": "@sciOly"}),
+		group("", "Sci Oly Students", map[string]any{"managed_by": "@sciOly"}),
+	})
+	tech, techManagers, viewers, sciOly := made[0], made[1], made[4], made[6]
 	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
 	slices.Sort(got)
-	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000000803"}
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", viewers}
+	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("implementation only: %v, want %v", got, want)
 	}
@@ -42,7 +45,7 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 	if !slices.Equal(nested, sidebar) {
 		t.Errorf("a select of the sidebar groups found %v, the sidebar %v", nested, sidebar)
 	}
-	for id, want := range map[string]bool{"grp00000000801": true, "grp00000000802": true, "grp00000000805": true, "grp00000000803": false, "grp00000000041": false, "grp00000000060": false, "grp00000000030": true} {
+	for id, want := range map[string]bool{tech: true, techManagers: true, sciOly: true, viewers: false, "grp00000000041": false, "grp00000000060": false, "grp00000000030": true} {
 		if slices.Contains(sidebar, id) != want {
 			t.Errorf("%s in the sidebar: %v, want %v", id, !want, want)
 		}
@@ -377,13 +380,11 @@ func TestInclude(t *testing.T) {
 }
 
 func TestSum(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, GroupsSheet,
-		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000002"}, store.Row{"price": "12.50"}),
-		store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000004"}, store.Row{"price": "7.25"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{
+		{Set: memberRow(t, s, "grp00000000040", "per00000000002"), Cells: map[string]any{"price": "12.50"}},
+		{Set: memberRow(t, s, "grp00000000040", "per00000000004"), Cells: map[string]any{"price": "7.25"}},
+	})
 	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75)))`).Rows(), "id")
 	if !slices.Equal(got, []string{"grp00000000040"}) {
 		t.Fatalf("sum matched %v", got)
@@ -396,7 +397,7 @@ func effective(t *testing.T, s *Store, group string) []string {
 }
 
 func TestEffectiveMembers(t *testing.T) {
-	s := sample(t)
+	s, queue := sampleWithQueue(t)
 	if got := effective(t, s, "grp00000000030"); !slices.Equal(got, []string{"per00000000002"}) {
 		t.Fatalf("the Hummingbirds parents list holds %v", got)
 	}
@@ -413,19 +414,15 @@ func TestEffectiveMembers(t *testing.T) {
 	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "member": "excluded"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": "per00000000002", "member": "excluded"}}})
 	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
 		t.Fatalf("an excluded parent stays on the list: %v", got)
 	}
 }
 
 func TestConcurrentReadsAfterAWriteAgree(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000030"}, store.Row{"subtitle": "changed"})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Set: "grp00000000030", Cells: map[string]any{"subtitle": "changed"}}})
 	m := s.Model()
 	src := `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= person @viewer) (= group @g))))`
 	want := ids(runAs(t, sample(t).Model(), "per00000000002", src).Rows(), "id")
@@ -443,17 +440,17 @@ func TestConcurrentReadsAfterAWriteAgree(t *testing.T) {
 }
 
 func TestGroupCyclesAreRefused(t *testing.T) {
-	s := sample(t)
+	s, queue := sampleWithQueue(t)
 	for _, c := range []struct {
 		name string
-		op   store.Op
+		edit Edit
 		want string
 	}{
-		{"two groups taking in each other", store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "target": "grp00000000006"}), "take in one another's members"},
-		{"a group taking in what is under its own parent", store.Insert("RULE", store.Row{"id": "rul00000000098", "group": "grp00000000531", "order": "i", "target": "grp00000000530", "under": "Yes"}), "takes in its own members"},
-		{"a group under itself", store.Update("GROUP", store.Row{"id": "grp00000000012"}, store.Row{"parent": "grp00000000010"}), "is under itself"},
+		{"two groups taking in each other", Edit{Insert: "RULE", Row: map[string]any{"group": "grp00000000005", "order": "i", "target": "grp00000000006"}}, "take in one another's members"},
+		{"a group taking in what is under its own parent", Edit{Insert: "RULE", Row: map[string]any{"group": "grp00000000531", "order": "i", "target": "grp00000000530", "under": "Yes"}}, "takes in its own members"},
+		{"a group under itself", Edit{Set: "grp00000000012", Cells: map[string]any{"parent": "grp00000000010"}}, "is under itself"},
 	} {
-		err := commit(s, GroupsSheet, c.op)
+		_, err := applyErr(s, queue, []Edit{c.edit})
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s: %v", c.name, err)
 		}
@@ -461,28 +458,24 @@ func TestGroupCyclesAreRefused(t *testing.T) {
 }
 
 func TestEffectiveDropsDeactivated(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000003"}, store.Row{"deactivated": "2026-09-30 08:00"})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Set: "per00000000003", Cells: map[string]any{"deactivated": "2026-09-30 08:00"}}})
 	if got := effective(t, s, "grp00000000006"); len(got) != 0 {
 		t.Fatalf("a deactivated admin stays an admin: %v", got)
 	}
 }
 
 func TestParentsAndChildrenFollowStudents(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000051", "kind": "group", "name": "Juni's parents"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000055", "group": "grp00000000051", "order": "a", "person": student, "replace_with": "parents"}),
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000052", "kind": "group", "name": "Rowan's children"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000056", "group": "grp00000000052", "order": "a", "person": parent, "replace_with": "children"}),
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000053", "kind": "group", "name": "Rowan's parents"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000057", "group": "grp00000000053", "order": "a", "person": parent, "replace_with": "parents"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	for group, want := range map[string][]string{"grp00000000051": {parent}, "grp00000000052": {student}, "grp00000000053": nil} {
+	s, queue := sampleWithQueue(t)
+	made := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "juniParents", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Juni's parents"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@juniParents", "order": "a", "person": student, "replace_with": "parents"}},
+		{Insert: "GROUP", As: "rowanChildren", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Rowan's children"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@rowanChildren", "order": "a", "person": parent, "replace_with": "children"}},
+		{Insert: "GROUP", As: "rowanParents", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Rowan's parents"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@rowanParents", "order": "a", "person": parent, "replace_with": "parents"}},
+	})
+	for group, want := range map[string][]string{made[0]: {parent}, made[2]: {student}, made[4]: nil} {
 		if got := effective(t, s, group); !slices.Equal(got, want) {
 			t.Errorf("%s holds %v, want %v", group, got, want)
 		}
@@ -490,19 +483,17 @@ func TestParentsAndChildrenFollowStudents(t *testing.T) {
 }
 
 func TestRuleSelectors(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, GroupsSheet,
-		store.Insert("GROUP", store.Row{"posting": "members", "replying": "members", "id": "grp00000000050", "kind": "group", "name": "Test"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000051", "group": "grp00000000050", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000052", "group": "grp00000000050", "order": "b", "exclude": "Yes", "search": "lindqvist"}),
-		store.Insert("RULE", store.Row{"id": "rul00000000053", "group": "grp00000000050", "order": "c", "person": "per00000000001", "replace_with": "household"}),
-	); err != nil {
-		t.Fatal(err)
-	}
-	if got := effective(t, s, "grp00000000050"); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
+	s, queue := sampleWithQueue(t)
+	tag := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "tag", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Test"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@tag", "order": "a", "property": "source", "value": "veracross", "within": "grp00000000004"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@tag", "order": "b", "exclude": "Yes", "search": "lindqvist"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@tag", "order": "c", "person": "per00000000001", "replace_with": "household"}},
+	})[0]
+	if got := effective(t, s, tag); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
 		t.Fatalf("the tag holds %v", got)
 	}
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000054", "group": "grp00000000050", "order": "d", "property": "colour", "value": "red"})); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
+	if _, err := applyErr(s, queue, []Edit{{Insert: "RULE", Row: map[string]any{"group": tag, "order": "d", "property": "colour", "value": "red"}}}); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
 		t.Fatalf("a rule on no column: %v", err)
 	}
 }

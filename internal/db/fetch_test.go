@@ -17,7 +17,6 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 )
 
 func TestOnlyALastingFailureIsUnreachable(t *testing.T) {
@@ -49,19 +48,17 @@ func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
 	}))
 	defer site.Close()
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Clubs this week"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "kind": "mail", "name": "Clubs next week"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000010", "url": site.URL + "/logo.png"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": site.URL + "/logo.png"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", As: "this", Row: map[string]any{"kind": "mail", "name": "Clubs this week"}},
+		{Insert: "DOCUMENT", As: "next", Row: map[string]any{"kind": "mail", "name": "Clubs next week"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@this", "url": site.URL + "/logo.png"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@next", "url": site.URL + "/logo.png"}},
+	})
 	StartFetcher(s, queue, blob.NewMemoryBucket())
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		a, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
-		b, _ := s.Model().Table("DOCUMENT").Get("doc00000000013")
+		a, _ := s.Model().Table("DOCUMENT").Get(ids[2])
+		b, _ := s.Model().Table("DOCUMENT").Get(ids[3])
 		if a["content"] != "" && b["content"] != "" {
 			if a["content"] != b["content"] {
 				t.Fatalf("the two documents hold different content: %v %v", a, b)
@@ -84,15 +81,13 @@ func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
 	}))
 	defer site.Close()
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Fund a need"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": site.URL + "/dl/b33482"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	linked := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Fund a need"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": site.URL + "/dl/b33482"}},
+	})[1]
 	StartFetcher(s, queue, blob.NewMemoryBucket())
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["fetch"] == "refused" && row["content"] == "" {
 			return
 		}
@@ -108,15 +103,13 @@ func TestALinkedPageSayingItsSignUpIsGoneIsRefused(t *testing.T) {
 	}))
 	defer site.Close()
 	s, queue := sampleWithQueue(t)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Summer camps"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": site.URL + "/go/camps"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	linked := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Summer camps"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": site.URL + "/go/camps"}},
+	})[1]
 	StartFetcher(s, queue, blob.NewMemoryBucket())
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["fetch"] == "refused" && row["content"] == "" {
 			return
 		}
@@ -140,15 +133,13 @@ func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {
 	}))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	if err := commit(s, DocumentsSheet,
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "name": "Weekly Update"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "linked", "parent": "doc00000000010", "url": "https://drive.google.com/open?id=deck1"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	linked := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Weekly Update"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": "https://drive.google.com/open?id=deck1"}},
+	})[1]
 	StartFetcher(s, queue, bucket)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		row, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["content"] != "" {
 			if got := bytesOf(t, s, bucket, row); got != string(deck) {
 				t.Fatalf("the link holds %q", got)
@@ -165,18 +156,17 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
-	if err := commit(s, DocumentsSheet,
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000002", "hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000011", "relation": "part", "parent": "doc00000000010", "content": "cnt00000000002"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000012", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000013", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000014", "relation": "image", "parent": "doc00000000011", "url": "https://lh6.example.org/page", "fetch": "sign_in"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000015", "relation": "linked", "parent": "doc00000000011", "url": "https://docs.example.org/handbook", "fetch": "sign_in"}),
-	); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
+		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs this week"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@clubs", "content": "@html"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://lh6.example.org/schedule", "fetch": "sign_in"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://lh6.example.org/gone", "fetch": "sign_in"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://lh6.example.org/page", "fetch": "sign_in"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://docs.example.org/handbook", "fetch": "sign_in"}},
+	})
+	part, scheduleDoc, goneDoc, pageDoc, handbook := ids[3], ids[4], ids[5], ids[6], ids[7]
 	post := func(as string, fields map[string]string, body []byte) (int, fetchedAnswer) {
 		t.Helper()
 		file := ""
@@ -193,39 +183,39 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 		return rec.Code, answer
 	}
 	schedule := pngOf(t, 5)
-	if code, _ := post("rowan.ashdown@example.org", map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusForbidden {
+	if code, _ := post("rowan.ashdown@example.org", map[string]string{"document": scheduleDoc}, schedule); code != http.StatusForbidden {
 		t.Fatalf("a person filled a linked document: %d", code)
 	}
-	code, answer := post(importing, map[string]string{"document": "doc00000000012"}, schedule)
+	code, answer := post(importing, map[string]string{"document": scheduleDoc}, schedule)
 	if code != http.StatusOK || answer.Hash == "" {
 		t.Fatalf("the import could not fill a linked document: %d %+v", code, answer)
 	}
-	filled, _ := s.Model().Table("DOCUMENT").Get("doc00000000012")
+	filled, _ := s.Model().Table("DOCUMENT").Get(scheduleDoc)
 	content, _ := s.Model().Table("CONTENT").Get(filled["content"])
 	if filled["fetch"] != "" || content["mime"] != "image/png" || bytesOf(t, s, bucket, filled) != string(schedule) {
 		t.Fatalf("the filled document: %v, its content %v", filled, content)
 	}
-	if code, _ := post(importing, map[string]string{"document": "doc00000000012"}, schedule); code != http.StatusBadRequest {
+	if code, _ := post(importing, map[string]string{"document": scheduleDoc}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a filled document was filled again: %d", code)
 	}
-	if code, answer := post(importing, map[string]string{"document": "doc00000000013", "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
+	if code, answer := post(importing, map[string]string{"document": goneDoc, "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
 		t.Fatalf("the import could not stop a fetch: %d %+v", code, answer)
 	}
-	if code, answer := post(importing, map[string]string{"document": "doc00000000014"}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
+	if code, answer := post(importing, map[string]string{"document": pageDoc}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
 		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
 	}
-	if code, answer := post(importing, map[string]string{"document": "doc00000000015"}, []byte("<html><body>"+strings.Repeat("The handbook says what families need to know. ", 6)+"</body></html>")); code != http.StatusOK || answer.Hash == "" {
+	if code, answer := post(importing, map[string]string{"document": handbook}, []byte("<html><body>"+strings.Repeat("The handbook says what families need to know. ", 6)+"</body></html>")); code != http.StatusOK || answer.Hash == "" {
 		t.Fatalf("a link's page was not kept: %d %+v", code, answer)
 	}
-	if page, _ := s.Model().Table("DOCUMENT").Get("doc00000000015"); page["content"] == "" || page["fetch"] != "" {
+	if page, _ := s.Model().Table("DOCUMENT").Get(handbook); page["content"] == "" || page["fetch"] != "" {
 		t.Fatalf("the link's page: %v", page)
 	}
-	for id, want := range map[string]string{"doc00000000013": "gone", "doc00000000014": "refused"} {
+	for id, want := range map[string]string{goneDoc: "gone", pageDoc: "refused"} {
 		if row, _ := s.Model().Table("DOCUMENT").Get(id); row["fetch"] != want || row["content"] != "" {
 			t.Errorf("%s: %v, want fetch %s", id, row, want)
 		}
 	}
-	if code, _ := post(importing, map[string]string{"document": "doc00000000011"}, schedule); code != http.StatusBadRequest {
+	if code, _ := post(importing, map[string]string{"document": part}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a part was filled as a linked document: %d", code)
 	}
 }
@@ -233,17 +223,14 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 func TestSignedInFetchesOfTheSameBytesShareContent(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := NewPictures(s, queue, blob.NewMemoryBucket())
-	ids := []string{"doc00000000012", "doc00000000013", "doc00000000014", "doc00000000015"}
-	inserts := []store.Op{
-		store.Insert("CONTENT", store.Row{"id": "cnt00000000001", "hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}),
-		store.Insert("DOCUMENT", store.Row{"id": "doc00000000010", "kind": "mail", "content": "cnt00000000001", "name": "Clubs this week"}),
+	inserts := []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs this week"}},
 	}
-	for _, id := range ids {
-		inserts = append(inserts, store.Insert("DOCUMENT", store.Row{"id": id, "relation": "image", "parent": "doc00000000010", "url": "https://lh6.example.org/" + id, "fetch": "sign_in"}))
+	for _, name := range []string{"one", "two", "three", "four"} {
+		inserts = append(inserts, Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@clubs", "url": "https://lh6.example.org/" + name, "fetch": "sign_in"}})
 	}
-	if err := commit(s, DocumentsSheet, inserts...); err != nil {
-		t.Fatal(err)
-	}
+	ids := apply(t, s, queue, inserts)[2:]
 	picture := pngOf(t, 5)
 	codes := make([]int, len(ids))
 	wg := sync.WaitGroup{}

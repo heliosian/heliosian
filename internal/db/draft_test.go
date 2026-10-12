@@ -11,7 +11,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
-	"heliosian/internal/store"
 )
 
 func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
@@ -43,9 +42,7 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 	if _, rowan := ask("maya.lindqvist@example.org", `{"email": "rowan.ashdown@example.org"}`); rowan != parent {
 		t.Fatalf("a directory address answered %s", rowan)
 	}
-	if err := commit(s, GroupsSheet, store.Delete("MEMBER", store.Row{"group": "grp00000000513", "person": parent})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Delete: memberRow(t, s, "grp00000000513", parent)}})
 	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusForbidden {
 		t.Fatalf("someone who runs no group added a guest: %d", code)
 	}
@@ -53,10 +50,8 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 
 func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 	const hummingbirds, picnicManagers = "grp00000000010", "grp00000000041"
-	s, _ := sampleWithQueue(t)
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": picnicManagers}, store.Row{"members_visible_to": ""})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
 	mux := http.NewServeMux()
 	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, func() time.Time { return testNow })
 	ask := func(as, body string) (*httptest.ResponseRecorder, draftAnswer) {

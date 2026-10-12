@@ -109,10 +109,8 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 }
 
 func TestWhoWrites(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, ConfigSheet, store.Insert("SETTING", store.Row{"id": "set00000000099", "app": "platform", "key": "Staff Color", "value": "#000000"})); err != nil {
-		t.Fatal(err)
-	}
+	s, queue := sampleWithQueue(t)
+	staffColor := apply(t, s, queue, []Edit{{Insert: "SETTING", Row: map[string]any{"app": "platform", "key": "Staff Color", "value": "#000000"}}})[0]
 	insert := func(table string, row store.Row) Change { return Change{Table: table, New: row} }
 	for _, c := range []struct {
 		name   string
@@ -147,8 +145,8 @@ func TestWhoWrites(t *testing.T) {
 		{"a super admin deactivates someone", staff, change(t, s, "PERSON", []string{student}, store.Row{"deactivated": "2026-10-01 12:00"}), true},
 		{"Who?'s admin makes a room parent", staff, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), true},
 		{"a parent makes a room parent", parent, insert("MEMBER", store.Row{"group": "grp00000000502", "person": staff, "member": "yes"}), false},
-		{"Who?'s admin sets the staff color", staff, change(t, s, "SETTING", []string{"set00000000099"}, store.Row{"value": "#111111"}), true},
-		{"a parent sets the staff color", parent, change(t, s, "SETTING", []string{"set00000000099"}, store.Row{"value": "#111111"}), false},
+		{"Who?'s admin sets the staff color", staff, change(t, s, "SETTING", []string{staffColor}, store.Row{"value": "#111111"}), true},
+		{"a parent sets the staff color", parent, change(t, s, "SETTING", []string{staffColor}, store.Row{"value": "#111111"}), false},
 		{"a super admin sets another app's setting", staff, change(t, s, "SETTING", []string{"set00000000001"}, store.Row{"value": "Hello"}), true},
 	} {
 		err := s.Model().Authorize(Env{Viewer: c.viewer, Now: testNow}, c.change)

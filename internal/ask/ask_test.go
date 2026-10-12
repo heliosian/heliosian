@@ -128,7 +128,12 @@ func TestViewerBlockNamesTheFamily(t *testing.T) {
 
 func TestLingoReadsTheModel(t *testing.T) {
 	src := sampleSources(t)
-	if err := src.data.Commit(context.Background(), access.System("test"), db.GroupsSheet, testkit.SchoolDay()...); err != nil {
+	edits := []db.Edit{}
+	for _, in := range testkit.SchoolDay() {
+		edits = append(edits, db.Edit{Insert: in.Table, As: in.As, Row: in.Row})
+	}
+	env := db.Env{System: "test", Whole: true, Now: sampleNow}
+	if _, err := db.Write(context.Background(), src.data, src.queue, access.System(env.System), env, db.Batch{Batch: edits}); err != nil {
 		t.Fatal(err)
 	}
 	tr := src.turn(rowan)

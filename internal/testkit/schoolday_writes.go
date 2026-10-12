@@ -1,17 +1,20 @@
 package testkit
 
-import "heliosian/internal/store"
+type Insert struct {
+	Table, As string
+	Row       map[string]any
+}
 
-func SchoolDay() []store.Op {
-	open := func(row store.Row) store.Op {
+func SchoolDay() []Insert {
+	open := func(as string, row map[string]any) Insert {
 		row["status"], row["visible_to"], row["members_visible_to"] = "open", "grp00000000004", "grp00000000004"
 		row["posting"], row["replying"] = "members", "members"
-		return store.Insert("GROUP", row)
+		return Insert{Table: "GROUP", As: as, Row: row}
 	}
-	return []store.Op{
-		open(store.Row{"id": "grp00000000504", "kind": "category", "name": "Schedule"}),
-		open(store.Row{"id": "grp00000000505", "kind": "category", "parent": "grp00000000504", "name": "Regular", "description": "A full school day with aftercare."}),
-		open(store.Row{"id": "grp00000000506", "kind": "day", "parent": "grp00000000505", "name": "Regular", "start": "2026-09-28", "all_day": "Yes"}),
-		open(store.Row{"id": "grp00000000507", "kind": "day_part", "parent": "grp00000000506", "name": "School", "start": "2026-09-28 08:30", "end": "2026-09-28 15:00"}),
+	return []Insert{
+		open("schedule", map[string]any{"kind": "category", "name": "Schedule"}),
+		open("regular", map[string]any{"kind": "category", "parent": "@schedule", "name": "Regular", "description": "A full school day with aftercare."}),
+		open("day", map[string]any{"kind": "day", "parent": "@regular", "name": "Regular", "start": "2026-09-28", "all_day": "Yes"}),
+		open("school", map[string]any{"kind": "day_part", "parent": "@day", "name": "School", "start": "2026-09-28 08:30", "end": "2026-09-28 15:00"}),
 	}
 }

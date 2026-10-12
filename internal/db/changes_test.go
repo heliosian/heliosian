@@ -17,9 +17,7 @@ func TestEveryWriteAppendsAChangeToTheSheet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"name": "Autumn Picnic"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"name": "Autumn Picnic"}}})
 	changes := []store.Row{}
 	for _, row := range testkit.Rows(t, dir, queue, GroupsSheet, ChangesTab) {
 		if row["row"] == "grp00000000040" {

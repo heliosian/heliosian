@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -28,8 +30,29 @@ func sample(t *testing.T) *Store {
 	return s
 }
 
-func commit(s *Store, sheet string, ops ...store.Op) error {
-	return s.Commit(context.Background(), access.System("test"), sheet, ops...)
+func apply(t testing.TB, s *Store, queue *store.Queue, edits []Edit) []string {
+	t.Helper()
+	if len(edits) == 0 {
+		return nil
+	}
+	ids, err := applyErr(s, queue, edits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ids
+}
+
+func applyErr(s *Store, queue *store.Queue, edits []Edit) ([]string, error) {
+	return Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: edits})
+}
+
+func memberRow(t testing.TB, s *Store, group, person string) string {
+	t.Helper()
+	row, ok := s.Model().Table("MEMBER").Find(group, person)
+	if !ok {
+		t.Fatalf("%s has no member row for %s", group, person)
+	}
+	return row["id"]
 }
 
 func TestSampleLoads(t *testing.T) {
@@ -55,14 +78,15 @@ func TestSampleLoads(t *testing.T) {
 }
 
 func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
-	s := sample(t)
+	s, queue := sampleWithQueue(t)
 	juni, _ := s.Model().Table("PERSON").Get("per00000000001")
 	if juni["grade"] != "3" || juni["classroom"] != "grp00000000010" {
 		t.Fatalf("Veracross's grade and classroom read %q %q", juni["grade"], juni["classroom"])
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"grade_override": "4", "job_title_override": "Reader"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{
+		{Insert: "GROUP", Row: map[string]any{"parent": "grp00000000012", "kind": "grade", "status": "open", "slug": "grade-4", "name": "Grade 4", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}},
+		{Set: "per00000000001", Cells: map[string]any{"grade_override": "4", "job_title_override": "Reader"}},
+	})
 	juni, _ = s.Model().Table("PERSON").Get("per00000000001")
 	if juni["grade"] != "4" || juni["vc_grade"] != "3" || juni["job_title"] != "Reader" || juni["classroom"] != "grp00000000010" {
 		t.Fatalf("after overrides: grade %q vc_grade %q job_title %q classroom %q", juni["grade"], juni["vc_grade"], juni["job_title"], juni["classroom"])
@@ -102,7 +126,7 @@ func TestDocumentsKnowTheirSourceAndTerminal(t *testing.T) {
 }
 
 func TestGeneratedNames(t *testing.T) {
-	s := sample(t)
+	s, queue := sampleWithQueue(t)
 	people := s.Model().Table("PERSON")
 	for id, want := range map[string]string{"per00000000001": "Juni Ashdown", "per00000000004": "Guest"} {
 		row, _ := people.Get(id)
@@ -110,9 +134,7 @@ func TestGeneratedNames(t *testing.T) {
 			t.Fatalf("%s shows as %q, want %q", id, row["name_show"], want)
 		}
 	}
-	if err := commit(s, PeopleSheet, store.Update("PERSON", store.Row{"id": "per00000000001"}, store.Row{"name_long_override": "June Ashdown"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: "per00000000001", Cells: map[string]any{"name_long_override": "June Ashdown"}}})
 	row, _ := s.Model().Table("PERSON").Get("per00000000001")
 	if row["name_long"] != "June Ashdown" || row["name_short"] != "Juni" {
 		t.Fatalf("after an override: long %q short %q", row["name_long"], row["name_short"])
@@ -124,28 +146,27 @@ func TestGeneratedNames(t *testing.T) {
 
 func TestCommitsTheModelRefuses(t *testing.T) {
 	for name, c := range map[string]struct {
-		sheet string
-		op    store.Op
-		want  string
+		edit Edit
+		want string
 	}{
-		"missing person":   {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per99999999999", "member": "yes"}), "names no row"},
-		"wrong table":      {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "grp00000000001", "member": "yes"}), "not a PERSON id"},
-		"duplicate member": {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000002", "note": "again"}), "two rows have the same group="},
-		"duplicate slug":   {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000011"}, store.Row{"slug": "Hummingbirds"}), `two rows have the slug "Hummingbirds"`},
-		"duplicate id":     {GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000001", "group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "two rows have the id"},
-		"no id":            {GroupsSheet, store.Insert("MEMBER", store.Row{"group": "grp00000000040", "person": "per00000000001", "member": "yes"}), "id is required"}, "second primary": {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}), "2 primary"},
-		"no primary":       {PeopleSheet, store.Insert("PERSON_EMAIL", store.Row{"id": "eml00000000099", "address": "juni@example.net", "person": "per00000000001", "source": "manual"}), "0 primary"},
-		"bad enum":         {GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"status": "maybe"}), "not one of"},
-		"referenced alias": {ConfigSheet, store.Insert("ALIAS", store.Row{"id": "als00000000099", "alias": "old", "target": "doc99999999999"}), "names no row"},
-		"still named":      {PeopleSheet, store.Delete("PERSON", store.Row{"id": "per00000000004"}), "names no row"},
-		"private property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "vc_phone", "value": "555-0100"}), "is private"},
-		"guarded property": {GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000030", "order": "j", "property": "phone_consent", "value": "shared"}), "not open to everyone"},
-		"kind and parent":  {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099", "kind": "mail", "relation": "part", "parent": "doc00000000001"}), "a kind and no parent"},
-		"orphan part":      {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099", "relation": "part"}), "a kind and no parent"},
-		"neither":          {DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000099"}), "a kind and no parent"},
+		"missing person":   {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": "per99999999999", "member": "yes"}}, "names no row"},
+		"wrong table":      {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": "grp00000000001", "member": "yes"}}, "not a PERSON id"},
+		"duplicate member": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": "per00000000002", "note": "again"}}, "two rows have the same group="},
+		"duplicate slug":   {Edit{Set: "grp00000000011", Cells: map[string]any{"slug": "Hummingbirds"}}, `two rows have the slug "Hummingbirds"`},
+		"second primary":   {Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "ro@example.net", "person": "per00000000002", "primary": "Yes", "source": "manual"}}, "2 primary"},
+		"no primary":       {Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "juni@example.net", "person": "per00000000001", "source": "manual"}}, "0 primary"},
+		"bad enum":         {Edit{Set: "grp00000000040", Cells: map[string]any{"status": "maybe"}}, "not one of"},
+		"referenced alias": {Edit{Insert: "ALIAS", Row: map[string]any{"alias": "old", "target": "doc99999999999"}}, "names no row"},
+		"still named":      {Edit{Delete: "per00000000004"}, "names no row"},
+		"private property": {Edit{Insert: "RULE", Row: map[string]any{"group": "grp00000000030", "order": "j", "property": "vc_phone", "value": "555-0100"}}, "is private"},
+		"guarded property": {Edit{Insert: "RULE", Row: map[string]any{"group": "grp00000000030", "order": "j", "property": "phone_consent", "value": "shared"}}, "not open to everyone"},
+		"kind and parent":  {Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "relation": "part", "parent": "doc00000000001"}}, "a kind and no parent"},
+		"orphan part":      {Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "part"}}, "a kind and no parent"},
+		"neither":          {Edit{Insert: "DOCUMENT", Row: map[string]any{}}, "a kind and no parent"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := commit(sample(t), c.sheet, c.op)
+			s, queue := sampleWithQueue(t)
+			_, err := applyErr(s, queue, []Edit{c.edit})
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want %q", err, c.want)
 			}
@@ -153,15 +174,35 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 	}
 }
 
+func TestALoadRefusesRowsWithoutTheirOwnID(t *testing.T) {
+	for name, c := range map[string]struct {
+		row  map[string]string
+		want string
+	}{
+		"duplicate id": {map[string]string{"id": "grp00000000040", "kind": "group", "status": "open", "name": "Again", "posting": "members", "replying": "members"}, "two rows have the id"},
+		"no id":        {map[string]string{"kind": "group", "status": "open", "name": "Nameless", "posting": "members", "replying": "members"}, "id is required"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.CopyFS(root, os.DirFS("../../sampledata")); err != nil {
+				t.Fatal(err)
+			}
+			appendRows(t, filepath.Join(root, GroupsSheet, "GROUP.csv"), []map[string]string{c.row})
+			dir := &data.Dir{Root: root}
+			if _, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex()); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("got %v, want %q", err, c.want)
+			}
+		})
+	}
+}
+
 func TestCommitAcrossSheets(t *testing.T) {
-	s := sample(t)
-	if err := commit(s, PeopleSheet, store.Insert("PERSON", store.Row{"id": "per00000000005", "source": "manual", "name_long_override": "Sam Ortiz"})); err != nil {
-		t.Fatal(err)
-	}
-	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000040", "person": "per00000000005", "member": "yes"})); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(s.Model().Table("MEMBER").Referencing("person", "per00000000005")); n != 1 {
+	s, queue := sampleWithQueue(t)
+	sam := apply(t, s, queue, []Edit{
+		{Insert: "PERSON", As: "sam", Row: map[string]any{"source": "manual", "name_long_override": "Sam Ortiz"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": "@sam", "member": "yes"}},
+	})[0]
+	if n := len(s.Model().Table("MEMBER").Referencing("person", sam)); n != 1 {
 		t.Fatalf("Sam has %d member rows", n)
 	}
 }
