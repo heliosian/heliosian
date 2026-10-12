@@ -296,6 +296,20 @@ func BenchmarkSearchEventRenamed(b *testing.B) {
 	}
 }
 
+func BenchmarkEffectiveAfterAnswer(b *testing.B) {
+	s, queue, _ := scaleStoreIn(b)
+	effective, _ := Lookup("EFFECTIVE_MEMBER")
+	s.Model().generated(effective)
+	i := 0
+	for b.Loop() {
+		i++
+		if _, err := Write(b.Context(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: "mem00000003301", Cells: map[string]any{"member": []string{"yes", "cancelled"}[i%2]}}}}); err != nil {
+			b.Fatal(err)
+		}
+		s.Model().generated(effective)
+	}
+}
+
 func BenchmarkRefreshUnchanged(b *testing.B) {
 	_, queue, _ := scaleStoreIn(b)
 	for b.Loop() {

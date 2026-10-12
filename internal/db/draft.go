@@ -137,7 +137,7 @@ func (m *Model) draftMembers(ctx context.Context, env Env, d groupDraft) (draftA
 	counts := []int{}
 	for i, r := range d.Rules {
 		row := store.Row{"target": r.Target, "person": r.Person, "search": r.Search, "replace_with": r.ReplaceWith, "within": r.Within}
-		selected := m.selectRule(row, map[string]bool{})
+		selected := m.selectRule(row, map[string]bool{}, reads{})
 		counts = append(counts, len(selected))
 		for person := range selected {
 			if r.Exclude {

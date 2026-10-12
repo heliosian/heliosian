@@ -62,6 +62,7 @@ func consentStep(ctx context.Context, m *Model) error {
 		}
 		consented[t.Name] = v
 	}
+	m.derived = m.derived.carry(m.consented, consented)
 	m.consented = consented
 	return nil
 }

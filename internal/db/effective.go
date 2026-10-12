@@ -12,8 +12,131 @@ import (
 
 type derived struct {
 	mu      sync.Mutex
-	byGroup map[string][]store.Row
+	byGroup map[string]effectiveEntry
 	sets    map[string]*generatedSet
+}
+
+type effectiveEntry struct {
+	rows  []store.Row
+	reads reads
+}
+
+type readKind byte
+
+const (
+	readGroup readKind = iota
+	readPerson
+	readPeople
+	readHouseholds
+)
+
+type readKey struct {
+	kind readKind
+	id   string
+}
+
+type reads map[readKey]bool
+
+func newDerived() *derived {
+	return &derived{byGroup: map[string]effectiveEntry{}, sets: map[string]*generatedSet{}}
+}
+
+func (d *derived) carry(was, is map[string]*View) *derived {
+	if d == nil || was == nil {
+		return newDerived()
+	}
+	changed := changedReads(was, is)
+	if len(changed) == 0 {
+		return d
+	}
+	keys := slices.Collect(maps.Keys(changed))
+	out := newDerived()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	for group, e := range d.byGroup {
+		if !slices.ContainsFunc(keys, func(k readKey) bool { return e.reads[k] }) {
+			out.byGroup[group] = e
+		}
+	}
+	for name, set := range d.sets {
+		if name != "EFFECTIVE_MEMBER" {
+			out.sets[name] = set
+		}
+	}
+	return out
+}
+
+func changedReads(was, is map[string]*View) reads {
+	out := reads{}
+	household := func(id string) bool {
+		for _, v := range []*View{was["GROUP"], is["GROUP"]} {
+			if i, ok := v.rows.byID[id]; ok {
+				g := v.rows.rows[i]
+				if g["kind"] == "family" || g["kind"] == "group" && g["slug"] == "students" {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	each := func(table string, row store.Row) {
+		switch table {
+		case "MEMBER":
+			out[readKey{readGroup, row["group"]}] = true
+			if household(row["group"]) {
+				out[readKey{kind: readHouseholds}] = true
+			}
+		case "RULE":
+			out[readKey{readGroup, row["group"]}] = true
+		case "GROUP":
+			out[readKey{readGroup, row["id"]}] = true
+			out[readKey{readGroup, row["parent"]}] = true
+			if household(row["id"]) {
+				out[readKey{kind: readHouseholds}] = true
+			}
+		case "PERSON":
+			out[readKey{readPerson, row["id"]}] = true
+			out[readKey{kind: readPeople}] = true
+		case "PERSON_EMAIL":
+			out[readKey{kind: readPeople}] = true
+		}
+	}
+	for _, table := range []string{"MEMBER", "RULE", "GROUP", "PERSON", "PERSON_EMAIL"} {
+		viewChanges(was[table], is[table], func(old, new store.Row) {
+			for _, row := range []store.Row{old, new} {
+				if row != nil {
+					each(table, row)
+				}
+			}
+		})
+	}
+	return out
+}
+
+func viewChanges(a, b *View, each func(old, new store.Row)) {
+	if a.rows == b.rows {
+		for i, row := range a.rows.rows {
+			if (a.shown[i] == nil) != (b.shown[i] == nil) {
+				each(row, row)
+			}
+		}
+		return
+	}
+	for i, row := range b.rows.rows {
+		j, ok := a.rows.byID[row["id"]]
+		if !ok {
+			each(nil, row)
+			continue
+		}
+		if (a.shown[j] == nil) != (b.shown[i] == nil) || !maps.Equal(a.rows.rows[j], row) {
+			each(a.rows.rows[j], row)
+		}
+	}
+	for _, row := range a.rows.rows {
+		if _, ok := b.rows.byID[row["id"]]; !ok {
+			each(row, nil)
+		}
+	}
 }
 
 type generatedSet struct {
@@ -29,14 +152,15 @@ func memberAs(row store.Row) string {
 
 func (m *Model) effectiveRows(group string) []store.Row {
 	m.derived.mu.Lock()
-	rows, ok := m.derived.byGroup[group]
+	e, ok := m.derived.byGroup[group]
 	m.derived.mu.Unlock()
 	if ok {
-		return rows
+		return e.rows
 	}
-	rows = m.effectiveOf(group)
+	r := reads{}
+	rows := m.effectiveOf(group, r)
 	m.derived.mu.Lock()
-	m.derived.byGroup[group] = rows
+	m.derived.byGroup[group] = effectiveEntry{rows: rows, reads: r}
 	m.derived.mu.Unlock()
 	return rows
 }
@@ -109,8 +233,8 @@ func (m *Model) effectiveAll() []store.Row {
 	return out
 }
 
-func (m *Model) effectiveOf(group string) []store.Row {
-	reasons := m.resolve(group, map[string]bool{})
+func (m *Model) effectiveOf(group string, r reads) []store.Row {
+	reasons := m.resolve(group, map[string]bool{}, r)
 	out := []store.Row{}
 	for _, person := range slices.Sorted(maps.Keys(reasons)) {
 		out = append(out, store.Row{"id": Derive(EffectiveMemberPrefix, group, person), "group": group, "person": person, "reasons": strings.Join(reasons[person], ", ")})
@@ -118,8 +242,9 @@ func (m *Model) effectiveOf(group string) []store.Row {
 	return out
 }
 
-func (m *Model) resolve(group string, stack map[string]bool) map[string][]string {
+func (m *Model) resolve(group string, stack map[string]bool, r reads) map[string][]string {
 	out := map[string][]string{}
+	r[readKey{readGroup, group}] = true
 	if stack[group] {
 		return out
 	}
@@ -137,7 +262,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	rules := m.Shown("RULE").Referencing("group", group)
 	slices.SortStableFunc(rules, func(a, b store.Row) int { return store.CompareKeys(a["order"], b["order"]) })
 	for _, rule := range rules {
-		selected := m.selectRule(rule, stack)
+		selected := m.selectRule(rule, stack, r)
 		for person := range selected {
 			if exclude, _ := cells.YesNo(rule["exclude"], false); exclude {
 				excluded[person] = true
@@ -148,6 +273,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	}
 	people := m.Shown("PERSON")
 	for person := range out {
+		r[readKey{readPerson, person}] = true
 		row, ok := people.Get(person)
 		if excluded[person] || !ok || strings.TrimSpace(row["deactivated"]) != "" {
 			delete(out, person)
@@ -156,7 +282,7 @@ func (m *Model) resolve(group string, stack map[string]bool) map[string][]string
 	return out
 }
 
-func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]bool {
+func (m *Model) selectRule(rule store.Row, stack map[string]bool, r reads) map[string]bool {
 	var picked map[string]bool
 	narrow := func(s map[string]bool) {
 		if picked == nil {
@@ -171,12 +297,14 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	}
 	if target := rule["target"]; target != "" {
 		s := map[string]bool{}
-		for person := range m.resolve(target, stack) {
+		for person := range m.resolve(target, stack, r) {
 			s[person] = true
 		}
 		if under, _ := cells.YesNo(rule["under"], false); under {
+			r[readKey{readGroup, target}] = true
 			for _, g := range m.groupsUnder(target) {
-				for person := range m.resolve(g, stack) {
+				r[readKey{readGroup, g}] = true
+				for person := range m.resolve(g, stack, r) {
 					s[person] = true
 				}
 			}
@@ -187,9 +315,11 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 		narrow(map[string]bool{person: true})
 	}
 	if search := strings.ToLower(strings.TrimSpace(rule["search"])); search != "" {
+		r[readKey{kind: readPeople}] = true
 		narrow(m.search(search))
 	}
 	if property := strings.TrimSpace(rule["property"]); property != "" {
+		r[readKey{kind: readPeople}] = true
 		want := strings.TrimSpace(rule["value"])
 		s := map[string]bool{}
 		for _, row := range m.Shown("PERSON").All() {
@@ -202,9 +332,12 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool) map[string]boo
 	if picked == nil {
 		return map[string]bool{}
 	}
-	picked = m.replaceWith(picked, strings.ToLower(strings.TrimSpace(rule["replace_with"])))
+	if how := strings.ToLower(strings.TrimSpace(rule["replace_with"])); how != "" {
+		r[readKey{kind: readHouseholds}] = true
+		picked = m.replaceWith(picked, how)
+	}
 	if within := rule["within"]; within != "" {
-		in := m.resolve(within, stack)
+		in := m.resolve(within, stack, r)
 		for person := range picked {
 			if _, ok := in[person]; !ok {
 				delete(picked, person)
