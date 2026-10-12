@@ -1,6 +1,6 @@
 # Data model
 
-The portal keeps everything in the data model (`docs/datamodel.md`): its pages read it in one `/api/q` batch of queries (`loadModel` in `web/team/state.js`) and write it in `/api/q` batches (`web/team/writes.js`), checked by the policies like any other write (`internal/db/policy.go`, the joining, adding and manager clauses and Team's admin grants). The Google Sheet `Events` is the portal as it stood before: nothing writes it, and Heliosian's Team widget, When's linked events, the `activity:` Magic Tags and `tools/loadcheck` still read it (`internal/model`'s `activities*.go`) until they read the data model. `EVENTS_SHEET` names it.
+The portal keeps everything in the data model (`docs/datamodel.md`): its pages read it in one `/api/q` batch of queries (`loadModel` in `web/team/state.js`) and write it in `/api/q` batches (`web/team/writes.js`), checked by the policies like any other write (`internal/db/policy.go`, the joining, adding and manager clauses and Team's admin grants). The Google Sheet `Events` is the portal as it stood before: nothing writes it, and Heliosian's Team widget, When's linked events and the `activity:` Magic Tags still read it (`internal/model`'s `activities*.go`) until they read the data model. `EVENTS_SHEET` names it.
 
 ## The tree
 

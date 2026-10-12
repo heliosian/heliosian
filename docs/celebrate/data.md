@@ -41,7 +41,7 @@ An Image or Flyer Image cell is an object under `party-images/` in the media buc
 
 ## A load either succeeds whole or refuses
 
-The same stance as the other apps: a sheet that breaks a rule does not load, and the site never serves a page quietly missing a party. A server that cannot load the sheet does not start, so a deploy waits on the sheet being fixed while the running revision keeps serving; a refresh that fails keeps serving the last good model and logs the reason. `go run ./tools/loadcheck` runs the same loader against the live sheets and prints the first thing it refuses.
+The same stance as the other apps: a sheet that breaks a rule does not load, and the site never serves a page quietly missing a party. A server that cannot load the sheet does not start, so a deploy waits on the sheet being fixed while the running revision keeps serving; a refresh that fails keeps serving the last good model and logs the reason.
 
 ## Sample data
 
