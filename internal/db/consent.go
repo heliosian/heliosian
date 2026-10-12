@@ -214,21 +214,13 @@ type Consent struct {
 	s      *Store
 	queue  *store.Queue
 	source data.Source
-	wake   chan struct{}
+	in     *inbox
 	rows   []map[string]string
 }
 
 func StartConsent(s *Store, queue *store.Queue, source data.Source) {
-	c := &Consent{s: s, queue: queue, source: source, wake: make(chan struct{}, 1)}
+	c := &Consent{s: s, queue: queue, source: source, in: s.Model().services.inbox(consentInbox)}
 	go c.loop()
-	queue.OnSwap(c.poke)
-}
-
-func (c *Consent) poke() {
-	select {
-	case c.wake <- struct{}{}:
-	default:
-	}
 }
 
 func (c *Consent) loop() {
@@ -239,7 +231,8 @@ func (c *Consent) loop() {
 		select {
 		case <-tick.C:
 			c.read()
-		case <-c.wake:
+		case <-c.in.wake:
+			c.in.take()
 		}
 	}
 }

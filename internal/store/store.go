@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,15 +15,20 @@ import (
 	"heliosian/internal/trace"
 )
 
-const refreshInterval = 30 * time.Minute
+const (
+	refreshInterval = 30 * time.Minute
+	tickInterval    = 5 * time.Minute
+)
 
 type Part[M any] struct {
-	App     string
-	Tabs    []Tab
-	Changes *ChangeLog
-	Reads   []string
-	Build   func(ctx context.Context, tables Tables, m *M) error
-	Loaded  func(m *M, took time.Duration)
+	App         string
+	Tabs        []Tab
+	Changes     *ChangeLog
+	Reads       []string
+	Build       func(ctx context.Context, tables Tables, m *M) error
+	Loaded      func(m *M, took time.Duration)
+	Refreshed   func(tab string, before, after Row)
+	Incremental bool
 }
 
 type Store[M any] struct {
@@ -101,6 +108,7 @@ func order[M any](parts []Part[M]) ([]Part[M], error) {
 }
 
 func (s *Store[M]) load(ctx context.Context) (Settle, error) {
+	held, base := s.current()
 	tables := map[string]Tables{}
 	took := map[string]time.Duration{}
 	for _, p := range s.parts {
@@ -118,9 +126,21 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 		replayed[app] = len(plans)
 		tables[app] = book.replay(tables[app], plans)
 	}
-	model, err := s.build(ctx, tables, new(M), nil, took)
-	if err != nil {
-		return nil, err
+	stale := s.stale(held, tables)
+	edited := maps.Clone(stale)
+	model := base
+	if base == nil || len(stale) == len(s.parts) {
+		built, err := s.build(ctx, tables, new(M), nil, took)
+		if err != nil {
+			return nil, err
+		}
+		model = built
+	} else if len(stale) > 0 {
+		built, err := s.build(ctx, tables, base, stale, took)
+		if err != nil {
+			return nil, err
+		}
+		model = built
 	}
 	return func() (func(), error) {
 		next, final := maps.Clone(tables), model
@@ -142,13 +162,73 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 		}
 		return func() {
 			s.mu.Lock()
+			before := s.tables
 			s.tables, s.model = next, final
 			s.mu.Unlock()
 			for _, p := range s.parts {
 				p.Loaded(final, took[p.App])
 			}
+			if before != nil {
+				s.refreshed(before, next, edited)
+			}
 		}, nil
 	}, nil
+}
+
+func (s *Store[M]) stale(held, read map[string]Tables) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range s.parts {
+		if !p.Incremental || !sameTables(held[p.App], read[p.App]) {
+			out[p.App] = true
+		}
+	}
+	return out
+}
+
+func sameTables(a, b Tables) bool {
+	return maps.EqualFunc(a, b, func(x, y []Row) bool {
+		return slices.EqualFunc(x, y, func(r, q Row) bool { return maps.Equal(r, q) })
+	})
+}
+
+func (s *Store[M]) refreshed(before, after map[string]Tables, edited map[string]bool) {
+	for _, p := range s.parts {
+		if p.Refreshed == nil || !edited[p.App] {
+			continue
+		}
+		changed := 0
+		for _, tab := range p.Tabs {
+			was := byKey(tab, before[p.App][tab.Name])
+			is := byKey(tab, after[p.App][tab.Name])
+			for _, key := range slices.Sorted(maps.Keys(was)) {
+				if now, ok := is[key]; !ok || !maps.Equal(was[key], now) {
+					p.Refreshed(tab.Name, was[key], now)
+					changed++
+				}
+			}
+			for _, key := range slices.Sorted(maps.Keys(is)) {
+				if _, ok := was[key]; !ok {
+					p.Refreshed(tab.Name, nil, is[key])
+					changed++
+				}
+			}
+		}
+		if changed > 0 {
+			slog.Info("refresh changed rows", "app", p.App, "rows", changed)
+		}
+	}
+}
+
+func byKey(tab Tab, rows []Row) map[string]Row {
+	out := map[string]Row{}
+	for _, row := range rows {
+		parts := []string{}
+		for _, k := range tab.Key {
+			parts = append(parts, row[k])
+		}
+		out[strings.Join(parts, "\x00")] = row
+	}
+	return out
 }
 
 func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M, changed map[string]bool, took map[string]time.Duration) (*M, error) {

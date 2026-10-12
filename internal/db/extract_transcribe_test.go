@@ -277,6 +277,7 @@ func TestImagesAreTranscribed(t *testing.T) {
 	if err := commit(s, DocumentsSheet, store.Insert("DOCUMENT", store.Row{"id": "doc00000000023", "relation": "image", "parent": "doc00000000011", "url": "https://example.org/again.gif", "content": "cnt00000000200"})); err != nil {
 		t.Fatal(err)
 	}
+	s.Model().services.inbox(extractInbox).wake.poke()
 	made(t, s, "DOCUMENT", "doc00000000023", "extracted")
 	again := children(s, "doc00000000023")
 	if len(again) != 1 || again[0]["content"] != under[0]["content"] {

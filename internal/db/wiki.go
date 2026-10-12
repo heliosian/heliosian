@@ -173,14 +173,14 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		}
 		contents := map[string]string{}
 		contentOf := func(md markdown) (string, error) {
-			return stageContent(s, tx, stager(s, tx, wikiWhere), contents, md.hash, wikiMime, md.size)
+			return stageContent(s, tx, stager(s, tx, env, wikiWhere), contents, md.hash, wikiMime, md.size)
 		}
 		apply := func(e Edit) (string, error) {
 			written, c, err := stageWrite(s, tx, e, wikiWhere, nil, false, func(m *Model, c Change) error { return m.Authorize(env, c) })
 			if err != nil {
 				return "", err
 			}
-			return written, fire(s, tx, c, wikiWhere)
+			return written, fire(s, tx, c, env, wikiWhere)
 		}
 		contentID, err := contentOf(main)
 		if err != nil {

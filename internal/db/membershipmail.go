@@ -23,7 +23,7 @@ type MembershipMailer struct {
 	s      *Store
 	queue  *store.Queue
 	config MembershipMailConfig
-	work   chan placeChange
+	in     *inbox
 }
 
 type placeChange struct {
@@ -41,15 +41,14 @@ var teamBrand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA
 var heliosianBrand = mail.Brand{Name: "Heliosian", Color: "#1f4d53", Tagline: "the Helios community apps"}
 
 func NewMembershipMailer(s *Store, queue *store.Queue, config MembershipMailConfig) *MembershipMailer {
-	mm := &MembershipMailer{s: s, queue: queue, config: config, work: make(chan placeChange, 256)}
-	watch(s, mm.watch)
+	mm := &MembershipMailer{s: s, queue: queue, config: config, in: s.Model().services.inbox(mailInbox)}
 	go mm.run()
 	return mm
 }
 
-func (mm *MembershipMailer) watch(tx *store.Tx, c Change, env Env) {
+func placeChanges(c Change, env Env) []placeChange {
 	if env.System != "" || env.Mode == "import" {
-		return
+		return nil
 	}
 	changes := []placeChange{}
 	switch c.Table {
@@ -74,19 +73,16 @@ func (mm *MembershipMailer) watch(tx *store.Tx, c Change, env Env) {
 			changes = append(changes, placeChange{what: placeAdded, group: c.New["id"], actor: env.Viewer})
 		}
 	}
-	if len(changes) == 0 {
-		return
-	}
-	tx.After(func() {
-		for _, change := range changes {
-			mm.work <- change
-		}
-	})
+	return changes
 }
 
 func (mm *MembershipMailer) run() {
-	for change := range mm.work {
-		mm.mail(context.Background(), change)
+	for range mm.in.wake {
+		for _, d := range mm.in.take() {
+			for _, change := range placeChanges(d.change, d.env) {
+				mm.mail(context.Background(), change)
+			}
+		}
 	}
 }
 

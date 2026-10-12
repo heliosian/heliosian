@@ -156,26 +156,92 @@ type SearchIndex struct {
 	entries map[string]*SearchEntry
 	missing map[string]bool
 	dropped map[string]bool
+	full    bool
 	view    *searchView
 	version int
-	poke    chan struct{}
+	poke    wake
 	reindex chan struct{}
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, view: emptyView(), poke: make(chan struct{}, 1), reindex: make(chan struct{}, 1)}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, view: emptyView(), poke: newWake(), reindex: make(chan struct{}, 1)}
 }
 
 func (x *SearchIndex) drop(object string) {
 	x.mu.Lock()
 	delete(x.entries, object)
 	x.dropped[object] = true
+	x.full = true
 	x.version++
 	x.mu.Unlock()
-	select {
-	case x.poke <- struct{}{}:
-	default:
+	x.poke.poke()
+}
+
+func (x *SearchIndex) rebuild() {
+	x.mu.Lock()
+	x.full = true
+	x.mu.Unlock()
+	x.poke.poke()
+}
+
+func (m *Model) searchReach(c Change) []string {
+	ids := []string{}
+	for _, row := range []store.Row{c.Old, c.New} {
+		if row == nil {
+			continue
+		}
+		ids = append(ids, row["id"])
+		switch c.Table {
+		case "GROUP":
+			for _, column := range servingColumns {
+				if row[column] != "" {
+					ids = append(ids, row[column])
+				}
+			}
+			ids = append(ids, m.groupsBelow(row["id"])...)
+			for _, column := range []string{"classroom", "crew", "department"} {
+				for _, p := range m.Table("PERSON").Referencing(column, row["id"]) {
+					ids = append(ids, p["id"])
+				}
+			}
+		case "PERSON":
+			for _, d := range m.Table("DOCUMENT").Referencing("author", row["id"]) {
+				ids = append(ids, m.documentsUnder(d["id"])...)
+			}
+		case "DOCUMENT":
+			ids = append(ids, m.documentsUnder(row["id"])...)
+		case "CONTENT":
+			for _, d := range m.Table("DOCUMENT").Referencing("content", row["id"]) {
+				ids = append(ids, d["id"])
+			}
+		}
 	}
+	return ids
+}
+
+func (m *Model) groupsBelow(id string) []string {
+	out := []string{}
+	for next, seen := []string{id}, map[string]bool{id: true}; len(next) > 0; next = next[1:] {
+		for _, g := range m.Table("GROUP").Referencing("parent", next[0]) {
+			if !seen[g["id"]] {
+				seen[g["id"]] = true
+				out = append(out, g["id"])
+				next = append(next, g["id"])
+			}
+		}
+	}
+	return out
+}
+
+func (m *Model) documentsUnder(id string) []string {
+	out := []string{id}
+	docs := m.Table("DOCUMENT")
+	for _, column := range []string{"terminal", "source"} {
+		for _, d := range docs.Referencing(column, id) {
+			out = append(out, d["id"])
+		}
+	}
+	return out
 }
 
 func (x *SearchIndex) signal() {
@@ -224,12 +290,8 @@ func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *arti
 	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, origin: origin, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go x.follow()
 	go x.index()
-	queue.OnSwap(func() {
-		select {
-		case x.poke <- struct{}{}:
-		default:
-		}
-	})
+	queue.OnTick(x.rebuild)
+	x.rebuild()
 	return x
 }
 
@@ -241,10 +303,7 @@ func (x *Searcher) StartMaking(anthropicKey string) {
 	for range searchMakers {
 		go x.make()
 	}
-	select {
-	case x.poke <- struct{}{}:
-	default:
-	}
+	x.rebuild()
 }
 
 func SearchObject(input string) string {
@@ -271,38 +330,69 @@ func (m *Model) SearchInputs(texts map[string]string) map[string]SearchRow {
 	excluded := m.searchExcluded()
 	for _, table := range []string{"GROUP", "PERSON"} {
 		for _, row := range m.Shown(table).All() {
-			input := m.searchInput(table, row)
-			if input == "" || excluded[row["id"]] {
-				continue
+			if r, ok := m.namedSearchRow(table, row, excluded); ok {
+				out[row["id"]] = r
 			}
-			name, when := row["name"], row["start"]
-			if table == "PERSON" {
-				name, when = row["name_show"], ""
-			}
-			out[row["id"]] = SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, NameOnly: table == "PERSON" && nameOnly(input), named: row}
 		}
 	}
-	docs := m.Shown("DOCUMENT")
 	for _, row := range m.markdownDocuments() {
-		text, ok := texts[row["content"]]
-		if !ok {
-			continue
+		if r, ok := m.documentSearchRow(row, texts); ok {
+			out[row["id"]] = r
 		}
-		terminal, source := row, row
-		if row["kind"] == "" {
-			terminal, _ = docs.Get(row["terminal"])
-			source, _ = docs.Get(row["source"])
-		}
-		line := m.sourceLine(source, terminal)
-		head := m.extractHead(terminal, line)
-		input := head + "\n\n" + strings.TrimSpace(text)
-		name := terminal["name"]
-		if name == "" {
-			name = terminal["id"]
-		}
-		out[row["id"]] = SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], named: terminal, source: source}
 	}
 	return out
+}
+
+func (m *Model) searchRowOf(id string, texts map[string]string, excluded map[string]bool) (SearchRow, bool) {
+	table, _ := TableOf(id)
+	switch table {
+	case "GROUP", "PERSON":
+		row, ok := m.Shown(table).Get(id)
+		if !ok {
+			return SearchRow{}, false
+		}
+		return m.namedSearchRow(table, row, excluded)
+	case "DOCUMENT":
+		row, ok := m.Shown(table).Get(id)
+		if !ok || !m.markdownDocument(row) {
+			return SearchRow{}, false
+		}
+		return m.documentSearchRow(row, texts)
+	}
+	return SearchRow{}, false
+}
+
+func (m *Model) namedSearchRow(table string, row store.Row, excluded map[string]bool) (SearchRow, bool) {
+	input := m.searchInput(table, row)
+	if input == "" || excluded[row["id"]] {
+		return SearchRow{}, false
+	}
+	name, when := row["name"], row["start"]
+	if table == "PERSON" {
+		name, when = row["name_show"], ""
+	}
+	return SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, NameOnly: table == "PERSON" && nameOnly(input), named: row}, true
+}
+
+func (m *Model) documentSearchRow(row store.Row, texts map[string]string) (SearchRow, bool) {
+	text, ok := texts[row["content"]]
+	if !ok {
+		return SearchRow{}, false
+	}
+	docs := m.Shown("DOCUMENT")
+	terminal, source := row, row
+	if row["kind"] == "" {
+		terminal, _ = docs.Get(row["terminal"])
+		source, _ = docs.Get(row["source"])
+	}
+	line := m.sourceLine(source, terminal)
+	head := m.extractHead(terminal, line)
+	input := head + "\n\n" + strings.TrimSpace(text)
+	name := terminal["name"]
+	if name == "" {
+		name = terminal["id"]
+	}
+	return SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], named: terminal, source: source}, true
 }
 
 func (m *Model) sourceLine(source, terminal store.Row) string {
@@ -338,17 +428,21 @@ func (m *Model) sourceLine(source, terminal store.Row) string {
 }
 
 func (m *Model) markdownDocuments() []store.Row {
-	contents := m.Shown("CONTENT")
 	out := []store.Row{}
 	for _, row := range m.Shown("DOCUMENT").All() {
-		if row["relation"] != "extract" && row["kind"] != "wiki" {
-			continue
-		}
-		if c, ok := contents.Get(row["content"]); ok && baseType(c["mime"]) == "text/markdown" {
+		if m.markdownDocument(row) {
 			out = append(out, row)
 		}
 	}
 	return out
+}
+
+func (m *Model) markdownDocument(row store.Row) bool {
+	if row["relation"] != "extract" && row["kind"] != "wiki" {
+		return false
+	}
+	c, ok := m.Shown("CONTENT").Get(row["content"])
+	return ok && baseType(c["mime"]) == "text/markdown"
 }
 
 func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[string]string) (map[string]string, error) {
@@ -456,7 +550,11 @@ func (x *Searcher) follow() {
 		x.mu.Lock()
 		dropped := slices.Collect(maps.Keys(x.dropped))
 		clear(x.dropped)
+		full := x.full
+		x.full = false
 		x.mu.Unlock()
+		in := x.s.Model().services.inbox(searchInbox)
+		changes := in.take()
 		for _, hash := range dropped {
 			if err := x.bucket.Remove(context.Background(), hash); err != nil && !errors.Is(err, blob.ErrNotFound) {
 				slog.Error("search: remove a deleted entry", "object", hash, "error", err)
@@ -465,22 +563,30 @@ func (x *Searcher) follow() {
 		if len(dropped) > 0 {
 			slog.Info("search: removed deleted entries", "objects", len(dropped))
 		}
-		m := x.s.Model()
-		texts, err := SearchTexts(context.Background(), m, x.bucket, x.texts)
-		if err != nil {
-			slog.Error("search: read the extracts", "error", err)
+		if !full && len(changes) == 0 {
 			continue
 		}
-		x.texts = texts
-		rows := m.SearchInputs(texts)
-		for id, r := range rows {
-			r.Href = m.Link(r.Table, r.named, x.origin)
-			if r.source != nil {
-				r.SourceHref = m.Link("DOCUMENT", r.source, x.origin)
+		m := x.s.Model()
+		dirty := map[string]bool{}
+		for _, d := range changes {
+			for _, id := range m.searchReach(d.change) {
+				dirty[id] = true
 			}
-			rows[id] = r
+		}
+		rows, err := x.rowsFor(m, full, dirty)
+		if err != nil {
+			slog.Error("search: read the extracts", "error", err)
+			x.mu.Lock()
+			x.full = x.full || full
+			x.mu.Unlock()
+			in.giveBack(changes)
+			continue
 		}
 		x.mu.Lock()
+		if full && len(x.rows) > 0 {
+			corrected := correctedRows(x.rows, rows, dirty)
+			slog.Info("search: full pass", "rows", len(rows), "corrected", len(corrected), "ids", corrected[:min(len(corrected), 10)], "took", time.Since(start).Round(time.Millisecond))
+		}
 		wanted := map[string]bool{}
 		unknown := map[string]bool{}
 		for _, r := range rows {
@@ -550,6 +656,78 @@ func (x *Searcher) follow() {
 		}
 		x.signal()
 	}
+}
+
+func correctedRows(was, now map[string]SearchRow, dirty map[string]bool) []string {
+	out := []string{}
+	for id, r := range now {
+		if !dirty[id] && was[id].Object != r.Object {
+			out = append(out, id)
+		}
+	}
+	for id := range was {
+		if _, ok := now[id]; !ok && !dirty[id] {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (x *Searcher) rowsFor(m *Model, full bool, dirty map[string]bool) (map[string]SearchRow, error) {
+	linked := func(r SearchRow) SearchRow {
+		r.Href = m.Link(r.Table, r.named, x.origin)
+		if r.source != nil {
+			r.SourceHref = m.Link("DOCUMENT", r.source, x.origin)
+		}
+		return r
+	}
+	if full {
+		texts, err := SearchTexts(context.Background(), m, x.bucket, x.texts)
+		if err != nil {
+			return nil, err
+		}
+		x.texts = texts
+		rows := m.SearchInputs(texts)
+		for id, r := range rows {
+			rows[id] = linked(r)
+		}
+		return rows, nil
+	}
+	if err := x.readTexts(m, dirty); err != nil {
+		return nil, err
+	}
+	x.mu.RLock()
+	rows := maps.Clone(x.rows)
+	x.mu.RUnlock()
+	excluded := m.searchExcluded()
+	for id := range dirty {
+		delete(rows, id)
+		if r, ok := m.searchRowOf(id, x.texts, excluded); ok {
+			rows[id] = linked(r)
+		}
+	}
+	return rows, nil
+}
+
+func (x *Searcher) readTexts(m *Model, dirty map[string]bool) error {
+	contents := m.Shown("CONTENT")
+	for id := range dirty {
+		row, ok := m.Shown("DOCUMENT").Get(id)
+		if !ok || !m.markdownDocument(row) {
+			continue
+		}
+		if _, held := x.texts[row["content"]]; held {
+			continue
+		}
+		c, _ := contents.Get(row["content"])
+		raw, _, err := x.bucket.Get(context.Background(), c["blob"])
+		if err != nil {
+			return fmt.Errorf("read %s: %w", c["blob"], err)
+		}
+		x.texts[row["content"]] = string(raw)
+	}
+	return nil
 }
 
 func (x *Searcher) strays(wanted, removed map[string]bool) {

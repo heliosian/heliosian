@@ -19,22 +19,18 @@ type sweeper struct {
 	s      *Store
 	queue  *store.Queue
 	bucket *blob.Bucket
-	poke   chan struct{}
+	in     *inbox
 }
 
 func StartSweeper(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	x := &sweeper{s: s, queue: queue, bucket: bucket, poke: make(chan struct{}, 1)}
+	x := &sweeper{s: s, queue: queue, bucket: bucket, in: s.Model().services.inbox(sweepInbox)}
 	go x.run()
-	queue.OnSwap(func() {
-		select {
-		case x.poke <- struct{}{}:
-		default:
-		}
-	})
+	x.in.wake.poke()
 }
 
 func (x *sweeper) run() {
-	for range x.poke {
+	for range x.in.wake {
+		x.in.take()
 		for len(x.s.Model().unreferencedContent()) > 0 {
 			start := time.Now()
 			rows, objects, written, err := x.sweep()

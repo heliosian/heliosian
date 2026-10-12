@@ -42,7 +42,7 @@ type Extractor struct {
 	client anthropic.Client
 	failed map[string]bool
 	asked  map[string]int
-	poke   chan struct{}
+	in     *inbox
 }
 
 type extracted struct {
@@ -78,19 +78,15 @@ func extractable(kind string) bool {
 }
 
 func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
-	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, asked: map[string]int{}, poke: make(chan struct{}, 1)}
+	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, asked: map[string]int{}, in: s.Model().services.inbox(extractInbox)}
 	go x.run()
-	queue.OnSwap(func() {
-		select {
-		case x.poke <- struct{}{}:
-		default:
-		}
-	})
+	x.in.wake.poke()
 	return x
 }
 
 func (x *Extractor) run() {
-	for range x.poke {
+	for range x.in.wake {
+		x.in.take()
 		again := false
 		for _, id := range x.pending() {
 			start := time.Now()
@@ -117,10 +113,7 @@ func (x *Extractor) run() {
 		if !again {
 			continue
 		}
-		select {
-		case x.poke <- struct{}{}:
-		default:
-		}
+		x.in.wake.poke()
 	}
 }
 
@@ -220,13 +213,13 @@ func (m *Model) htmlAlongside(doc store.Row) bool {
 	})
 }
 
-func stager(s *Store, tx *store.Tx, actor string) func(Edit) (string, error) {
+func stager(s *Store, tx *store.Tx, env Env, actor string) func(Edit) (string, error) {
 	return func(e Edit) (string, error) {
 		written, c, err := stageWrite(s, tx, e, actor, nil, true, unchecked)
 		if err != nil {
 			return "", err
 		}
-		return written, fire(s, tx, c, actor)
+		return written, fire(s, tx, c, env, actor)
 	}
 }
 
@@ -306,7 +299,7 @@ func (x *Extractor) extract(id string) (int, error) {
 	orders := store.Order(make([]string, len(children)))
 	committed := false
 	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
-		stage := stager(x.s, tx, extractActor)
+		stage := stager(x.s, tx, Env{System: extractActor}, extractActor)
 		now, ok := x.s.In(tx).Table("DOCUMENT").Get(id)
 		if !ok || now["extracted"] != "" {
 			return nil

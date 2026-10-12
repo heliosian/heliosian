@@ -337,9 +337,10 @@ func TestRefusedChangeWritesNothing(t *testing.T) {
 
 func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 	f := newFixture(t)
-	ran := false
+	ran, swapped := false, 0
 	_, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
 		tx.After(func() { ran = true })
+		tx.Swapped(func() { swapped = f.store.Model().things })
 		if err := f.store.Stage(tx, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
 			return err
 		}
@@ -351,11 +352,12 @@ func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 	if err == nil {
 		t.Fatal("a transaction with a refused stage was taken")
 	}
-	if ran || f.store.Count("app", "Things", Row{"Name": "cap"}) != 0 || len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
+	if ran || swapped != 0 || f.store.Count("app", "Things", Row{"Name": "cap"}) != 0 || len(f.rows(t, "Things")) != 2 || len(f.log(t)) != 0 {
 		t.Fatal("a refused transaction reached memory, the sheet, the log or its after-work")
 	}
 	done, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
 		tx.After(func() { ran = true })
+		tx.Swapped(func() { swapped = f.store.Model().things })
 		if err := f.store.Stage(tx, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
 			return err
 		}
@@ -365,8 +367,8 @@ func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-done
-	if !ran || f.store.Count("app", "Things", Row{"Name": "cap", "Color": "blue"}) != 1 {
-		t.Fatal("a transaction's stages did not all land")
+	if !ran || swapped != 3 || f.store.Count("app", "Things", Row{"Name": "cap", "Color": "blue"}) != 1 {
+		t.Fatalf("a transaction's stages did not all land, or its swap work saw %d things, not 3", swapped)
 	}
 	equal(t, "change log", f.log(t), []string{"ann||insert|Things|Name=cap||", "ann||set|Things|Name=cap|Color|"})
 }
@@ -679,6 +681,69 @@ func TestACommitDuringARefreshIsKeptAndTheRefreshSwaps(t *testing.T) {
 	}
 	if len(f.rows(t, "Things")) != 3 {
 		t.Fatalf("the sheet after the refresh: %v", f.rows(t, "Things"))
+	}
+}
+
+func TestARefreshReportsTheRowsTheSheetChanged(t *testing.T) {
+	f := newFixture(t)
+	seen := []string{}
+	p := part()
+	p.Refreshed = func(tab string, before, after Row) {
+		seen = append(seen, tab+" "+before["Name"]+before["Thing"]+before["By"]+" -> "+after["Name"]+after["Thing"]+after["By"])
+	}
+	s, err := New([]Part[counts]{p}, consent, f.dir, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CommitAndWait(context.Background(), access.Actor{Email: "ann"}, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.dir.Insert("app", "Things", []map[string]string{{"Name": "sock"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.dir.Delete("app", "Uses", Row{"By": "bo"}); err != nil {
+		t.Fatal(err)
+	}
+	f.queue.Refresh()
+	f.queue.Flush()
+	equal(t, "refreshed rows", seen, []string{"Things  -> sock", "Uses hatbo -> "})
+}
+
+func TestARefreshRebuildsOnlyThePartsWhoseSheetsChanged(t *testing.T) {
+	f := newFixture(t)
+	app, report := part(), reportPart()
+	appBuilds := 0
+	build := app.Build
+	app.Build = func(ctx context.Context, tables Tables, m *counts) error {
+		appBuilds++
+		return build(ctx, tables, m)
+	}
+	app.Incremental, report.Incremental = true, true
+	s, err := New([]Part[counts]{app, report}, consent, f.dir, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refresh := func() *counts {
+		t.Helper()
+		f.queue.Refresh()
+		f.queue.Flush()
+		return s.Model()
+	}
+	loaded := s.Model()
+	if m := refresh(); m != loaded || appBuilds != 1 || m.reportBuilds != 1 {
+		t.Fatalf("a refresh of unchanged sheets rebuilt: same model %v, app built %d times, report %d", m == loaded, appBuilds, m.reportBuilds)
+	}
+	if err := f.dir.Insert("report", "Notes", []map[string]string{{"Note": "second"}}); err != nil {
+		t.Fatal(err)
+	}
+	if m := refresh(); appBuilds != 1 || m.reportBuilds != 2 || m.report != 22 {
+		t.Fatalf("a new note rebuilt app %d times and report %d times, report %d", appBuilds, m.reportBuilds, m.report)
+	}
+	if err := f.dir.Insert("app", "Things", []map[string]string{{"Name": "sock"}}); err != nil {
+		t.Fatal(err)
+	}
+	if m := refresh(); appBuilds != 2 || m.reportBuilds != 3 || m.report != 32 {
+		t.Fatalf("a new thing rebuilt app %d times and report %d times, report %d", appBuilds, m.reportBuilds, m.report)
 	}
 }
 

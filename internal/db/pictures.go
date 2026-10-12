@@ -34,7 +34,16 @@ type Pictures struct {
 
 func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
 	p := &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
-	watch(s, func(tx *store.Tx, c Change, _ Env) { p.watch(tx, c) })
+	in := s.Model().services.inbox(picturesInbox)
+	go func() {
+		for range in.wake {
+			for _, d := range in.take() {
+				if remake(d.change) {
+					p.enqueue(d.change.New["id"])
+				}
+			}
+		}
+	}()
 	return p
 }
 
@@ -50,15 +59,11 @@ func (p *Pictures) Start() {
 	slog.Info("pictures: queued photos not ready at startup", "queued", queued)
 }
 
-func (p *Pictures) watch(tx *store.Tx, c Change) {
-	if c.Table != "PHOTO" || c.New == nil {
-		return
+func remake(c Change) bool {
+	if c.New == nil {
+		return false
 	}
-	if c.Old != nil && !slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] }) {
-		return
-	}
-	id := c.New["id"]
-	tx.After(func() { p.enqueue(id) })
+	return c.Old == nil || slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] })
 }
 
 func (p *Pictures) enqueue(id string) {

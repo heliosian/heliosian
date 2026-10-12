@@ -262,10 +262,9 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 			if err != nil {
 				return "", err
 			}
-			if err := fire(s, tx, c, "fetched"); err != nil {
+			if err := fire(s, tx, c, env, "fetched"); err != nil {
 				return "", err
 			}
-			s.Model().watched(tx, c, env)
 			return written, nil
 		}
 		held, err := stageContent(s, tx, stage, map[string]string{}, hash, mimeType, len(content))

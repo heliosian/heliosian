@@ -420,7 +420,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	server := Server(domain, core.Handlers(func(key string, next http.Handler) http.Handler {
 		return auths[key].Wrap(next)
 	}), core.Aliased())
-	db.StartWarmer(core.Data, core.Queue)
+	db.StartWarmer(core.Data)
 	if cloud {
 		debug.SetMemoryLimit(memoryLimit)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
@@ -438,6 +438,8 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			db.StartFetcher(core.Data, core.Queue, bucket)
 			db.StartGeocoder(core.Data, core.Queue, geocoder)
 		}()
+	} else {
+		db.StartIdleWorkers(core.Data)
 	}
 	return server, core.Queue
 }

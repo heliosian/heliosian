@@ -110,6 +110,24 @@ func TestFamilyNameFollowsItsMembers(t *testing.T) {
 	name("Chang-Ashdown Family", "with Kai withheld")
 }
 
+func TestACommittedTriggerSeesWhatAStagedTriggerWrote(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	b, err := ParseBatch([]byte(`{"batch": [{"set": "per00000000001", "cells": {"name_long_override": "Juni Chang-Ashdown"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+		t.Fatal(err)
+	}
+	seen := []string{}
+	for _, d := range s.Model().services.inbox(consentInbox).take() {
+		seen = append(seen, d.change.Table+" "+d.change.New["id"]+" "+d.change.New["name"])
+	}
+	if want := []string{"PERSON per00000000001 ", "GROUP grp00000000020 Chang-Ashdown Family"}; !slices.Equal(seen, want) {
+		t.Fatalf("the consent inbox holds %q, not %q", seen, want)
+	}
+}
+
 func TestASentPostIsFiledAsMail(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(raw string) []string {

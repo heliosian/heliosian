@@ -27,21 +27,13 @@ type geocoder struct {
 	queue  *store.Queue
 	client *geocode.Client
 	failed map[string]bool
-	poke   chan struct{}
+	in     *inbox
 }
 
 func StartGeocoder(s *Store, queue *store.Queue, client *geocode.Client) {
-	g := &geocoder{s: s, queue: queue, client: client, failed: map[string]bool{}, poke: make(chan struct{}, 1)}
+	g := &geocoder{s: s, queue: queue, client: client, failed: map[string]bool{}, in: s.Model().services.inbox(geocodeInbox)}
 	go g.run()
-	queue.OnSwap(g.wake)
-	g.wake()
-}
-
-func (g *geocoder) wake() {
-	select {
-	case g.poke <- struct{}{}:
-	default:
-	}
+	g.in.wake.poke()
 }
 
 func (m *Model) unplaced() []string {
@@ -70,7 +62,8 @@ func (m *Model) unplaceable() []string {
 }
 
 func (g *geocoder) run() {
-	for range g.poke {
+	for range g.in.wake {
+		g.in.take()
 		m := g.s.Model()
 		addresses := slices.DeleteFunc(m.unplaced(), func(a string) bool { return g.failed[a] })
 		gone := slices.DeleteFunc(m.unplaceable(), func(id string) bool { return g.failed[id] })

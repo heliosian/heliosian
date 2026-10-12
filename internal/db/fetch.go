@@ -53,7 +53,7 @@ type Fetcher struct {
 	bucket *blob.Bucket
 	mu     sync.Mutex
 	tries  map[string]int
-	poke   chan struct{}
+	in     *inbox
 }
 
 type fetched struct {
@@ -71,18 +71,15 @@ func (b busy) Error() string {
 }
 
 func StartFetcher(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	f := &Fetcher{s: s, queue: queue, bucket: bucket, tries: map[string]int{}, poke: make(chan struct{}, 1)}
+	f := &Fetcher{s: s, queue: queue, bucket: bucket, tries: map[string]int{}, in: s.Model().services.inbox(fetchInbox)}
 	go f.run()
-	queue.OnSwap(func() {
-		select {
-		case f.poke <- struct{}{}:
-		default:
-		}
-	})
+	queue.OnTick(f.in.wake.poke)
+	f.in.wake.poke()
 }
 
 func (f *Fetcher) run() {
-	for range f.poke {
+	for range f.in.wake {
+		f.in.take()
 		byHost := map[string][][]store.Row{}
 		same := map[[2]string]int{}
 		for _, doc := range f.pending() {
@@ -306,7 +303,7 @@ func (f *Fetcher) still(tx *store.Tx, ids []string) []string {
 
 func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
 	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
-		stage := stager(f.s, tx, fetchActor)
+		stage := stager(f.s, tx, Env{System: fetchActor}, fetchActor)
 		for _, id := range f.still(tx, ids) {
 			if _, err := stage(Edit{Set: id, Cells: map[string]any{"fetch": why}}); err != nil {
 				return err
@@ -334,7 +331,7 @@ func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 		if len(open) == 0 {
 			return nil
 		}
-		stage := stager(f.s, tx, fetchActor)
+		stage := stager(f.s, tx, Env{System: fetchActor}, fetchActor)
 		content, err := stageContent(f.s, tx, stage, map[string]string{}, hash, got.mime, len(got.body))
 		if err != nil {
 			return err

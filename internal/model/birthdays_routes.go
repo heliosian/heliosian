@@ -48,12 +48,14 @@ type BirthdaysDeps struct {
 func RegisterBirthdays(mux *http.ServeMux, d BirthdaysDeps) {
 	a := birthdaysApp{store: d.Store, queue: d.Queue, describer: d.Describer, mailer: d.Mailer, base: d.Base, taken: d.Taken}
 	kick := make(chan struct{}, 1)
-	d.Queue.OnSwap(func() {
+	poke := func() {
 		select {
 		case kick <- struct{}{}:
 		default:
 		}
-	})
+	}
+	d.Queue.OnSwap(poke)
+	d.Queue.OnTick(poke)
 	go a.inviteLoop(kick)
 	go a.remindLoop()
 	go a.exportLoop()

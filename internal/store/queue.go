@@ -24,6 +24,7 @@ type Queue struct {
 	commits   sync.Mutex
 	loads     []Load
 	swapped   []func()
+	ticked    []func()
 	refreshed chan struct{}
 	firstOnce sync.Once
 }
@@ -106,9 +107,26 @@ func (q *Queue) afterSwap() {
 	}
 }
 
+func (q *Queue) OnTick(tick func()) {
+	q.commits.Lock()
+	defer q.commits.Unlock()
+	q.ticked = append(q.ticked, tick)
+}
+
 func (q *Queue) Tick() {
-	for range time.Tick(refreshInterval) {
-		q.Refresh()
+	refresh, tick := time.Tick(refreshInterval), time.Tick(tickInterval)
+	for {
+		select {
+		case <-refresh:
+			q.Refresh()
+		case <-tick:
+			q.commits.Lock()
+			ticked := slices.Clone(q.ticked)
+			q.commits.Unlock()
+			for _, f := range ticked {
+				f()
+			}
+		}
 	}
 }
 

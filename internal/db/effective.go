@@ -54,20 +54,16 @@ func (m *Model) generated(t *Table) *generatedSet {
 	return set
 }
 
-func StartWarmer(s *Store, queue *store.Queue) {
-	poke := make(chan struct{}, 1)
+func StartWarmer(s *Store) {
+	in := s.Model().services.inbox(warmInbox)
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	go func() {
-		for range poke {
+		for range in.wake {
+			in.take()
 			s.Model().generated(effective)
 		}
 	}()
-	queue.OnSwap(func() {
-		select {
-		case poke <- struct{}{}:
-		default:
-		}
-	})
+	in.wake.poke()
 }
 
 func (m *Model) searchRow(id string) (store.Row, bool) {

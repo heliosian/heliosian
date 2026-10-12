@@ -730,9 +730,7 @@ func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 	x.mu.RLock()
 	object := x.rows[extract].Object
 	x.mu.RUnlock()
-	if err := commit(s, DocumentsSheet, store.Delete("DOCUMENT", store.Row{"id": extract})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Delete: extract}})
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		_, indexed := x.snapshot().rows[extract]
 		held, err := bucket.Exists(context.Background(), object)
@@ -776,12 +774,10 @@ func TestMeaningStopsAtTheFloor(t *testing.T) {
 }
 
 func TestAChangedRowLosesItsOldEntry(t *testing.T) {
-	s, _, bucket, x := searcher(t)
+	s, queue, bucket, x := searcher(t)
 	makeAll(t, s, x)
 	before := s.Model().SearchInputs(nil)["grp00000000040"].Object
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000040"}, store.Row{"location": "the meadow"})); err != nil {
-		t.Fatal(err)
-	}
+	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"location": "the meadow"}}})
 	after := s.Model().SearchInputs(nil)["grp00000000040"].Object
 	if after == before {
 		t.Fatal("a new location left the picnic's input unchanged")
@@ -801,6 +797,60 @@ func TestAChangedRowLosesItsOldEntry(t *testing.T) {
 	makeAll(t, s, x)
 	if held, err := bucket.Exists(context.Background(), after); err != nil || !held {
 		t.Errorf("the picnic's new entry %s was never made: %v", after, err)
+	}
+}
+
+func TestARenamedClassroomReachesItsPeoplesEntries(t *testing.T) {
+	s, queue, _, x := searcher(t)
+	makeAll(t, s, x)
+	students := s.Model().Table("PERSON").Referencing("classroom", "grp00000000010")
+	if len(students) == 0 {
+		t.Fatal("the sample has nobody in grp00000000010")
+	}
+	before := s.Model().SearchInputs(nil)[students[0]["id"]].Object
+	apply(t, s, queue, []Edit{{Set: "grp00000000010", Cells: map[string]any{"name": "Sea Otters"}}})
+	rows := waitRows(t, s, x)
+	if rows[students[0]["id"]].Object == before || !strings.Contains(rows[students[0]["id"]].Input, "Classroom: Sea Otters") {
+		t.Fatalf("%s's input after the rename: %q", students[0]["id"], rows[students[0]["id"]].Input)
+	}
+}
+
+func TestIncrementalSearchAgreesWithAFullPass(t *testing.T) {
+	s, queue, _, x := searcher(t)
+	waitRows(t, s, x)
+	m := s.Model()
+	groups, classrooms, people, documents := []string{}, []string{}, []string{}, []string{}
+	for _, g := range m.Shown("GROUP").All() {
+		groups = append(groups, g["id"])
+		if g["kind"] == "classroom" {
+			classrooms = append(classrooms, g["id"])
+		}
+	}
+	for _, p := range m.Shown("PERSON").All() {
+		people = append(people, p["id"])
+	}
+	for _, d := range m.Shown("DOCUMENT").All() {
+		if d["kind"] != "" {
+			documents = append(documents, d["id"])
+		}
+	}
+	rng := rand.New(rand.NewPCG(1, 2))
+	pick := func(ids []string) string { return ids[rng.IntN(len(ids))] }
+	for i := range 40 {
+		edit := Edit{}
+		switch rng.IntN(4) {
+		case 0:
+			edit = Edit{Set: pick(groups), Cells: map[string]any{"name": fmt.Sprintf("Renamed %d", i)}}
+		case 1:
+			edit = Edit{Set: pick(people), Cells: map[string]any{"classroom_override": pick(classrooms)}}
+		case 2:
+			edit = Edit{Set: pick(people), Cells: map[string]any{"name_long_override": fmt.Sprintf("Someone Renamed%d", i)}}
+		case 3:
+			edit = Edit{Set: pick(documents), Cells: map[string]any{"name": fmt.Sprintf("Retitled %d", i)}}
+		}
+		t.Logf("edit %d: %s %v", i, edit.Set, edit.Cells)
+		apply(t, s, queue, []Edit{edit})
+		waitRows(t, s, x)
 	}
 }
 

@@ -240,7 +240,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("the images were not all fetched: %v", children(s, htmlPart["id"]))
 		}
-		queue.Refresh()
+		s.Model().services.inbox(fetchInbox).wake.poke()
 		time.Sleep(10 * time.Millisecond)
 	}
 	got := []string{}

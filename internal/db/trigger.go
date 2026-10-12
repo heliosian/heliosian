@@ -11,12 +11,17 @@ import (
 	"heliosian/internal/store"
 )
 
-type trigger struct {
+type stagedTrigger struct {
 	table string
 	fire  func(m *Model, c Change) ([]Edit, error)
 }
 
-var triggers = []trigger{
+type committedTrigger struct {
+	table string
+	to    inboxName
+}
+
+var stagedTriggers = []stagedTrigger{
 	{table: "PERSON", fire: schoolGroups},
 	{table: "PERSON", fire: personFamilyNames},
 	{table: "MEMBER", fire: memberFamilyName},
@@ -27,6 +32,52 @@ var triggers = []trigger{
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
+}
+
+var committedTriggers = []committedTrigger{
+	{table: "MEMBER", to: mailInbox},
+	{table: "GROUP", to: mailInbox},
+	{table: "PHOTO", to: picturesInbox},
+	{table: "GROUP", to: searchInbox},
+	{table: "PERSON", to: searchInbox},
+	{table: "DOCUMENT", to: searchInbox},
+	{table: "CONTENT", to: searchInbox},
+	{table: "PERSON", to: consentInbox},
+	{table: "MEMBER", to: consentInbox},
+	{table: "GROUP", to: consentInbox},
+	{table: "DOCUMENT", to: fetchInbox},
+	{table: "DOCUMENT", to: classifyInbox},
+	{table: "DOCUMENT_GROUP", to: classifyInbox},
+	{table: "DOCUMENT", to: extractInbox},
+	{table: "CONTENT", to: extractInbox},
+	{table: "GROUP", to: geocodeInbox},
+	{table: "GEOCODE", to: geocodeInbox},
+	{table: "CONTENT", to: sweepInbox},
+	{table: "DOCUMENT", to: sweepInbox},
+	{table: "MESSAGE", to: sweepInbox},
+	{table: "REPORT", to: sweepInbox},
+	{table: "ALIAS", to: sweepInbox},
+	{table: "PERSON", to: warmInbox},
+	{table: "PERSON_EMAIL", to: warmInbox},
+	{table: "PHOTO", to: warmInbox},
+	{table: "PERSON_SETTING", to: warmInbox},
+	{table: "BIRTHDAY_YEAR", to: warmInbox},
+	{table: "COLLECTION", to: warmInbox},
+	{table: "COLLECTION_GROUP", to: warmInbox},
+	{table: "GROUP", to: warmInbox},
+	{table: "GROUP_SOURCE", to: warmInbox},
+	{table: "MEMBER", to: warmInbox},
+	{table: "RULE", to: warmInbox},
+}
+
+func committedInboxes(s *Store, table string) []*inbox {
+	out := []*inbox{}
+	for _, t := range committedTriggers {
+		if t.table == table {
+			out = append(out, s.Model().services.inbox(t.to))
+		}
+	}
+	return out
 }
 
 func receivedPost(row store.Row) bool {
@@ -236,11 +287,15 @@ func unchecked(*Model, Change) error {
 	return nil
 }
 
-func fire(s *Store, tx *store.Tx, c Change, where string) error {
+func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
 	for pending := []Change{c}; len(pending) > 0; {
 		next := pending[0]
 		pending = pending[1:]
-		for _, t := range triggers {
+		for _, in := range committedInboxes(s, next.Table) {
+			d := delivery{change: next, env: env}
+			tx.Swapped(func() { in.deliver(d) })
+		}
+		for _, t := range stagedTriggers {
 			if t.table != next.Table {
 				continue
 			}

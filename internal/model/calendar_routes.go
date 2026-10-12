@@ -96,12 +96,14 @@ func (a calendarApp) sources() AudienceSources {
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	a := newCalendarApp(d)
 	kick := make(chan struct{}, 1)
-	d.Queue.OnSwap(func() {
+	poke := func() {
 		select {
 		case kick <- struct{}{}:
 		default:
 		}
-	})
+	}
+	d.Queue.OnSwap(poke)
+	d.Queue.OnTick(poke)
 	go a.deliverLoop(kick)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)

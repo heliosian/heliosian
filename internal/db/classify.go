@@ -55,23 +55,19 @@ type Classifier struct {
 	bucket  *blob.Bucket
 	client  anthropic.Client
 	skipped map[string]bool
-	poke    chan struct{}
+	in      *inbox
 }
 
 func StartClassifier(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Classifier {
-	c := &Classifier{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, poke: make(chan struct{}, 1)}
+	c := &Classifier{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, in: s.Model().services.inbox(classifyInbox)}
 	go c.run()
-	queue.OnSwap(func() {
-		select {
-		case c.poke <- struct{}{}:
-		default:
-		}
-	})
+	c.in.wake.poke()
 	return c
 }
 
 func (c *Classifier) run() {
-	for range c.poke {
+	for range c.in.wake {
+		c.in.take()
 		again := false
 		for _, id := range c.pending() {
 			start := time.Now()
@@ -95,10 +91,7 @@ func (c *Classifier) run() {
 		if !again {
 			continue
 		}
-		select {
-		case c.poke <- struct{}{}:
-		default:
-		}
+		c.in.wake.poke()
 	}
 }
 
@@ -219,7 +212,7 @@ func (c *Classifier) classify(id string) (string, error) {
 			if err != nil {
 				return err
 			}
-			if err := fire(c.s, tx, ch, classifyActor); err != nil {
+			if err := fire(c.s, tx, ch, Env{System: classifyActor}, classifyActor); err != nil {
 				return err
 			}
 		}
@@ -245,7 +238,7 @@ func (c *Classifier) discard(id string) error {
 			if err != nil {
 				return err
 			}
-			if err := fire(c.s, tx, ch, classifyActor); err != nil {
+			if err := fire(c.s, tx, ch, Env{System: classifyActor}, classifyActor); err != nil {
 				return err
 			}
 		}

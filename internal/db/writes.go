@@ -135,12 +135,11 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 				names[w.As] = id
 			}
 			start = time.Now()
-			err = fire(s, tx, c, where)
+			err = fire(s, tx, c, env, where)
 			firing.Add(time.Since(start))
 			if err != nil {
 				return err
 			}
-			s.Model().watched(tx, c, env)
 			written = append(written, id)
 		}
 		return nil

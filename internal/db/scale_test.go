@@ -3,10 +3,13 @@ package db
 import (
 	"encoding/csv"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 )
@@ -51,6 +54,12 @@ func appendRows(tb testing.TB, path string, rows []map[string]string) {
 }
 
 func scaleStore(tb testing.TB) *Store {
+	tb.Helper()
+	s, _, _ := scaleStoreIn(tb)
+	return s
+}
+
+func scaleStoreIn(tb testing.TB) (*Store, *store.Queue, *data.Dir) {
 	tb.Helper()
 	root := tb.TempDir()
 	if err := os.CopyFS(root, os.DirFS("../../sampledata")); err != nil {
@@ -112,11 +121,12 @@ func scaleStore(tb testing.TB) *Store {
 	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT.csv"), documents)
 	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT_GROUP.csv"), sentTo)
 	dir := &data.Dir{Root: root}
-	s, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex())
+	queue := store.NewQueue()
+	s, err := NewStore(dir, dir, queue, NewSearchIndex())
 	if err != nil {
 		tb.Fatal(err)
 	}
-	return s
+	return s, queue, dir
 }
 
 func benchQuery(b *testing.B, src string) {
@@ -183,6 +193,114 @@ func BenchmarkRebuildDocuments(b *testing.B) {
 		if err := commit(s, DocumentsSheet, store.Update("DOCUMENT", store.Row{"id": "doc00000100001"}, store.Row{"name": fmt.Sprintf("Mail %d", i)})); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
+	s, queue, dir := scaleStoreIn(t)
+	apply(t, s, queue, []Edit{{Set: "per00000000150", Cells: map[string]any{"facts": "committed before the refresh"}}})
+	queue.Flush()
+	if err := dir.Insert(DocumentsSheet, "DOCUMENT", []map[string]string{{"id": "doc00000900001", "kind": "mail", "name": "Added by hand", "published": "2026-09-02 09:00:00"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.Delete(GroupsSheet, "MEMBER", map[string]string{"id": "mem00000000101"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dir.Update(GroupsSheet, "GROUP", map[string]string{"id": "grp00000005000"}, map[string]string{"name": "Renamed by hand"}); err != nil {
+		t.Fatal(err)
+	}
+	before := s.Model()
+	queue.Refresh()
+	queue.Flush()
+	after := s.Model()
+	if after.People["PERSON"] != before.People["PERSON"] {
+		t.Error("the refresh built the People sheet again, though nothing in it was edited by hand")
+	}
+	if after.Groups["GROUP"] == before.Groups["GROUP"] {
+		t.Error("the refresh kept the Groups sheet a hand edit changed")
+	}
+	fresh, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fresh.Model()
+	same := func(table string, got, wanted []store.Row) {
+		t.Helper()
+		if !slices.EqualFunc(got, wanted, func(a, b store.Row) bool { return maps.Equal(a, b) }) {
+			t.Errorf("%s differs from a full load: %d rows against %d", table, len(got), len(wanted))
+		}
+	}
+	for i := range Tables {
+		table := &Tables[i]
+		if table.Generated {
+			continue
+		}
+		same(table.Name, after.Table(table.Name).All(), want.Table(table.Name).All())
+		same(table.Name+" shown", after.Shown(table.Name).All(), want.Shown(table.Name).All())
+	}
+	effective, _ := Lookup("EFFECTIVE_MEMBER")
+	same("EFFECTIVE_MEMBER", after.generated(effective).rows, want.generated(effective).rows)
+}
+
+func benchWrite(b *testing.B, edits func(i int) []Edit) {
+	s, queue, _ := scaleStoreIn(b)
+	i := 0
+	for b.Loop() {
+		i++
+		if _, err := Write(b.Context(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: edits(i)}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkWritePerson(b *testing.B) {
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "per00000000150", Cells: map[string]any{"facts": fmt.Sprintf("fact %d", i)}}}
+	})
+}
+
+func BenchmarkWriteAnswer(b *testing.B) {
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "mem00000003301", Cells: map[string]any{"member": []string{"yes", "cancelled"}[i%2]}}}
+	})
+}
+
+func BenchmarkWriteEventName(b *testing.B) {
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "grp00000005000", Cells: map[string]any{"name": fmt.Sprintf("Event 0 take %d", i)}}}
+	})
+}
+
+func BenchmarkWriteMailName(b *testing.B) {
+	benchWrite(b, func(i int) []Edit {
+		return []Edit{{Set: "doc00000100001", Cells: map[string]any{"name": fmt.Sprintf("Mail %d", i)}}}
+	})
+}
+
+func BenchmarkSearchFullPass(b *testing.B) {
+	m := scaleStore(b).Model()
+	for b.Loop() {
+		m.SearchInputs(map[string]string{})
+	}
+}
+
+func BenchmarkSearchEventRenamed(b *testing.B) {
+	m := scaleStore(b).Model()
+	event, _ := m.Table("GROUP").Get("grp00000005000")
+	c := Change{Table: "GROUP", Old: event, New: event}
+	for b.Loop() {
+		excluded := m.searchExcluded()
+		for _, id := range m.searchReach(c) {
+			m.searchRowOf(id, map[string]string{}, excluded)
+		}
+	}
+}
+
+func BenchmarkRefreshUnchanged(b *testing.B) {
+	_, queue, _ := scaleStoreIn(b)
+	for b.Loop() {
+		queue.Refresh()
+		queue.Flush()
 	}
 }
 

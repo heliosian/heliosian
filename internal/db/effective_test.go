@@ -3,16 +3,12 @@ package db
 import (
 	"testing"
 	"time"
-
-	"heliosian/internal/store"
 )
 
 func TestAWriteBuildsEffectiveMembersBeforeAnyoneAsks(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	StartWarmer(s, queue)
-	if err := commit(s, GroupsSheet, store.Update("GROUP", store.Row{"id": "grp00000000030"}, store.Row{"subtitle": "changed"})); err != nil {
-		t.Fatal(err)
-	}
+	StartWarmer(s)
+	apply(t, s, queue, []Edit{{Set: "grp00000000030", Cells: map[string]any{"subtitle": "changed"}}})
 	m := s.Model()
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {

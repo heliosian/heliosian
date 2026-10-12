@@ -193,6 +193,8 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},
 	})
 	core.Search.StartMaking("sample")
+	db.StartWarmer(core.Data)
+	db.StartIdleWorkers(core.Data)
 	go func() {
 		<-core.Settled
 		core.ListMail.Start()

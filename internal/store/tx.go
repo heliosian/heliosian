@@ -9,10 +9,11 @@ import (
 )
 
 type Tx struct {
-	ctx    context.Context
-	actor  access.Actor
-	staged []*stage
-	after  []func()
+	ctx     context.Context
+	actor   access.Actor
+	staged  []*stage
+	swapped []func()
+	after   []func()
 }
 
 type stage struct {
@@ -31,6 +32,10 @@ func (tx *Tx) Actor() access.Actor {
 
 func (tx *Tx) After(run func()) {
 	tx.after = append(tx.after, run)
+}
+
+func (tx *Tx) Swapped(run func()) {
+	tx.swapped = append(tx.swapped, run)
 }
 
 func (tx *Tx) stageOf(owner any) *stage {
@@ -66,6 +71,11 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	for _, st := range tx.staged {
 		st.swap()
 	}
+	delivering := time.Now()
+	for _, f := range tx.swapped {
+		f()
+	}
+	trace.From(ctx).Tally("swapped").Add(time.Since(delivering))
 	start := time.Now()
 	q.afterSwap()
 	trace.From(ctx).Tally("swap hooks").Add(time.Since(start))
