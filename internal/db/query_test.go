@@ -442,14 +442,20 @@ func TestConcurrentReadsAfterAWriteAgree(t *testing.T) {
 	}
 }
 
-func TestEffectiveCycleResolves(t *testing.T) {
+func TestGroupCyclesAreRefused(t *testing.T) {
 	s := sample(t)
-	if err := commit(s, GroupsSheet, store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "target": "grp00000000006"})); err != nil {
-		t.Fatal(err)
-	}
-	for _, g := range []string{"grp00000000005", "grp00000000006"} {
-		if got := effective(t, s, g); !slices.Equal(got, []string{"per00000000003"}) {
-			t.Fatalf("%s holds %v", g, got)
+	for _, c := range []struct {
+		name string
+		op   store.Op
+		want string
+	}{
+		{"two groups taking in each other", store.Insert("RULE", store.Row{"id": "rul00000000099", "group": "grp00000000005", "order": "i", "target": "grp00000000006"}), "take in one another's members"},
+		{"a group taking in what is under its own parent", store.Insert("RULE", store.Row{"id": "rul00000000098", "group": "grp00000000531", "order": "i", "target": "grp00000000530", "under": "Yes"}), "takes in its own members"},
+		{"a group under itself", store.Update("GROUP", store.Row{"id": "grp00000000012"}, store.Row{"parent": "grp00000000010"}), "is under itself"},
+	} {
+		err := commit(s, GroupsSheet, c.op)
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: %v", c.name, err)
 		}
 	}
 }

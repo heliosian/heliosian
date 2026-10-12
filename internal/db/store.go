@@ -87,6 +87,9 @@ func build(sheet string, index *SearchIndex, sv *services) func(context.Context,
 			if err := checkRuleProperties(built); err != nil {
 				return err
 			}
+			if err := checkGroupCycles(built); err != nil {
+				return err
+			}
 		}
 		if sheet == DocumentsSheet {
 			if err := checkDocuments(built); err != nil {

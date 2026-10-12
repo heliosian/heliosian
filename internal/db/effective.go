@@ -234,7 +234,7 @@ func (m *Model) effectiveAll() []store.Row {
 }
 
 func (m *Model) effectiveOf(group string, r reads) []store.Row {
-	reasons := m.resolve(group, map[string]bool{}, r)
+	reasons := m.resolve(group, r)
 	out := []store.Row{}
 	for _, person := range slices.Sorted(maps.Keys(reasons)) {
 		out = append(out, store.Row{"id": Derive(EffectiveMemberPrefix, group, person), "group": group, "person": person, "reasons": strings.Join(reasons[person], ", ")})
@@ -242,14 +242,9 @@ func (m *Model) effectiveOf(group string, r reads) []store.Row {
 	return out
 }
 
-func (m *Model) resolve(group string, stack map[string]bool, r reads) map[string][]string {
+func (m *Model) resolve(group string, r reads) map[string][]string {
 	out := map[string][]string{}
 	r[readKey{readGroup, group}] = true
-	if stack[group] {
-		return out
-	}
-	stack[group] = true
-	defer delete(stack, group)
 	excluded := map[string]bool{}
 	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
 		switch memberAs(row) {
@@ -262,7 +257,7 @@ func (m *Model) resolve(group string, stack map[string]bool, r reads) map[string
 	rules := m.Shown("RULE").Referencing("group", group)
 	slices.SortStableFunc(rules, func(a, b store.Row) int { return store.CompareKeys(a["order"], b["order"]) })
 	for _, rule := range rules {
-		selected := m.selectRule(rule, stack, r)
+		selected := m.selectRule(group, rule, r)
 		for person := range selected {
 			if exclude, _ := cells.YesNo(rule["exclude"], false); exclude {
 				excluded[person] = true
@@ -282,7 +277,7 @@ func (m *Model) resolve(group string, stack map[string]bool, r reads) map[string
 	return out
 }
 
-func (m *Model) selectRule(rule store.Row, stack map[string]bool, r reads) map[string]bool {
+func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]bool {
 	var picked map[string]bool
 	narrow := func(s map[string]bool) {
 		if picked == nil {
@@ -297,14 +292,16 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool, r reads) map[s
 	}
 	if target := rule["target"]; target != "" {
 		s := map[string]bool{}
-		for person := range m.resolve(target, stack, r) {
-			s[person] = true
+		if target != group {
+			for person := range m.resolve(target, r) {
+				s[person] = true
+			}
 		}
 		if under, _ := cells.YesNo(rule["under"], false); under {
 			r[readKey{readGroup, target}] = true
 			for _, g := range m.groupsUnder(target) {
 				r[readKey{readGroup, g}] = true
-				for person := range m.resolve(g, stack, r) {
+				for person := range m.resolve(g, r) {
 					s[person] = true
 				}
 			}
@@ -337,7 +334,7 @@ func (m *Model) selectRule(rule store.Row, stack map[string]bool, r reads) map[s
 		picked = m.replaceWith(picked, how)
 	}
 	if within := rule["within"]; within != "" {
-		in := m.resolve(within, stack, r)
+		in := m.resolve(within, r)
 		for person := range picked {
 			if _, ok := in[person]; !ok {
 				delete(picked, person)

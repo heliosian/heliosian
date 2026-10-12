@@ -462,6 +462,118 @@ func checkRuleProperties(groups Sheet) error {
 	return nil
 }
 
+func checkGroupCycles(groups Sheet) error {
+	rows := groups["GROUP"]
+	named := func(id string) string {
+		if i, ok := rows.byID[id]; ok && rows.rows[i]["name"] != "" {
+			return id + " (" + rows.rows[i]["name"] + ")"
+		}
+		return id
+	}
+	done := map[string]bool{}
+	for _, g := range rows.rows {
+		path := []string{}
+		on := map[string]bool{}
+		for id := g["id"]; id != "" && !done[id]; {
+			if on[id] {
+				names := []string{}
+				for _, c := range append(path[slices.Index(path, id):], id) {
+					names = append(names, named(c))
+				}
+				return fmt.Errorf("GROUP %s is under itself: %s", named(id), strings.Join(names, " → "))
+			}
+			on[id] = true
+			path = append(path, id)
+			i, ok := rows.byID[id]
+			if !ok {
+				break
+			}
+			id = rows.rows[i]["parent"]
+		}
+		for _, id := range path {
+			done[id] = true
+		}
+	}
+	var below func(id string, out []string) []string
+	below = func(id string, out []string) []string {
+		i, ok := rows.byID[id]
+		if !ok {
+			return out
+		}
+		g := rows.rows[i]
+		for _, j := range rows.by["parent"][id] {
+			child := rows.rows[j]["id"]
+			if slices.ContainsFunc(servingColumns, func(c string) bool { return g[c] == child }) {
+				continue
+			}
+			out = below(child, append(out, child))
+		}
+		return out
+	}
+	edges := map[string][]string{}
+	for _, r := range groups["RULE"].rows {
+		if r["target"] != "" && r["target"] != r["group"] {
+			edges[r["group"]] = append(edges[r["group"]], r["target"])
+		}
+		if r["within"] != "" {
+			edges[r["group"]] = append(edges[r["group"]], r["within"])
+		}
+		if under, _ := cells.YesNo(r["under"], false); under && r["target"] != "" {
+			edges[r["group"]] = append(edges[r["group"]], below(r["target"], nil)...)
+		}
+	}
+	index, low, on := map[string]int{}, map[string]int{}, map[string]bool{}
+	stack := []string{}
+	var cycle []string
+	var connect func(v string)
+	connect = func(v string) {
+		index[v], low[v] = len(index), len(index)
+		stack = append(stack, v)
+		on[v] = true
+		for _, w := range edges[v] {
+			if _, seen := index[w]; !seen {
+				connect(w)
+				low[v] = min(low[v], low[w])
+			} else if on[w] {
+				low[v] = min(low[v], index[w])
+			}
+		}
+		if low[v] != index[v] {
+			return
+		}
+		component := []string{}
+		for {
+			w := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			on[w] = false
+			component = append(component, w)
+			if w == v {
+				break
+			}
+		}
+		if cycle == nil && (len(component) > 1 || slices.Contains(edges[v], v)) {
+			cycle = component
+		}
+	}
+	for _, g := range slices.Sorted(maps.Keys(edges)) {
+		if _, seen := index[g]; !seen {
+			connect(g)
+		}
+	}
+	if cycle == nil {
+		return nil
+	}
+	slices.Sort(cycle)
+	names := []string{}
+	for _, id := range cycle {
+		names = append(names, named(id))
+	}
+	if len(cycle) == 1 {
+		return fmt.Errorf("RULE: %s takes in its own members through its rules", names[0])
+	}
+	return fmt.Errorf("RULE: %s take in one another's members through their rules", strings.Join(names, ", "))
+}
+
 func (m *Model) checkReferences() error {
 	for _, t := range Tables {
 		if t.Generated {
