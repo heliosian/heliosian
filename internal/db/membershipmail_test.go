@@ -32,7 +32,7 @@ func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 		return ids
 	}
 
-	imported := write(Env{Viewer: staff, Mode: "import", Now: testNow}, Edit{Insert: "MEMBER", Row: map[string]any{"group": decor, "person": staff, "member": "yes"}})
+	write(Env{Viewer: staff, Mode: "import", Now: testNow}, Edit{Insert: "MEMBER", Row: map[string]any{"group": decor, "person": staff, "member": "yes"}})
 	joined := write(Env{Viewer: student, Now: testNow}, Edit{Insert: "MEMBER", Row: map[string]any{"group": decor, "person": student, "member": "yes", "added_by": student, "note": "I can bring tape"}})
 
 	messages := sender.Wait(t, 3)
@@ -70,7 +70,11 @@ func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 		t.Errorf("sent %d messages, want 4: the import's sign-up sends none", got)
 	}
 
-	write(Env{Viewer: parent, Now: testNow}, Edit{Set: imported[0], Cells: map[string]any{"lead": true}})
+	write(Env{Viewer: parent, Now: testNow},
+		Edit{Insert: "GROUP", As: "l", Row: map[string]any{"parent": decor, "kind": "group", "status": "open", "name": "Decor Leads", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none", "added_by": parent}},
+		Edit{Set: decor, Cells: map[string]any{"leads": "@l"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@l", "person": staff, "member": "yes"}},
+	)
 	cochair := sender.Wait(t, 5)[4]
 	if cochair.Subject != "You're a co-chair of Decor" || len(cochair.To) != 1 || cochair.To[0] != "maya.lindqvist@example.org" || !slices.Contains(cochair.CC, "rowan.ashdown@example.org") {
 		t.Errorf("making someone a co-chair sent %q to %q, copying %q", cochair.Subject, cochair.To, cochair.CC)

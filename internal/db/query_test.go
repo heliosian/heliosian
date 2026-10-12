@@ -33,7 +33,7 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 	}
 	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
 	slices.Sort(got)
-	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000513", "grp00000000522", "grp00000000803"}
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000000803"}
 	if !slices.Equal(got, want) {
 		t.Errorf("implementation only: %v, want %v", got, want)
 	}
@@ -63,7 +63,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 		queries = append(queries, mustParse(t, src))
 	}
 	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
-	if len(results[3].IDs) != 5 {
+	if len(results[3].IDs) != 7 {
 		t.Fatalf("the fourth query found %v", results[3].IDs)
 	}
 	passes := map[string]int{}
@@ -223,7 +223,7 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
 		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{"grp00000000020", "grp00000000512", "grp00000000513"}},
-		{"", `(from MEMBER (where lead))`, "person", []string{"per00000000003", "per00000000002"}},
+		{"", `(from MEMBER (where (in group (select GROUP.leads))))`, "person", []string{"per00000000003", "per00000000002"}},
 		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
@@ -410,7 +410,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000521"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000099", "group": "grp00000000030", "person": "per00000000002", "member": "excluded"})); err != nil {

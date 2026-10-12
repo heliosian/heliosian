@@ -98,6 +98,9 @@ function hideEdits(node, open) {
     if (n.row.chair_offers) {
       edits.push({set: n.row.chair_offers, cells: {visible_to: visibility(open)}});
     }
+    if (n.row.leads) {
+      edits.push({set: n.row.leads, cells: {visible_to: visibility(open), members_visible_to: visibility(open)}});
+    }
   }
   return edits;
 }
@@ -166,6 +169,20 @@ function unchairEdits(node, person) {
   return node.managerRows.filter(m => m.person === person).map(m => ({delete: m.id}));
 }
 
+function leadEdits(node, person) {
+  if (node.row.leads) {
+    return [{insert: 'MEMBER', row: {group: node.row.leads, person, member: 'yes', added_by: me().id, added: now()}}];
+  }
+  return [
+    {insert: 'GROUP', as: 'leads', row: {
+      kind: 'group', parent: node.id, name: `${node.title} Leads`, status: 'open', visible_to: node.row.visible_to || '',
+      members_visible_to: node.row.visible_to || '', posting: 'none', replying: 'none', added_by: me().id,
+    }},
+    {set: node.id, cells: {leads: '@leads'}},
+    {insert: 'MEMBER', row: {group: '@leads', person, member: 'yes', added_by: me().id, added: now()}},
+  ];
+}
+
 export async function signUp(node, {email, position, note, from}) {
   const person = personFor(email);
   const edits = [];
@@ -174,15 +191,24 @@ export async function signUp(node, {email, position, note, from}) {
     const row = old.volunteers.find(v => v.person === person);
     if (row) {
       edits.push({delete: row.id});
+      if (row.lead && old.canEdit) {
+        edits.push({delete: row.lead});
+      }
     }
   }
   const existing = node.volunteers.find(v => v.person === person);
   const lead = position === 'Co-Chair';
   const offering = position === 'Open to Co-Chair';
   if (existing) {
-    edits.push({set: existing.id, cells: {note, lead}});
+    edits.push({set: existing.id, cells: {note}});
   } else {
-    edits.push({insert: 'MEMBER', row: {group: node.id, person, member: 'yes', note, lead, added_by: me().id, added: now()}});
+    edits.push({insert: 'MEMBER', row: {group: node.id, person, member: 'yes', note, added_by: me().id, added: now()}});
+  }
+  const led = existing ? existing.lead : '';
+  if (lead && !led) {
+    edits.push(...leadEdits(node, person));
+  } else if (!lead && led) {
+    edits.push({delete: led});
   }
   if (lead && node.canEdit) {
     edits.push(...chairEdits(node, person));
@@ -200,7 +226,8 @@ export async function signUp(node, {email, position, note, from}) {
 
 export async function setChair(node, volunteer, on) {
   await write([
-    {set: volunteer.id, cells: {lead: on}},
+    ...(on && !volunteer.lead ? leadEdits(node, volunteer.person) : []),
+    ...(!on && volunteer.lead ? [{delete: volunteer.lead}] : []),
     ...(on ? chairEdits(node, volunteer.person) : unchairEdits(node, volunteer.person)),
     ...(on && volunteer.offer ? [{delete: volunteer.offer}] : []),
   ]);
@@ -209,6 +236,7 @@ export async function setChair(node, volunteer, on) {
 export async function removeSignUp(node, volunteer) {
   await write([
     {delete: volunteer.id},
+    ...(volunteer.lead && node.canEdit ? [{delete: volunteer.lead}] : []),
     ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : []),
     ...(volunteer.offer ? [{delete: volunteer.offer}] : []),
   ]);
@@ -238,8 +266,15 @@ export async function setOffers(node, open) {
   ]);
 }
 
+function dropLeadsEdits(node) {
+  if (!node.row.leads) {
+    return [];
+  }
+  return [...node.leadRows.map(m => ({delete: m.id})), {set: node.id, cells: {leads: ''}}, {delete: node.row.leads}];
+}
+
 export async function deleteActivity(node) {
-  await write([...closeOffersEdits(node), ...(node.image ? [{delete: node.image}] : []), {delete: node.id}]);
+  await write([...closeOffersEdits(node), ...dropLeadsEdits(node), ...(node.image ? [{delete: node.image}] : []), {delete: node.id}]);
 }
 
 export async function reorder(list, id, before) {

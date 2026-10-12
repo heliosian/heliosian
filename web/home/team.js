@@ -1,8 +1,9 @@
 export const teamQueries = {
-  activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by))',
+  activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by leads))',
   headings: '(from GROUP (where (= kind "category") (= parent.kind "activity")) (columns kind parent visible_to))',
   everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
-  mine: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.id (= kind "activity")))) (columns group lead))',
+  mine: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.id (= kind "activity")))) (columns group))',
+  led: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.leads (= kind "activity")))) (columns group))',
   chairs: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.managed_by (= kind "activity")))) (columns group))',
   taken: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "activity") (not (blank capacity))))) (columns group))',
   photos: '(from PHOTO (where (in group (select GROUP.id (= kind "activity")))) (order order asc) (columns group))',
@@ -73,13 +74,12 @@ export function teamWidget(data, now) {
   }
   const on = {};
   for (const m of rows(data, 'mine', 'MEMBER')) {
-    on[m.group] = m.lead === 'Yes' ? 'Co-Chair' : 'Volunteer';
+    on[m.group] = 'Volunteer';
   }
-  for (const m of rows(data, 'chairs', 'MEMBER')) {
-    for (const g of groups.values()) {
-      if (g.managed_by === m.group && on[g.id]) {
-        on[g.id] = 'Co-Chair';
-      }
+  const chairing = new Set([...rows(data, 'led', 'MEMBER'), ...rows(data, 'chairs', 'MEMBER')].map(m => m.group));
+  for (const g of groups.values()) {
+    if (on[g.id] && (chairing.has(g.leads) || chairing.has(g.managed_by))) {
+      on[g.id] = 'Co-Chair';
     }
   }
   const children = {};

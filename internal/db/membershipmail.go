@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -29,13 +28,11 @@ type MembershipMailer struct {
 
 type placeChange struct {
 	what, group, person, actor, note string
-	lead                             bool
 }
 
 const (
 	placeJoined = "joined"
 	placeLeft   = "left"
-	placeLeads  = "leads"
 	placeAdded  = "added"
 )
 
@@ -48,11 +45,6 @@ func NewMembershipMailer(s *Store, queue *store.Queue, config MembershipMailConf
 	watch(s, mm.watch)
 	go mm.run()
 	return mm
-}
-
-func yes(cell string) bool {
-	b, _ := cells.YesNo(cell, false)
-	return b
 }
 
 func (mm *MembershipMailer) watch(tx *store.Tx, c Change, env Env) {
@@ -68,17 +60,13 @@ func (mm *MembershipMailer) watch(tx *store.Tx, c Change, env Env) {
 		}
 		was := c.Old != nil && memberAs(c.Old) == "yes"
 		is := c.New != nil && memberAs(c.New) == "yes"
-		leads := c.New != nil && yes(c.New["lead"]) && (c.Old == nil || !yes(c.Old["lead"]))
-		place := placeChange{group: row["group"], person: row["person"], actor: env.Viewer, note: row["note"], lead: leads}
+		place := placeChange{group: row["group"], person: row["person"], actor: env.Viewer, note: row["note"]}
 		switch {
 		case is && !was:
 			place.what = placeJoined
 			changes = append(changes, place)
 		case was && !is:
 			place.what = placeLeft
-			changes = append(changes, place)
-		case leads:
-			place.what = placeLeads
 			changes = append(changes, place)
 		}
 	case "GROUP":
@@ -111,14 +99,18 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 	activity := g["kind"] == "activity"
 	switch change.what {
 	case placeJoined:
-		if served, ok := m.offersFor(g); ok {
+		if served, ok := m.servedBy("chair_offers", g); ok {
 			mm.notice(ctx, m, served, change.actor, change.person, fmt.Sprintf("Offer to co-chair: %s for %s", m.nameOf(change.person), served["name"]),
 				fmt.Sprintf("%s offered to co-chair %s", m.nameOf(change.person), served["name"]), "Its co-chairs can make them one.", m.signUpRows(change))
 			return
 		}
-		if activity && change.lead {
-			mm.leads(ctx, m, g, change)
-		} else if activity {
+		if served, ok := m.servedBy("leads", g); ok {
+			if served["kind"] == "activity" {
+				mm.leads(ctx, m, served, change)
+			}
+			return
+		}
+		if activity && !m.leadsOf(g, change.person) {
 			mm.thank(ctx, m, g, change)
 		}
 		mm.notice(ctx, m, g, change.actor, change.person, fmt.Sprintf("New sign-up: %s for %s", m.nameOf(change.person), g["name"]),
@@ -126,10 +118,6 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 	case placeLeft:
 		if activity {
 			mm.removed(ctx, m, g, change)
-		}
-	case placeLeads:
-		if activity {
-			mm.leads(ctx, m, g, change)
 		}
 	case placeAdded:
 		parent, ok := m.Table("GROUP").Get(g["parent"])
@@ -156,12 +144,20 @@ func (m *Model) serves(g store.Row) bool {
 	return false
 }
 
-func (m *Model) offersFor(g store.Row) (store.Row, bool) {
-	served := m.Table("GROUP").Referencing("chair_offers", g["id"])
+func (m *Model) servedBy(column string, g store.Row) (store.Row, bool) {
+	served := m.Table("GROUP").Referencing(column, g["id"])
 	if len(served) == 0 {
 		return nil, false
 	}
 	return served[0], true
+}
+
+func (m *Model) leadsOf(g store.Row, person string) bool {
+	if g["leads"] == "" {
+		return false
+	}
+	row, ok := m.Table("MEMBER").Find(g["leads"], person)
+	return ok && memberAs(row) == "yes"
 }
 
 func (m *Model) nameOf(person string) string {

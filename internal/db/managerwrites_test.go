@@ -139,7 +139,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 }
 
 func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
-	const night, managers = "grp00000000512", "grp00000000513"
+	const night, managers, leads = "grp00000000512", "grp00000000513", "grp00000000514"
 	s, queue := sampleWithQueue(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
@@ -174,15 +174,14 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 			t.Errorf("%s sees %d offers, want %d", viewer, got, want)
 		}
 	}
-	signUp, _ := s.Model().Table("MEMBER").Find(night, student)
-	if _, err := write(student, Edit{Set: signUp["id"], Cells: map[string]any{"lead": true}}); err == nil {
+	if _, err := write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": student, "member": "yes"}}); err == nil {
 		t.Error("a volunteer makes themselves a co-chair")
 	}
 	if _, err := write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "member": "yes"}}); err == nil {
 		t.Error("a volunteer puts themselves among the managers")
 	}
 	if _, err := write(parent,
-		Edit{Set: signUp["id"], Cells: map[string]any{"lead": true}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": student, "member": "yes"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "member": "yes"}},
 		Edit{Delete: offer[0]},
 	); err != nil {
@@ -190,6 +189,47 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 	}
 	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"chair_offers": ""}}, Edit{Delete: offers}); err != nil {
 		t.Errorf("a chair can't close their event to offers: %v", err)
+	}
+}
+
+func TestAChairNamesAnActivitysLeads(t *testing.T) {
+	const night, decor = "grp00000000512", "grp00000000900"
+	s, queue := sampleWithQueue(t)
+	if err := commit(s, GroupsSheet,
+		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}),
+	); err != nil {
+		t.Fatal(err)
+	}
+	write := func(viewer string, edits ...Edit) ([]string, error) {
+		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+	}
+	leadsRow := map[string]any{"kind": "group", "parent": decor, "name": "Decor Leads", "status": "open",
+		"visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}
+	name := Edit{Set: decor, Cells: map[string]any{"leads": "@l"}}
+	if _, err := write(student, Edit{Insert: "GROUP", As: "l", Row: mergeRow(leadsRow, map[string]any{"added_by": student})}, name); err == nil {
+		t.Error("someone who doesn't run an activity names its leads")
+	}
+	if _, err := write(parent, Edit{Insert: "GROUP", As: "l", Row: mergeRow(leadsRow, map[string]any{"added_by": parent, "join": "direct"})}, name); err == nil {
+		t.Error("a chair makes a leads group anyone joins")
+	}
+	made, err := write(parent,
+		Edit{Insert: "GROUP", As: "l", Row: mergeRow(leadsRow, map[string]any{"added_by": parent})}, name,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@l", "person": student, "member": "yes"}},
+	)
+	if err != nil {
+		t.Fatalf("a chair can't name a co-chair: %v", err)
+	}
+	led := `(from MEMBER (where (= group "` + made[0] + `")))`
+	for viewer, want := range map[string]int{student: 1, staff: 1, guest: 0} {
+		if got := len(as(t, s, viewer, led)); got != want {
+			t.Errorf("%s sees %d co-chairs of an activity whose volunteers are hidden, want %d", viewer, got, want)
+		}
+	}
+	if _, err := write(student, Edit{Delete: made[2]}); err == nil {
+		t.Error("a co-chair stops being one by themselves")
+	}
+	if _, err := write(parent, Edit{Delete: made[2]}); err != nil {
+		t.Errorf("a chair can't stop someone being a co-chair: %v", err)
 	}
 }
 

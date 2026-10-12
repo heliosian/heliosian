@@ -113,7 +113,6 @@ func TestCheck(t *testing.T) {
 		"member":      "Yes",
 		"price":       "12.50",
 		"purchase_id": "pi_3PqXyZ2eZvKYlo2C",
-		"lead":        "No",
 		"added":       "2026-09-24 16:00",
 		"unknown":     "a column added by hand",
 	}
@@ -129,7 +128,6 @@ func TestCheck(t *testing.T) {
 		"person":   "",
 		"member":   "waitlist",
 		"price":    "12.5.0",
-		"lead":     "maybe",
 		"added":    "yesterday",
 		"guest_of": " perX7pQ2m9KdLr",
 		"id":       "grpX7pQ2m9KdLr",

@@ -136,10 +136,16 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 	more := max(0, len(kept)-activitiesLimit)
 	kept = kept[:min(len(kept), activitiesLimit)]
 	ids := []string{}
+	leadsOf := map[string]string{}
 	for _, g := range kept {
 		ids = append(ids, g["id"])
+		if g["leads"] != "" {
+			ids = append(ids, g["leads"])
+			leadsOf[g["leads"]] = g["id"]
+		}
 	}
 	people := map[string][]store.Row{}
+	led := map[string]bool{}
 	names := map[string]string{}
 	if len(ids) > 0 {
 		signed, mres, err := c.rows(tree{"from": "MEMBER", "where": []any{among("group", ids), eq("member", "yes")}, "include": []any{"person"}})
@@ -147,6 +153,10 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 			return nil, err
 		}
 		for _, m := range signed {
+			if activity, ok := leadsOf[m["group"]]; ok {
+				led[activity+"/"+m["person"]] = true
+				continue
+			}
 			people[m["group"]] = append(people[m["group"]], m)
 			names[m["person"]] = title(mres.Resources["PERSON"][m["person"]])
 		}
@@ -167,15 +177,15 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 			a.Under = parent["name"]
 		}
 		for _, m := range people[g["id"]] {
-			name := names[m["person"]]
-			if m["lead"] == "Yes" {
+			name, lead := names[m["person"]], led[g["id"]+"/"+m["person"]]
+			if lead {
 				a.Leads = append(a.Leads, name)
 			} else {
 				a.Volunteers = append(a.Volunteers, name)
 			}
 			if m["person"] == c.env.Viewer {
 				a.Yours = "signed up"
-				if m["lead"] == "Yes" {
+				if lead {
 					a.Yours = "co-chair"
 				}
 			}
@@ -319,7 +329,7 @@ var lists = define("helios_lists", "Looking at the email lists", "The email list
 		if err != nil {
 			return nil, err
 		}
-		members, count, err := c.membersOf(g["id"])
+		members, count, err := c.membersOf(g)
 		if err != nil {
 			return nil, err
 		}

@@ -169,13 +169,20 @@ var whoami = define("helios_whoami", "Looking you up", "The person connected to 
 	if err != nil {
 		return nil, err
 	}
+	joined, leading := map[string]bool{}, map[string]bool{}
+	for _, m := range in {
+		joined[m["group"]] = true
+		if g := res.Resources["GROUP"][m["group"]]; g != nil && g["leads"] != "" {
+			leading[g["leads"]] = true
+		}
+	}
 	groups := []place{}
 	for _, m := range in {
 		g := res.Resources["GROUP"][m["group"]]
-		if g == nil {
+		if g == nil || leading[g["id"]] {
 			continue
 		}
-		groups = append(groups, place{named: c.named("GROUP", g), Kind: g["kind"], Lead: m["lead"] == "Yes"})
+		groups = append(groups, place{named: c.named("GROUP", g), Kind: g["kind"], Lead: g["leads"] != "" && joined[g["leads"]]})
 	}
 	slices.SortFunc(groups, func(a, b place) int { return cmp.Or(strings.Compare(a.Kind, b.Kind), strings.Compare(a.Name, b.Name)) })
 	managed, _, err := c.rows(tree{"from": "GROUP", "as": "g", "where": []any{
@@ -300,8 +307,8 @@ func (c *call) managers(self store.Row) ([]member, error) {
 	return out, nil
 }
 
-func (c *call) membersOf(group string) ([]member, int, error) {
-	found, _, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", group)}})
+func (c *call) membersOf(g store.Row) ([]member, int, error) {
+	found, _, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", g["id"])}})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -311,13 +318,15 @@ func (c *call) membersOf(group string) ([]member, int, error) {
 		reasons[m["person"]] = m["reasons"]
 		ids = append(ids, m["person"])
 	}
-	leads, _, err := c.rows(tree{"from": "MEMBER", "where": []any{eq("group", group), path("lead")}})
-	if err != nil {
-		return nil, 0, err
-	}
 	led := map[string]bool{}
-	for _, m := range leads {
-		led[m["person"]] = true
+	if g["leads"] != "" {
+		leads, _, err := c.rows(tree{"from": "MEMBER", "where": []any{eq("group", g["leads"]), eq("member", "yes")}})
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, m := range leads {
+			led[m["person"]] = true
+		}
 	}
 	out, err := c.people(ids, false)
 	if err != nil {
@@ -355,7 +364,7 @@ var group = define("helios_group", "Looking at a group", "A Helios School group 
 	if err != nil {
 		return nil, err
 	}
-	members, count, err := c.membersOf(id)
+	members, count, err := c.membersOf(self)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +466,7 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 			return nil, err
 		}
 		for _, g := range under {
-			members, _, err := c.membersOf(g["id"])
+			members, _, err := c.membersOf(g)
 			if err != nil {
 				return nil, err
 			}

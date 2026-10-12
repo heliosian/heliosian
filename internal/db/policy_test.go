@@ -64,9 +64,9 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
 		"COLLECTION":       {0, 0, 1, 1, 0},
 		"COLLECTION_GROUP": {0, 0, 2, 2, 0},
-		"GROUP":            {0, 26, 28, 29, 0},
-		"MEMBER":           {0, 21, 22, 22, 1},
-		"EFFECTIVE_MEMBER": {0, 27, 28, 29, 1},
+		"GROUP":            {0, 28, 30, 31, 0},
+		"MEMBER":           {0, 23, 24, 24, 1},
+		"EFFECTIVE_MEMBER": {0, 29, 30, 31, 1},
 		"RULE":             {0, 0, 0, 6, 0},
 		"DOCUMENT":         {8, 8, 9, 9, 8},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
@@ -753,7 +753,7 @@ func TestAuthorize(t *testing.T) {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
-	if err := commit(s, GroupsSheet, store.Update("MEMBER", store.Row{"group": "grp00000000040", "person": parent}, store.Row{"lead": "Yes"})); err != nil {
+	if err := commit(s, GroupsSheet, store.Insert("MEMBER", store.Row{"id": "mem00000000901", "group": "grp00000000044", "person": parent, "member": "yes"})); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"member": "excluded"})); err == nil {

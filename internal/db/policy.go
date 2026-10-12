@@ -102,13 +102,18 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers group, unless it is a family, whose members only super admins change
+; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change
 (define (runs_list @g)
   (and (!= @g.kind "family")
        (or (manages @g) (super_admin)
            (and (admin_of "team")
                 (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
-                    (and (= @g.kind "group") (= @g.parent.kind "activity") (exists GROUP (= chair_offers @g))))))))
+                    (and (= @g.kind "group") (= @g.parent.kind "activity")
+                         (exists GROUP (or (= chair_offers @g) (= leads @g)))))))))
+
+; @g is the leads group of a group of kind k
+(define (leads_for @g k)
+  (exists GROUP (= leads @g) (= kind k)))
 
 ; the calendar import brings @g from a source, which keeps its times and place
 (define (sourced @g)
@@ -128,11 +133,12 @@ const PolicySource = `
 (define (own_group @g)
   (and (= @g.kind "group") (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
 
-; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed or co-chair offers group
+; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers or leads group
 (define (counted c)
-  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)))
+  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)
+       (!= c.leads id)))
 
-; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers or audience group, and nothing else names it
+; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers, leads or audience group, and nothing else names it
 (define (implementation_only @g)
   (and (= (tally @g
                  (select GROUP.managed_by @r (= managed_by @g) (counted managed_by))
@@ -141,6 +147,7 @@ const PolicySource = `
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
+                 (select GROUP.leads @r (= leads @g) (counted leads))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible)))
@@ -152,6 +159,7 @@ const PolicySource = `
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
+                 (select GROUP.leads @r (= leads @g) (counted leads))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible))
@@ -318,7 +326,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -374,7 +382,7 @@ const PolicySource = `
       (sees_members group)))
 ; every column of a membership but what it cost
 (read MEMBER
-  (id group person member lead opened guest_of note added_by added)
+  (id group person member opened guest_of note added_by added)
   true)
 ; what a membership cost and its payment reference, to the member, their host and the group's managers
 (read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
@@ -385,7 +393,7 @@ const PolicySource = `
 ; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, once eligible oneself, anyone the viewer sees
 (insert MEMBER
   (and (visible @new.group) (in @new.group.join "direct" "others") (blank @new.group.price)
-       (= @new.member "yes") (not @new.lead) (= @new.added_by @viewer)
+       (= @new.member "yes") (= @new.added_by @viewer)
        (or (and (self_or_household @new.person) (eligible_for @new.group @new.person))
            (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
        (or (blank @new.group.capacity)
@@ -655,8 +663,12 @@ const PolicySource = `
 (set GROUP.rsvp_yes (and (admin_of "team") (= @old.kind "activity")))
 ; name the group of those not coming to an activity
 (set GROUP.rsvp_no (and (admin_of "team") (= @old.kind "activity")))
-; every activity's volunteers and chairs
+; every activity's volunteers
 (read MEMBER (and (admin_of "team") (in group.kind "activity")))
+; every activity's leads group
+(read GROUP (and (admin_of "team") (leads_for @row "activity")))
+; every activity's co-chairs
+(read MEMBER (and (admin_of "team") (leads_for group "activity")))
 ; make a plain group to manage activities
 (insert GROUP (and (admin_of "team") (= @new.kind "group")))
 ; name the group that manages an activity, or what manages an activity's managers
@@ -801,6 +813,14 @@ const PolicySource = `
   (and (= @new.kind "group") (runs_list @new.parent) (= @new.status "open") (= @new.added_by @viewer)
        (blank @new.managed_by) (blank @new.url) (= @new.join "direct") (= @new.eligible @new.parent)
        (= @new.visible_to @new.parent.visible_to) (blank @new.members_visible_to)))
+; a group's managers name the group under it of those who lead it, or take it away
+(set GROUP.leads (and (runs_list @old) (or (blank @new.leads) (= @new.leads.parent @old.id))))
+; a group's managers give it a leads group: open, under it, joined by nobody by themselves, it and who is in it seen as it is
+(insert GROUP
+  (and (= @new.kind "group") (runs_list @new.parent) (= @new.status "open") (= @new.added_by @viewer)
+       (blank @new.managed_by) (blank @new.url) (blank @new.join) (blank @new.eligible)
+       (or (blank @new.visible_to) (= @new.visible_to @new.parent.visible_to))
+       (or (blank @new.members_visible_to) (= @new.members_visible_to @new.parent.visible_to))))
 ; a group's managers place it among the groups beside it
 (set GROUP.order (runs_list @old))
 ; a group's managers move it under another group they run
@@ -821,8 +841,6 @@ const PolicySource = `
 (delete GROUP
   (and (not (blank @old.parent)) (runs_list @old.parent)
        (not (exists GROUP (= parent @old))) (not (exists MEMBER (= group @old))) (not (exists RULE (= group @old)))))
-; a group's managers say who leads it
-(set MEMBER.lead (runs_list @old.group))
 ; whoever runs a group runs the plain group that manages it: makes someone a co-chair, or stops them being one
 (insert MEMBER
   (and (= @new.group.kind "group") (not (role_group @new.group)) (= @new.member "yes")

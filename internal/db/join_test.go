@@ -9,7 +9,7 @@ import (
 )
 
 func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
-	const night, decor, booth, taco, students = "grp00000000512", "grp00000000900", "grp00000000901", "grp00000000521", "grp00000000001"
+	const night, nightLeads, decor, booth, taco, students = "grp00000000512", "grp00000000514", "grp00000000900", "grp00000000901", "grp00000000521", "grp00000000001"
 	s, queue := sampleWithQueue(t)
 	if err := commit(s, GroupsSheet,
 		store.Insert("GROUP", store.Row{"id": decor, "parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others", "capacity": "2"}),
@@ -51,7 +51,7 @@ func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 	if _, err := join(student, booth, parent, nil); err == nil {
 		t.Error("a parent who isn't eligible is signed up")
 	}
-	if _, err := join(student, booth, student, map[string]any{"lead": true}); err == nil {
+	if _, err := join(student, nightLeads, student, nil); err == nil {
 		t.Error("someone makes themselves a lead")
 	}
 	if _, err := write(student, Edit{Insert: "MEMBER", Row: map[string]any{"group": booth, "person": student, "member": "yes", "added_by": parent}}); err == nil {
