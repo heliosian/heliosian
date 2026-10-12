@@ -57,8 +57,8 @@ func TestThePoliciesAreListedWithTheirComments(t *testing.T) {
 			if c.Actor != `(admin_of "when")` || c.Rest != `(in kind "event" "day" "day_part")` {
 				t.Errorf("When's calendar groups: %+v", c)
 			}
-		case `(and (super_admin) (mode "import"))`:
-			if c.Kind != "reveal" || c.Actor != `(super_admin)` || c.Rest != `(mode "import")` {
+		case `(and (mode "import") (super_admin))`:
+			if c.Kind != "reveal" || c.Actor != `(mode "import")` || c.Rest != `(super_admin)` {
 				t.Errorf("import mode's reveal: %+v", c)
 			}
 		case `(super_admin)`:

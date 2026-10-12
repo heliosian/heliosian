@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"heliosian/internal/store"
@@ -25,24 +26,21 @@ func consentStep(ctx context.Context, m *Model) error {
 			}
 		}
 	}
-	passes := 0
-	for grew := true; grew; {
-		grew = false
-		passes++
-		for _, t := range Tables {
-			if t.Generated {
-				continue
-			}
-			for _, row := range m.Table(t.Name).All() {
-				if !hidden[row["id"]] && namesHidden(&t, row, hidden) {
+	shown := len(hidden)
+	refs := referrers()
+	for queue := slices.Collect(maps.Keys(hidden)); len(queue) > 0; queue = queue[1:] {
+		table, _ := TableOf(queue[0])
+		for _, ref := range slices.Concat(refs[table], refs[""]) {
+			for _, row := range m.Table(ref.table).Referencing(ref.column, queue[0]) {
+				if !hidden[row["id"]] {
 					hidden[row["id"]] = true
-					grew = true
+					queue = append(queue, row["id"])
 				}
 			}
 		}
 	}
 	hiding()
-	trace.From(ctx).Set("passes", passes)
+	trace.From(ctx).Set("propagated", len(hidden)-shown)
 	trace.From(ctx).Set("hidden", len(hidden))
 	viewing := tallied(ctx, "views")
 	defer viewing()
@@ -67,16 +65,24 @@ func consentStep(ctx context.Context, m *Model) error {
 	return nil
 }
 
-func namesHidden(t *Table, row store.Row, hidden map[string]bool) bool {
-	for _, c := range t.Columns {
-		for _, id := range references(c, row[c.Name]) {
-			if hidden[id] {
-				return true
+type reference struct {
+	table, column string
+}
+
+var referrers = sync.OnceValue(func() map[string][]reference {
+	out := map[string][]reference{}
+	for _, t := range Tables {
+		if t.Generated {
+			continue
+		}
+		for _, c := range t.Columns {
+			if c.Kind == Ref {
+				out[c.Target] = append(out[c.Target], reference{table: t.Name, column: c.Name})
 			}
 		}
 	}
-	return false
-}
+	return out
+})
 
 func withoutPrivate(t *Table, row store.Row) store.Row {
 	if !slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Private }) {

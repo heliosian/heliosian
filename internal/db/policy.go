@@ -222,7 +222,7 @@ const PolicySource = `
 ;; Import mode
 
 ; a super admin in import mode sees every row, shown or not
-(reveal (and (super_admin) (mode "import")))
+(reveal (and (mode "import") (super_admin)))
 
 ;; Everyone
 
