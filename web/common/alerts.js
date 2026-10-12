@@ -1,4 +1,5 @@
 import {batch} from '/data.js';
+import {queries} from '/rail.js';
 import {eventPath} from '/dayrows.js';
 import {el} from '/elements.js';
 import {appOrigin, hoverMenu, hoverClick} from '/appswitch.js';
@@ -282,14 +283,17 @@ export function initAlerts(viewer) {
   }
   Promise.all([batch({
     waiting: '/api/events?waiting',
-    activities: '/api/activities?can=approve',
     parties: '/api/parties?status=pending&can=status',
     events: '/api/events?status=pending&can=approve',
     late: '/api/birthdays?late&include=person,assignee',
-  }), viewer]).then(([read, me]) => {
+  }), queries({
+    activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name slug start))',
+  }), viewer]).then(([read, data, me]) => {
     const all = name => read.result[name].map(read.get);
+    const activities = data.activities.result.map(id => data.activities.resources.GROUP[id])
+      .map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
     showRSVP(user, all('waiting').sort(byStart).map(e => ({title: e.title, start: e.start, allDay: e.allDay, path: eventPath(e)})));
-    showApprovals(user, [...all('activities'), ...all('parties'), ...all('events')].map(a => ({app: a.app, title: a.title, start: a.start, path: a.path})).sort(byStart));
+    showApprovals(user, [...activities, ...[...all('parties'), ...all('events')].map(a => ({app: a.app, title: a.title, start: a.start, path: a.path}))].sort(byStart));
     const late = all('late').map(b => ({
       name: read.follow(b, 'person').fullName,
       step: b.late.step,
