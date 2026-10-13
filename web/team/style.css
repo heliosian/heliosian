@@ -896,6 +896,12 @@ main {
 
 .detail-marks { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 
+.detail-marks .badge:not(.complete) { padding: 5px 11px; font-size: 11.5px; line-height: 1.3; }
+
+.detail-marks .button { gap: 5px; padding: 4px 11px; font-size: 11.5px; }
+
+.detail-marks .button svg { width: 13px; height: 13px; }
+
 .group-row {
   display: flex;
   align-items: center;
