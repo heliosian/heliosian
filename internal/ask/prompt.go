@@ -112,7 +112,7 @@ func (t *turn) school() (schoolData, error) {
 			s.classrooms = append(s.classrooms, g)
 		}
 	}
-	staff, _, err := t.rows(`(from PERSON @p (where (or (not (blank classroom)) (not (blank crew))) (exists EFFECTIVE_MEMBER (= person @p) (= group.slug "staff") (= group.kind "group"))) (order name_sort asc))`)
+	staff, _, err := t.rows(`(from PERSON @p (where (or (not (blank classroom)) (not (blank crew))) (in id (members (select GROUP.id (= kind "group") (= slug "staff"))))) (order name_sort asc))`)
 	if err != nil {
 		return s, err
 	}
@@ -123,7 +123,7 @@ func (t *turn) school() (schoolData, error) {
 			}
 		}
 	}
-	students, _, err := t.rows(`(from PERSON @p (where (not (blank classroom)) (not (blank grade)) (exists EFFECTIVE_MEMBER (= person @p) (= group.slug "students") (= group.kind "group"))))`)
+	students, _, err := t.rows(`(from PERSON @p (where (not (blank classroom)) (not (blank grade)) (in id (members (select GROUP.id (= kind "group") (= slug "students"))))))`)
 	if err != nil {
 		return s, err
 	}

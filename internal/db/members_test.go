@@ -39,6 +39,11 @@ func TestMembersAndCovers(t *testing.T) {
 	if len(byRule) == 0 || !slices.Equal(byRule, byMembers) {
 		t.Errorf("the Hummingbirds' parents by members are %v, by the Hummingbirds Parents group's rule %v", byMembers, byRule)
 	}
+	byRoles := people(`(from PERSON (where (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id (in slug "students" "staff")))))))`)
+	bySelect := people(`(from PERSON (where (in id (members (select GROUP.id (in slug "students" "staff"))))))`)
+	if len(byRoles) < 2 || !slices.Equal(byRoles, bySelect) {
+		t.Errorf("the students and staff by members of a select are %v, by their memberships %v", bySelect, byRoles)
+	}
 	covering := ids(as(t, s, parent, `(from GROUP @e (where (covers @e (members "grp00000000010" "parents"))))`), "id")
 	if !slices.Contains(covering, "grp00000000030") {
 		t.Errorf("Hummingbirds Parents does not cover the Hummingbirds' parents: %v", covering)

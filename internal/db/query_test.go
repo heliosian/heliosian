@@ -182,6 +182,7 @@ func TestParseRefuses(t *testing.T) {
 		`(from GROUP (where (contains name kind)))`:                                "contains takes a path and a quoted string",
 		`(from GROUP @e (where (covers @e (members "grp00000000010" "cousins"))))`: "members replaces with one of",
 		`(from GROUP @e (where (covers @e (select GROUP.id))))`:                    "covers takes a set of people",
+		`(from PERSON (where (in id (members (select PERSON.id)))))`:               "members takes a select of groups",
 		`(from PERSON @p (where (covers @p (members "grp00000000010"))))`:          "covers takes a group",
 		`(from GROUP @e (where (covers @e (members "per00000000001"))))`:           "is a PERSON id",
 	} {

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -25,7 +26,7 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 	if len(s.list) != 2 && len(s.list) != 3 {
 		return nil, typ{}, false, s.errorf("members takes a group and, after it, whom to replace them with")
 	}
-	g, err := cx.groupOperand(s.list[1], sc, "members")
+	groups, outer, err := cx.groupsArg(s.list[1], sc)
 	if err != nil {
 		return nil, typ{}, false, err
 	}
@@ -44,21 +45,45 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 		how = item.text
 	}
 	return func(f *frame) *valueSet {
-		group := g.eval(f)
-		if group.blank {
-			return newValueSet(false)
-		}
-		key := "members\x00" + how + "\x00" + group.s
+		ids := groups(f)
+		key := "members\x00" + how + "\x00" + strings.Join(ids, ",")
 		if out, ok := f.run.memo[key]; ok {
 			return out.(*valueSet)
 		}
+		people := map[string]bool{}
+		for _, g := range ids {
+			maps.Copy(people, f.run.members(g))
+		}
 		out := newValueSet(false)
-		for person := range f.run.relatives().replace(f.run.members(group.s), how) {
+		for person := range f.run.relatives().replace(people, how) {
 			out.add(value{kind: ID, s: person})
 		}
 		f.run.memo[key] = out
 		return out
-	}, typ{class: classRow, kind: ID, table: "PERSON"}, !g.local, nil
+	}, typ{class: classRow, kind: ID, table: "PERSON"}, outer, nil
+}
+
+func (cx *compiler) groupsArg(s *sexp, sc *scope) (func(f *frame) []string, bool, error) {
+	if s.isList && s.head() == "select" {
+		set, t, outer, err := cx.set(s, sc, typ{class: classRow, kind: ID, table: "GROUP"})
+		if err != nil {
+			return nil, false, err
+		}
+		if t.class != classRow || t.table != "GROUP" {
+			return nil, false, s.errorf("members takes a select of groups, not %s", t)
+		}
+		return func(f *frame) []string { return slices.Sorted(maps.Keys(set(f).keys)) }, outer, nil
+	}
+	g, err := cx.groupOperand(s, sc, "members")
+	if err != nil {
+		return nil, false, err
+	}
+	return func(f *frame) []string {
+		if v := g.eval(f); !v.blank {
+			return []string{v.s}
+		}
+		return nil
+	}, !g.local, nil
 }
 
 func (cx *compiler) covers(s *sexp, sc *scope) (cond, error) {

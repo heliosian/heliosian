@@ -239,7 +239,7 @@ var findPeople = define("helios_find_people", "Looking in the directory", "Peopl
 		if !ok {
 			return nil, fmt.Errorf("role is student, parent or staff, not %q", in.Role)
 		}
-		where = append(where, tree{"exists": tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("person", path("@p")), eq("group.slug", slug), eq("group.kind", "group")}}})
+		where = append(where, inRole(slug))
 	}
 	if in.Grade != "" {
 		where = append(where, eq("grade", strings.TrimSpace(in.Grade)))
@@ -480,8 +480,13 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 	return out, nil
 })
 
+func inRole(slug string) tree {
+	groups := tree{"select": tree{"from": "GROUP", "column": "id", "where": []any{eq("kind", "group"), eq("slug", slug)}}}
+	return tree{"in": []any{path("id"), tree{"members": []any{groups}}}}
+}
+
 func (c *call) inClassroom(column, group, role string) ([]member, error) {
-	found, _, err := c.rows(tree{"from": "PERSON", "as": "p", "where": []any{eq(column, group), tree{"exists": tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("person", path("@p")), eq("group.slug", roleGroups[role]), eq("group.kind", "group")}}}}})
+	found, _, err := c.rows(tree{"from": "PERSON", "as": "p", "where": []any{eq(column, group), inRole(roleGroups[role])}})
 	if err != nil {
 		return nil, err
 	}

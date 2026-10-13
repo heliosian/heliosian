@@ -145,7 +145,7 @@ export async function loadModel() {
     queries({
       viewer: '(from PERSON (where (= id @viewer)))',
       admin: '(from PERSON (where (= id @viewer) (admin_of "who")) (columns source))',
-      people: `(from PERSON (where (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.id (= slug "everyone"))))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
+      people: `(from PERSON (where (in id (members (select GROUP.id (= slug "everyone")))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
       addresses: '(from PERSON_EMAIL (where primary) (columns person address))',
       pictures: '(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (in kind "family" "classroom" "grade"))))) (order order asc) (columns person group order reencode crop_left crop_top crop_width crop_height))',
       groups: '(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))',
