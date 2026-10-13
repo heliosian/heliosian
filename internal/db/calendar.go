@@ -26,6 +26,7 @@ const (
 	MomentLayout       = "2006-01-02 15:04"
 	classifyBatch      = 10
 	noDayType          = "None"
+	celebrateSlug      = "celebrate"
 )
 
 var School = func() *time.Location {
@@ -71,6 +72,9 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		}
 		if _, ok := DayTemplates[c["name"]]; ok {
 			v.DayTypes[c["name"]] = c["id"]
+			continue
+		}
+		if c["slug"] == celebrateSlug {
 			continue
 		}
 		if parent := groups[c["parent"]]; parent == nil || parent["kind"] == "category" {

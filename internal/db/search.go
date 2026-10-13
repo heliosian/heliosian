@@ -53,6 +53,7 @@ var searchExclusions = []string{
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,
 	`(from GROUP (where (in id (select GROUP.leads))))`,
 	`(from GROUP (where (in id (select GROUP.audience))))`,
+	`(from GROUP (where (in id (select GROUP.hidden_for))))`,
 	`(from GROUP (where (= kind "admins")))`,
 	`(from GROUP (where (in id (select GROUP.managed_by)) (!= kind "family")))`,
 }

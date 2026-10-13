@@ -102,9 +102,13 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
-; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change
+; @g is the group of those who hid something from themselves
+(define (hides @g)
+  (exists GROUP (= hidden_for @g)))
+
+; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change, or a hidden group, which each member joins and leaves alone
 (define (runs_list @g)
-  (and (!= @g.kind "family")
+  (and (!= @g.kind "family") (not (hides @g))
        (or (manages @g) (super_admin)
            (and (admin_of "team")
                 (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
@@ -133,12 +137,12 @@ const PolicySource = `
 (define (own_group @g)
   (and (= @g.kind "group") (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
 
-; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers, leads or audience group
+; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers, leads, audience or hidden group
 (define (counted c)
   (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)
-       (!= c.leads id) (!= c.audience id)))
+       (!= c.leads id) (!= c.audience id) (!= c.hidden_for id)))
 
-; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers, leads or audience group, and nothing else names it
+; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers, leads, audience or hidden group, and nothing else names it
 (define (implementation_only @g)
   (and (= (tally @g
                  (select GROUP.managed_by @r (= managed_by @g) (counted managed_by))
@@ -149,6 +153,7 @@ const PolicySource = `
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
                  (select GROUP.audience @r (= audience @g) (counted audience))
+                 (select GROUP.hidden_for @r (= hidden_for @g) (counted hidden_for))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible)))
@@ -162,6 +167,7 @@ const PolicySource = `
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
                  (select GROUP.audience @r (= audience @g) (counted audience))
+                 (select GROUP.hidden_for @r (= hidden_for @g) (counted hidden_for))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible))
@@ -323,7 +329,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -370,13 +376,14 @@ const PolicySource = `
 (read RULE (manages group))
 ; every column of a rule
 (read RULE (id group order exclude target under person search property value replace_with within) true)
-; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown
+; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown, but never who hid something
 (read MEMBER
   (or (self_or_household person)
       (= guest_of @viewer)
-      (manages group)
-      (manages_visible group)
-      (sees_members group)))
+      (and (not (hides group))
+           (or (manages group)
+               (manages_visible group)
+               (sees_members group)))))
 ; every column of a membership but what it cost
 (read MEMBER
   (id group person member opened guest_of note added_by added)
@@ -395,21 +402,28 @@ const PolicySource = `
            (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
-; leave a group that takes joining and no payment, or take someone in one's family out of it, even once it is closed or full
+; hide something the viewer sees from themselves: join its hidden group, oneself alone
+(insert MEMBER
+  (and (= @new.group.join "self") (= @new.person @viewer) (= @new.member "yes") (= @new.added_by @viewer)
+       (exists GROUP @t (= hidden_for @new.group) (visible @t))))
+; leave a group that takes joining and no payment, or take someone in one's family out of it unless each joins it alone, even once it is closed or full
 (delete MEMBER
-  (and (not (blank @old.group.join)) (blank @old.group.price) (self_or_household @old.person)))
-; a person, someone in their family or their host gives up a place; the group's managers set anyone's; never in a family, which only super admins change
+  (and (not (blank @old.group.join)) (blank @old.group.price)
+       (or (= @old.person @viewer) (and (!= @old.group.join "self") (self_or_household @old.person)))))
+; a person, someone in their family unless each joins alone, or their host gives up a place; the group's managers set anyone's but who hid something; never in a family, which only super admins change
 (set MEMBER.member
   (and (!= @old.group.kind "family")
-       (or (and (or (self_or_household @old.person)
+       (or (and (or (= @old.person @viewer)
+                    (and (!= @old.group.join "self") (self_or_household @old.person))
                     (= @old.guest_of @viewer))
                 (= @new.member "cancelled"))
-           (manages @old.group))))
-; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them
+           (and (manages @old.group) (not (hides @old.group))))))
+; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them, but never who hid something
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
-      (manages_visible group)
-      (sees_members group)))
+      (and (not (hides group))
+           (or (manages_visible group)
+               (sees_members group)))))
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person reasons) true)
 
@@ -539,10 +553,10 @@ const PolicySource = `
 (set PERSON.name_sort_override (admin_of "who"))
 ; every directory group and plain group, pending too
 (read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department")))
-; every directory group's and plain group's memberships
-(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
-; every directory group's and plain group's effective members
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+; every directory group's and plain group's memberships, but who hid something
+(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (hides group))))
+; every directory group's and plain group's effective members, but who hid something
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (hides group))))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
 ; every person's emails, deactivated too
@@ -885,10 +899,10 @@ const PolicySource = `
 
 ; every plain group and admins group
 (read GROUP (and (admin_of "home") (in kind "group" "admins")))
-; the members of plain groups and admins groups
-(read MEMBER (and (admin_of "home") (in group.kind "group" "admins")))
-; the effective members of plain groups and admins groups
-(read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "group" "admins")))
+; the members of plain groups and admins groups, but who hid something
+(read MEMBER (and (admin_of "home") (in group.kind "group" "admins") (not (hides group))))
+; the effective members of plain groups and admins groups, but who hid something
+(read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "group" "admins") (not (hides group))))
 ; the rules that pick plain groups' and admins groups' members
 (read RULE (and (admin_of "home") (in group.kind "group" "admins")))
 ; every app, whoever it is open to

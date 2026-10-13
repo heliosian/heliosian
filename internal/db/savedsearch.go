@@ -12,6 +12,8 @@ const goingWord = "going"
 
 const goingCondition = `(or (in id (select MEMBER.group (in person (household @viewer)) (= member "yes"))) (in rsvp_yes (select MEMBER.group (in person (household @viewer)) (= member "yes"))))`
 
+const shownCondition = `(not (in hidden_for (select EFFECTIVE_MEMBER.group (= person @viewer))))`
+
 func searchWords(raw string) ([][]string, error) {
 	var lists [][]string
 	if err := json.Unmarshal([]byte(raw), &lists); err != nil {
@@ -46,10 +48,7 @@ func searchCondition(lists [][]string) string {
 		}
 		clauses = append(clauses, "(or "+strings.Join(words, " ")+")")
 	}
-	if len(clauses) == 0 {
-		return "true"
-	}
-	return "(and " + strings.Join(clauses, " ") + ")"
+	return "(and " + strings.Join(append(clauses, shownCondition), " ") + ")"
 }
 
 func savedSearchGenerated(row map[string]string) {

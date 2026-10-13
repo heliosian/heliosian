@@ -158,6 +158,23 @@ func TestGooglePlan(t *testing.T) {
 	}
 }
 
+func TestCelebrateIsNoCategoryToClassifyInto(t *testing.T) {
+	s, queue, _, _ := calendarSample(t)
+	apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Celebrate", "slug": "celebrate", "status": "open", "visible_to": "grp00000000004"}}})
+	v, err := NewVocabulary(s.Model().calendarRows())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range v.Events {
+		if c.Title == "Celebrate" {
+			t.Fatalf("the classifier is offered Celebrate: %v", v.Events)
+		}
+	}
+	if !strings.Contains(v.classifierSystem(), "- Conference:") {
+		t.Fatalf("the classifier is not offered Conference: %v", v.Events)
+	}
+}
+
 func TestARemovedEventTakesItsAnswers(t *testing.T) {
 	s, queue, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)

@@ -28,6 +28,8 @@ var stagedTriggers = []stagedTrigger{
 	{table: "PHOTO", fire: photoNotReady},
 	{table: "GROUP", fire: servingNames},
 	{table: "GROUP", fire: groupSlugMoved},
+	{table: "GROUP", fire: hiddenFor},
+	{table: "GROUP", fire: hiddenGone},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
@@ -173,7 +175,7 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	writes := []Edit{}
-	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"unsubscribed", " Unsubscribed"}, {"chair_offers", " Co-Chair Offers"}, {"leads", " Leads"}, {"audience", " Audience"}} {
+	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"unsubscribed", " Unsubscribed"}, {"chair_offers", " Co-Chair Offers"}, {"leads", " Leads"}, {"audience", " Audience"}, {"hidden_for", " Hidden"}} {
 		id, suffix := c.New[served.column], served.suffix
 		if id == "" || id == c.New["id"] {
 			continue
@@ -185,6 +187,32 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 		writes = append(writes, Edit{Set: id, Cells: map[string]any{"name": c.New["name"] + suffix}})
 	}
 	return writes, nil
+}
+
+var hideKinds = []string{"event", "party", "activity"}
+
+func hiddenFor(_ *Model, c Change) ([]Edit, error) {
+	if c.Old != nil || c.New == nil || !slices.Contains(hideKinds, c.New["kind"]) || c.New["hidden_for"] != "" {
+		return nil, nil
+	}
+	return []Edit{
+		{Insert: "GROUP", As: "hidden", Row: map[string]any{
+			"kind": "group", "name": c.New["name"] + " Hidden", "status": "open", "listed": false,
+			"posting": "none", "replying": "none", "join": "self",
+		}},
+		{Set: c.New["id"], Cells: map[string]any{"hidden_for": "@hidden"}},
+	}, nil
+}
+
+func hiddenGone(m *Model, c Change) ([]Edit, error) {
+	if c.New != nil || c.Old == nil || c.Old["hidden_for"] == "" {
+		return nil, nil
+	}
+	writes := []Edit{}
+	for _, row := range m.Table("MEMBER").Referencing("group", c.Old["hidden_for"]) {
+		writes = append(writes, Edit{Delete: row["id"]})
+	}
+	return append(writes, Edit{Delete: c.Old["hidden_for"]}), nil
 }
 
 func personFamilyNames(m *Model, c Change) ([]Edit, error) {
@@ -303,10 +331,14 @@ func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
 			if err != nil {
 				return access.Invalid("%s: %v", where, err)
 			}
+			names := map[string]string{}
 			for _, w := range writes {
-				_, c, err := stageWrite(s, tx, w, where, nil, true, unchecked)
+				id, c, err := stageWrite(s, tx, w, where, names, true, unchecked)
 				if err != nil {
 					return err
+				}
+				if w.As != "" {
+					names[w.As] = id
 				}
 				pending = append(pending, c)
 			}
