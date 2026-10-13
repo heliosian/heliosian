@@ -527,6 +527,8 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		return cx.compare(s, op, sc)
 	case "in":
 		return cx.in(s, sc)
+	case "covers":
+		return cx.covers(s, sc)
 	case "blank":
 		if len(args) != 1 {
 			return cond{}, s.errorf("blank takes one path")
@@ -814,6 +816,8 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 	switch head := s.head(); head {
 	case "select":
 		return cx.selectSet(s, sc, x)
+	case "members":
+		return cx.membersSet(s, sc)
 	case "ancestors":
 		if len(s.list) != 2 {
 			return nil, typ{}, false, s.errorf("ancestors takes one row")

@@ -420,22 +420,32 @@ func (m *Model) familyPeople(family string) []string {
 	return out
 }
 
+type relatives struct {
+	student  func(person string) bool
+	families func(person string) []string
+	people   func(family string) []string
+}
+
 func (m *Model) replaceWith(people map[string]bool, how string) map[string]bool {
+	students := m.students()
+	return relatives{student: func(p string) bool { return students[p] }, families: m.familiesOf, people: m.familyPeople}.replace(people, how)
+}
+
+func (rel relatives) replace(people map[string]bool, how string) map[string]bool {
 	if how == "" {
 		return people
 	}
-	students := m.students()
 	out := map[string]bool{}
 	for person := range people {
 		if how == "household" {
 			out[person] = true
 		}
-		if how == "parents" && !students[person] || how == "children" && students[person] {
+		if how == "parents" && !rel.student(person) || how == "children" && rel.student(person) {
 			continue
 		}
-		for _, f := range m.familiesOf(person) {
-			for _, p := range m.familyPeople(f) {
-				if how == "household" || how == "parents" && !students[p] || how == "children" && students[p] {
+		for _, f := range rel.families(person) {
+			for _, p := range rel.people(f) {
+				if how == "household" || how == "parents" && !rel.student(p) || how == "children" && rel.student(p) {
 					out[p] = true
 				}
 			}
