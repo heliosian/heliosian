@@ -170,7 +170,6 @@ const PolicySource = `
                  (select APP.visible_to (= visible_to @g))
                  (select WIDGET.group (= group @g))
                  (select WIDGET.visible_to (= visible_to @g))
-                 (select COLLECTION_GROUP.group (= group @g))
                  (select PERSON.vc_classroom (= vc_classroom @g))
                  (select PERSON.classroom_override (= classroom_override @g))
                  (select PERSON.vc_crew (= vc_crew @g))
@@ -298,14 +297,10 @@ const PolicySource = `
   (id person year assigned_to assigned ask_by contacted contacted_by participation charity note recorded
    recorded_by published published_by)
   true)
-; the viewer's own collections
-(read COLLECTION (= person @viewer))
-; every column of a collection
-(read COLLECTION (id person name emoji order default token) true)
-; what the viewer's own collections are made from
-(read COLLECTION_GROUP (= collection.person @viewer))
-; every column of what a collection is made from
-(read COLLECTION_GROUP (id collection clause relation group replace_with) true)
+; the viewer's own saved searches
+(read SAVED_SEARCH (= person @viewer))
+; every column of a saved search
+(read SAVED_SEARCH (id person name emoji order default token search condition) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= added_by @viewer))
 ; every column of a bug report or idea

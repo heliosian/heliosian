@@ -144,14 +144,14 @@ func TestCheck(t *testing.T) {
 }
 
 func TestCheckRefs(t *testing.T) {
-	view, _ := Lookup("COLLECTION_GROUP")
-	row := map[string]string{"id": "clgX7pQ2m9KdLr", "collection": "colX7pQ2m9KdLr", "clause": "1", "relation": "under", "group": "grpX7pQ2m9KdLr"}
+	view, _ := Lookup("RULE")
+	row := map[string]string{"id": "rulX7pQ2m9KdLr", "group": "grpX7pQ2m9KdLr", "order": "i", "target": "grpY7pQ2m9KdLr"}
 	if err := view.Check(row); err != nil {
 		t.Fatal(err)
 	}
-	row["group"] = "perY7pQ2m9KdLr"
+	row["target"] = "perY7pQ2m9KdLr"
 	if err := view.Check(row); err == nil {
-		t.Fatal("Check accepted a person as the group")
+		t.Fatal("Check accepted a person as the target")
 	}
 }
 

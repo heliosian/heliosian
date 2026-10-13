@@ -32,6 +32,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
+	{table: "SAVED_SEARCH", fire: savedSearchSlugs},
 }
 
 var committedTriggers = []committedTrigger{
@@ -62,8 +63,7 @@ var committedTriggers = []committedTrigger{
 	{table: "PHOTO", to: warmInbox},
 	{table: "PERSON_SETTING", to: warmInbox},
 	{table: "BIRTHDAY_YEAR", to: warmInbox},
-	{table: "COLLECTION", to: warmInbox},
-	{table: "COLLECTION_GROUP", to: warmInbox},
+	{table: "SAVED_SEARCH", to: warmInbox},
 	{table: "GROUP", to: warmInbox},
 	{table: "GROUP_SOURCE", to: warmInbox},
 	{table: "MEMBER", to: warmInbox},

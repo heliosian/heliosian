@@ -92,6 +92,9 @@ func (c Column) check(raw string) error {
 		return nil
 	case URL:
 		return cells.URL(v, false)
+	case Words:
+		_, err := searchWords(v)
+		return err
 	}
 	return fmt.Errorf("column kind %d has no check", c.Kind)
 }

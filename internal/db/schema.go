@@ -24,6 +24,7 @@ const (
 	Order
 	Email
 	URL
+	Words
 )
 
 type Value struct {
@@ -314,37 +315,21 @@ var Tables = []Table{
 		},
 	},
 	{
-		Name:        "COLLECTION",
+		Name:        "SAVED_SEARCH",
 		Sheet:       PeopleSheet,
 		Unique:      []string{"token"},
-		Description: "A set of things a person keeps: a calendar they saved in When, things they set aside. What it holds is its COLLECTION_GROUP rows. Each is also a personal feed address.",
+		Generate:    eachRow(savedSearchGenerated),
+		Description: "A search a person keeps: a calendar they saved in When. Its words say what it holds, and each is also a personal feed address.",
 		Columns: []Column{
-			ident(CollectionPrefix),
-			ref("person", "PERSON").required().about("Whose collection it is."),
+			ident(SavedSearchPrefix),
+			ref("person", "PERSON").required().about("Whose saved search it is."),
 			col("name", Text).about("What they call it."),
 			col("emoji", Text).about("The mark they gave it."),
-			col("order", Order).about("Its place among their collections."),
+			col("order", Order).about("Its place among their saved searches."),
 			col("default", Bool).about("The calendar When opens to for them."),
 			token("token", FeedTokenPrefix).about("The secret in its feed address. Minted by the server."),
-		},
-	},
-	{
-		Name:        "COLLECTION_GROUP",
-		Sheet:       PeopleSheet,
-		Unique:      []string{"collection", "clause", "relation", "group", "replace_with"},
-		Description: "A group a collection is made from, and how a thing must stand to it. Rows sharing a clause are alternatives; a thing is in the collection when it meets every clause, and a collection with no rows holds everything.",
-		Columns: []Column{
-			ident(CollectionGroupPrefix),
-			ref("collection", "COLLECTION").required().about("The collection."),
-			col("clause", Int).required().about("The clause it is an alternative in."),
-			enum("relation",
-				v("under", "the group itself or anything under it through parent"),
-				v("for", "anything whose effective members include every one of the group's, after replace_with")).required().about("How a thing must stand to the group."),
-			ref("group", "GROUP").required().about("The group."),
-			enum("replace_with",
-				v("parents", "for a student, everyone in their families who isn't a student"),
-				v("children", "for someone who isn't a student, the students in their families"),
-				v("household", "everyone in their families, and themselves")).about("For relation for, replaces the group's effective members with their relatives before the comparison."),
+			col("search", Words).required().about("What it holds: a JSON list of lists of words, a thing holding when it matches a word of every list. A word is a group's slug - the thing is for every one of the group's effective members, or sits under the group - or going, which the viewer's household has a ticket, sign-up or yes for. A list of no lists holds everything."),
+			{Name: "condition", Kind: Text, Generated: true, Description: "The search as a condition on a group named @e, for a query to splice into its where: (from GROUP @e (where condition))."},
 		},
 	},
 	{

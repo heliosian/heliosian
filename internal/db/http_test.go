@@ -300,19 +300,19 @@ func TestServeSeveralQueries(t *testing.T) {
 
 func TestServeQueryAsTheViewer(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	q := `{"from": "COLLECTION"}`
+	q := `{"from": "SAVED_SEARCH"}`
 	if _, out, _ := ask(t, s, "application/json", "rowan@example.com", q); len(out.Result) != 1 {
-		t.Fatalf("Rowan's second address sees %d collections", len(out.Result))
+		t.Fatalf("Rowan's second address sees %d saved searches", len(out.Result))
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 1 {
-		t.Fatalf("Maya, a super admin, sees %d of Rowan's collections", len(out.Result))
+		t.Fatalf("Maya, a super admin, sees %d of Rowan's saved searches", len(out.Result))
 	}
 	demote := Batch{Batch: []Edit{{Delete: "mem00000000007"}}}
 	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, demote); err != nil {
 		t.Fatal(err)
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 0 {
-		t.Fatalf("Maya, no longer a super admin, sees %d of Rowan's collections", len(out.Result))
+		t.Fatalf("Maya, no longer a super admin, sees %d of Rowan's saved searches", len(out.Result))
 	}
 }
 

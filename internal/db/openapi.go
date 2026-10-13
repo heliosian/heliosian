@@ -15,7 +15,7 @@ type schema = map[string]any
 
 var kindNames = map[Kind]string{
 	Text: "text", Enum: "enum", ID: "id", Ref: "ref", Bool: "bool", Int: "int", Money: "money",
-	Float: "float", Date: "date", Moment: "moment", Blob: "blob", Order: "order", Email: "email", URL: "url",
+	Float: "float", Date: "date", Moment: "moment", Blob: "blob", Order: "order", Email: "email", URL: "url", Words: "words",
 }
 
 func component(name string) schema {
@@ -83,6 +83,9 @@ func cellSchema(c Column) schema {
 		out["format"] = "email"
 	case URL:
 		out["format"] = "uri"
+	case Words:
+		out["examples"] = []string{`[["hummingbirds","hummingbirds-parents"],["parent-ed"]]`}
+		notes = append(notes, "A JSON list of lists of words, each a group's slug or going.")
 	}
 	if c.Required {
 		out["x-required"] = true

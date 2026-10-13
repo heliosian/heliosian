@@ -93,6 +93,14 @@ func (v *View) Find(values ...string) (store.Row, bool) {
 	return v.shown[i], true
 }
 
+func (r *Rows) Distinct(column, value string) (store.Row, bool) {
+	i, ok := r.byDistinct[column][strings.ToLower(value)]
+	if !ok {
+		return nil, false
+	}
+	return r.rows[i], true
+}
+
 func (v *View) Distinct(column, value string) (store.Row, bool) {
 	i, ok := v.rows.byDistinct[column][strings.ToLower(value)]
 	if !ok || v.shown[i] == nil {

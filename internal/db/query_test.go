@@ -83,7 +83,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 	if passes["GROUP"] != 1 {
 		t.Errorf("GROUP was scanned %d times for the bands select, want once: %v", passes["GROUP"], passes)
 	}
-	for _, table := range []string{"RULE", "APP", "WIDGET", "COLLECTION_GROUP", "PERSON"} {
+	for _, table := range []string{"RULE", "APP", "WIDGET", "PERSON"} {
 		if passes[table] != 0 {
 			t.Errorf("%s was scanned %d times for implementation_only's selects, which probe: %v", table, passes[table], passes)
 		}
@@ -236,7 +236,7 @@ func TestRun(t *testing.T) {
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
-		{"", `(from COLLECTION @c (where (exists COLLECTION_GROUP (= collection @c) (= group "grp00000000010"))))`, "token", []string{"fed00000000001"}},
+		{"", `(from SAVED_SEARCH (where (contains search "community")))`, "token", []string{"fed00000000002"}},
 		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
 		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
@@ -378,8 +378,8 @@ func TestInclude(t *testing.T) {
 	if len(r.Resources["MEMBER"]) != 3 || len(r.Resources["PERSON"]) != 3 || len(r.Resources["GROUP"]) != 1 {
 		t.Fatalf("resources %v", r.Resources)
 	}
-	r = runAs(t, m, "", `(from COLLECTION_GROUP (include group))`)
-	if len(r.Resources["GROUP"]) != 2 {
+	r = runAs(t, m, "", `(from RULE (include target))`)
+	if len(r.Resources["GROUP"]) != 3 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
