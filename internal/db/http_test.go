@@ -62,14 +62,14 @@ func TestTokens(t *testing.T) {
 	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, hide); err != nil {
 		t.Fatal(err)
 	}
-	code, out, body := ask(t, s, "application/json", importing, `{"from": "PERSON"}`)
+	code, out, body := ask(t, s, "application/json", importing, `["from", "PERSON"]`)
 	if code != http.StatusOK || len(out.Result) != 4 {
 		t.Fatalf("a super admin in import mode sees every person, the hidden one too, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `{"from": "PERSON"}`); len(out.Result) != 3 {
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `["from", "PERSON"]`); len(out.Result) != 3 {
 		t.Fatalf("a super admin's token without import mode sees %d people, want the 3 the consent view holds", len(out.Result))
 	}
-	if _, out, _ := ask(t, s, "application/json", superAdmin, `{"from": "MEMBER", "where": [{"=": [{"path": "person"}, "per00000000001"]}]}`); len(out.Result) != 0 {
+	if _, out, _ := ask(t, s, "application/json", superAdmin, `["from", "MEMBER", ["where", ["=", {"n": "person"}, "per00000000001"]]]`); len(out.Result) != 0 {
 		t.Fatalf("a super admin in the browser sees %d of a hidden person's memberships", len(out.Result))
 	}
 	rec := send(t, s, queue, http.MethodPost, "application/json", importing, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
@@ -80,10 +80,10 @@ func TestTokens(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent's token setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
-	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
+	if code, _, body := ask(t, s, "application/json", "bearer:wrong", `["from", "PERSON"]`); code != http.StatusUnauthorized {
 		t.Fatalf("a forged token got %d %s", code, body)
 	}
-	if code, _, _ := ask(t, s, "application/json", "bearer:", `{"from": "PERSON"}`); code != http.StatusUnauthorized {
+	if code, _, _ := ask(t, s, "application/json", "bearer:", `["from", "PERSON"]`); code != http.StatusUnauthorized {
 		t.Fatalf("an empty token got %d", code)
 	}
 }
@@ -114,7 +114,7 @@ func TestGuestsNeverSignIn(t *testing.T) {
 
 func TestSpoof(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	query := `{"from": "PERSON"}`
+	query := `["from", "PERSON"]`
 	rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "rowan.ashdown@example.org")
 	var spoofed answer
 	if err := json.Unmarshal(rec.Body.Bytes(), &spoofed); rec.Code != http.StatusOK || err != nil {
@@ -146,10 +146,10 @@ func ask(t *testing.T, s *Store, kind, as, query string) (int, answer, string) {
 
 const picnicText = `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc) (include person))`
 
-const picnicJSON = `{"from": "MEMBER",
-  "where": [{"=": [{"path": "group"}, "grp00000000040"]}, {"=": [{"path": "member"}, "yes"]}],
-  "order": [{"path": "person.name_sort", "dir": "asc"}],
-  "include": ["person"]}`
+const picnicJSON = `["from", "MEMBER",
+  ["where", ["=", {"n": "group"}, "grp00000000040"], ["=", {"n": "member"}, "yes"]],
+  ["order", "person.name_sort", "asc"],
+  ["include", "person"]]`
 
 func TestServeQuery(t *testing.T) {
 	s := sample(t)
@@ -163,9 +163,6 @@ func TestServeQuery(t *testing.T) {
 		}
 		if out.Query != mustParse(t, picnicText).String() {
 			t.Fatalf("%s: query %q", kind, out.Query)
-		}
-		if (out.Tree != nil) != (kind == "text/plain") {
-			t.Fatalf("%s: tree %v", kind, out.Tree)
 		}
 		last := out.Resources["MEMBER"][out.Result[2]]
 		if out.Result[2] != "mem00000000015" || last["guest_of"] != "per00000000002" || last["price"] != "" {
@@ -225,22 +222,21 @@ func TestServeQueryTrace(t *testing.T) {
 }
 
 func TestTextAndJSONAreOneTree(t *testing.T) {
-	for _, src := range append(designQueries, picnicText,
-		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not hidden) (blank consent) true) (limit 3))`,
-		`(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75) (>= start now)))`,
-		`(from PERSON (where (< (length vc_name) 4)))`,
-		`(from MEMBER (where (in group (select GROUP.id @g (= @g.kind "family")))) (include person) (columns person member))`) {
+	for src, raw := range map[string]string{
+		picnicText: picnicJSON,
+		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not hidden) (blank consent) true) (limit 3))`: `["from", "PERSON", ["where", ["in", {"n": "id"}, ["select", "MEMBER.person", ["=", {"n": "group"}, "grp00000000020"]]], ["not", {"n": "hidden"}], ["blank", {"n": "consent"}], true], ["limit", 3]]`,
+		`(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75) (>= start now)))`:                                            `["from", "GROUP", {"n": "@g"}, ["where", ["=", ["sum", "price", "MEMBER", ["=", {"n": "group"}, {"n": "@g"}]], 19.75], [">=", {"n": "start"}, {"n": "now"}]]]`,
+		`(from PERSON (where (< (length vc_name) 4)))`:                                                                                `["from", "PERSON", ["where", ["<", ["length", {"n": "vc_name"}], 4]]]`,
+		`(from MEMBER (where (in group (select GROUP.id @g (= @g.kind "family")))) (include person) (columns person member))`:         `["from", "MEMBER", ["where", ["in", {"n": "group"}, ["select", "GROUP.id", {"n": "@g"}, ["=", {"n": "@g.kind"}, "family"]]]], ["include", "person"], ["columns", "person", "member"]]`,
+		`(from GROUP (where (exists MEMBER @m (= @m.member "yes")) (in id (slug "students" "staff"))) (order start desc name asc))`:   `["from", "GROUP", ["where", ["exists", "MEMBER", {"n": "@m"}, ["=", {"n": "@m.member"}, "yes"]], ["in", {"n": "id"}, ["slug", "students", "staff"]]], ["order", "start", "desc", "name", "asc"]]`,
+	} {
 		q := mustParse(t, src)
-		raw, err := json.Marshal(q.Tree())
+		back, err := ParseJSON([]byte(raw))
 		if err != nil {
-			t.Fatal(err)
-		}
-		back, err := ParseJSON(raw)
-		if err != nil {
-			t.Fatalf("%s as JSON %s: %v", src, raw, err)
+			t.Fatalf("%s: %v", raw, err)
 		}
 		if !q.tree.equal(back.tree) {
-			t.Fatalf("%s came back as %s", src, back.String())
+			t.Fatalf("%s came back as %s, want %s", raw, back.String(), q.String())
 		}
 	}
 }
@@ -300,7 +296,7 @@ func TestServeSeveralQueries(t *testing.T) {
 
 func TestServeQueryAsTheViewer(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	q := `{"from": "SAVED_SEARCH"}`
+	q := `["from", "SAVED_SEARCH"]`
 	if _, out, _ := ask(t, s, "application/json", "rowan@example.com", q); len(out.Result) != 1 {
 		t.Fatalf("Rowan's second address sees %d saved searches", len(out.Result))
 	}
@@ -320,7 +316,7 @@ func TestOnlyListedActivePeopleGetIn(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	refused := func(as, why string) {
 		t.Helper()
-		if code, _, body := ask(t, s, "application/json", as, `{"from": "PERSON"}`); code != http.StatusForbidden {
+		if code, _, body := ask(t, s, "application/json", as, `["from", "PERSON"]`); code != http.StatusForbidden {
 			t.Errorf("%s reading: %d %s", why, code, body)
 		}
 		rec := send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000043", "person": "per00000000002", "member": "yes"}}]}`)
@@ -328,7 +324,7 @@ func TestOnlyListedActivePeopleGetIn(t *testing.T) {
 			t.Errorf("%s writing: %d %s", why, rec.Code, rec.Body.String())
 		}
 	}
-	if code, _, body := ask(t, s, "application/json", "rowan@example.com", `{"from": "PERSON"}`); code != http.StatusOK {
+	if code, _, body := ask(t, s, "application/json", "rowan@example.com", `["from", "PERSON"]`); code != http.StatusOK {
 		t.Fatalf("a listed parent: %d %s", code, body)
 	}
 	refused("stranger@example.org", "an address the sheets don't hold")
@@ -346,10 +342,11 @@ func TestServeQueryRefuses(t *testing.T) {
 		code              int
 	}{
 		{"text/plain", `(from PERSON (where (= grde "6")))`, "did you mean grade?", http.StatusBadRequest},
-		{"application/json", `{"from": "PERSON", "where": [{"=": [{"path": "grde"}, "6"]}]}`, "did you mean grade?", http.StatusBadRequest},
-		{"application/json", `{"from": "PERSON", "wher": []}`, `no field "wher"`, http.StatusBadRequest},
-		{"application/json", `{"from": "PERSON", "where": [{"like": []}]}`, "no condition like", http.StatusBadRequest},
-		{"application/json", `{"from": "PERSON", "where": [{"=": [{"path": "@row.id"}, "x"]}]}`, "no row named @row", http.StatusBadRequest},
+		{"application/json", `["from", "PERSON", ["where", ["=", {"n": "grde"}, "6"]]]`, "did you mean grade?", http.StatusBadRequest},
+		{"application/json", `["from", "PERSON", ["where", ["=", {"path": "grade"}, "6"]]]`, `query[2][1][1] is an object other than {"n": name}`, http.StatusBadRequest},
+		{"application/json", `["from", "PERSON", ["where", ["like"]]]`, "no condition like", http.StatusBadRequest},
+		{"application/json", `["from", "PERSON", ["where", ["=", {"n": "@row.id"}, "x"]]]`, "no row named @row", http.StatusBadRequest},
+		{"application/json", `{"from": "PERSON"}`, "query is an object", http.StatusBadRequest},
 		{"application/json", `(from PERSON)`, "not JSON", http.StatusBadRequest},
 		{"", `(from PERSON)`, "application/json", http.StatusUnsupportedMediaType},
 		{"text/plain", "(from PERSON " + strings.Repeat(" ", queryLimit) + ")", "too large", http.StatusRequestEntityTooLarge},

@@ -13,9 +13,9 @@ type client struct {
 }
 
 func (c client) table(name string, where ...any) (table, string, error) {
-	q := map[string]any{"from": name}
+	q := []any{"from", name}
 	if len(where) > 0 {
-		q["where"] = where
+		q = append(q, append([]any{"where"}, where...))
 	}
 	a, err := c.Query(q)
 	if err != nil {
@@ -28,24 +28,28 @@ func (c client) table(name string, where ...any) (table, string, error) {
 	return t, a.Now, nil
 }
 
-func in(path string, values ...any) map[string]any {
-	return map[string]any{"in": append([]any{map[string]any{"path": path}}, values...)}
+func name(p string) map[string]any {
+	return map[string]any{"n": p}
 }
 
-func or(conditions ...any) map[string]any {
-	return map[string]any{"or": conditions}
+func in(p string, values ...any) []any {
+	return append([]any{"in", name(p)}, values...)
 }
 
-func roleGroup(kind, slug string) map[string]any {
+func or(conditions ...any) []any {
+	return append([]any{"or"}, conditions...)
+}
+
+func roleGroup(kind, slug string) []any {
 	slugs := []any{"everyone"}
 	for _, rg := range roleGroups {
 		slugs = append(slugs, rg.slug)
 	}
-	return map[string]any{"and": []any{in(kind, "group"), in(slug, slugs...)}}
+	return []any{"and", in(kind, "group"), in(slug, slugs...)}
 }
 
-func parentsGroup(kind, slug string) map[string]any {
-	return map[string]any{"and": []any{in(kind, "group"), map[string]any{"contains": []any{map[string]any{"path": slug}, "-parents"}}}}
+func parentsGroup(kind, slug string) []any {
+	return []any{"and", in(kind, "group"), []any{"contains", name(slug), "-parents"}}
 }
 
 func (c client) read() (*state, error) {

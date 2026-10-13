@@ -41,7 +41,7 @@ func (c *call) roles(ids []string) (map[string][]string, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	found, res, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("person", ids), tree{"in": []any{path("group"), tree{"slug": []any{"students", "parents", "staff"}}}}}, "include": []any{"group"}})
+	found, res, err := c.rows(scan("EFFECTIVE_MEMBER", where(among("person", ids), tree{"in", path("group"), tree{"slug", "students", "parents", "staff"}}), tree{"include", "group"}))
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (c *call) people(ids []string, contact bool) ([]member, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	found, res, err := c.rows(tree{"from": "PERSON", "where": []any{among("id", ids)}, "include": []any{"classroom", "crew", "department"}})
+	found, res, err := c.rows(scan("PERSON", where(among("id", ids)), tree{"include", "classroom", "crew", "department"}))
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (c *call) people(ids []string, contact bool) ([]member, error) {
 	}
 	emails := map[string]string{}
 	if contact {
-		addresses, _, err := c.rows(tree{"from": "PERSON_EMAIL", "where": []any{among("person", ids), path("primary")}})
+		addresses, _, err := c.rows(scan("PERSON_EMAIL", where(among("person", ids), path("primary"))))
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ type family struct {
 func (c *call) familiesOf(groups []store.Row) ([]family, error) {
 	out := []family{}
 	for _, g := range groups {
-		in, _, err := c.rows(tree{"from": "MEMBER", "where": []any{eq("group", g["id"]), eq("member", "yes")}})
+		in, _, err := c.rows(scan("MEMBER", where(eq("group", g["id"]), eq("member", "yes"))))
 		if err != nil {
 			return nil, err
 		}
@@ -132,7 +132,7 @@ func (c *call) familiesOf(groups []store.Row) ([]family, error) {
 }
 
 func (c *call) families(person string) ([]family, error) {
-	groups, _, err := c.rows(tree{"from": "GROUP", "as": "f", "where": []any{eq("kind", "family"), tree{"exists": tree{"from": "MEMBER", "where": []any{eq("group", path("@f")), eq("person", person), eq("member", "yes")}}}}, "order": asc("name")})
+	groups, _, err := c.rows(scan("GROUP", path("@f"), where(eq("kind", "family"), tree{"exists", "MEMBER", eq("group", path("@f")), eq("person", person), eq("member", "yes")}), asc("name")))
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +153,7 @@ var whoami = define("helios_whoami", "Looking you up", "The person connected to 
 	if len(me) == 0 {
 		return nil, errors.New("the directory does not show you")
 	}
-	addresses, _, err := c.rows(tree{"from": "PERSON_EMAIL", "where": []any{eq("person", path("@viewer"))}, "order": asc("address")})
+	addresses, _, err := c.rows(scan("PERSON_EMAIL", where(eq("person", path("@viewer"))), asc("address")))
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ var whoami = define("helios_whoami", "Looking you up", "The person connected to 
 	if err != nil {
 		return nil, err
 	}
-	in, res, err := c.rows(tree{"from": "MEMBER", "where": []any{eq("person", path("@viewer")), eq("member", "yes"), tree{"!=": []any{path("group.kind"), "family"}}}, "include": []any{"group"}})
+	in, res, err := c.rows(scan("MEMBER", where(eq("person", path("@viewer")), eq("member", "yes"), tree{"!=", path("group.kind"), "family"}), tree{"include", "group"}))
 	if err != nil {
 		return nil, err
 	}
@@ -185,11 +185,11 @@ var whoami = define("helios_whoami", "Looking you up", "The person connected to 
 		groups = append(groups, place{named: c.named("GROUP", g), Kind: g["kind"], Lead: g["leads"] != "" && joined[g["leads"]]})
 	}
 	slices.SortFunc(groups, func(a, b place) int { return cmp.Or(strings.Compare(a.Kind, b.Kind), strings.Compare(a.Name, b.Name)) })
-	managed, _, err := c.rows(tree{"from": "GROUP", "as": "g", "where": []any{
-		tree{"!=": []any{path("kind"), "family"}},
-		tree{"!=": []any{path("managed_by"), path("@g")}},
-		tree{"exists": tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", path("@g.managed_by")), eq("person", path("@viewer"))}}},
-	}, "order": asc("name"), "limit": listRows})
+	managed, _, err := c.rows(scan("GROUP", path("@g"), where(
+		tree{"!=", path("kind"), "family"},
+		tree{"!=", path("managed_by"), path("@g")},
+		tree{"exists", "EFFECTIVE_MEMBER", eq("group", path("@g.managed_by")), eq("person", path("@viewer"))},
+	), asc("name"), tree{"limit", listRows}))
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +197,7 @@ var whoami = define("helios_whoami", "Looking you up", "The person connected to 
 	for _, g := range managed {
 		manages = append(manages, place{named: c.named("GROUP", g), Kind: g["kind"]})
 	}
-	apps, _, err := c.rows(tree{"from": "APP", "where": []any{tree{"admin_of": []any{path("key")}}}, "order": asc("key")})
+	apps, _, err := c.rows(scan("APP", where(tree{"admin_of", path("key")}), asc("key")))
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ type peopleIn struct {
 var roleGroups = map[string]string{"student": "students", "parent": "parents", "staff": "staff"}
 
 var findPeople = define("helios_find_people", "Looking in the directory", "People in the Helios School directory by any of words (a name, job title or the like), role (student, parent or staff), grade, classroom and department: each with their roles, grade, classroom, crew, department, job title, pronouns, primary email and phone as shared, and href.", func(c *call, in peopleIn) (any, error) {
-	where := []any{}
+	conds := []any{}
 	if words := strings.TrimSpace(in.Words); words != "" {
 		found, err := c.deps.Search.Search(c.ctx, c.m, c.env, words, map[string]int{"GROUP": 0, "PERSON": listRows, "DOCUMENT": 0})
 		if err != nil {
@@ -232,28 +232,28 @@ var findPeople = define("helios_find_people", "Looking in the directory", "Peopl
 		if len(ids) == 0 {
 			return []member{}, nil
 		}
-		where = append(where, among("id", ids))
+		conds = append(conds, among("id", ids))
 	}
 	if in.Role != "" {
 		slug, ok := roleGroups[strings.ToLower(strings.TrimSpace(in.Role))]
 		if !ok {
 			return nil, fmt.Errorf("role is student, parent or staff, not %q", in.Role)
 		}
-		where = append(where, inRole(slug))
+		conds = append(conds, inRole(slug))
 	}
 	if in.Grade != "" {
-		where = append(where, eq("grade", strings.TrimSpace(in.Grade)))
+		conds = append(conds, eq("grade", strings.TrimSpace(in.Grade)))
 	}
 	if in.Classroom != "" {
-		where = append(where, eq("classroom.name", strings.TrimSpace(in.Classroom)))
+		conds = append(conds, eq("classroom.name", strings.TrimSpace(in.Classroom)))
 	}
 	if in.Department != "" {
-		where = append(where, eq("department.name", strings.TrimSpace(in.Department)))
+		conds = append(conds, eq("department.name", strings.TrimSpace(in.Department)))
 	}
-	if len(where) == 0 {
+	if len(conds) == 0 {
 		return nil, errors.New("name at least one of words, role, grade, classroom and department")
 	}
-	found, _, err := c.rows(tree{"from": "PERSON", "as": "p", "where": where, "limit": listRows})
+	found, _, err := c.rows(scan("PERSON", path("@p"), where(conds...), tree{"limit", listRows}))
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +285,7 @@ func (c *call) managers(self store.Row) ([]member, error) {
 	if len(managing) == 0 {
 		return []member{}, nil
 	}
-	found, res, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("group", managing)}, "include": []any{"group"}})
+	found, res, err := c.rows(scan("EFFECTIVE_MEMBER", where(among("group", managing)), tree{"include", "group"}))
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +308,7 @@ func (c *call) managers(self store.Row) ([]member, error) {
 }
 
 func (c *call) membersOf(g store.Row) ([]member, int, error) {
-	found, _, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", g["id"])}})
+	found, _, err := c.rows(scan("EFFECTIVE_MEMBER", where(eq("group", g["id"]))))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -320,7 +320,7 @@ func (c *call) membersOf(g store.Row) ([]member, int, error) {
 	}
 	led := map[string]bool{}
 	if g["leads"] != "" {
-		leads, _, err := c.rows(tree{"from": "MEMBER", "where": []any{eq("group", g["leads"]), eq("member", "yes")}})
+		leads, _, err := c.rows(scan("MEMBER", where(eq("group", g["leads"]), eq("member", "yes"))))
 		if err != nil {
 			return nil, 0, err
 		}
@@ -368,11 +368,11 @@ var group = define("helios_group", "Looking at a group", "A Helios School group 
 	if err != nil {
 		return nil, err
 	}
-	rules, rulesQuery, err := c.run(tree{"from": "RULE", "where": []any{eq("group", id)}, "order": asc("order"), "include": []any{"target", "person", "within"}})
+	rules, rulesQuery, err := c.run(scan("RULE", where(eq("group", id)), asc("order"), tree{"include", "target", "person", "within"}))
 	if err != nil {
 		return nil, err
 	}
-	under, underQuery, err := c.run(tree{"from": "GROUP", "where": []any{eq("parent", id)}, "order": asc("order"), "limit": listRows})
+	under, underQuery, err := c.run(scan("GROUP", where(eq("parent", id)), asc("order"), tree{"limit", listRows}))
 	if err != nil {
 		return nil, err
 	}
@@ -404,11 +404,11 @@ type bandGroup struct {
 
 var classroom = define("helios_classroom", "Looking at a classroom", "One Helios School classroom by name: its band, color and grades, its teachers with their job titles, its crews each with its teachers and students, its students with their grade and crew, and its band's own groups with their members - the band's room parents. Without a name, every classroom in brief with its band and teachers.", func(c *call, in classroomIn) (any, error) {
 	name := strings.TrimSpace(in.Name)
-	where := []any{eq("kind", "classroom")}
+	conds := where(eq("kind", "classroom"))
 	if name != "" {
-		where = append(where, eq("name", name))
+		conds = append(conds, eq("name", name))
 	}
-	rooms, res, err := c.rows(tree{"from": "GROUP", "where": where, "order": asc("name"), "include": []any{"parent"}})
+	rooms, res, err := c.rows(scan("GROUP", conds, asc("name"), tree{"include", "parent"}))
 	if err != nil {
 		return nil, err
 	}
@@ -443,7 +443,7 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 		}
 	}
 	slices.Sort(grades)
-	crewRows, _, err := c.rows(tree{"from": "GROUP", "where": []any{eq("kind", "crew"), eq("parent", room["id"])}, "order": asc("name")})
+	crewRows, _, err := c.rows(scan("GROUP", where(eq("kind", "crew"), eq("parent", room["id"])), asc("name")))
 	if err != nil {
 		return nil, err
 	}
@@ -461,7 +461,7 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 	}
 	bandGroups := []bandGroup{}
 	if band != nil {
-		under, _, err := c.rows(tree{"from": "GROUP", "where": []any{eq("parent", band["id"]), eq("kind", "group")}, "order": asc("name")})
+		under, _, err := c.rows(scan("GROUP", where(eq("parent", band["id"]), eq("kind", "group")), asc("name")))
 		if err != nil {
 			return nil, err
 		}
@@ -481,11 +481,11 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 })
 
 func inRole(slug string) tree {
-	return tree{"in": []any{path("id"), tree{"members": []any{tree{"slug": []any{slug}}}}}}
+	return tree{"in", path("id"), tree{"members", tree{"slug", slug}}}
 }
 
 func (c *call) inClassroom(column, group, role string) ([]member, error) {
-	found, _, err := c.rows(tree{"from": "PERSON", "as": "p", "where": []any{eq(column, group), inRole(roleGroups[role])}})
+	found, _, err := c.rows(scan("PERSON", path("@p"), where(eq(column, group), inRole(roleGroups[role]))))
 	if err != nil {
 		return nil, err
 	}
@@ -520,7 +520,7 @@ func miles(lat1, lng1, lat2, lng2 float64) float64 {
 
 var nearbyFamilies = define("helios_nearby_families", "Looking for families nearby", "Helios School families who live near a family - the viewer's own unless another is named by ID - nearest first, by straight-line distance between the street addresses families share in Helios Who?, as its map shows them: for carpools, walking groups and playdates. Each comes with milesAway, its address as shared, and its members marked student, parent or staff with each student's grade and classroom. Narrow them to a classroom, a grade or a distance. A family that shares no street address, or whose address has not been placed on the map yet, is never listed.", func(c *call, in nearbyIn) (any, error) {
 	points := map[string][2]float64{}
-	geocodes, _, err := c.rows(tree{"from": "GEOCODE"})
+	geocodes, _, err := c.rows(scan("GEOCODE"))
 	if err != nil {
 		return nil, err
 	}
@@ -545,7 +545,7 @@ var nearbyFamilies = define("helios_nearby_families", "Looking for families near
 		}
 		from = row
 	} else {
-		own, _, err := c.rows(tree{"from": "GROUP", "as": "f", "where": []any{eq("kind", "family"), tree{"exists": tree{"from": "MEMBER", "where": []any{eq("group", path("@f")), eq("person", path("@viewer")), eq("member", "yes")}}}}, "order": asc("name")})
+		own, _, err := c.rows(scan("GROUP", path("@f"), where(eq("kind", "family"), tree{"exists", "MEMBER", eq("group", path("@f")), eq("person", path("@viewer")), eq("member", "yes")}), asc("name")))
 		if err != nil {
 			return nil, err
 		}
@@ -563,8 +563,8 @@ var nearbyFamilies = define("helios_nearby_families", "Looking for families near
 	if !ok {
 		return nil, fmt.Errorf("%s shares no street address placed on Helios Who?'s map, only a city or nothing, so there is nothing to measure from", title(from))
 	}
-	where := []any{eq("kind", "family"), tree{"!=": []any{path("id"), from["id"]}}, tree{"not": tree{"blank": path("address")}}}
-	student := []any{eq("group", path("@f")), eq("member", "yes")}
+	conds := where(eq("kind", "family"), tree{"!=", path("id"), from["id"]}, tree{"not", tree{"blank", path("address")}})
+	student := tree{"exists", "MEMBER", eq("group", path("@f")), eq("member", "yes")}
 	if in.Classroom != "" {
 		student = append(student, eq("person.classroom.name", strings.TrimSpace(in.Classroom)))
 	}
@@ -572,9 +572,9 @@ var nearbyFamilies = define("helios_nearby_families", "Looking for families near
 		student = append(student, eq("person.grade", strings.TrimSpace(in.Grade)))
 	}
 	if in.Classroom != "" || in.Grade != "" {
-		where = append(where, tree{"exists": tree{"from": "MEMBER", "where": student}})
+		conds = append(conds, student)
 	}
-	candidates, _, err := c.rows(tree{"from": "GROUP", "as": "f", "where": where})
+	candidates, _, err := c.rows(scan("GROUP", path("@f"), conds))
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +14,10 @@ type none struct{}
 
 type queryIn struct {
 	Query string `json:"query" jsonschema:"the query in the query language, one (from TABLE ...) expression"`
+}
+
+type queryJSONIn struct {
+	Query []any `json:"query" jsonschema:"the query as JSON: the query language written bracket for bracket, each bracket a list with its operator first; a string is a value and {\"n\": name} a column, path, @row, today or now, but a plain string names the table after from, exists, count and select (TABLE.column for select), sum's path and table, and everything in order, include and columns; as [\"from\", \"GROUP\", [\"where\", [\"=\", {\"n\": \"kind\"}, \"crew\"]], [\"order\", \"name\", \"asc\"]]"`
 }
 
 type tableIn struct {
@@ -109,6 +114,22 @@ var query = define("helios_query", "Querying the data", "Run a query in Helios's
 	return c.shape(res, q), nil
 })
 
+var queryJSON = define("helios_query_json", "Querying the data", "Run a query over Helios School's community data, as the person connected, written as JSON rather than as text: the same language as helios_query, each bracket a JSON list, so values go in as JSON strings with nothing to escape. Answers as helios_query does: the query's canonical form, how many rows matched, the rows with their filled columns, and every row the includes brought by table and ID.", func(c *call, in queryJSONIn) (any, error) {
+	raw, err := json.Marshal(in.Query)
+	if err != nil {
+		return nil, err
+	}
+	q, err := db.ParseJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	res := c.m.Run(c.ctx, q, c.env)
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return c.shape(res, q), nil
+})
+
 type pointers struct {
 	Count int         `json:"count"`
 	Rows  []store.Row `json:"rows"`
@@ -127,13 +148,13 @@ var get = define("helios_get", "Looking something up", "One record of Helios Sch
 			refs = append(refs, col.Name)
 		}
 	}
-	q := tree{"from": t.Name, "where": []any{eq("id", id)}}
+	q := scan(t.Name, where(eq("id", id)))
 	if len(refs) > 0 {
-		include := []any{}
+		include := tree{"include"}
 		for _, r := range refs {
 			include = append(include, r)
 		}
-		q["include"] = include
+		q = append(q, include)
 	}
 	res, _, err := c.run(q)
 	if err != nil {
@@ -156,7 +177,7 @@ var get = define("helios_get", "Looking something up", "One record of Helios Sch
 			if col.Kind != db.Ref || col.Target != t.Name || col.Private {
 				continue
 			}
-			found, _, err := c.run(tree{"from": other.Name, "where": []any{eq(col.Name, id)}})
+			found, _, err := c.run(scan(other.Name, where(eq(col.Name, id))))
 			if err != nil {
 				return nil, err
 			}
@@ -204,7 +225,7 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 	nodes := []node{{row: root}}
 	frontier := []string{id}
 	for depth := 1; len(frontier) > 0 && len(nodes) < documentNodes; depth++ {
-		found, _, err := c.rows(tree{"from": "DOCUMENT", "where": []any{among("parent", frontier)}, "order": asc("order")})
+		found, _, err := c.rows(scan("DOCUMENT", where(among("parent", frontier)), asc("order")))
 		if err != nil {
 			return nil, err
 		}
@@ -222,7 +243,7 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 	}
 	mimes := map[string]string{}
 	if len(contents) > 0 {
-		found, _, err := c.rows(tree{"from": "CONTENT", "where": []any{among("id", contents)}})
+		found, _, err := c.rows(scan("CONTENT", where(among("id", contents))))
 		if err != nil {
 			return nil, err
 		}

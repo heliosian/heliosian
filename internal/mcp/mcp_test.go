@@ -379,6 +379,8 @@ func TestTools(t *testing.T) {
 		{"helios_policies", nil, []string{"(define (visible @g)"}, false},
 		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, `"href":"https://who.heliosian.com/people/` + rowanID + `"`}, false},
 		{"helios_query", map[string]any{"query": "(from PERSON (where (= grde \"3\")))"}, []string{"did you mean grade"}, true},
+		{"helios_query_json", map[string]any{"query": []any{"from", "PERSON", []any{"where", []any{"=", map[string]any{"n": "id"}, rowanID}}}}, []string{`"count":1`, `"href":"https://who.heliosian.com/people/` + rowanID + `"`}, false},
+		{"helios_query_json", map[string]any{"query": []any{"from", "PERSON", []any{"where", []any{"=", map[string]any{"n": "grde"}, "3"}}}}, []string{"did you mean grade"}, true},
 		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`, `"href":"https://when.heliosian.com/e/`}, false},
 		{"helios_get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
 		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/people/`}, false},

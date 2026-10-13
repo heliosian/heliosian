@@ -111,11 +111,11 @@ export function groupMembers(group) {
   let rows = [];
   let id = '';
   const load = async () => {
-    const [{people}, answer] = await Promise.all([directory(), api('QUERY', '/api/q', {
-      from: 'MEMBER', where: [{'=': [{path: 'member'}, 'yes']}, {in: [{path: 'group'}, {select: {from: 'GROUP', column: 'id', where: group}}]}],
-    })]);
+    const [{people}, answer] = await Promise.all([directory(), api('QUERY', '/api/q',
+      ['from', 'MEMBER', ['where', ['=', {n: 'member'}, 'yes'], ['in', {n: 'group'}, ['select', 'GROUP.id', group]]]],
+    )]);
     rows = answer.result.map(r => answer.resources.MEMBER[r]);
-    const groups = await api('QUERY', '/api/q', {from: 'GROUP', where: group, columns: ['name']});
+    const groups = await api('QUERY', '/api/q', ['from', 'GROUP', ['where', group], ['columns', 'name']]);
     id = groups.result[0] || '';
     const byId = new Map(people.map(p => [p.id, p]));
     return rows.map(r => byId.get(r.person)).filter(Boolean).map(emailOf);

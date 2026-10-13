@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -741,10 +740,7 @@ func TestTheJSONFormCarriesDefinitionsAndAncestors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := json.Marshal(q.Tree())
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := []byte(`["from", "GROUP", {"n": "@g"}, ["where", ["in", {"n": "parent"}, ["ancestors", {"n": "@g"}]], ["visible", {"n": "@g"}], ["contains", {"n": "name"}, "picnic"], ["exists", "MEMBER", ["=", {"n": "group"}, {"n": "@g"}], ["in", {"n": "person"}, ["household", {"n": "@viewer"}]]], ["mode", "import"]]]`)
 	back, err := ParseJSON(raw)
 	if err != nil {
 		t.Fatalf("%s: %v", raw, err)

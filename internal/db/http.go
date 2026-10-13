@@ -32,7 +32,6 @@ const (
 type answer struct {
 	Now       string                          `json:"now"`
 	Query     string                          `json:"query"`
-	Tree      map[string]any                  `json:"tree,omitempty"`
 	Result    []string                        `json:"result"`
 	Resources map[string]map[string]store.Row `json:"resources"`
 }
@@ -217,9 +216,6 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 			Query:     q.String(),
 			Result:    result.IDs,
 			Resources: result.Resources,
-		}
-		if kind == "text/plain" {
-			out.Tree = q.Tree()
 		}
 		respond(ctx, w, r, root, out)
 	})

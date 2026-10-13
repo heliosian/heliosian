@@ -173,31 +173,22 @@ func spec() schema {
 		"properties": schema{
 			"now":       schema{"type": "string", "description": "The school's time as the query saw it.", "examples": []string{"2026-09-24 16:00:05"}},
 			"query":     schema{"type": "string", "description": "The query in canonical text."},
-			"tree":      schema{"$ref": "#/components/schemas/Query", "description": "The query's JSON form, answered when it was sent as text."},
 			"result":    schema{"type": "array", "items": schema{"type": "string"}, "description": "The IDs the query answers, in order."},
 			"resources": schema{"type": "object", "properties": resources, "description": "Every row reached, the result's and its includes', by table then ID, each as the reader may see it."},
 		},
 	}
 	schemas["Query"] = schema{
-		"type":        "object",
-		"required":    []string{"from"},
-		"description": "A query as a JSON tree, one object per bracket of the language.",
-		"properties": schema{
-			"from":    schema{"type": "string", "enum": tables},
-			"as":      schema{"type": "string", "description": "A name for the row, for paths starting @name."},
-			"where":   schema{"type": "array", "items": schema{"type": "object"}, "description": "Conditions, anded."},
-			"order":   schema{"type": "array", "items": schema{"type": "object", "properties": schema{"path": schema{"type": "string"}, "dir": schema{"type": "string", "enum": []string{"asc", "desc"}}}}},
-			"limit":   schema{"type": "integer", "minimum": 1},
-			"include": schema{"type": "array", "items": schema{"type": "string"}, "description": "Paths whose rows are answered alongside."},
-			"columns": schema{"type": "array", "items": schema{"type": "string"}, "description": "The columns of the listed rows to answer, beside id; every column the reader may see when absent."},
-		},
+		"type":        "array",
+		"minItems":    2,
+		"prefixItems": []schema{{"const": "from"}, {"type": "string", "enum": tables}},
+		"description": `The language written as JSON: each bracket a list, its operator's name first, as in ["from", "ALIAS", ["where", ["=", {"n": "alias"}, "spring-fair"]], ["columns", "target"]]. A string is a string value, except where only a name may stand: the table after from, exists, count and select (with its column, as "MEMBER.person"), sum's path and table, and everything in order, include and columns. {"n": "name"} is a name, a path or @name anywhere. A number is a number, and true and false are themselves.`,
 	}
 	schemas["Queries"] = schema{
 		"type":     "object",
 		"required": []string{"queries"},
 		"properties": schema{"queries": schema{
 			"type":                 "object",
-			"description":          "Queries by name, each in the language as a string or as a JSON tree, run together as one reader so they share what they work out.",
+			"description":          "Queries by name, each in the language as a string or as JSON, run together as one reader so they share what they work out.",
 			"additionalProperties": schema{"oneOf": []schema{{"type": "string"}, component("Query")}},
 		}},
 	}
@@ -410,7 +401,7 @@ func spec() schema {
 		"openapi": "3.2.0",
 		"info":    schema{"title": "Heliosian data model", "version": "1"},
 		"tags": []schema{
-			{"name": "read", "description": "The query language, as text or a JSON tree."},
+			{"name": "read", "description": "The query language, as text or as JSON."},
 			{"name": "write", "description": "Batches of inserts, sets and deletes."},
 			{"name": "do", "description": "Calls that are more than writing rows."},
 		},

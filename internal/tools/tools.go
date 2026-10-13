@@ -107,26 +107,34 @@ func define[In any](name, words, description string, run func(c *call, in In) (a
 	}}
 }
 
-type tree = map[string]any
+type tree = []any
 
-func path(p string) tree {
-	return tree{"path": p}
+func path(p string) map[string]any {
+	return map[string]any{"n": p}
+}
+
+func scan(table string, parts ...any) tree {
+	return append(tree{"from", table}, parts...)
+}
+
+func where(conds ...any) tree {
+	return append(tree{"where"}, conds...)
 }
 
 func eq(p string, v any) tree {
-	return tree{"=": []any{path(p), v}}
+	return tree{"=", path(p), v}
 }
 
 func among(p string, values []string) tree {
-	args := []any{path(p)}
+	out := tree{"in", path(p)}
 	for _, v := range values {
-		args = append(args, v)
+		out = append(out, v)
 	}
-	return tree{"in": args}
+	return out
 }
 
-func asc(p string) []any {
-	return []any{tree{"path": p, "dir": "asc"}}
+func asc(p string) tree {
+	return tree{"order", p, "asc"}
 }
 
 type call struct {
@@ -160,7 +168,7 @@ func (c *call) rows(q tree) ([]store.Row, db.Result, error) {
 }
 
 func (c *call) row(table, id string) (store.Row, bool, error) {
-	rows, _, err := c.rows(tree{"from": table, "where": []any{eq("id", id)}})
+	rows, _, err := c.rows(scan(table, where(eq("id", id))))
 	if err != nil || len(rows) == 0 {
 		return nil, false, err
 	}
@@ -279,5 +287,5 @@ func day(now time.Time, cell, field string) (time.Time, error) {
 
 var all = []Tool{
 	whoami, search, similar, events, days, findPeople, classroom, group, nearbyFamilies,
-	activities, parties, lists, links, readDocument, get, query, describeSchema, describeTable, policies,
+	activities, parties, lists, links, readDocument, get, query, queryJSON, describeSchema, describeTable, policies,
 }

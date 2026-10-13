@@ -101,7 +101,7 @@ function oldName() {
 }
 
 async function one(table, column, value) {
-  const answer = await api('QUERY', '/api/q', {from: table, where: [{'=': [{path: column}, value]}]});
+  const answer = await api('QUERY', '/api/q', ['from', table, ['where', ['=', {n: column}, value]]]);
   return rowsOf(answer, table)[0];
 }
 

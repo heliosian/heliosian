@@ -24,6 +24,7 @@ A person in any answer is marked by their roles - `student`, `parent` or `staff`
 | `helios_read_document` | a document's tree of parts, links, images and extracts, and the Markdown of each extract read from the bucket through `Model.BlobCell`, at most `documentText` bytes of it, naming the extracts left out |
 | `helios_get` | one row with the names of what it references and the first few rows of each table and column that point at it; a person also with each family and its members |
 | `helios_query` | a query in the language, run as `/api/q` runs it: the canonical form, the count, the rows with their filled columns and the rows the includes brought |
+| `helios_query_json` | the same as `helios_query`, the query written as JSON (`docs/datamodel.md`, The query API) |
 | `helios_describe_schema` | every table with its description and column names, from `db.Tables` |
 | `helios_describe_table` | one table's columns in full, from `db.DescribeTable`, and the columns elsewhere that point at it |
 | `helios_policies` | `db.PolicySource` |

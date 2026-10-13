@@ -13,17 +13,17 @@ function query(tree) {
   return api('QUERY', '/api/q', tree);
 }
 
-const viewerIs = column => ({'=': [{path: column}, {path: '@viewer'}]});
+const viewerIs = column => ['=', {n: column}, {n: '@viewer'}];
 
 export async function loadModel() {
   const [viewer, pages, person, photo, admin, cards, redirects] = await Promise.all([
     whoAmI(),
-    query({from: 'DOCUMENT', where: [{'=': [{path: 'kind'}, 'wiki']}], order: [{path: 'name', dir: 'asc'}]}),
-    query({from: 'PERSON', where: [viewerIs('id')]}),
-    query({from: 'PHOTO', where: [viewerIs('person'), {path: 'ready'}], order: [{path: 'order', dir: 'asc'}], limit: 1}),
-    query({from: 'PERSON', where: [viewerIs('id'), {admin_of: ['wiki']}]}),
-    query({from: 'DOCUMENT', where: [{'=': [{path: 'relation'}, 'side']}], order: [{path: 'order', dir: 'asc'}]}),
-    query({from: 'REDIRECT', where: [{'=': [{path: 'app'}, 'wiki']}]}),
+    query(['from', 'DOCUMENT', ['where', ['=', {n: 'kind'}, 'wiki']], ['order', 'name', 'asc']]),
+    query(['from', 'PERSON', ['where', viewerIs('id')]]),
+    query(['from', 'PHOTO', ['where', viewerIs('person'), {n: 'ready'}], ['order', 'order', 'asc'], ['limit', 1]]),
+    query(['from', 'PERSON', ['where', viewerIs('id'), ['admin_of', 'wiki']]]),
+    query(['from', 'DOCUMENT', ['where', ['=', {n: 'relation'}, 'side']], ['order', 'order', 'asc']]),
+    query(['from', 'REDIRECT', ['where', ['=', {n: 'app'}, 'wiki']]]),
   ]);
   state.moved = new Map(redirects.result.map(id => {
     const row = redirects.resources.REDIRECT[id];

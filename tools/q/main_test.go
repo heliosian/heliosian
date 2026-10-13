@@ -50,7 +50,7 @@ func TestReadShowsTables(t *testing.T) {
 		t.Errorf("a column no row fills is shown:\n%s", out)
 	}
 
-	a, err = c.Query(json.RawMessage(`{"from": "EFFECTIVE_MEMBER", "where": [{"=": [{"path": "group"}, "grp00000000020"]}]}`))
+	a, err = c.Query(json.RawMessage(`["from", "EFFECTIVE_MEMBER", ["where", ["=", {"n": "group"}, "grp00000000020"]]]`))
 	if err != nil {
 		t.Fatal(err)
 	}

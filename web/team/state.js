@@ -340,7 +340,7 @@ export function resolvePath(path) {
 export async function resolveAlias(path) {
   const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
   const last = segs[segs.length - 1] || '';
-  const answer = await api('QUERY', '/api/q', {from: 'ALIAS', where: [{'=': [{path: 'alias'}, last]}], columns: ['target']});
+  const answer = await api('QUERY', '/api/q', ['from', 'ALIAS', ['where', ['=', {n: 'alias'}, last]], ['columns', 'target']]);
   for (const id of answer.result) {
     const node = activity(answer.resources.ALIAS[id].target);
     if (node) {

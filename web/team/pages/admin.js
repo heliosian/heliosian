@@ -40,14 +40,14 @@ function notifyCard() {
   return adminsCard({
     title: 'Email notifications',
     hint: 'Everyone here gets an email for every sign-up and every addition this school year.',
-    ...groupMembers([{'=': [{path: 'id'}, year.notify]}]),
+    ...groupMembers(['=', {n: 'id'}, year.notify]),
   });
 }
 
 function adminsList() {
   return adminsCard({
     hint: 'Whoever is on this list can approve suggestions, edit any activity, and reach this page. Co-chairs edit their own activities without being here.',
-    ...groupMembers([{in: [{path: 'id'}, {select: {from: 'APP', column: 'admins', where: [{'=': [{path: 'key'}, 'team']}]}}]}]),
+    ...groupMembers(['in', {n: 'id'}, ['select', 'APP.admins', ['=', {n: 'key'}, 'team']]]),
   });
 }
 
@@ -57,7 +57,7 @@ function redirectsCard() {
   card.append(el('div', 'hint', 'Old addresses on this site and where they now lead, followed before sign-in. Add one for a link from the old volunteer site, or any address that should land somewhere else.'));
   const rows = el('div');
   const status = el('span', 'save-status');
-  api('QUERY', '/api/q', {from: 'REDIRECT', where: [{'=': [{path: 'app'}, 'team']}]})
+  api('QUERY', '/api/q', ['from', 'REDIRECT', ['where', ['=', {n: 'app'}, 'team']]])
     .then(answer => fillRedirects(rows, answer.result.map(id => answer.resources.REDIRECT[id])))
     .catch(err => {
       status.classList.add('error');

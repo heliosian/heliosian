@@ -19,7 +19,7 @@ const (
 var firstYear = regexp.MustCompile(`\d{4}`)
 
 func (c *call) settings(app string) (map[string]string, error) {
-	found, _, err := c.rows(tree{"from": "SETTING", "where": []any{eq("app", app)}})
+	found, _, err := c.rows(scan("SETTING", where(eq("app", app))))
 	if err != nil {
 		return nil, err
 	}
@@ -44,16 +44,16 @@ func (c *call) past(g store.Row) bool {
 	return last[:min(len(last), len(time.DateOnly))] < c.env.Now.Format(time.DateOnly)
 }
 
-func words(where []any, text string, columns ...string) []any {
+func words(conds tree, text string, columns ...string) tree {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return where
+		return conds
 	}
-	alternatives := []any{}
+	alternatives := tree{"or"}
 	for _, col := range columns {
-		alternatives = append(alternatives, tree{"contains": []any{path(col), text}})
+		alternatives = append(alternatives, tree{"contains", path(col), text})
 	}
-	return append(where, tree{"or": alternatives})
+	return append(conds, alternatives)
 }
 
 type placeIn struct {
@@ -81,7 +81,7 @@ type activity struct {
 }
 
 var activities = define("helios_activities", "Looking at HCA-Team", "What Helios School's parents' association, the HCA, runs on HCA-Team in a school year - the current one unless another is named - and who has signed up: every activity under its heading, the shifts and roles under an activity naming it as under, each with its timing, place, spots, whether it is full, its co-chairs and volunteers as HCA-Team shows them to the viewer, and the viewer's own place; plus HCA-Team's introduction and expense form. What has already happened is left out unless asked for.", func(c *call, in placeIn) (any, error) {
-	roots, _, err := c.rows(tree{"from": "GROUP", "as": "r", "where": []any{eq("kind", "activity"), tree{"!=": []any{path("parent.kind"), "activity"}}, tree{"exists": tree{"from": "GROUP", "where": []any{eq("parent", path("@r")), eq("kind", "category")}}}}, "order": asc("name")})
+	roots, _, err := c.rows(scan("GROUP", path("@r"), where(eq("kind", "activity"), tree{"!=", path("parent.kind"), "activity"}, tree{"exists", "GROUP", eq("parent", path("@r")), eq("kind", "category")}), asc("name")))
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 	if root == nil {
 		return nil, fmt.Errorf("HCA-Team holds no school year starting in %d; it holds %s", want, strings.Join(years, ", "))
 	}
-	filed, _, err := c.rows(tree{"from": "GROUP", "where": []any{among("kind", []string{"activity", "category"})}})
+	filed, _, err := c.rows(scan("GROUP", where(among("kind", []string{"activity", "category"}))))
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 		}
 		return false
 	}
-	found, _, err := c.rows(tree{"from": "GROUP", "where": words([]any{eq("kind", "activity")}, in.Words, "name", "description"), "order": asc("order")})
+	found, _, err := c.rows(scan("GROUP", words(where(eq("kind", "activity")), in.Words, "name", "description"), asc("order")))
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 	led := map[string]bool{}
 	names := map[string]string{}
 	if len(ids) > 0 {
-		signed, mres, err := c.rows(tree{"from": "MEMBER", "where": []any{among("group", ids), eq("member", "yes")}, "include": []any{"person"}})
+		signed, mres, err := c.rows(scan("MEMBER", where(among("group", ids), eq("member", "yes")), tree{"include", "person"}))
 		if err != nil {
 			return nil, err
 		}
@@ -232,8 +232,7 @@ type partyOut struct {
 }
 
 var parties = define("helios_parties", "Looking at the parties", "The fun(d)raiser parties on Helios Celebrate: every party still to come with its celebration, date, place, price, spots, whether it is full or takes a waitlist, who it is for, its hosts, the tickets the viewer may see and their own household's, plus the page's introduction, its ticket note and the current celebration. Parties that have happened are left out unless asked for. One call answers every party at once.", func(c *call, in partiesIn) (any, error) {
-	where := words([]any{eq("kind", "party")}, in.Words, "name", "subtitle", "description")
-	found, res, err := c.rows(tree{"from": "GROUP", "where": where, "order": asc("start"), "include": []any{"parent", "eligible"}})
+	found, res, err := c.rows(scan("GROUP", words(where(eq("kind", "party")), in.Words, "name", "subtitle", "description"), asc("start"), tree{"include", "parent", "eligible"}))
 	if err != nil {
 		return nil, err
 	}
@@ -250,12 +249,12 @@ var parties = define("helios_parties", "Looking at the parties", "The fun(d)rais
 	tickets := map[string][]string{}
 	ours := map[string][]string{}
 	if len(ids) > 0 {
-		held, mres, err := c.rows(tree{"from": "MEMBER", "where": []any{among("group", ids), eq("member", "yes")}, "include": []any{"person"}})
+		held, mres, err := c.rows(scan("MEMBER", where(among("group", ids), eq("member", "yes")), tree{"include", "person"}))
 		if err != nil {
 			return nil, err
 		}
 		household := map[string]bool{c.env.Viewer: true}
-		mine, _, err := c.rows(tree{"from": "PERSON", "where": []any{tree{"in": []any{path("id"), tree{"household": []any{path("@viewer")}}}}}})
+		mine, _, err := c.rows(scan("PERSON", where(tree{"in", path("id"), tree{"household", path("@viewer")}})))
 		if err != nil {
 			return nil, err
 		}
@@ -319,7 +318,7 @@ type list struct {
 }
 
 var lists = define("helios_lists", "Looking at the email lists", "The email lists on Helios Loop the viewer can see - every group with an address: the ones they manage, the ones open to everyone and the ones they are on - each with its address, description, managers, how many are on it, its members where the viewer may see them, and whether the viewer is on it. A list's members follow from rules over the directory.", func(c *call, in wordsIn) (any, error) {
-	found, _, err := c.rows(tree{"from": "GROUP", "where": words([]any{tree{"not": tree{"blank": path("slug")}}}, in.Words, "name", "slug", "description"), "order": asc("name")})
+	found, _, err := c.rows(scan("GROUP", words(where(tree{"not", tree{"blank", path("slug")}}), in.Words, "name", "slug", "description"), asc("name")))
 	if err != nil {
 		return nil, err
 	}
@@ -354,7 +353,7 @@ type linkOut struct {
 }
 
 var links = define("helios_links", "Looking at Heliosian's links", "The links on Heliosian's front page, the community's page of everything else it uses - the school's own sites, the handbook, lunch ordering, chats, photos and the like - each with its description and its section.", func(c *call, in wordsIn) (any, error) {
-	widgets, wres, err := c.rows(tree{"from": "WIDGET", "where": []any{eq("key", "links")}, "order": asc("order"), "include": []any{"group"}})
+	widgets, wres, err := c.rows(scan("WIDGET", where(eq("key", "links")), asc("order"), tree{"include", "group"}))
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +362,7 @@ var links = define("helios_links", "Looking at Heliosian's links", "The links on
 		if w["group"] == "" {
 			continue
 		}
-		found, _, err := c.rows(tree{"from": "GROUP", "where": words([]any{eq("parent", w["group"]), tree{"not": tree{"blank": path("url")}}}, in.Words, "name", "description"), "order": asc("order")})
+		found, _, err := c.rows(scan("GROUP", words(where(eq("parent", w["group"]), tree{"not", tree{"blank", path("url")}}), in.Words, "name", "description"), asc("order")))
 		if err != nil {
 			return nil, err
 		}

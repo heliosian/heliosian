@@ -16,7 +16,7 @@ import (
 )
 
 func row(c *qclient.Client, table, id string) map[string]string {
-	a, err := c.Query(map[string]any{"from": table, "where": []any{map[string]any{"=": []any{map[string]any{"path": "id"}, id}}}})
+	a, err := c.Query([]any{"from", table, []any{"where", []any{"=", map[string]any{"n": "id"}, id}}})
 	if err != nil {
 		logging.Fatal("read", "table", table, "id", id, "error", err)
 	}

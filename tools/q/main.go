@@ -97,7 +97,7 @@ func show(w io.Writer, a qclient.Answer, columns []string) {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--local email] [--import] [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or a JSON tree; stdin when no argument)")
+		fmt.Fprintln(os.Stderr, "usage: go run ./tools/q [--local email] [--import] [--spoof email] read [--columns a,b] [--trace] <query>   (the query language, or as JSON; stdin when no argument)")
 		fmt.Fprintln(os.Stderr, "       go run ./tools/q [--local email] [--import] [--spoof email] write <batch>                   (a JSON batch; stdin when no argument)")
 	}
 	local := flag.String("local", "", "reach the dev server (go run ./tools/startserver --real) instead of production, signed in as the person with this address by a token minted from SESSION_KEY")
@@ -135,7 +135,7 @@ func main() {
 		var a qclient.Answer
 		var err error
 		start := time.Now()
-		if strings.HasPrefix(body, "{") {
+		if strings.HasPrefix(body, "[") {
 			a, err = c.Query(json.RawMessage(body))
 		} else {
 			a, err = c.QueryText(body)

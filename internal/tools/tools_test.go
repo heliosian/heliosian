@@ -106,6 +106,8 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 		{"helios_links", `{"words": "nothing like it"}`, []string{"no link matches"}, true},
 		{"helios_read_document", `{"id": "` + camping + `"}`, []string{"# Camping Trips", "https://wiki.heliosian.com/p/Activities/Camping-Trips"}, false},
 		{"helios_query", `{"query": "(from GROUP (where (= kind \"crew\")))"}`, []string{`"Robins"`}, false},
+		{"helios_query_json", `{"query": ["from", "GROUP", ["where", ["=", {"n": "kind"}, "crew"]]]}`, []string{`"Robins"`}, false},
+		{"helios_query_json", `{"query": ["from", "GROUP", ["where", ["=", {"path": "kind"}, "crew"]]]}`, []string{`is an object other than {"n": name}`}, true},
 	} {
 		answer, err := run(t, set, s, c.tool, c.input)
 		text := answer.Text

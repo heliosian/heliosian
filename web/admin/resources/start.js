@@ -29,13 +29,13 @@ for (const t of all) {
 }
 
 function scan(table, where) {
-  const out = {from: table.name};
+  const out = ['from', table.name];
   if (where) {
-    out.where = where;
+    out.push(['where', ...where]);
   }
   const include = table.columns.filter(c => c.kind === 'ref' && c.relation).map(c => c.name);
   if (include.length) {
-    out.include = include;
+    out.push(['include', ...include]);
   }
   return query(out);
 }
@@ -369,7 +369,7 @@ function rowActions(table, row, fields) {
 
 async function detailView(table, id) {
   heading.replaceChildren(link(`#${table.name}`, '', table.name), ` / ${id}`);
-  const answer = await scan(table, [{'=': [{path: 'id'}, id]}]);
+  const answer = await scan(table, [['=', {n: 'id'}, id]]);
   const row = answer.resources[table.name]?.[id];
   if (!row) {
     const parts = [el('p', 'error', `no ${table.name} ${id} that the viewer can see`)];
@@ -411,7 +411,7 @@ async function detailView(table, id) {
   const refs = [...(referrers.get(table.name) ?? []), ...(referrers.get('*') ?? [])];
   const answers = await Promise.all(refs.map(async ({table: from, column}) => {
     try {
-      return {from, column, answer: await scan(from, [{'=': [{path: column}, id]}])};
+      return {from, column, answer: await scan(from, [['=', {n: column}, id]])};
     } catch (err) {
       return {from, column, err};
     }

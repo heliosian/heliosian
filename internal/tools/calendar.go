@@ -36,8 +36,8 @@ type event struct {
 	Answer      string `json:"yourAnswer,omitempty"`
 }
 
-func (c *call) household() []any {
-	return []any{tree{"=": []any{path("person"), path("@viewer")}}, tree{"in": []any{path("person"), tree{"household": []any{path("@viewer")}}}}}
+func (c *call) household() tree {
+	return tree{"or", eq("person", path("@viewer")), tree{"in", path("person"), tree{"household", path("@viewer")}}}
 }
 
 func (c *call) forHousehold(ids []string) (map[string]bool, error) {
@@ -45,7 +45,7 @@ func (c *call) forHousehold(ids []string) (map[string]bool, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	found, _, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("group", ids), tree{"or": c.household()}}})
+	found, _, err := c.rows(scan("EFFECTIVE_MEMBER", where(among("group", ids), c.household())))
 	if err != nil {
 		return nil, err
 	}
@@ -56,14 +56,14 @@ func (c *call) forHousehold(ids []string) (map[string]bool, error) {
 }
 
 var events = define("helios_events", "Looking at the calendar", "Helios School's calendar: school and community events, Celebrate's parties and HCA-Team's activities starting in a range of days, in order, each with its category, whether it is for the viewer's household, and the viewer's own answer about coming (yes or no; none is maybe or no answer). Use it for what is coming up at Helios. A recent email can change what the calendar says; helios_search finds one.", func(c *call, in eventsIn) (any, error) {
-	where := []any{
-		tree{"or": []any{eq("kind", "event"), eq("kind", "party"), tree{"and": []any{eq("kind", "activity"), tree{"!=": []any{path("parent.kind"), "activity"}}}}}},
-		tree{"not": tree{"blank": path("start")}},
-		tree{"not": tree{"in": []any{path("status"), "closed", "pending"}}},
+	conds := []any{
+		tree{"or", eq("kind", "event"), eq("kind", "party"), tree{"and", eq("kind", "activity"), tree{"!=", path("parent.kind"), "activity"}}},
+		tree{"not", tree{"blank", path("start")}},
+		tree{"not", tree{"in", path("status"), "closed", "pending"}},
 	}
 	words := strings.TrimSpace(in.Words)
 	if words != "" {
-		where = append(where, tree{"contains": []any{path("name"), words}})
+		conds = append(conds, tree{"contains", path("name"), words})
 	}
 	if words == "" || in.From != "" || in.To != "" {
 		from, err := day(c.env.Now, in.From, "from")
@@ -76,16 +76,16 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 				return nil, err
 			}
 		}
-		where = append(where, tree{">=": []any{path("start"), from.Format(time.DateOnly)}}, tree{"<": []any{path("start"), to.AddDate(0, 0, 1).Format(time.DateOnly)}})
+		conds = append(conds, tree{">=", path("start"), from.Format(time.DateOnly)}, tree{"<", path("start"), to.AddDate(0, 0, 1).Format(time.DateOnly)})
 	}
 	if room := strings.TrimSpace(in.Classroom); room != "" {
-		families := tree{"select": tree{"from": "MEMBER", "column": "person", "where": []any{
-			tree{"in": []any{path("group"), tree{"select": tree{"from": "MEMBER", "column": "group", "where": []any{eq("person.classroom.name", room), eq("member", "yes"), eq("group.kind", "family")}}}}},
+		families := tree{"select", "MEMBER.person",
+			tree{"in", path("group"), tree{"select", "MEMBER.group", eq("person.classroom.name", room), eq("member", "yes"), eq("group.kind", "family")}},
 			eq("member", "yes"),
-		}}}
-		where = append(where, tree{"exists": tree{"from": "EFFECTIVE_MEMBER", "where": []any{eq("group", path("@e")), tree{"in": []any{path("person"), families}}}}})
+		}
+		conds = append(conds, tree{"exists", "EFFECTIVE_MEMBER", eq("group", path("@e")), tree{"in", path("person"), families}})
 	}
-	found, res, err := c.rows(tree{"from": "GROUP", "as": "e", "where": where, "order": asc("start"), "include": []any{"parent"}})
+	found, res, err := c.rows(scan("GROUP", path("@e"), where(conds...), asc("start"), tree{"include", "parent"}))
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +136,7 @@ func (c *call) answers(groups []store.Row) (map[string]string, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	found, _, err := c.rows(tree{"from": "MEMBER", "where": []any{among("group", ids), eq("person", path("@viewer")), eq("member", "yes")}})
+	found, _, err := c.rows(scan("MEMBER", where(among("group", ids), eq("person", path("@viewer")), eq("member", "yes"))))
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +182,7 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 		return nil, err
 	}
 	on := date.Format(time.DateOnly)
-	found, res, err := c.rows(tree{"from": "GROUP", "where": []any{eq("kind", "day"), eq("start", on)}, "include": []any{"parent"}})
+	found, res, err := c.rows(scan("GROUP", where(eq("kind", "day"), eq("start", on)), tree{"include", "parent"}))
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 	}
 	rooms := map[string][]string{}
 	if len(ids) > 0 {
-		members, mres, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("group", ids)}, "include": []any{"person.classroom"}})
+		members, mres, err := c.rows(scan("EFFECTIVE_MEMBER", where(among("group", ids)), tree{"include", "person.classroom"}))
 		if err != nil {
 			return nil, err
 		}
@@ -210,7 +210,7 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 	}
 	sources := []store.Row{}
 	if len(ids) > 0 {
-		if sources, _, err = c.rows(tree{"from": "GROUP_SOURCE", "where": []any{among("group", ids)}}); err != nil {
+		if sources, _, err = c.rows(scan("GROUP_SOURCE", where(among("group", ids)))); err != nil {
 			return nil, err
 		}
 	}
@@ -227,7 +227,7 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 		if len(d.Classrooms) == 0 {
 			d.ForYou = true
 		}
-		parts, _, err := c.rows(tree{"from": "GROUP", "where": []any{eq("parent", g["id"]), eq("kind", "day_part")}, "order": asc("start")})
+		parts, _, err := c.rows(scan("GROUP", where(eq("parent", g["id"]), eq("kind", "day_part")), asc("start")))
 		if err != nil {
 			return nil, err
 		}
@@ -274,7 +274,7 @@ func (c *call) yearBounds(on string) (map[string]string, error) {
 		start--
 	}
 	from, to := fmt.Sprintf("%d-07-01", start), fmt.Sprintf("%d-07-01", start+1)
-	marked, res, err := c.rows(tree{"from": "GROUP_SOURCE", "where": []any{tree{"not": tree{"blank": path("marker")}}, tree{">=": []any{path("group.start"), from}}, tree{"<": []any{path("group.start"), to}}}, "include": []any{"group"}})
+	marked, res, err := c.rows(scan("GROUP_SOURCE", where(tree{"not", tree{"blank", path("marker")}}, tree{">=", path("group.start"), from}, tree{"<", path("group.start"), to}), tree{"include", "group"}))
 	if err != nil {
 		return nil, err
 	}
