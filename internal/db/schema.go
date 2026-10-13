@@ -331,7 +331,7 @@ var Tables = []Table{
 	{
 		Name:        "COLLECTION_GROUP",
 		Sheet:       PeopleSheet,
-		Unique:      []string{"collection", "clause", "relation", "group"},
+		Unique:      []string{"collection", "clause", "relation", "group", "replace_with"},
 		Description: "A group a collection is made from, and how a thing must stand to it. Rows sharing a clause are alternatives; a thing is in the collection when it meets every clause, and a collection with no rows holds everything.",
 		Columns: []Column{
 			ident(CollectionGroupPrefix),
@@ -339,8 +339,12 @@ var Tables = []Table{
 			col("clause", Int).required().about("The clause it is an alternative in."),
 			enum("relation",
 				v("under", "the group itself or anything under it through parent"),
-				v("for", "anything one of whose rules names the group as target or within")).required().about("How a thing must stand to the group."),
+				v("for", "anything whose effective members include every one of the group's, after replace_with")).required().about("How a thing must stand to the group."),
 			ref("group", "GROUP").required().about("The group."),
+			enum("replace_with",
+				v("parents", "for a student, everyone in their families who isn't a student"),
+				v("children", "for someone who isn't a student, the students in their families"),
+				v("household", "everyone in their families, and themselves")).about("For relation for, replaces the group's effective members with their relatives before the comparison."),
 		},
 	},
 	{

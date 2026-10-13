@@ -305,7 +305,7 @@ const PolicySource = `
 ; what the viewer's own collections are made from
 (read COLLECTION_GROUP (= collection.person @viewer))
 ; every column of what a collection is made from
-(read COLLECTION_GROUP (id collection clause relation group) true)
+(read COLLECTION_GROUP (id collection clause relation group replace_with) true)
 ; the viewer's own bug reports and ideas
 (read REPORT (= added_by @viewer))
 ; every column of a bug report or idea
