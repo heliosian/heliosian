@@ -41,7 +41,7 @@ func (c *call) roles(ids []string) (map[string][]string, error) {
 	if len(ids) == 0 {
 		return out, nil
 	}
-	found, res, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("person", ids), eq("group.kind", "group"), among("group.slug", []string{"students", "parents", "staff"})}, "include": []any{"group"}})
+	found, res, err := c.rows(tree{"from": "EFFECTIVE_MEMBER", "where": []any{among("person", ids), tree{"in": []any{path("group"), tree{"slug": []any{"students", "parents", "staff"}}}}}, "include": []any{"group"}})
 	if err != nil {
 		return nil, err
 	}
@@ -481,8 +481,7 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 })
 
 func inRole(slug string) tree {
-	groups := tree{"select": tree{"from": "GROUP", "column": "id", "where": []any{eq("kind", "group"), eq("slug", slug)}}}
-	return tree{"in": []any{path("id"), tree{"members": []any{groups}}}}
+	return tree{"in": []any{path("id"), tree{"members": []any{tree{"slug": []any{slug}}}}}}
 }
 
 func (c *call) inClassroom(column, group, role string) ([]member, error) {

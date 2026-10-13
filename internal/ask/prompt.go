@@ -68,7 +68,7 @@ func (p person) is(role string) bool {
 
 func (t *turn) viewer() (*viewer, error) {
 	if t.env.Viewer == "" {
-		return nil, nil
+		return nil, fmt.Errorf("%s signs in as no one in the directory", t.email)
 	}
 	answer, err := t.sources.Tools.Run(t.ctx, t.m, t.env.Viewer, "helios_whoami", json.RawMessage(`{}`))
 	if err != nil {
@@ -112,7 +112,7 @@ func (t *turn) school() (schoolData, error) {
 			s.classrooms = append(s.classrooms, g)
 		}
 	}
-	staff, _, err := t.rows(`(from PERSON @p (where (or (not (blank classroom)) (not (blank crew))) (in id (members (select GROUP.id (= kind "group") (= slug "staff"))))) (order name_sort asc))`)
+	staff, _, err := t.rows(`(from PERSON @p (where (or (not (blank classroom)) (not (blank crew))) (in id (members (slug "staff")))) (order name_sort asc))`)
 	if err != nil {
 		return s, err
 	}
@@ -123,7 +123,7 @@ func (t *turn) school() (schoolData, error) {
 			}
 		}
 	}
-	students, _, err := t.rows(`(from PERSON @p (where (not (blank classroom)) (not (blank grade)) (in id (members (select GROUP.id (= kind "group") (= slug "students"))))))`)
+	students, _, err := t.rows(`(from PERSON @p (where (not (blank classroom)) (not (blank grade)) (in id (members (slug "students")))))`)
 	if err != nil {
 		return s, err
 	}
@@ -431,10 +431,6 @@ func placeWords(s schoolData, p person) string {
 func (t *turn) viewerBlock(s schoolData, v *viewer) string {
 	b := &strings.Builder{}
 	fmt.Fprintf(b, "## Who is asking\n\nToday is %s. The school year is %s.\n\n", dayWords(t.env.Now), db.SchoolYear(t.env.Now.Format(time.DateOnly)))
-	if v == nil {
-		fmt.Fprintf(b, "The person signed in is %s, whom the directory does not list. Answer about the school and its apps; nothing about a family is known.\n", t.email)
-		return b.String()
-	}
 	p := v.Person
 	fmt.Fprintf(b, "The person signed in is %s (%s), %s.", p.Name, t.email, roleWords(p))
 	if p.Pronouns != "" {

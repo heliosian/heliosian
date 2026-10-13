@@ -45,7 +45,7 @@ export async function loadModel() {
   const [answers, dir] = await Promise.all([queries({
     viewer: '(from PERSON (where (= id @viewer)))',
     admin: '(from APP (where (= key "team") (admin_of "team")) (columns key))',
-    everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
+    everyone: '(from GROUP (where (= id (slug "everyone"))) (columns slug))',
     activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc))',
     headings: '(from GROUP (where (= kind "category") (= parent.kind "activity")) (order order asc))',
     runs: '(from GROUP @g (where (in kind "activity" "category") (runs_list @g)) (columns kind))',

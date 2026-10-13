@@ -19,11 +19,12 @@ func tallied(ctx context.Context, name string) func() {
 }
 
 type Rows struct {
-	table    *Table
-	rows     []store.Row
-	byID     map[string]int
-	byUnique map[string]int
-	by       map[string]map[string][]int
+	table      *Table
+	rows       []store.Row
+	byID       map[string]int
+	byUnique   map[string]int
+	byDistinct map[string]map[string]int
+	by         map[string]map[string][]int
 }
 
 type Sheet map[string]*Rows
@@ -87,6 +88,14 @@ func (v *View) Find(values ...string) (store.Row, bool) {
 	}
 	i := v.rows.byUnique[strings.Join(values, "\x00")]
 	if v.shown[i] == nil {
+		return nil, false
+	}
+	return v.shown[i], true
+}
+
+func (v *View) Distinct(column, value string) (store.Row, bool) {
+	i, ok := v.rows.byDistinct[column][strings.ToLower(value)]
+	if !ok || v.shown[i] == nil {
 		return nil, false
 	}
 	return v.shown[i], true
@@ -206,10 +215,9 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
 }
 
 func indexRows(t *Table, rows []store.Row) (*Rows, error) {
-	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, by: map[string]map[string][]int{}}
-	distinct := map[string]map[string]bool{}
+	out := &Rows{table: t, byID: map[string]int{}, byUnique: map[string]int{}, byDistinct: map[string]map[string]int{}, by: map[string]map[string][]int{}}
 	for _, k := range t.Distinct {
-		distinct[k] = map[string]bool{}
+		out.byDistinct[k] = map[string]int{}
 	}
 	for _, row := range rows {
 		if _, dup := out.byID[row["id"]]; dup {
@@ -228,10 +236,10 @@ func indexRows(t *Table, rows []store.Row) (*Rows, error) {
 			if value == "" {
 				continue
 			}
-			if distinct[k][value] {
+			if _, dup := out.byDistinct[k][value]; dup {
 				return nil, fmt.Errorf("%s: two rows have the %s %q", t.Name, k, row[k])
 			}
-			distinct[k][value] = true
+			out.byDistinct[k][value] = len(out.rows)
 		}
 		for _, c := range t.Columns {
 			if (c.Kind != Ref && c.Kind != Enum) || row[c.Name] == "" {

@@ -64,7 +64,7 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 }
 
 func (cx *compiler) groupsArg(s *sexp, sc *scope) (func(f *frame) []string, bool, error) {
-	if s.isList && s.head() == "select" {
+	if s.isList && (s.head() == "select" || s.head() == "slug") {
 		set, t, outer, err := cx.set(s, sc, typ{class: classRow, kind: ID, table: "GROUP"})
 		if err != nil {
 			return nil, false, err

@@ -65,11 +65,6 @@ func TestLinkCardsAreWhatTheViewerMayRead(t *testing.T) {
 	if _, ok := parent.linkCard(family); !ok {
 		t.Fatal("the parent's own family has no chip")
 	}
-	outsider := s.turn(stranger)
-	outsider.found = parent.found
-	if card, ok := outsider.linkCard(family); ok {
-		t.Fatalf("someone outside the directory was shown %+v", card)
-	}
 	if _, ok := parent.linkCard("https://who.heliosian.com/people/per99999999999"); ok {
 		t.Fatal("a chip for a link no tool gave")
 	}

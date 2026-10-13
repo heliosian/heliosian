@@ -180,6 +180,10 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 			out := answerAll{Now: env.Now.Format(cells.StampFormat), Results: map[string][]string{}, Resources: map[string]map[string]store.Row{}}
 			for i, result := range m.RunAll(ctx, qs, env) {
 				slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "name", names[i], "query", qs[i].tree.flat())
+				if result.Err != nil {
+					serve.Error(w, r, access.Invalid("%s: %v", names[i], result.Err))
+					return
+				}
 				out.Results[names[i]] = result.IDs
 				for table, rows := range result.Resources {
 					for _, row := range rows {
@@ -204,6 +208,10 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		}
 		slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "query", q.tree.flat())
 		result := m.Run(ctx, q, env)
+		if result.Err != nil {
+			serve.Error(w, r, access.Invalid("%v", result.Err))
+			return
+		}
 		out := answer{
 			Now:       env.Now.Format(cells.StampFormat),
 			Query:     q.String(),
@@ -254,12 +262,13 @@ func (m *Model) PersonOf(email string) string {
 	return row["person"]
 }
 
+// SECURITY: only a directory address signs anyone in. A guest's address must never sign in, here or anywhere:
+// guests reach only their event RSVP pages, by the token in the link. Sign-in to every app, the API and MCP all
+// pass through this, so looking up guest addresses ("Yes") here lets every guest into everything.
+// TestGuestsNeverSignIn holds this.
 func (m *Model) SignedIn(email string) string {
 	address := strings.ToLower(strings.TrimSpace(email))
 	row, ok := m.Table("PERSON_EMAIL").Find(address, "No")
-	if !ok {
-		row, ok = m.Table("PERSON_EMAIL").Find(address, "Yes")
-	}
 	if !ok {
 		return ""
 	}

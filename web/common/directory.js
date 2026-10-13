@@ -22,11 +22,11 @@ function all(answer, table) {
 
 async function load() {
   const [people, emails, photos, members, roles, groups] = await Promise.all([
-    q('(from PERSON (where (in id (members (select GROUP.id (= slug "everyone")))) (not hidden)) (order name_sort asc))'),
+    q('(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc))'),
     q('(from PERSON_EMAIL (where primary))'),
     q('(from PHOTO (where ready) (order order asc))'),
     q('(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))))'),
-    q('(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (in slug "students" "parents" "staff")))) (include group))'),
+    q('(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group))'),
     q('(from GROUP (where (in kind "grade" "classroom" "department")))'),
   ]);
   const out = {

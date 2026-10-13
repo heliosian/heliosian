@@ -24,9 +24,9 @@ function all(answer, table) {
 
 async function fetchState() {
   const [people, emails, roles, groups, roomRows, photos, settings] = await Promise.all([
-    q('(from PERSON (where (!= source "guest") (in id (members (select GROUP.id (= slug "everyone"))))) (order name_sort asc))'),
+    q('(from PERSON (where (!= source "guest") (in id (members (slug "everyone")))) (order name_sort asc))'),
     q('(from PERSON_EMAIL (where primary))'),
-    q('(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (in slug "students" "parents" "staff")))) (include group))'),
+    q('(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group))'),
     q('(from GROUP (where (or (in kind "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))'),
     q('(from MEMBER (where (in group (select GROUP.id (= kind "group") (= parent.kind "band")))))'),
     q('(from PHOTO (where ready (or (= group.kind "classroom") (= group.kind "grade"))) (order order asc))'),

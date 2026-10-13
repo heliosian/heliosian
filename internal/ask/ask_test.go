@@ -31,9 +31,8 @@ import (
 )
 
 const (
-	rowan    = "rowan@example.com"
-	stranger = "nobody@heliosschool.org"
-	juniURL  = "https://who.heliosian.com/people/per00000000001"
+	rowan   = "rowan@example.com"
+	juniURL = "https://who.heliosian.com/people/per00000000001"
 )
 
 var sampleNow = time.Date(2026, 9, 28, 9, 0, 0, 0, db.School)
@@ -120,10 +119,6 @@ func TestViewerBlockNamesTheFamily(t *testing.T) {
 			t.Errorf("viewer block lacks %q:\n%s", want, block)
 		}
 	}
-	tr = sampleTurn(t, stranger)
-	if block := tr.viewerBlock(promptParts(t, tr)); !strings.Contains(block, "whom the directory does not list") {
-		t.Fatalf("a stranger:\n%s", block)
-	}
 }
 
 func TestLingoReadsTheModel(t *testing.T) {
@@ -165,9 +160,6 @@ func TestRecentBlockListsTheNewestMail(t *testing.T) {
 	tr.env.Now = time.Date(2027, 1, 4, 9, 0, 0, 0, db.School)
 	if recent, err = tr.recentDocuments(); err != nil || !strings.Contains(recentBlock(tr, recent), "No mail has come in") {
 		t.Fatalf("a quiet fortnight: %v %v", err, recent)
-	}
-	if recent, err = sampleTurn(t, stranger).recentDocuments(); err != nil || len(recent) != 0 {
-		t.Fatalf("a stranger was shown %v: %v", recent, err)
 	}
 }
 

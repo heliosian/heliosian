@@ -54,7 +54,8 @@ func (t *turn) query(format string, args ...any) (db.Result, error) {
 	if err != nil {
 		return db.Result{}, fmt.Errorf("a built-in query was refused: %w", err)
 	}
-	return t.m.Run(t.ctx, q, t.env), nil
+	res := t.m.Run(t.ctx, q, t.env)
+	return res, res.Err
 }
 
 func (t *turn) rows(format string, args ...any) ([]store.Row, db.Result, error) {

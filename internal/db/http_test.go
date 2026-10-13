@@ -88,6 +88,30 @@ func TestTokens(t *testing.T) {
 	}
 }
 
+func TestGuestsNeverSignIn(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	mux := http.NewServeMux()
+	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
+	r := httptest.NewRequest(http.MethodPost, "/api/do/guest", strings.NewReader(`{"email": "coach@example.net", "name": "Pat Coach"}`))
+	rec := httptest.NewRecorder()
+	auth.Fixed(superAdmin, mux).ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("adding a guest got %d %s", rec.Code, rec.Body.String())
+	}
+	m := s.Model()
+	if m.SignedIn(superAdmin) == "" {
+		t.Fatal("a directory address signs in as nobody")
+	}
+	for _, address := range []string{"coach@example.net", " Coach@Example.net "} {
+		if who := m.SignedIn(address); who != "" {
+			t.Errorf("the guest address %q signs in as %s", address, who)
+		}
+		if _, _, ok := m.SignedInAs(address); ok {
+			t.Errorf("the guest address %q signs in", address)
+		}
+	}
+}
+
 func TestSpoof(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	query := `{"from": "PERSON"}`

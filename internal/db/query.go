@@ -24,6 +24,7 @@ type Query struct {
 	include []*pathSpec
 	columns []Column
 	selects []*selectSpec
+	slugs   []string
 }
 
 type Env struct {
@@ -38,6 +39,7 @@ type Result struct {
 	Table     string
 	IDs       []string
 	Resources map[string]map[string]store.Row
+	Err       error
 }
 
 func (r Result) Rows() []store.Row {
@@ -146,6 +148,7 @@ type compiler struct {
 	hidden  int
 	touched []*scope
 	selects []*selectSpec
+	slugs   []string
 }
 
 func newCompiler(policy bool) *compiler {
@@ -233,7 +236,7 @@ func (cx *compiler) query(tree *sexp) (*Query, error) {
 		}
 	}
 	s.pickProbe()
-	q.selects = cx.selects
+	q.selects, q.slugs = cx.selects, cx.slugs
 	return q, nil
 }
 
@@ -818,6 +821,8 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		return cx.selectSet(s, sc, x)
 	case "members":
 		return cx.membersSet(s, sc)
+	case "slug":
+		return cx.slugSet(s)
 	case "ancestors":
 		if len(s.list) != 2 {
 			return nil, typ{}, false, s.errorf("ancestors takes one row")
@@ -1007,6 +1012,8 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 		return cx.path(s, sc)
 	}
 	switch s.head() {
+	case "slug":
+		return cx.slugOperand(s)
 	case "count":
 		inner, err := cx.scan(s, 1, sc, nil)
 		if err != nil {
@@ -1346,6 +1353,11 @@ func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	_, span := trace.Start(ctx, "run")
 	defer span.End()
 	r.policy, r.span = span.Tally("policy"), span
+	for _, slug := range q.slugs {
+		if r.slugged(slug, false) == "" {
+			return Result{Table: q.scan.table.Name, IDs: []string{}, Resources: map[string]map[string]store.Row{}, Err: fmt.Errorf("no group has the slug %q", slug)}
+		}
+	}
 	top := &frame{run: r}
 	scanned := span.Start("scan")
 	rows := []store.Row{}

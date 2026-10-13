@@ -70,7 +70,7 @@ const PolicySource = `
 
 ; the viewer is in effect a member of super-admins
 (define (super_admin)
-  (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
+  (exists EFFECTIVE_MEMBER (= group (slug "super-admins")) (= person @viewer)))
 
 ; @g is not closed, and the viewer manages it, added it while it is pending or, unless it is pending, is an effective member of the group it is visible to
 (define (visible @g)
@@ -761,8 +761,8 @@ const PolicySource = `
        (= @new.status "open") (not (blank @new.slug)) (= @new.added_by @viewer)
        (!= @viewer.source "guest")
        (exists EFFECTIVE_MEMBER (= group @new.managed_by) (= person @viewer))
-       (or (blank @new.visible_to) (= @new.visible_to.slug "everyone"))
-       (or (blank @new.members_visible_to) (= @new.members_visible_to.slug "everyone"))))
+       (or (blank @new.visible_to) (= @new.visible_to (slug "everyone")))
+       (or (blank @new.members_visible_to) (= @new.members_visible_to (slug "everyone")))))
 ; a mail list's managers rename it
 (set GROUP.name (runs_list @old))
 ; a mail list's managers change its address or take it away
@@ -776,12 +776,12 @@ const PolicySource = `
 ; a mail list's managers show it to its managers alone, its own members, or everyone
 (set GROUP.visible_to
   (and (runs_list @old)
-       (or (blank @new.visible_to) (= @new.visible_to @old.id) (= @new.visible_to.slug "everyone"))))
+       (or (blank @new.visible_to) (= @new.visible_to @old.id) (= @new.visible_to (slug "everyone")))))
 ; a mail list's managers show who is on it to its managers alone, its own members, or everyone
 (set GROUP.members_visible_to
   (and (runs_list @old)
        (or (blank @new.members_visible_to) (= @new.members_visible_to @old.id)
-           (= @new.members_visible_to.slug "everyone"))))
+           (= @new.members_visible_to (slug "everyone")))))
 ; a group's managers close it, open it again, approve it, or say it happened
 (set GROUP.status (and (runs_list @old) (in @new.status "open" "closed" "done")))
 ; a group's managers say when it starts, unless the calendar import brings it

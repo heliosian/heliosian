@@ -146,7 +146,7 @@ function remember(g, ...keys) {
 export async function loadModel() {
   const [who, answers, people] = await Promise.all([whoAmI(), queries({
     viewer: '(from PERSON (where (= id @viewer)))',
-    everyone: '(from GROUP (where (= kind "group") (= slug "everyone")) (columns slug))',
+    everyone: '(from GROUP (where (= id (slug "everyone"))) (columns slug))',
     grades: '(from GROUP (where (= kind "grade")) (columns name color))',
     groups: `(from GROUP @g (where (in id ${lists})) (order name asc) ${listIncludes})`,
     runs: `(from GROUP @g (where (in id ${lists}) (runs_list @g)) (columns slug))`,

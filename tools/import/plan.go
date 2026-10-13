@@ -130,7 +130,6 @@ func plan(x *export, st *state) (*planner, error) {
 	}
 	p.ensureEveryone()
 	p.ensureGrades()
-	p.gradeParents()
 	households, err := p.households()
 	if err != nil {
 		return nil, err
@@ -139,6 +138,7 @@ func plan(x *export, st *state) (*planner, error) {
 		return nil, err
 	}
 	p.bandRules()
+	p.parentsGroups()
 	for _, id := range p.ids {
 		if err := p.emails(id); err != nil {
 			return nil, err
@@ -471,14 +471,21 @@ func (p *planner) ensureGrades() {
 	}
 }
 
-func (p *planner) gradeParents() {
-	for _, g := range grades {
-		gradeSlug := "grade-" + strings.ToLower(g.code)
-		grade := p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], gradeSlug) })
-		slug := gradeSlug + "-parents"
+func (p *planner) parentsGroups() {
+	for _, target := range slices.Clone(p.groups.order) {
+		t := p.groups.rows[target]
+		if !slices.Contains([]string{"grade", "classroom", "band"}, t["kind"]) || t["slug"] == "" {
+			continue
+		}
+		slug := t["slug"] + "-parents"
 		group := p.findGroup(func(r row) bool { return r["kind"] == "group" && strings.EqualFold(r["slug"], slug) })
 		if group == "" {
-			group = p.newGroup(row{"kind": "group", "slug": slug, "name": g.title + " Parents"})
+			group = p.newGroup(row{"kind": "group", "slug": slug, "name": t["name"] + " Parents"})
+		}
+		if g := p.groups.rows[group]; g["visible_to"] != p.everyone {
+			g["visible_to"] = p.everyone
+			p.groupWrites = append(p.groupWrites, write{Set: group, Cells: row{"visible_to": p.everyone}})
+			p.counts["parents groups shown to everyone"]++
 		}
 		held := false
 		for _, rid := range p.st.rules.order {
@@ -489,16 +496,16 @@ func (p *planner) gradeParents() {
 			parents := strings.EqualFold(strings.TrimSpace(r["replace_with"]), "parents")
 			r = maps.Clone(r)
 			delete(r, "replace_with")
-			if !held && parents && plainTarget(r) && r["target"] == grade {
+			if !held && parents && plainTarget(r) && r["target"] == target {
 				held = true
 				continue
 			}
 			p.groupWrites = append(p.groupWrites, write{Delete: rid})
-			p.counts["grade parents rules removed"]++
+			p.counts["parents rules removed"]++
 		}
 		if !held {
-			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": group, "order": store.Order([]string{""})[0], "target": grade, "replace_with": "parents"}})
-			p.counts["grade parents rules added"]++
+			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": group, "order": store.Order([]string{""})[0], "target": target, "replace_with": "parents"}})
+			p.counts["parents rules added"]++
 		}
 	}
 }

@@ -147,7 +147,8 @@ func (c *call) run(q tree) (db.Result, *db.Query, error) {
 	if err != nil {
 		return db.Result{}, nil, fmt.Errorf("a built-in query was refused: %w", err)
 	}
-	return c.m.Run(c.ctx, query, c.env), query, nil
+	res := c.m.Run(c.ctx, query, c.env)
+	return res, query, res.Err
 }
 
 func (c *call) rows(q tree) ([]store.Row, db.Result, error) {

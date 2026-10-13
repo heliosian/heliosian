@@ -102,7 +102,11 @@ var query = define("helios_query", "Querying the data", "Run a query in Helios's
 	if err != nil {
 		return nil, err
 	}
-	return c.shape(c.m.Run(c.ctx, q, c.env), q), nil
+	res := c.m.Run(c.ctx, q, c.env)
+	if res.Err != nil {
+		return nil, res.Err
+	}
+	return c.shape(res, q), nil
 })
 
 type pointers struct {
