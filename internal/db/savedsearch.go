@@ -34,7 +34,7 @@ func wordCondition(w string) string {
 	if w == goingWord {
 		return goingCondition
 	}
-	return fmt.Sprintf(`(or (covers @e (members (slug %q))) (exists GROUP (= id (slug %q)) (in id (ancestors @e))))`, w, w)
+	return fmt.Sprintf(`(or (covers @e.audience (members (slug %q))) (and (blank @e.audience) (exists PERSON (in id (members (slug %q))))) (exists GROUP (= id (slug %q)) (in id (ancestors @e))))`, w, w, w)
 }
 
 func searchCondition(lists [][]string) string {

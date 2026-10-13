@@ -104,9 +104,17 @@ func TestGooglePlan(t *testing.T) {
 		t.Fatalf("the series is under %q, want its instances' category", series[0]["parent"])
 	}
 	cafeGroup := sourcesKeyed(m, cafe.Key)[0]["group"]
-	rules := m.Table("RULE").Referencing("group", cafeGroup)
+	if n := len(m.Table("RULE").Referencing("group", cafeGroup)); n != 0 {
+		t.Fatalf("the cafe itself has %d rules; its audience holds them", n)
+	}
+	g, _ := m.Table("GROUP").Get(cafeGroup)
+	audience, _ := m.Table("GROUP").Get(g["audience"])
+	if audience["parent"] != cafeGroup || audience["name"] != "Hummingbirds CAFE Audience" {
+		t.Fatalf("the cafe's audience is %v", audience)
+	}
+	rules := m.Table("RULE").Referencing("group", audience["id"])
 	if len(rules) != 1 || rules[0]["target"] != hummingbirds || rules[0]["replace_with"] != "parents" {
-		t.Fatalf("the cafe's rules are %v", rules)
+		t.Fatalf("the cafe's audience's rules are %v", rules)
 	}
 	days := groupsOf(m, "day")
 	if len(days) != 1 || days[0]["start"] != "2026-10-09" {

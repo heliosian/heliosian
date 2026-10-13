@@ -407,6 +407,7 @@ var Tables = []Table{
 			ref("rsvp_no", "GROUP").about("The group of those who said they are not coming, each membership's added and added_by when and by whom. It sits under the group it answers, whose managers manage it. Joining it takes a person out of rsvp_yes."),
 			ref("chair_offers", "GROUP").about("The group of those offering to co-chair it; set means it takes offers, and its managers set and clear it. It sits under the group it serves, whose managers manage it, and only that group's members join it. Making someone a co-chair takes them out of it."),
 			ref("leads", "GROUP").about("The group of those who lead it: its co-chairs, an event's leads. Grants nothing; whether a lead also manages is whether they are in its managed_by group. It sits under the group it serves, whose managers manage it and alone put people in it, and is seen, with who is in it, by whoever sees that group."),
+			ref("audience", "GROUP").about("The group of those an event is for, its rules saying who: a classroom's households, a gradeband's parents, the staff. Blank is for everyone, as a party or activity is. It sits under the event it serves, whose managers manage it, and is seen, with who is in it, by everyone; who is for an event is never secret, and its own members are its guest list."),
 			col("priority", Bool).about("An activity the community most needs hands for, marked by an admin."),
 			col("price", Money).about("A party's price per place, in dollars."),
 			col("unit", Text).about("What a party's price is per, in words (person, adult, couple)."),

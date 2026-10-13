@@ -114,8 +114,8 @@ func (p *calendarPlan) deleteGroup(id string) {
 	if p.deleted[id] {
 		return
 	}
-	if g := p.groups[id]; g["rsvp_yes"] != "" || g["rsvp_no"] != "" {
-		p.edits = append(p.edits, Edit{Set: id, Cells: map[string]any{"rsvp_yes": "", "rsvp_no": ""}})
+	if g := p.groups[id]; g["rsvp_yes"] != "" || g["rsvp_no"] != "" || g["audience"] != "" {
+		p.edits = append(p.edits, Edit{Set: id, Cells: map[string]any{"rsvp_yes": "", "rsvp_no": "", "audience": ""}})
 	}
 	for _, child := range p.children[id] {
 		p.deleteGroup(child)
@@ -193,7 +193,21 @@ func (p *calendarPlan) everyClassroom(classrooms []string) bool {
 	return true
 }
 
-func (p *calendarPlan) rules(group string, classrooms []string, who string) {
+func (p *calendarPlan) audience(event, name string) string {
+	if a := p.groups[event]["audience"]; a != "" && !p.deleted[a] {
+		return a
+	}
+	everyone := p.v.Roles["everyone"]
+	a := p.insert("GROUP", map[string]any{
+		"kind": "group", "parent": event, "name": name + " Audience", "status": "open", "listed": false,
+		"visible_to": everyone, "members_visible_to": everyone, "posting": "none", "replying": "none",
+	})
+	p.edits = append(p.edits, Edit{Set: event, Cells: map[string]any{"audience": a}})
+	return a
+}
+
+func (p *calendarPlan) rules(event, name string, classrooms []string, who string) {
+	group := p.audience(event, name)
 	type rule struct{ target, replaceWith string }
 	want := []rule{}
 	switch {
@@ -222,8 +236,8 @@ func (p *calendarPlan) rules(group string, classrooms []string, who string) {
 	}
 }
 
-func (p *calendarPlan) unclassify(group string) {
-	for _, row := range p.under["RULE"][group] {
+func (p *calendarPlan) unclassify(event string) {
+	for _, row := range p.under["RULE"][p.groups[event]["audience"]] {
 		p.remove(row["id"])
 	}
 }
@@ -374,7 +388,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 			group := p.newGroup("event", want)
 			source["group"] = group
 			p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: source})
-			p.rules(group, c.Classrooms, c.Who)
+			p.rules(group, e.Title, c.Classrooms, c.Who)
 			p.googleDays(e, c, hash)
 			continue
 		}
@@ -387,7 +401,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 		}
 		p.setChanged(s["id"], s, source)
 		p.unclassify(s["group"])
-		p.rules(s["group"], c.Classrooms, c.Who)
+		p.rules(s["group"], e.Title, c.Classrooms, c.Who)
 		for _, day := range days[e.Key] {
 			p.dropSource(day)
 		}
@@ -545,7 +559,7 @@ func PDFPlan(rows CalendarRows, v *Vocabulary, cal YearCalendar, classified map[
 		group := p.newGroup("event", row)
 		source["group"] = group
 		p.edits = append(p.edits, Edit{Insert: "GROUP_SOURCE", Row: source})
-		p.rules(group, e.Classrooms, c.Who)
+		p.rules(group, item.Title, e.Classrooms, c.Who)
 	}
 	if first == "" || last == "" {
 		return nil, fmt.Errorf("the year calendar has no first or last day of school")

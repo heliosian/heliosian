@@ -133,10 +133,10 @@ const PolicySource = `
 (define (own_group @g)
   (and (= @g.kind "group") (blank @g.parent) (blank @g.url) (blank @g.visible_to)))
 
-; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers or leads group
+; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers, leads or audience group
 (define (counted c)
   (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)
-       (!= c.leads id)))
+       (!= c.leads id) (!= c.audience id)))
 
 ; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers, leads or audience group, and nothing else names it
 (define (implementation_only @g)
@@ -148,6 +148,7 @@ const PolicySource = `
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
+                 (select GROUP.audience @r (= audience @g) (counted audience))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible)))
@@ -160,6 +161,7 @@ const PolicySource = `
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
+                 (select GROUP.audience @r (= audience @g) (counted audience))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible))
@@ -321,7 +323,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
