@@ -1,4 +1,4 @@
-import {state, me, allows, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {paragraphs} from '../dom.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -131,14 +131,9 @@ export function eventPage(e) {
   side.append(when);
   side.append(mineCard);
   const answered = el('div', 'detail-answered');
-  if (!e.cancelled && e.responses) {
-    answered.append(rsvpsCard(e));
-  }
   side.append(answered);
-  const linked = e.source === 'celebrate' || e.source === 'team';
-  const source = !linked || allows('when.see-all') ? sourceCard(e, linked) : null;
-  if (source) {
-    side.append(source);
+  if (e.source !== 'celebrate' && e.source !== 'team') {
+    side.append(sourceCard(e));
   }
   cols.append(side);
   page.append(cols);
@@ -212,6 +207,12 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       answered.replaceChildren();
     }
   }
+  if (!invited) {
+    const card = rsvpsCard(view.list.filter(r => r.answer), view.host);
+    if (card) {
+      answered.replaceChildren(card);
+    }
+  }
   if ((view.hosts.length || view.host) && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
   }
@@ -231,11 +232,6 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
     linkedLine.textContent = (isParty(e) ? 'Hosted by ' : 'Chaired by ') + (hosts.length > 1 ? hosts.slice(0, -1).join(', ') + ' and ' + hosts[hosts.length - 1] : hosts[0]);
   }
 }
-
-const aboutWords = {
-  celebrate: 'Hosted by families in the community. The party page has the hosts, the price, and who is coming.',
-  team: 'Run by the Helios Community Association. The event page has the roles to fill, who runs it, and who has signed up.',
-};
 
 function stampWords(stamp) {
   const day = (stamp || '').slice(0, 10);
@@ -431,18 +427,19 @@ function pendingBand(e) {
   return band;
 }
 
-function rsvpsCard(e) {
+function rsvpsCard(rows, host) {
+  if (!rows.length && !host) {
+    return null;
+  }
   const card = el('div', 'side-card rsvps-card');
-  const r = e.responses;
   card.append(el('div', 'side-title', 'RSVPs'));
-  const yes = r.yes || [];
-  const no = r.no || [];
-  if (!yes.length && !no.length && !(r.maybe || []).length) {
+  if (!rows.length) {
     card.append(el('div', 'side-line', 'Nobody has answered yet.'));
     return card;
   }
-  const maybe = r.maybe || [];
-  for (const [label, people] of [['Yes', yes], ['Maybe', maybe], ['No', no]]) {
+  const yes = rows.filter(r => r.answer === 'yes');
+  const no = rows.filter(r => r.answer === 'no');
+  for (const [label, people] of [['Yes', yes], ['No', no]]) {
     if (!people.length) {
       continue;
     }
@@ -460,15 +457,13 @@ function rsvpsCard(e) {
   return card;
 }
 
-function sourceCard(e, adminOnly = false) {
+function sourceCard(e) {
   const card = el('div', 'side-card side-card-help');
   const row = el('div', 'side-row');
   const icon = el('div', 'side-icon');
   icon.append(svg('info'));
   const body = el('div', 'side-row-body');
-  if (!adminOnly) {
-    body.append(el('div', 'side-title', sourceWords(e)));
-  }
+  body.append(el('div', 'side-title', sourceWords(e)));
   const lines = [];
   switch (e.source) {
     case 'pdf':
@@ -496,14 +491,11 @@ function sourceCard(e, adminOnly = false) {
       }
       break;
     }
-    default:
-      lines.push(aboutWords[e.source] || '');
   }
-  for (const words of adminOnly ? [] : lines.filter(Boolean)) {
+  for (const words of lines.filter(Boolean)) {
     body.append(el('div', 'side-line', words));
   }
-  if (adminOnly) {
-  } else if (e.source === 'pdf') {
+  if (e.source === 'pdf') {
     body.append(outLink(e.sourceUrl, 'Open the school\u2019s calendar page'));
   } else if (e.source === 'google' && e.sourceUrl) {
     body.append(outLink(e.sourceUrl, 'Open in Google Calendar'));
@@ -513,26 +505,6 @@ function sourceCard(e, adminOnly = false) {
     if (host.includes('veracross')) {
       body.append(el('div', 'side-line', 'Veracross asks for your parent portal login.'));
     }
-  } else if (e.link && (e.source === 'celebrate' || e.source === 'team')) {
-    body.append(outLink(linkURL(e), isParty(e) ? 'Open on Helios Celebrate' : 'Open on HCA-Team'));
-  }
-  if (!adminOnly && e.link && e.source !== 'celebrate' && e.source !== 'team') {
-    body.append(el('div', 'side-line', 'Also listed on HCA-Team, which runs it.'), outLink(linkURL(e), 'Open on HCA-Team'));
-  }
-  if (allows('when.see-all')) {
-    const p = e.provenance || {};
-    const admin = el('div', 'side-admin' + (adminOnly ? ' is-alone' : ''));
-    admin.append(el('div', 'side-admin-title', 'For admins'));
-    if (p.enriched) {
-      admin.append(el('div', 'side-line', `Filed under its tags by Claude${p.model ? ' (' + p.model + ')' : ''} on ${stampWords(p.enriched)}.`));
-    }
-    if (p.corrected && p.corrected.length) {
-      admin.append(el('div', 'side-line', `Corrected in Overrides: ${p.corrected.join(', ').toLowerCase()}.${p.note ? ' Note: \u201c' + p.note + '\u201d' : ''}`));
-    }
-    if (adminOnly && admin.childElementCount === 1) {
-      return null;
-    }
-    body.append(admin);
   }
   row.append(icon, body);
   card.append(row);

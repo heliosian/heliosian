@@ -1,5 +1,4 @@
 import {appOrigin} from '/appswitch.js';
-import {me as whoAmI} from '/data.js';
 import {parseWhen} from '/datecard.js';
 import {queries} from '/rail.js';
 import {api} from '/api.js';
@@ -7,10 +6,6 @@ import {render} from '/router.js';
 
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: '', matching: new Set(), found: new Set()};
-
-export function allows(name) {
-  return Boolean(state.model && state.model.allowances.includes(name));
-}
 
 export function setActiveFeed(token) {
   state.activeFeed = token;
@@ -90,7 +85,7 @@ function dayWins(next, held, roles) {
 }
 
 export async function loadModel() {
-  const [a, viewer] = await Promise.all([queries({
+  const a = await queries({
     viewer: '(from PERSON (where (= id @viewer)) (columns name_show name_short))',
     email: '(from PERSON_EMAIL (where (= person @viewer) primary) (columns address))',
     everyone: '(from GROUP (where (= id (slug "everyone"))) (columns slug))',
@@ -114,7 +109,7 @@ export async function loadModel() {
     adders: `(from PERSON (where (in id (select GROUP.added_by ${kinds}))) (columns name_show))`,
     saved: '(from SAVED_SEARCH (where (= person @viewer)) (order order asc) (columns name emoji order default token search))',
     invites: '(from MESSAGE @m (where (= kind "invitation") (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer))))) (columns group))',
-  }), whoAmI()]);
+  });
   const me = rowsOf(a.viewer, 'PERSON')[0];
   const everyone = a.everyone.result[0];
   const household = rowsOf(a.household, 'PERSON');
@@ -231,7 +226,6 @@ export async function loadModel() {
   const mineRooms = [...new Set(household.filter(p => p.id !== me.id && p.grade && p.classroom).map(p => classroomName[p.classroom]).filter(Boolean))];
   applyModel({
     user: {id: me.id, email: (rowsOf(a.email, 'PERSON_EMAIL')[0] || {}).address || '', name: me.name_show, classrooms: mineRooms, saved: home.id ? {classrooms: home.classrooms, tags: home.tags} : null, home, staff: a.staff.result.length > 0},
-    allowances: viewer.allowances,
     settingsId: '',
     imageSearch: false,
     today: formatDate(new Date()),

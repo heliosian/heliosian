@@ -1,10 +1,10 @@
-import {state, allows, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {addEvent, editEvent, setPicture} from './writes.js';
 import {el, svg, toast, longToast} from '/elements.js';
 
 export function eventForm({from = null, shift = 0, edit = null, override = false, more = [], onDone}) {
-  const admin = allows('when.curate');
+  const admin = state.model.admin;
   if (edit) {
     from = edit;
     shift = 0;

@@ -1,4 +1,4 @@
-import {state, me, allows, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
+import {state, me, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
 import {saveCategories, setPicture, setStatus, moveEvent} from '../writes.js';
@@ -529,5 +529,5 @@ const sections = [
 ];
 
 export function adminPage() {
-  return buildAdminPage({appName: 'Helios When', allowed: allows('when.curate'), email: me().email, sections});
+  return buildAdminPage({appName: 'Helios When', allowed: state.model.admin, email: me().email, sections});
 }
