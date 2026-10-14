@@ -33,6 +33,10 @@ const (
 	authServerPath = "/.well-known/oauth-authorization-server"
 )
 
+var appRedirects = map[string]string{
+	"com.heliosian.Heliosian:/oauth": "the Heliosian app",
+}
+
 type client struct {
 	Name      string   `json:"n"`
 	Redirects []string `json:"r"`
@@ -92,6 +96,9 @@ func oauthError(w http.ResponseWriter, r *http.Request, status int, code, descri
 }
 
 func redirectAllowed(raw string) bool {
+	if appRedirects[raw] != "" {
+		return true
+	}
 	u, err := url.Parse(raw)
 	if err != nil || u.Fragment != "" || u.Host == "" {
 		return false
@@ -125,7 +132,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, redirect := range asked.Redirects {
 		if !redirectAllowed(redirect) {
-			oauthError(w, r, http.StatusBadRequest, "invalid_redirect_uri", "a redirect_uri is https, or http on a loopback address: "+redirect)
+			oauthError(w, r, http.StatusBadRequest, "invalid_redirect_uri", "a redirect_uri is https, http on a loopback address, or the Heliosian app's: "+redirect)
 			return
 		}
 	}
@@ -218,8 +225,15 @@ func (s *Server) describe(r *http.Request, in pending) (described, error) {
 	if err != nil {
 		return described{}, err
 	}
-	u, _ := url.Parse(a.redirect)
-	return described{Client: a.client.Name, Redirect: u.Host, Email: auth.RealEmail(r)}, nil
+	return described{Client: a.client.Name, Redirect: destination(a.redirect), Email: auth.RealEmail(r)}, nil
+}
+
+func destination(redirect string) string {
+	if app := appRedirects[redirect]; app != "" {
+		return app
+	}
+	u, _ := url.Parse(redirect)
+	return u.Host
 }
 
 func (s *Server) approve(r *http.Request, in pending) (onward, error) {
