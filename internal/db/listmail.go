@@ -6,11 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"html"
-	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -55,14 +53,11 @@ type ListMailer struct {
 	mu        sync.Mutex
 	queued    map[string]bool
 	work      chan string
-	pending   []Edit
-	flushing  bool
 }
 
 func RegisterListMail(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, lm ListMailConfig) *ListMailer {
 	l := &ListMailer{s: s, queue: queue, pics: pics, mail: lm, queued: map[string]bool{}, work: make(chan string, 256)}
 	mux.HandleFunc("POST /hooks/mail/mime", l.inbound)
-	mux.HandleFunc("POST /hooks/events", l.events)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", l.unsubscribePage)
 	mux.HandleFunc("POST /open/unsubscribe/{token}", l.unsubscribe)
 	go l.run()
@@ -410,7 +405,7 @@ func (l *ListMailer) forward(ctx context.Context, id string) {
 		tok := unsubscribeToken(l.mail.Key, g["id"], address)
 		unsubscribe := "List-Unsubscribe: <mailto:" + unsubscribeLocal + "@" + LoopDomain + "?subject=" + tok + ">, <" + l.mail.Base + "/open/unsubscribe/" + tok + ">"
 		msg := render(head, []string{unsubscribe, "List-Unsubscribe-Post: List-Unsubscribe=One-Click"}, body)
-		if err := l.mail.Sender.SendRaw(ctx, listAddress(g), []string{address}, msg); err != nil {
+		if err := l.mail.Sender.SendCopy(ctx, listAddress(g), []string{address}, msg, row); err != nil {
 			log.Error("list mail: send failed", "to", address, "error", err)
 			failures = append(failures, address+": "+err.Error())
 			copies = append(copies, Edit{Delete: row})
@@ -440,124 +435,6 @@ func (l *ListMailer) bounce(ctx context.Context, g store.Row, lines []mail.Heade
 	}
 	raw := mail.Compose(bounceFrom, mail.Message{To: []string{to}, Subject: "Not delivered: " + subject, Text: text, HTML: "<p>" + html.EscapeString(text) + "</p>", Headers: headers})
 	return l.mail.Sender.SendRaw(ctx, bounceFrom, []string{to}, []byte(raw))
-}
-
-func (l *ListMailer) events(w http.ResponseWriter, r *http.Request) {
-	if !l.ready() {
-		http.Error(w, "mail is not set up", http.StatusNotFound)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxEventBody))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	var event struct {
-		Signature struct {
-			Timestamp string `json:"timestamp"`
-			Token     string `json:"token"`
-			Signature string `json:"signature"`
-		} `json:"signature"`
-		Data struct {
-			Event     string  `json:"event"`
-			Timestamp float64 `json:"timestamp"`
-			Severity  string  `json:"severity"`
-			Recipient string  `json:"recipient"`
-			Reason    string  `json:"reason"`
-			Message   struct {
-				Headers struct {
-					MessageID string `json:"message-id"`
-					From      string `json:"from"`
-				} `json:"headers"`
-			} `json:"message"`
-			Status struct {
-				Message     string `json:"message"`
-				Description string `json:"description"`
-			} `json:"delivery-status"`
-		} `json:"event-data"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	if err := mail.VerifyMailgun(l.mail.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "list mail: event call refused", "error", err)
-		http.Error(w, "signature", http.StatusNotAcceptable)
-		return
-	}
-	d := event.Data
-	detail := d.Status.Description
-	if detail == "" {
-		detail = d.Status.Message
-	}
-	if detail == "" {
-		detail = d.Reason
-	}
-	when := stamp(time.UnixMilli(int64(d.Timestamp * 1000)))
-	switch {
-	case d.Event == "delivered":
-		l.delivery(d.Message.Headers.From, d.Message.Headers.MessageID, d.Recipient, map[string]any{"delivered": when})
-	case d.Event == "failed" && d.Severity == "permanent":
-		l.delivery(d.Message.Headers.From, d.Message.Headers.MessageID, d.Recipient, map[string]any{"failed": when, "detail": detail})
-	case d.Event == "failed", d.Event == "complained":
-		slog.WarnContext(r.Context(), "list mail: delivery trouble", "event", d.Event, "from", d.Message.Headers.From, "to", d.Recipient, "detail", detail)
-	}
-	w.WriteHeader(http.StatusOK)
-}
-
-func (l *ListMailer) delivery(from, messageID, recipient string, set map[string]any) {
-	m := l.s.Model()
-	local, domain, _ := strings.Cut(strings.ToLower(mail.AddressOf(from)), "@")
-	key := messageKey(messageID)
-	if domain != LoopDomain || key == "" {
-		return
-	}
-	g := m.mailList(local)
-	if g == nil {
-		return
-	}
-	person := m.personAt(mail.AddressOf(recipient))
-	for _, post := range m.Table("MESSAGE").Referencing("group", g["id"]) {
-		if post["direction"] != "out" || post["kind"] != "post" || messageKey(post["header_id"]) != key {
-			continue
-		}
-		for _, c := range m.Table("RECIPIENT").Referencing("message", post["id"]) {
-			if c["person"] == person {
-				l.record(Edit{Set: c["id"], Cells: set})
-				return
-			}
-		}
-		slog.Warn("list mail: delivery report for no copy", "message", post["id"], "recipient", recipient, "person", person)
-		return
-	}
-}
-
-func (l *ListMailer) record(e Edit) {
-	l.mu.Lock()
-	l.pending = append(l.pending, e)
-	start := !l.flushing
-	l.flushing = true
-	l.mu.Unlock()
-	if start {
-		go l.flush()
-	}
-}
-
-func (l *ListMailer) flush() {
-	for {
-		l.mu.Lock()
-		edits := l.pending
-		l.pending = nil
-		if len(edits) == 0 {
-			l.flushing = false
-			l.mu.Unlock()
-			return
-		}
-		l.mu.Unlock()
-		if _, err := l.write(context.Background(), edits...); err != nil {
-			slog.Error("list mail: deliveries not recorded", "edits", len(edits), "error", err)
-		}
-	}
 }
 
 func listAddress(g store.Row) string {

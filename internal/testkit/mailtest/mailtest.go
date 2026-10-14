@@ -1,9 +1,14 @@
 package mailtest
 
 import (
+	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"sync"
@@ -17,9 +22,10 @@ import (
 const From = "Helios Sample <sample@example.org>"
 
 type Raw struct {
-	Domain  string
-	To      []string
-	Message []byte
+	Domain    string
+	To        []string
+	Recipient string
+	Message   []byte
 }
 
 type Recorder struct {
@@ -136,10 +142,101 @@ func (rec *Recorder) keepRaw(r *http.Request, domain string) error {
 	if err != nil {
 		return err
 	}
+	raw := Raw{Domain: domain, To: r.MultipartForm.Value["to"], Recipient: first(r.MultipartForm.Value["v:"+mail.CopyVariable]), Message: content}
+	var decoded *mail.Message
+	if raw.Recipient != "" {
+		if m, err := rec.decode(content); err == nil {
+			decoded = &m
+		}
+	}
 	rec.mu.Lock()
 	defer rec.mu.Unlock()
-	rec.raws = append(rec.raws, Raw{Domain: domain, To: r.MultipartForm.Value["to"], Message: content})
+	rec.raws = append(rec.raws, raw)
+	if decoded != nil && !slices.ContainsFunc(rec.messages, func(m mail.Message) bool { return m.Headers["Message-Id"] == decoded.Headers["Message-Id"] }) {
+		rec.messages = append(rec.messages, *decoded)
+	}
 	return nil
+}
+
+var plainHeaders = []string{"From", "To", "Cc", "Reply-To", "Subject", "Date", "Mime-Version", "Content-Type"}
+
+func (rec *Recorder) decode(content []byte) (mail.Message, error) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(content))
+	if err != nil {
+		return mail.Message{}, err
+	}
+	list := func(name string) []string {
+		out := []string{}
+		for _, a := range strings.Split(msg.Header.Get(name), ", ") {
+			if a != "" {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
+	subject, err := new(mime.WordDecoder).DecodeHeader(msg.Header.Get("Subject"))
+	if err != nil {
+		return mail.Message{}, err
+	}
+	m := mail.Message{To: list("To"), CC: list("Cc"), Subject: subject, Headers: map[string]string{}}
+	if replyTo := list("Reply-To"); len(replyTo) > 0 {
+		m.ReplyTo = replyTo
+	}
+	if line := msg.Header.Get("From"); line != rec.Mailgun.From() {
+		m.FromName = line[:strings.LastIndex(line, " <")]
+	}
+	for k, v := range msg.Header {
+		if !slices.Contains(plainHeaders, k) {
+			m.Headers[k] = v[0]
+		}
+	}
+	if id := msg.Header.Get("Message-Id"); id != "" {
+		m.Headers["Message-Id"] = id
+	}
+	return m, decodePart(msg.Header.Get("Content-Type"), msg.Body, &m)
+}
+
+func decodePart(contentType string, body io.Reader, m *mail.Message) error {
+	kind, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return err
+	}
+	if !strings.HasPrefix(kind, "multipart/") {
+		content, err := io.ReadAll(body)
+		if err != nil {
+			return err
+		}
+		text := strings.TrimSuffix(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+		switch kind {
+		case "text/plain":
+			m.Text = text
+		case "text/html":
+			m.HTML = text
+		}
+		return nil
+	}
+	parts := multipart.NewReader(body, params["boundary"])
+	for {
+		p, err := parts.NextPart()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if p.FileName() == "" {
+			if err := decodePart(p.Header.Get("Content-Type"), p, m); err != nil {
+				return err
+			}
+			continue
+		}
+		content, err := io.ReadAll(base64.NewDecoder(base64.StdEncoding, p))
+		if err != nil {
+			return err
+		}
+		partType, _, _ := strings.Cut(p.Header.Get("Content-Type"), ";")
+		m.Attachments = append(m.Attachments, mail.Attachment{Name: p.FileName(), ContentType: partType, Content: content})
+	}
 }
 
 func (rec *Recorder) Messages() []mail.Message {

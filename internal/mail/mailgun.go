@@ -21,7 +21,10 @@ import (
 	"time"
 )
 
-const Host = "api.mailgun.net"
+const (
+	Host         = "api.mailgun.net"
+	CopyVariable = "recipient"
+)
 
 type Mailgun struct {
 	Key, from string
@@ -132,6 +135,19 @@ func (m *Mailgun) Send(ctx context.Context, msg Message) error {
 }
 
 func (m *Mailgun) SendRaw(ctx context.Context, from string, to []string, raw []byte) error {
+	return m.sendMIME(ctx, from, to, raw, nil)
+}
+
+func (m *Mailgun) SendCopy(ctx context.Context, from string, envelope []string, raw []byte, recipient string) error {
+	return m.sendMIME(ctx, from, envelope, raw, [][2]string{{"v:" + CopyVariable, recipient}})
+}
+
+func MessageID(id, from string) string {
+	domain, _ := domainOf(from)
+	return "<" + id + "@" + domain + ">"
+}
+
+func (m *Mailgun) sendMIME(ctx context.Context, from string, to []string, raw []byte, fields [][2]string) error {
 	if len(to) == 0 {
 		return fmt.Errorf("mail: no recipient")
 	}
@@ -142,7 +158,10 @@ func (m *Mailgun) SendRaw(ctx context.Context, from string, to []string, raw []b
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	for _, rcpt := range to {
-		if err := form.WriteField("to", rcpt); err != nil {
+		fields = append(fields, [2]string{"to", rcpt})
+	}
+	for _, f := range fields {
+		if err := form.WriteField(f[0], f[1]); err != nil {
 			return err
 		}
 	}

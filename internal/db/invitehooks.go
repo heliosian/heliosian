@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -340,79 +339,5 @@ func (iv *Invitations) replies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.InfoContext(r.Context(), "invitations: answered by reply", "person", person, "group", g["id"], "answer", answer)
-	w.WriteHeader(http.StatusOK)
-}
-
-func (iv *Invitations) events(w http.ResponseWriter, r *http.Request) {
-	if iv.config.SigningKey == "" {
-		http.Error(w, "events are not set up", http.StatusNotFound)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxEventBody))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	var event struct {
-		Signature struct {
-			Timestamp string `json:"timestamp"`
-			Token     string `json:"token"`
-			Signature string `json:"signature"`
-		} `json:"signature"`
-		Data struct {
-			Event     string  `json:"event"`
-			Timestamp float64 `json:"timestamp"`
-			Severity  string  `json:"severity"`
-			Reason    string  `json:"reason"`
-			Message   struct {
-				Headers struct {
-					MessageID string `json:"message-id"`
-				} `json:"headers"`
-			} `json:"message"`
-			Status struct {
-				Message     string `json:"message"`
-				Description string `json:"description"`
-			} `json:"delivery-status"`
-		} `json:"event-data"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	if err := mail.VerifyMailgun(iv.config.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "invitations: event call refused", "error", err)
-		http.Error(w, "signature", http.StatusNotAcceptable)
-		return
-	}
-	d := event.Data
-	id := strings.TrimSuffix(strings.Trim(d.Message.Headers.MessageID, "<>"), whenUID)
-	m := iv.s.Model()
-	if _, ok := m.Table("RECIPIENT").Get(id); !ok {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	detail := d.Status.Description
-	if detail == "" {
-		detail = d.Status.Message
-	}
-	if detail == "" {
-		detail = d.Reason
-	}
-	when := stamp(time.UnixMilli(int64(d.Timestamp * 1000)))
-	set := map[string]any{}
-	switch {
-	case d.Event == "delivered":
-		set["delivered"] = when
-	case d.Event == "failed" && d.Severity == "permanent":
-		set["failed"], set["detail"] = when, detail
-	default:
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	if _, err := iv.write(r.Context(), access.System(invitationsJob), []Edit{{Set: id, Cells: set}}); err != nil {
-		slog.ErrorContext(r.Context(), "invitations: delivery not recorded", "recipient", id, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 	w.WriteHeader(http.StatusOK)
 }

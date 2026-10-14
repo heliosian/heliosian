@@ -238,12 +238,13 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 	out.CC = cc
 	out.ReplyTo = replyTo
 	out.FromName = joinNames(m.namesOf(hosts))
-	out.Headers = map[string]string{"Message-Id": "<" + r["id"] + whenUID + ">"}
+	out.Headers = map[string]string{"Message-Id": mail.MessageID(r["id"], iv.config.Sender.From())}
 	attach := len(cc) == 0 && msg["kind"] != "post"
 	if e, ok := iv.calendarEvent(m, g, person, r["token"], link); ok && attach {
 		out.Attachments = []mail.Attachment{mail.Calendar{Product: whenBrand.Name, Method: method, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()}
 	}
-	if err := iv.config.Sender.Send(ctx, out); err != nil {
+	sender := iv.config.Sender.From()
+	if err := iv.config.Sender.SendCopy(ctx, sender, append([]string{address}, cc...), []byte(mail.Compose(sender, out)), r["id"]); err != nil {
 		return nil, err
 	}
 	slog.InfoContext(ctx, "invitations: mailed", "recipient", r["id"], "group", g["id"], "kind", msg["kind"])
@@ -416,17 +417,15 @@ func (iv *Invitations) sendNow(ctx context.Context, m *Model, g store.Row, kind,
 		return
 	}
 	log := slog.With("group", g["id"], "kind", kind, "subject", subject)
-	if err := iv.config.Sender.Send(ctx, msg); err != nil {
-		log.Error("invitations: send failed", "error", err)
+	edits := m.copyEdits(g["id"], kind, subject, to)
+	ids, err := iv.write(ctx, access.System(invitationsJob), edits)
+	if err != nil {
+		log.Error("invitations: mail not recorded", "error", err)
 		return
 	}
-	created := stamp(time.Now())
-	edits := []Edit{{Insert: "MESSAGE", As: "m", Row: map[string]any{"direction": "out", "kind": kind, "group": g["id"], "subject": subject, "created": created}}}
-	for _, p := range to {
-		edits = append(edits, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": "@m", "person": p, "created": created, "sent": created}})
-	}
-	if _, err := iv.write(ctx, access.System(invitationsJob), edits); err != nil {
-		log.Error("invitations: mail not recorded", "error", err)
+	sent := sendCopies(ctx, iv.config.Sender, composeShared(msg, iv.config.Sender.From(), ids[0]), m.outCopies(edits, ids))
+	if _, err := iv.write(ctx, access.System(invitationsJob), sent); err != nil {
+		log.Error("invitations: sends not recorded", "error", err)
 		return
 	}
 	log.Info("invitations: mailed now", "to", len(msg.To))

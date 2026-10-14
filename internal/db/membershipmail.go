@@ -445,17 +445,16 @@ func (mm *MembershipMailer) send(ctx context.Context, m *Model, g store.Row, kin
 	}
 	msg.Attachments = attachments
 	log := slog.With("group", g["id"], "kind", kind, "subject", subject)
-	if err := mm.config.Sender.Send(ctx, msg); err != nil {
-		log.Error("membership mail: send failed", "error", err)
+	edits := m.copyEdits(g["id"], kind, subject, append(slices.Clone(to), cc...))
+	env := Env{System: mailerSystem, Now: time.Now()}
+	ids, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), env, Batch{Batch: edits})
+	if err != nil {
+		log.Error("membership mail: not recorded", "error", err)
 		return
 	}
-	created := stamp(time.Now())
-	edits := []Edit{{Insert: "MESSAGE", As: "m", Row: map[string]any{"direction": "out", "kind": kind, "group": g["id"], "subject": subject, "created": created}}}
-	for _, p := range slices.Compact(append(slices.Clone(to), cc...)) {
-		edits = append(edits, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": "@m", "person": p, "created": created, "sent": created}})
-	}
-	if _, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits}); err != nil {
-		log.Error("membership mail: not recorded", "error", err)
+	sent := sendCopies(ctx, mm.config.Sender, composeShared(msg, mm.config.Sender.From(), ids[0]), m.outCopies(edits, ids))
+	if _, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), env, Batch{Batch: sent}); err != nil {
+		log.Error("membership mail: sends not recorded", "error", err)
 		return
 	}
 	log.Info("membership mail: sent", "to", len(msg.To), "cc", len(msg.CC))

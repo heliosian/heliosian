@@ -154,7 +154,7 @@ func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	if !slices.ContainsFunc(m.ReplyTo, func(a string) bool { return strings.Contains(a, organizer) }) || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "METHOD:REQUEST") {
 		t.Errorf("the invitation: reply-to %v, attachments %d", m.ReplyTo, len(m.Attachments))
 	}
-	if m.Headers["Message-Id"] != "<"+copied["id"]+whenUID+">" || !strings.Contains(m.HTML, "https://when.test/e/"+h.event) {
+	if m.Headers["Message-Id"] != mail.MessageID(copied["id"], mailtest.From) || !strings.Contains(m.HTML, "https://when.test/e/"+h.event) {
 		t.Errorf("the invitation's id %q and link", m.Headers["Message-Id"])
 	}
 	h.waitFor("the copy marked sent", func() bool { return h.copyOf(parent)["sent"] != "" })
@@ -270,24 +270,5 @@ func TestHostsMailTheListByWhereEachStands(t *testing.T) {
 		if slices.Contains(m.To, "coach@example.net") && strings.Contains(m.Subject, "Still hoping") {
 			t.Errorf("the reminder to those with no answer reached someone who said yes")
 		}
-	}
-}
-
-func TestDeliveryEventsMarkTheCopy(t *testing.T) {
-	h := newInviteHarness(t)
-	h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "send": true, "people": []map[string]string{{"person": parent}}})
-	h.mailTo(rowan, "You're invited")
-	id := h.copyOf(parent)["id"]
-	token := "event-token"
-	stamp, sig := mail.SignMailgun(loopSigningKey, token, time.Now())
-	body := map[string]any{
-		"signature":  map[string]string{"timestamp": stamp, "token": token, "signature": sig},
-		"event-data": map[string]any{"event": "failed", "severity": "permanent", "timestamp": float64(time.Now().Unix()), "message": map[string]any{"headers": map[string]string{"message-id": "<" + id + whenUID + ">"}}, "delivery-status": map[string]string{"description": "No such mailbox"}},
-	}
-	if rec := h.do("", http.MethodPost, "/hooks/events", body); rec.Code != http.StatusOK {
-		t.Fatalf("a bounce: %d %s", rec.Code, rec.Body)
-	}
-	if row := h.copyOf(parent); row["failed"] == "" || row["detail"] != "No such mailbox" {
-		t.Errorf("the bounced copy: %v", row)
 	}
 }

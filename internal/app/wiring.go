@@ -234,6 +234,9 @@ func NewCore(cfg Config) *Core {
 		})
 	}
 	listMail := db.RegisterListMail(loopMux, dataStore, queue, pictures, cfg.ListMail)
+	deliveries := db.NewDeliveries(dataStore, queue, cfg.ListMail.SigningKey)
+	deliveries.Register(loopMux)
+	deliveries.Register(calendarMux)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
 	for _, page := range []string{"resources", "query", "search", "queues", "policies", "erd"} {

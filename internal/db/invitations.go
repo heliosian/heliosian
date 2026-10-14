@@ -85,7 +85,6 @@ func RegisterInvitations(mux *http.ServeMux, s *Store, queue *store.Queue, pics 
 	mux.HandleFunc("POST /open/ext/{token}/guest", iv.extGuest)
 	mux.HandleFunc("DELETE /open/ext/{token}/guest", iv.extRemoveGuest)
 	mux.HandleFunc("POST /hooks/replies/mime", iv.replies)
-	mux.HandleFunc("POST /hooks/events", iv.events)
 	go iv.run()
 	return iv
 }
