@@ -79,7 +79,6 @@ func RegisterInvitations(mux *http.ServeMux, s *Store, queue *store.Queue, pics 
 	asked("/api/do/add-guests", func() any { return &addGuestsAsk{} }, func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error) {
 		return iv.addGuests(ctx, m, env, actor, *body.(*addGuestsAsk))
 	})
-	mux.HandleFunc("GET /ext/{token}", iv.extPage)
 	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
 	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
 	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)

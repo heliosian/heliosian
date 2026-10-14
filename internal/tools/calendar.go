@@ -83,7 +83,7 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 			tree{"in", path("group"), tree{"select", "MEMBER.group", eq("person.classroom.name", room), eq("member", "yes"), eq("group.kind", "family")}},
 			eq("member", "yes"),
 		}
-		conds = append(conds, tree{"exists", "EFFECTIVE_MEMBER", eq("group", path("@e")), tree{"in", path("person"), families}})
+		conds = append(conds, tree{"exists", "EFFECTIVE_MEMBER", tree{"or", eq("group", path("@e")), eq("group", path("@e.audience"))}, tree{"in", path("person"), families}})
 	}
 	found, res, err := c.rows(scan("GROUP", path("@e"), where(conds...), asc("start"), tree{"include", "parent"}))
 	if err != nil {
@@ -91,13 +91,22 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 	}
 	more := max(0, len(found)-eventsLimit)
 	found = found[:min(len(found), eventsLimit)]
-	ids := []string{}
+	ids, of := []string{}, map[string]string{}
 	for _, g := range found {
-		ids = append(ids, g["id"])
+		for _, id := range []string{g["id"], g["audience"]} {
+			if id != "" {
+				ids = append(ids, id)
+				of[id] = g["id"]
+			}
+		}
 	}
-	mine, err := c.forHousehold(ids)
+	held, err := c.forHousehold(ids)
 	if err != nil {
 		return nil, err
+	}
+	mine := map[string]bool{}
+	for id := range held {
+		mine[of[id]] = true
 	}
 	answers, err := c.answers(found)
 	if err != nil {
@@ -176,7 +185,7 @@ type schoolDay struct {
 	LastDay    bool     `json:"lastDayOfYear,omitempty"`
 }
 
-var days = define("helios_days", "Checking the day plan", "What kind of school day a date is at Helios School - Regular, Early Dismissal, No School and so on - with each part's hours (dropoff, school, pickup, aftercare), the classrooms each plan is for (every classroom when none are named), whether it is for the viewer's household, and the calendar entries that set it; and the school year's first and last days. No plan means a weekend, a holiday the calendar gives no day, or a date outside the school year.", func(c *call, in daysIn) (any, error) {
+var days = define("helios_days", "Checking the day plan", "What kind of school day a date is at Helios School - Regular, Early Dismissal, No School and so on - with each part's hours (dropoff, school, pickup, aftercare), the classrooms each plan is for (every classroom when none are named; a classroom has one plan a day), whether it is for the viewer's household, and the calendar entries that set it; and the school year's first and last days. No plan means a weekend, a holiday the calendar gives no day, or a date outside the school year.", func(c *call, in daysIn) (any, error) {
 	date, err := day(c.env.Now, in.Date, "date")
 	if err != nil {
 		return nil, err
@@ -214,8 +223,39 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 			return nil, err
 		}
 	}
+	gone := map[string]bool{}
+	for _, g := range found {
+		for _, h := range found {
+			if gone[g["id"]] || dayRank(h["name"]) <= dayRank(g["name"]) {
+				continue
+			}
+			if len(rooms[h["id"]]) == 0 {
+				gone[g["id"]] = true
+				continue
+			}
+			if len(rooms[g["id"]]) == 0 {
+				every, err := c.classroomNames()
+				if err != nil {
+					return nil, err
+				}
+				rooms[g["id"]] = every
+			}
+			rooms[g["id"]] = slices.DeleteFunc(rooms[g["id"]], func(r string) bool { return slices.Contains(rooms[h["id"]], r) })
+			gone[g["id"]] = len(rooms[g["id"]]) == 0
+			if mine[g["id"]] {
+				household, err := c.householdClassrooms()
+				if err != nil {
+					return nil, err
+				}
+				mine[g["id"]] = slices.ContainsFunc(rooms[g["id"]], func(r string) bool { return slices.Contains(household, r) })
+			}
+		}
+	}
 	out := []schoolDay{}
 	for _, g := range found {
+		if gone[g["id"]] {
+			continue
+		}
 		d := schoolDay{Type: g["name"], ForYou: mine[g["id"]], Classrooms: rooms[g["id"]], Parts: []part{}}
 		slices.Sort(d.Classrooms)
 		if parent := res.Resources["GROUP"][g["parent"]]; parent != nil {
@@ -256,6 +296,42 @@ var days = define("helios_days", "Checking the day plan", "What kind of school d
 	}
 	return answer, nil
 })
+
+func dayRank(name string) int {
+	switch name {
+	case "No School":
+		return 2
+	case "Regular":
+		return 0
+	}
+	return 1
+}
+
+func (c *call) classroomNames() ([]string, error) {
+	found, _, err := c.rows(scan("GROUP", where(eq("kind", "classroom"))))
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, g := range found {
+		out = append(out, g["name"])
+	}
+	return out, nil
+}
+
+func (c *call) householdClassrooms() ([]string, error) {
+	found, res, err := c.rows(scan("PERSON", where(tree{"or", eq("id", path("@viewer")), tree{"in", path("id"), tree{"household", path("@viewer")}}}), tree{"include", "classroom"}))
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, p := range found {
+		if g := res.Resources["GROUP"][p["classroom"]]; g != nil {
+			out = append(out, g["name"])
+		}
+	}
+	return out, nil
+}
 
 func clock(moment string) string {
 	if _, t, ok := strings.Cut(moment, " "); ok {

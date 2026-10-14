@@ -24,22 +24,25 @@ type extCopy struct {
 	person           string
 }
 
-func (iv *Invitations) extCopy(r *http.Request) (extCopy, error) {
-	m := iv.s.Model()
-	rcp, ok := m.recipientByToken(r.PathValue("token"))
+func (m *Model) invitedGroup(token string) (store.Row, store.Row, bool) {
+	rcp, ok := m.recipientByToken(token)
 	if !ok {
-		return extCopy{}, access.Missing("that invitation is not here")
+		return nil, nil, false
 	}
 	msg, _ := m.Table("MESSAGE").Get(rcp["message"])
 	g, ok := m.Table("GROUP").Get(msg["group"])
 	if !ok || !slices.Contains(guestListKinds, g["kind"]) || g["status"] == "closed" {
+		return nil, nil, false
+	}
+	return rcp, g, true
+}
+
+func (iv *Invitations) extCopy(r *http.Request) (extCopy, error) {
+	rcp, g, ok := iv.s.Model().invitedGroup(r.PathValue("token"))
+	if !ok {
 		return extCopy{}, access.Missing("that invitation is not here")
 	}
 	return extCopy{recipient: rcp, group: g, person: rcp["person"]}, nil
-}
-
-func (iv *Invitations) extPage(w http.ResponseWriter, r *http.Request) {
-	serve.File(w, r, extShell)
 }
 
 type extPerson struct {

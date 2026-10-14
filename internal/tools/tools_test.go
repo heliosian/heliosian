@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -123,6 +124,57 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 				t.Errorf("%s %s: no %s in %s", c.tool, c.input, want, text)
 			}
 		}
+	}
+}
+
+func TestAnEventIsForWhomItsAudienceHolds(t *testing.T) {
+	set, s, queue := sample(t)
+	write(t, s, queue,
+		db.Edit{Insert: "GROUP", As: "e", Row: map[string]any{"kind": "event", "name": "Hummingbirds Hike", "start": "2026-10-05 09:00", "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		db.Edit{Insert: "GROUP", As: "a", Row: map[string]any{"kind": "group", "parent": "@e", "name": "Hummingbirds Hike Audience", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		db.Edit{Set: "@e", Cells: map[string]any{"audience": "@a"}},
+		db.Edit{Insert: "RULE", Row: map[string]any{"group": "@a", "order": "i", "target": "grp00000000010", "replace_with": "household"}},
+	)
+	for _, input := range []string{`{"words": "hike"}`, `{"words": "hike", "classroom": "Hummingbirds"}`} {
+		answer, err := run(t, set, s, "helios_events", input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(answer.Text, `"Hummingbirds Hike"`) || !strings.Contains(answer.Text, `"forYourHousehold":true`) {
+			t.Errorf("%s: %s", input, answer.Text)
+		}
+	}
+}
+
+func TestADayIsOnePlanPerClassroom(t *testing.T) {
+	set, s, queue := sample(t)
+	write(t, s, queue, append(schoolDayEdits(), db.Edit{Insert: "GROUP", Row: map[string]any{"kind": "classroom", "parent": "grp00000000012", "name": "Wrens", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}})...)
+	day := func(name string) []db.Edit {
+		return []db.Edit{
+			{Insert: "GROUP", As: "t", Row: map[string]any{"kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+			{Insert: "GROUP", As: "d", Row: map[string]any{"kind": "day", "parent": "@t", "name": name, "start": "2026-09-28", "all_day": "Yes", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		}
+	}
+	plans := func() []schoolDay {
+		t.Helper()
+		answer, err := run(t, set, s, "helios_days", `{}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out struct{ Plans []schoolDay }
+		if err := json.Unmarshal([]byte(answer.Text), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Plans
+	}
+	write(t, s, queue, append(day("Early Dismissal"), db.Edit{Insert: "RULE", Row: map[string]any{"group": "@d", "order": "i", "target": "grp00000000010"}})...)
+	got := plans()
+	if len(got) != 2 || got[0].Type != "Regular" || !slices.Equal(got[0].Classrooms, []string{"Wrens"}) || got[0].ForYou || got[1].Type != "Early Dismissal" || !slices.Equal(got[1].Classrooms, []string{"Hummingbirds"}) || !got[1].ForYou {
+		t.Errorf("an early dismissal for the Hummingbirds over a regular day: %+v", got)
+	}
+	write(t, s, queue, day("No School")...)
+	if got := plans(); len(got) != 1 || got[0].Type != "No School" || len(got[0].Classrooms) != 0 {
+		t.Errorf("no school for everyone over the rest: %+v", got)
 	}
 }
 

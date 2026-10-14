@@ -68,21 +68,15 @@ func calendarStore(t *testing.T, celebrate, team, groups store.Tables) *Store {
 }
 
 func calendarDeps(s *Store, m CalendarMail) CalendarDeps {
-	return CalendarDeps{Store: s, Images: memoryImages(), Mail: m, Style: testStyle, Queue: queue, IDKey: sampleKey}
+	return CalendarDeps{Store: s, Images: memoryImages(), Mail: m, Queue: queue, IDKey: sampleKey}
 }
 
 func testApp(t *testing.T) (http.Handler, *Store) {
 	t.Helper()
-	handler, cache, _ := testAppHooks(t)
-	return handler, cache
-}
-
-func testAppHooks(t *testing.T) (http.Handler, *Store, CalendarHooks) {
-	t.Helper()
 	cache := calendarStore(t, nil, nil, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, calendarDeps(cache, CalendarMail{Sender: keptMail().Mailgun}))
-	return served(mux, cache, hooks), cache, hooks
+	return served(mux, cache, hooks), cache
 }
 
 func memoryImages() blob.Images {
@@ -139,8 +133,6 @@ func calendarOver(s *Store) CalendarHooks {
 	return RegisterCalendar(http.NewServeMux(), calendarDeps(s, CalendarMail{Sender: mailtest.Discard()}))
 }
 
-var testStyle = CalendarCardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" })
-
 func changeLog(t *testing.T) []string {
 	t.Helper()
 	return testkit.ChangeLines(t, sheet, queue, CalendarApp)
@@ -159,20 +151,6 @@ func call(t *testing.T, handler http.Handler, method, path, body string) *httpte
 	return rec
 }
 
-func TestFeedRoute(t *testing.T) {
-	mux, _ := testApp(t)
-	rec := call(t, mux, http.MethodGet, "/open/feed/sample7feedtoken4jordan2whitfield.ics", "")
-	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
-		t.Fatalf("feed: %d %s", rec.Code, rec.Header().Get("Content-Type"))
-	}
-	if body := rec.Body.String(); !strings.Contains(body, "X-WR-CALNAME:Whitfield school days") || !strings.Contains(body, "URL:https://calendar.heliosiandev.com:8080/e/gev0000000005") {
-		t.Errorf("feed body: %s", body)
-	}
-	if rec := call(t, mux, http.MethodGet, "/open/feed/nosuchtoken.ics", ""); rec.Code != http.StatusNotFound {
-		t.Errorf("unknown token: %d", rec.Code)
-	}
-}
-
 func TestFeedLifecycle(t *testing.T) {
 	mux, cache := testApp(t)
 	owner := as("jordan.whitfield@heliosschool.org", mux)
@@ -189,9 +167,6 @@ func TestFeedLifecycle(t *testing.T) {
 	}
 	if len(cache.Model().Calendar.Feeds) != 2 || cache.Model().Calendar.Feed(made.Token).Email != "jordan.whitfield@heliosschool.org" {
 		t.Fatalf("feeds after add: %+v", cache.Model().Calendar.Feeds)
-	}
-	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Jays and Ravens Camping") || strings.Contains(rec.Body.String(), "Labor Day") {
-		t.Errorf("new feed: %d %s", rec.Code, rec.Body.String())
 	}
 	rec = call(t, owner, http.MethodPost, "/api/calendar-feeds", `{"name":"just TRIPS","classrooms":["Jays"],`+trip+`}`)
 	twin := created(t, rec)
@@ -217,9 +192,6 @@ func TestFeedLifecycle(t *testing.T) {
 	if f := cache.Model().Calendar.Feed(made.Token); f == nil || f.Name != "Jays days" || f.Emoji != "🚌" || cells.JoinList(f.Tags) != calendarIDs(t, "Trip, Schedule") || f.Email != "jordan.whitfield@heliosschool.org" {
 		t.Errorf("feed after change: %+v", f)
 	}
-	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:Jays days") || !strings.Contains(rec.Body.String(), "Labor Day") {
-		t.Errorf("changed feed: %d %s", rec.Code, rec.Body.String())
-	}
 	if rec := call(t, other, http.MethodDelete, "/api/calendar-feeds/"+key, ""); rec.Code != http.StatusNotFound {
 		t.Errorf("someone else's removal: %d", rec.Code)
 	}
@@ -228,9 +200,6 @@ func TestFeedLifecycle(t *testing.T) {
 	}
 	if len(cache.Model().Calendar.Feeds) != 1 || cache.Model().Calendar.Feed(made.Token) != nil {
 		t.Errorf("feeds after removal: %+v", cache.Model().Calendar.Feeds)
-	}
-	if rec := call(t, mux, http.MethodGet, "/open/feed/"+made.Token+".ics", ""); rec.Code != http.StatusNotFound {
-		t.Errorf("removed feed still serves: %d", rec.Code)
 	}
 }
 
@@ -242,20 +211,8 @@ func TestCalendarRead(t *testing.T) {
 	}
 }
 
-func TestSharePreview(t *testing.T) {
-	handler, _, hooks := testAppHooks(t)
-	testkit.Previews(t, hooks.PreviewHead(), testkit.Preview{
-		URL:  "https://when.heliosiandev.com:8080/e/gev0000000007",
-		Want: []string{`property="og:title" content="International Night"`, `Thursday, September 24 · 4:00 – 6:00 PM`, `content="https://when.heliosiandev.com:8080/open/share/gev0000000007.png"`},
-	}, testkit.Preview{
-		URL:  "https://when.heliosiandev.com:8080/mine",
-		Want: []string{`og:title" content="Helios When"`, "One calendar", "/open/share/upcoming.png"},
-	})
-	testkit.Cards(t, handler, []string{"/open/share/gev0000000007.png", "/open/share/upcoming.png"}, "/open/share/nope.png")
-}
-
 func TestOldIDsReachTheirEvents(t *testing.T) {
-	handler, _, hooks := testAppHooks(t)
+	handler, _ := testApp(t)
 	jordan := as("jordan.whitfield@heliosschool.org", handler)
 	for old, want := range map[string]string{"7QK2M4XN": "evt0000000001", "3pl9w2zc": "evt0000000002", "8RV4T6PK": "evt0000000003"} {
 		rec := eventOf(t, jordan, old)
@@ -275,11 +232,6 @@ func TestOldIDsReachTheirEvents(t *testing.T) {
 			t.Errorf("%s: %d, want the page", path, rec.Code)
 		}
 	}
-	testkit.Cards(t, handler, []string{"/open/share/3PL9W2ZC.png", "/open/share/evt0000000002.png"}, "/open/share/3PL9W2ZD.png")
-	testkit.Previews(t, hooks.PreviewHead(), testkit.Preview{
-		URL:  "https://when.heliosiandev.com:8080/e/3PL9W2ZC",
-		Want: []string{`property="og:title" content="HCA Meeting"`, `content="https://when.heliosiandev.com:8080/open/share/evt0000000002.png"`},
-	})
 	if rec := act(t, jordan, "3PL9W2ZC", "settings", `{"flyer":"sample/community.jpg"}`); rec.Code != 204 {
 		t.Fatalf("a flyer by the old ID: %d %s", rec.Code, rec.Body)
 	}
@@ -418,7 +370,7 @@ func keptMail() *mailtest.Recorder {
 }
 
 func TestAdminAddsAndCorrects(t *testing.T) {
-	handler, cache, hooks := testAppHooks(t)
+	handler, cache := testApp(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)
 	rec := call(t, admin, "POST", "/api/events", `{"title":"Chess Club","start":"2026-10-01 15:30","end":"2026-10-01 16:30","tags":[`+quoted(t, "Jays, Clubs")+`],"sharing":"Public","repeatWeeks":4,"repeatTimes":2}`)
 	if rec.Code != 200 {
@@ -559,12 +511,6 @@ func TestAdminAddsAndCorrects(t *testing.T) {
 	if _, ok := id.Parse(party.ID); !ok {
 		t.Errorf("an event with an address is still minted an ID: %q", party.ID)
 	}
-	if rec := call(t, handler, "GET", "/open/share/sams-party.png", ""); rec.Code != 200 || rec.Header().Get("Content-Type") != "image/png" {
-		t.Errorf("a link event's card: %d", rec.Code)
-	}
-	if head := hooks.PreviewHead()(httptest.NewRequest("GET", "https://when.heliosiandev.com:8080/e/sams-party", nil)); !strings.Contains(head, "Sam") || !strings.Contains(head, "/open/share/"+party.ID+".png") {
-		t.Errorf("a link event's preview:\n%s", head)
-	}
 	if rec := call(t, parent, "POST", "/api/events", `{"address":"sams-party","title":"Again","start":"2026-10-04","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`); rec.Code != 400 {
 		t.Errorf("a taken address: %d", rec.Code)
 	}
@@ -615,20 +561,6 @@ func TestFeedTags(t *testing.T) {
 	}
 }
 
-func TestFeedCarriesLinked(t *testing.T) {
-	handler, cache := testApp(t)
-	linked := []Linked{{Source: SourceCelebrate, ID: "pty0000000009", EventID: "pty0000000009", Title: "Fondue Night", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineGoing}}
-	f := &Feed{Token: "t", Email: "jordan.whitfield@heliosschool.org", Name: "Mine", Tags: []string{TagGoing}}
-	out := string(ICS(cache.Model().Calendar, calendarDirectory(t, "sampledata"), f, linked, "https://when.heliosiandev.com:8080", now()))
-	if !strings.Contains(out, "SUMMARY:Fondue Night") || !strings.Contains(out, "URL:https://when.heliosiandev.com:8080/e/pty0000000009") {
-		t.Errorf("feed lacks the party:\n%s", out)
-	}
-	if strings.Contains(out, "SUMMARY:Halloween Parade") {
-		t.Errorf("a Going feed carries an event the family is not in")
-	}
-	_ = handler
-}
-
 func TestAnswers(t *testing.T) {
 	handler, cache := testApp(t)
 	me := "jordan.whitfield@heliosschool.org"
@@ -646,26 +578,15 @@ func TestAnswers(t *testing.T) {
 	if view.User.Answers["gev0000000007"] != AnswerHidden {
 		t.Errorf("answers = %v", view.User.Answers)
 	}
-	dir := calendarDirectory(t, "sampledata")
 	upcoming := func() []map[string]any { return upcomingOf(t, handler, me, defaultFeedOf(t, handler, me)) }
 	if slices.ContainsFunc(upcoming(), func(u map[string]any) bool { return u["id"] == "gev0000000007" }) {
 		t.Errorf("a hidden event is in Upcoming")
 	}
-	f := &Feed{Token: "t", Email: me, Name: "Mine"}
-	if strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
-		t.Errorf("a hidden event is in the owner's feed")
-	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"no"}`); rec.Code != 204 {
 		t.Fatalf("no: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
-		t.Errorf("an event the owner said no to is in their feed")
-	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":""}`); rec.Code != 204 {
 		t.Fatalf("clear: %d %s", rec.Code, rec.Body)
-	}
-	if !strings.Contains(string(ICS(cache.Model().Calendar, dir, f, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
-		t.Errorf("a cleared answer left the event out of the feed")
 	}
 	if rec := act(t, viewer, "gev0000000007", "answer", `{"answer":"yes"}`); rec.Code != 204 {
 		t.Fatalf("yes: %d %s", rec.Code, rec.Body)
@@ -683,10 +604,6 @@ func TestAnswers(t *testing.T) {
 	}
 	if slices.Contains(cache.Model().Calendar.Event("gev0000000007").Tags, TagGoing) {
 		t.Errorf("a yes changed the model's own event")
-	}
-	going := &Feed{Token: "g", Email: me, Name: "Going", Tags: []string{TagGoing}}
-	if !strings.Contains(string(ICS(cache.Model().Calendar, dir, going, nil, "https://when.heliosiandev.com:8080", now())), "SUMMARY:International Night") {
-		t.Errorf("a yes is not in the owner's Going feed")
 	}
 	sender := calendarApp{mail: CalendarMail{ReplyTo: "Helios When <when@reply.heliosian.com>", Key: []byte("key")}}
 	if got := string(sender.invite(cache.Model().Calendar.Event("gev0000000007"), me, "https://when.heliosian.com/e/gev0000000007", mail.MethodRequest).Content); !strings.Contains(got, "METHOD:REQUEST") || !strings.Contains(got, "ORGANIZER;CN=Helios When:mailto:when+") || !strings.Contains(got, "ATTENDEE;CN="+me) {
@@ -884,12 +801,5 @@ func TestMyHeliosianFeed(t *testing.T) {
 	}
 	if cache.Model().Calendar.Settings["jordan.whitfield@heliosschool.org"].FeedToken != first {
 		t.Errorf("the token is not kept")
-	}
-	rec := call(t, parent, "GET", "/open/feed/"+first+".ics", "")
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "BEGIN:VCALENDAR") || !strings.Contains(rec.Body.String(), "X-WR-CALNAME:My Heliosian") {
-		t.Errorf("the feed: %d %s", rec.Code, rec.Body.String()[:min(200, rec.Body.Len())])
-	}
-	if rec := call(t, parent, "GET", "/open/feed/nobodys.ics", ""); rec.Code != 404 {
-		t.Errorf("a token nobody holds: %d", rec.Code)
 	}
 }

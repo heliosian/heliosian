@@ -43,7 +43,6 @@ func homeCalendar(s *Store, sheet homeSheet) CalendarHooks {
 		Store:  s,
 		Images: memoryImages(),
 		Mail:   CalendarMail{Sender: mailtest.Discard()},
-		Style:  testStyle,
 		Queue:  sheet.queue,
 		IDKey:  sampleKey,
 	})

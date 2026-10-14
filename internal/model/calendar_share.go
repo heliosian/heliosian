@@ -1,19 +1,10 @@
 package model
 
 import (
-	"image/color"
-	"net/http"
 	"strings"
 
 	"heliosian/internal/sharecard"
 )
-
-func CalendarCardStyle(name, tagline func() string) *sharecard.Style {
-	palette := sharecard.Standard
-	palette.Brand = color.RGBA{0x0e, 0x4d, 0x54, 0xff}
-	palette.Yellow = color.RGBA{0xe8, 0xa3, 0x3d, 0xff}
-	return &sharecard.Style{Palette: palette, Name: name, Tagline: tagline, Wordmark: "Helios When", Mark: "web/public/when/brand/logo-mark.png"}
-}
 
 const defaultHeader = "brand/default-header.jpg"
 
@@ -51,15 +42,6 @@ func blurb(e *Event) string {
 	return text
 }
 
-func (m *Calendar) category(e *Event) string {
-	for _, t := range e.Tags {
-		if m.Roster.byID(t) == nil {
-			return m.TagName(t)
-		}
-	}
-	return ""
-}
-
 func (a calendarApp) events() []*Event {
 	return withLinked(a.model().Events, a.linked(""))
 }
@@ -72,99 +54,6 @@ func (a calendarApp) event(key string) *Event {
 		}
 	}
 	return a.model().Event(key)
-}
-
-func cutEventPath(path string) (string, bool) {
-	if id, ok := strings.CutPrefix(path, "/e/"); ok {
-		return id, true
-	}
-	return strings.CutPrefix(path, "/events/")
-}
-
-func (h CalendarHooks) PreviewHead() func(r *http.Request) string {
-	a := h.app
-	return func(r *http.Request) string {
-		origin := "https://" + r.Host
-		if id, ok := cutEventPath(r.URL.Path); ok {
-			if e := a.event(id); e != nil {
-				return a.eventHead(e, origin)
-			}
-		}
-		return a.upcomingHead(origin)
-	}
-}
-
-func (a calendarApp) eventHead(e *Event, origin string) string {
-	parts := []string{when(e)}
-	if e.Location != "" {
-		parts = append(parts, e.Location)
-	}
-	if b := blurb(e); b != "" {
-		parts = append(parts, b)
-	}
-	return a.style.PreviewTags(e.Title, strings.Join(parts, " — "), origin+EventPath(e), origin+"/open/share/"+e.ID+".png")
-}
-
-func (a calendarApp) upcomingHead(origin string) string {
-	return a.style.PreviewTags(a.style.Name(), whenWords, origin+"/", origin+"/open/share/upcoming.png")
-}
-
-func (a calendarApp) shareUpcoming(w http.ResponseWriter, r *http.Request) {
-	card := whenCard(a.images.Read(defaultHeader))
-	a.style.Serve(w, r, card, card.Kicker, card.Title, card.Button)
-}
-
-const whenWords = "One calendar for everything at Helios: every school day, early dismissal and break for your classrooms, every event from the school, the HCA and Helios Celebrate, and calendars you save and subscribe to in your own app."
-
-func whenCard(picture []byte) sharecard.Card {
-	return sharecard.Card{
-		Kicker: "One calendar for everything at Helios",
-		Title:  "The school year, day by day",
-		Lines: []sharecard.Line{
-			{Icon: "calendar", Text: "School days, dismissals and breaks"},
-			{Icon: "clock", Text: "Events, parties and HCA sign-ups"},
-			{Icon: "pin", Text: "Calendars you save and subscribe to"},
-		},
-		Button:  "Open Helios When",
-		Picture: picture,
-	}
-}
-
-func shareButton(e *Event) string {
-	switch e.Source {
-	case SourceCelebrate:
-		return "Get Tickets"
-	case SourceTeam:
-		return "Sign Up"
-	}
-	if e.Link != "" {
-		return "Sign Up"
-	}
-	return "RSVP"
-}
-
-func (a calendarApp) shareCard(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimSuffix(r.PathValue("id"), ".png")
-	e := a.event(id)
-	if e == nil {
-		http.NotFound(w, r)
-		return
-	}
-	e = a.model().invitedEvent(e)
-	picture := a.model().pictureOf(e)
-	whole := false
-	if inv := a.model().Invitations[e.ID]; inv != nil && inv.Flyer != "" {
-		picture, whole = inv.Flyer, true
-	}
-	day, hours := whenLines(e)
-	kicker := a.model().category(e)
-	button := shareButton(e)
-	card := sharecard.Card{
-		Kicker: kicker, Title: e.Title, Picture: a.images.Read(picture), Whole: whole,
-		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: e.Location}},
-		Button: button,
-	}
-	a.style.Serve(w, r, card, e.Title, kicker, day, hours, e.Location, picture, button)
 }
 
 func (m *Calendar) pictureOf(e *Event) string {

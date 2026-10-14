@@ -135,12 +135,19 @@ func TestASearchsWordsAreRunWithoutSavingThem(t *testing.T) {
 func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}}})
+	mux := http.NewServeMux()
+	RegisterFeeds(mux, s, func() time.Time { return testNow })
+	fetch := func(token string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "https://when.test/open/feed/"+token+".ics", nil))
+		return rec
+	}
 	for _, token := range []string{"fed00000000002", "oldfeedtoken"} {
-		ics, ok, err := s.Model().SavedSearchICS(t.Context(), token, "https://when.test", testNow)
-		if err != nil || !ok {
-			t.Fatalf("%s: %v %v", token, ok, err)
+		rec := fetch(token)
+		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/calendar") {
+			t.Fatalf("%s: %d %s %s", token, rec.Code, rec.Header().Get("Content-Type"), rec.Body)
 		}
-		text := string(ics)
+		text := rec.Body.String()
 		if !strings.Contains(text, "SUMMARY:Fall Picnic") || !strings.Contains(text, "X-WR-CALNAME:Juni's Calendar") || !strings.Contains(text, "https://when.test/e/fall-picnic") {
 			t.Fatalf("%s's feed reads %s", token, text)
 		}
@@ -148,8 +155,8 @@ func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 			t.Fatalf("%s's feed carries what its words leave out: %s", token, text)
 		}
 	}
-	if _, ok, _ := s.Model().SavedSearchICS(t.Context(), "nope", "https://when.test", testNow); ok {
-		t.Fatal("a token no saved search has answered a feed")
+	if rec := fetch("nope"); rec.Code != http.StatusNotFound {
+		t.Fatalf("a token no saved search has answered %d", rec.Code)
 	}
 }
 

@@ -466,22 +466,6 @@ func TestFeeds(t *testing.T) {
 	if f == nil || f.Email != "jordan.whitfield@heliosschool.org" || strings.Join(f.Classrooms, ",") != "Jays,Ospreys" {
 		t.Fatalf("feed = %+v", f)
 	}
-	cases := map[string]bool{
-		"a4@sample":  true,
-		"a5@sample":  true,
-		"a6@sample":  false,
-		"a7@sample":  false,
-		"a11@sample": false,
-	}
-	for id, want := range cases {
-		if got := f.Carries(m.Event(id)); got != want {
-			t.Errorf("%s carried = %v, want %v", id, got, want)
-		}
-	}
-	everything := Feed{}
-	if !everything.Carries(m.Event("a6@sample")) || !everything.Carries(m.Event("a7@sample")) {
-		t.Errorf("a feed with no filter left something out")
-	}
 	next := tables(t)
 	next[FeedsTab] = append(next[FeedsTab], store.Row{"Token": "t2", "Email": "a@x.org", "Name": "Mine", store.OrderColumn: "a"}, store.Row{"Token": "t3", "Email": "a@x.org", "Name": "Yours"})
 	next[FeedsTab][0][store.OrderColumn] = "m"
@@ -495,34 +479,6 @@ func TestFeeds(t *testing.T) {
 	}
 	if strings.Join(order, ",") != "t2,sample7feedtoken4jordan2whitfield,t3" || m2.Feed("t3").Name != "Yours" {
 		t.Errorf("feeds by order: %v", order)
-	}
-}
-
-func TestICS(t *testing.T) {
-	m := load(t)
-	f := m.Feed("sample7feedtoken4jordan2whitfield")
-	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-01 08:00", Location)
-	out := string(ICS(m, calendarDirectory(t, "../../sampledata"), f, nil, "https://calendar.heliosiandev.com:8080", at))
-	for _, want := range []string{
-		"BEGIN:VCALENDAR\r\n", "X-WR-CALNAME:Whitfield school days\r\n", "END:VCALENDAR\r\n",
-		"UID:a4@sample\r\n", "DTSTART;VALUE=DATE:20260907\r\n", "DTEND;VALUE=DATE:20260908\r\n",
-		"SUMMARY:Jays and Ravens Camping\r\n", "DTSTART;VALUE=DATE:20260909\r\n", "DTEND;VALUE=DATE:20260912\r\n",
-		"DTSTAMP:20260901T150000Z\r\n", "URL:https://calendar.heliosiandev.com:8080/e/gev0000000005\r\n",
-		"CATEGORIES:Jays\\, Ravens\\, Trip\r\n", "DESCRIPTION:No School\r\n",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("feed lacks %q", want)
-		}
-	}
-	for _, absent := range []string{"Hummingbird CAFE", "International Night"} {
-		if strings.Contains(out, absent) {
-			t.Errorf("feed carries %q", absent)
-		}
-	}
-	for _, line := range strings.Split(out, "\r\n") {
-		if len(line) > 75 {
-			t.Errorf("line over 75 octets: %q", line)
-		}
 	}
 }
 

@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -14,7 +13,6 @@ import (
 	"heliosian/internal/id"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/serve"
-	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
 
@@ -31,7 +29,6 @@ type calendarApp struct {
 	search imagesearch.Search
 	queue  *store.Queue
 	mail   CalendarMail
-	style  *sharecard.Style
 	idKey  []byte
 }
 
@@ -40,14 +37,13 @@ type CalendarDeps struct {
 	Images blob.Images
 	Search imagesearch.Search
 	Mail   CalendarMail
-	Style  *sharecard.Style
 	Queue  *store.Queue
 	IDKey  []byte
 }
 
 func newCalendarApp(d CalendarDeps) calendarApp {
 	d.Search.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	return calendarApp{store: d.Store, images: d.Images, search: d.Search, queue: d.Queue, mail: d.Mail, style: d.Style, idKey: d.IDKey}
+	return calendarApp{store: d.Store, images: d.Images, search: d.Search, queue: d.Queue, mail: d.Mail, idKey: d.IDKey}
 }
 
 func (a calendarApp) at(m *Model) calendarApp {
@@ -104,9 +100,6 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	mux.HandleFunc("GET /api/when/invites/options", serve.JSON(a.groupOptions))
 	mux.HandleFunc("POST /api/when/invites/preview", serve.JSON(a.groupPreview))
 	a.search.Register(mux, "/api/when", a.images.Folder(), imagesearch.Members)
-	mux.HandleFunc("GET /open/feed/{file}", a.feed)
-	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
-	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
 	mux.HandleFunc("GET /open/flyer/{id...}", a.flyer)
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
 	return CalendarHooks{app: a}
@@ -283,26 +276,6 @@ type tagBody struct {
 
 type tagsBody struct {
 	Tags []tagBody `json:"tags"`
-}
-
-func (a calendarApp) feed(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimSuffix(r.PathValue("file"), ".ics")
-	model := a.model()
-	f := model.Feed(token)
-	if email := model.myHeliosianFeed(token); f == nil && email != "" {
-		home := model.MyHeliosian(email)
-		home.Token = token
-		home.Classrooms, home.Tags = model.myHeliosianView(a.directory(), email)
-		f = &home
-	}
-	if f == nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", "helios-calendar.ics"))
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write(ICS(model, a.directory(), f, a.linked(f.Email), "https://"+r.Host, now()))
 }
 
 func (a calendarApp) linked(email string) []Linked {

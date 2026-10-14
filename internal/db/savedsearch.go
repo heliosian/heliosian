@@ -71,7 +71,25 @@ func (m *Model) savedSearchByToken(token string) (store.Row, bool) {
 	return nil, false
 }
 
-func (m *Model) SavedSearchICS(ctx context.Context, token, origin string, now time.Time) ([]byte, bool, error) {
+func RegisterFeeds(mux *http.ServeMux, s *Store, now func() time.Time) {
+	mux.HandleFunc("GET /open/feed/{file}", func(w http.ResponseWriter, r *http.Request) {
+		ics, ok, err := s.Model().savedSearchICS(r.Context(), strings.TrimSuffix(r.PathValue("file"), ".ics"), "https://"+r.Host, now())
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+		w.Header().Set("Content-Disposition", `inline; filename="helios-calendar.ics"`)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write(ics)
+	})
+}
+
+func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now time.Time) ([]byte, bool, error) {
 	row, ok := m.savedSearchByToken(token)
 	if !ok {
 		return nil, false, nil

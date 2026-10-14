@@ -351,18 +351,6 @@ const (
 	MyHeliosianEmoji = ""
 )
 
-func (m *Calendar) myHeliosianFeed(token string) string {
-	if token == "" {
-		return ""
-	}
-	for email, s := range m.Settings {
-		if s.FeedToken == token {
-			return email
-		}
-	}
-	return ""
-}
-
 func (m *Calendar) MyHeliosian(email string) Feed {
 	setting := m.Settings[mail.Normalize(email)]
 	f := Feed{Token: MyHeliosianToken, Email: mail.Normalize(email), Name: MyHeliosianName, Emoji: MyHeliosianEmoji, Classrooms: []string{}, Tags: []string{}, Locked: true, Position: setting.HomePosition}
@@ -386,13 +374,6 @@ type Feed struct {
 	Locked     bool     `json:"locked,omitempty"`
 	Position   int      `json:"position,omitempty"`
 	order      string
-}
-
-func (f Feed) Carries(e *Event) bool {
-	if len(f.Classrooms) > 0 && len(e.Classrooms) > 0 && !overlaps(f.Classrooms, e.Classrooms) {
-		return false
-	}
-	return len(f.Tags) == 0 || overlaps(f.Tags, e.Tags)
 }
 
 func overlaps(a, b []string) bool {

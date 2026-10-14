@@ -171,7 +171,7 @@ func NewCore(cfg Config) *Core {
 		Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
 	}
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
-	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
+	calendarStyle := db.WhenCardStyle(appName("when"), taglineOf("when"))
 	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
@@ -183,7 +183,6 @@ func NewCore(cfg Config) *Core {
 		Images: whenImages,
 		Search: cfg.ImageSearch,
 		Mail:   cfg.CalendarMail,
-		Style:  calendarStyle,
 		Queue:  queue,
 		IDKey:  cfg.IDKey,
 	})
@@ -259,6 +258,9 @@ func NewCore(cfg Config) *Core {
 		SignedIn: func(email string) bool { return dataStore.Model().SignedIn(email) != "" },
 		Now:      schoolNow,
 	}
+	db.RegisterFeeds(calendarMux, dataStore, schoolNow)
+	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle)
+	whenPages.Register(calendarMux)
 	invitations := db.RegisterInvitations(calendarMux, dataStore, queue, pictures, tokens, schoolNow, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: model.Origin(cfg.Domain),
 	})
@@ -277,7 +279,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: model.PartiesPreviewHead(models, celebrateStyle)},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: whenPages.PreviewHead},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},

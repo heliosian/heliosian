@@ -295,6 +295,7 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	var h strings.Builder
 	h.WriteString(`<div style="max-width:600px;margin:0 auto;padding:8px 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1b2a2c">`)
 	h.WriteString(`<div style="background:#fff;border:1px solid #e6e6e6;border-radius:6px;padding:36px 32px 28px">`)
+	fmt.Fprintf(&h, `<p style="margin:0 0 24px"><a href="%s" style="display:block"><img src="%s" width="536" alt="%s" style="display:block;width:100%%;height:auto;border:0;border-radius:4px"></a></p>`, esc(link), esc(iv.cardOf(g)), esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(sentBy))
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:26px;line-height:1.25;text-align:center">%s</p>`, esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;font-size:15px;text-align:center;color:#444">%s</p>`, esc(day))
@@ -323,7 +324,11 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 
 func (iv *Invitations) letter(g store.Row, link string) mail.Letter {
 	day, hours := dayAndHours(g)
-	return mail.Letter{Brand: whenBrand, Base: iv.config.Origin("when"), Title: g["name"], When: strings.TrimSpace(day + " " + hours), Where: g["location"], Path: link}
+	return mail.Letter{Brand: whenBrand, Base: iv.config.Origin("when"), Title: g["name"], When: strings.TrimSpace(day + " " + hours), Where: g["location"], Path: link, Picture: iv.cardOf(g)}
+}
+
+func (iv *Invitations) cardOf(g store.Row) string {
+	return iv.config.Origin("when") + "/open/share/" + g["id"] + ".png"
 }
 
 func (iv *Invitations) note(m *Model, g, msg store.Row, from, person, words, link string) mail.Message {
