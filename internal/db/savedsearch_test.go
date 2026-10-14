@@ -57,13 +57,45 @@ func TestAWordIsForAnEventsAudience(t *testing.T) {
 	}
 }
 
+func TestWaitlistedIsAPartyTheHouseholdWaitsFor(t *testing.T) {
+	const tacoNight = "grp00000000521"
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{
+		{Delete: "mem00000000025"},
+		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@w", "person": student, "member": "yes"}},
+	})
+	holds := func(search, viewer string) []string {
+		t.Helper()
+		lists, err := searchWords(search)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := s.Model().Run(t.Context(), mustParse(t, `(from GROUP @e (where (in kind "event" "party" "activity") `+searchCondition(lists)+`))`), Env{Viewer: viewer, Now: testNow})
+		if got.Err != nil {
+			t.Fatal(got.Err)
+		}
+		return got.IDs
+	}
+	if got := holds(`[["waitlisted"]]`, parent); !slices.Equal(got, []string{tacoNight}) {
+		t.Errorf("waitlisted holds %v for a parent whose child waits for Taco Night", got)
+	}
+	if got := holds(`[["going"]]`, parent); slices.Contains(got, tacoNight) {
+		t.Errorf("going holds Taco Night, which the household only waits for: %v", got)
+	}
+	if got := holds(`[["waitlisted"]]`, staff); len(got) != 0 {
+		t.Errorf("waitlisted holds %v for someone waiting for nothing", got)
+	}
+}
+
 func TestASavedSearchsWordsAreChecked(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	save := func(search string) error {
 		_, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "SAVED_SEARCH", Row: map[string]any{"person": parent, "name": "Test", "search": search}}}})
 		return err
 	}
-	if err := save(`[["hummingbirds"],["community","going"]]`); err != nil {
+	if err := save(`[["hummingbirds"],["community","going","waitlisted"]]`); err != nil {
 		t.Fatalf("a search of known words was refused: %v", err)
 	}
 	for search, want := range map[string]string{

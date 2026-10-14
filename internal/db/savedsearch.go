@@ -8,9 +8,14 @@ import (
 	"heliosian/internal/cells"
 )
 
-const goingWord = "going"
+const (
+	goingWord      = "going"
+	waitlistedWord = "waitlisted"
+)
 
 const goingCondition = `(or (in id (select MEMBER.group (in person (household @viewer)) (= member "yes"))) (in rsvp_yes (select MEMBER.group (in person (household @viewer)) (= member "yes"))))`
+
+const waitlistedCondition = `(in waitlist (select MEMBER.group (in person (household @viewer)) (= member "yes")))`
 
 const shownCondition = `(not (in hidden_for (select EFFECTIVE_MEMBER.group (= person @viewer))))`
 
@@ -24,8 +29,8 @@ func searchWords(raw string) ([][]string, error) {
 			return nil, fmt.Errorf("%q has an empty list of words", raw)
 		}
 		for _, w := range list {
-			if w != goingWord && (w == "" || cells.CheckPretty(w) != nil) {
-				return nil, fmt.Errorf("%q is not a word: a word is going or a group's slug", w)
+			if w != goingWord && w != waitlistedWord && (w == "" || cells.CheckPretty(w) != nil) {
+				return nil, fmt.Errorf("%q is not a word: a word is going, waitlisted or a group's slug", w)
 			}
 		}
 	}
@@ -33,8 +38,11 @@ func searchWords(raw string) ([][]string, error) {
 }
 
 func wordCondition(w string) string {
-	if w == goingWord {
+	switch w {
+	case goingWord:
 		return goingCondition
+	case waitlistedWord:
+		return waitlistedCondition
 	}
 	return fmt.Sprintf(`(or (covers @e.audience (members (slug %q))) (and (blank @e.audience) (exists PERSON (in id (members (slug %q))))) (exists GROUP (= id (slug %q)) (in id (ancestors @e))))`, w, w, w)
 }
@@ -69,7 +77,7 @@ func savedSearchSlugs(m *Model, c Change) ([]Edit, error) {
 	}
 	for _, list := range lists {
 		for _, w := range list {
-			if w == goingWord {
+			if w == goingWord || w == waitlistedWord {
 				continue
 			}
 			if _, ok := m.Table("GROUP").Distinct("slug", w); !ok {
