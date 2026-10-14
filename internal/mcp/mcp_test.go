@@ -348,6 +348,72 @@ func TestOnlyRegisteredRedirectsAndSameOriginApprovals(t *testing.T) {
 	}
 }
 
+func TestTheAppSignsInThroughItsOwnRedirect(t *testing.T) {
+	const app = "com.heliosian.Heliosian:/oauth"
+	f := setup(t)
+	status, out := f.post(t, "/oauth/register", "application/json", `{"client_name": "Heliosian for iOS", "redirect_uris": ["`+app+`"]}`, nil)
+	if status != http.StatusCreated {
+		t.Fatalf("the app's redirect was refused: %d %v", status, out)
+	}
+	client := out["client_id"].(string)
+	query := strings.Replace(f.authorizeQuery(client, challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape(app), 1)
+	body, _ := json.Marshal(map[string]string{"query": query})
+	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
+	if status, about := f.post(t, "/api/mcp/request", "application/json", string(body), same); status != http.StatusOK || about["redirect"] != "the Heliosian app" || about["client"] != "Heliosian for iOS" {
+		t.Fatalf("the approval page answered %d: %v", status, about)
+	}
+	status, out = f.post(t, "/api/mcp/deny", "application/json", string(body), same)
+	if denied, _ := out["redirect"].(string); status != http.StatusOK || !strings.HasPrefix(denied, app+"?") || !strings.Contains(denied, "error=access_denied") {
+		t.Fatalf("deny answered %d: %v", status, out)
+	}
+	status, out = f.post(t, "/api/mcp/approve", "application/json", string(body), same)
+	approved, _ := out["redirect"].(string)
+	if status != http.StatusOK || !strings.HasPrefix(approved, app+"?") {
+		t.Fatalf("approve answered %d: %v", status, out)
+	}
+	back, err := url.Parse(approved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if back.Query().Get("state") != "xyz" {
+		t.Fatalf("approve drops the state: %s", approved)
+	}
+	form := url.Values{"grant_type": {"authorization_code"}, "code": {back.Query().Get("code")}, "client_id": {client}, "redirect_uri": {app}, "code_verifier": {verifier}}
+	status, out = f.post(t, "/oauth/token", "application/x-www-form-urlencoded", form.Encode(), nil)
+	token, _ := out["access_token"].(string)
+	if status != http.StatusOK || token == "" {
+		t.Fatalf("token answered %d: %v", status, out)
+	}
+	if text, failed := callTool(t, f.connect(t, token), "helios_whoami", nil); failed || !strings.Contains(text, rowanID) {
+		t.Fatalf("the app's token reads as %s", text)
+	}
+}
+
+func TestNoOtherAppRedirectRegisters(t *testing.T) {
+	f := setup(t)
+	for _, refused := range []string{
+		"com.example.other:/oauth",
+		"com.heliosian.heliosian:/oauth",
+		"com.heliosian.Heliosian:/elsewhere",
+		"com.heliosian.Heliosian:oauth",
+		"com.heliosian.Heliosian://oauth",
+		"com.heliosian.Heliosian:/oauth#x",
+		"com.heliosian.Heliosian:/oauth?x=1",
+		"javascript:alert(1)",
+		"data:text/html,hi",
+		"file:///etc/passwd",
+	} {
+		if status, out := f.post(t, "/oauth/register", "application/json", `{"redirect_uris": ["`+refused+`"]}`, nil); status != http.StatusBadRequest || out["error"] != "invalid_redirect_uri" {
+			t.Errorf("%s registered: %d %v", refused, status, out)
+		}
+	}
+	query := strings.Replace(f.authorizeQuery(f.register(t), challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape("com.heliosian.Heliosian:/oauth"), 1)
+	body, _ := json.Marshal(map[string]string{"query": query})
+	if status, _ := f.post(t, "/api/mcp/approve", "application/json", string(body), map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusBadRequest {
+		t.Errorf("a client that did not register the app's redirect was sent to it: %d", status)
+	}
+}
+
 func TestSigningOutRevokesTheToken(t *testing.T) {
 	f := setup(t)
 	token := f.token(t)
