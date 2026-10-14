@@ -260,7 +260,11 @@ func (w *CalendarWatcher) sync(ctx context.Context) error {
 	slog.InfoContext(ctx, "calendar import: feed read", "events", len(feed), "to classify", len(pending))
 	classified := v.Classify(ctx, w.client, pending)
 	rows = w.s.Model().calendarRows()
-	edits := GooglePlan(rows, v, feed, from, to, classified, nil)
+	matched, err := v.MatchGoogle(ctx, w.client, rows, GoogleToMatch(rows, v, feed))
+	if err != nil {
+		return err
+	}
+	edits := GooglePlan(rows, v, feed, from, to, classified, matched)
 	if len(edits) == 0 {
 		return nil
 	}
