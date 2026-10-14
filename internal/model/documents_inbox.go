@@ -73,6 +73,11 @@ func (in *DocumentFiler) hook(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(strings.ToLower(m.From), "<forwarding-noreply@google.com>") {
 		slog.InfoContext(r.Context(), "artifacts: forwarding confirmation", "from", m.From, "subject", m.Subject, "text", m.Text)
 	}
+	if _, _, ok := m.Broadcast(); !ok {
+		slog.InfoContext(r.Context(), "artifacts: mail not the community's", "id", m.MessageID, "from", m.From, "subject", m.Subject, "list", m.ListID)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	lines, _ := mail.SplitMessage(raw)
 	if reason := vouch(lines, m); reason != "" {
 		slog.WarnContext(r.Context(), "artifacts: mail not vouched for", "id", m.MessageID, "from", m.From, "subject", m.Subject, "reason", reason)

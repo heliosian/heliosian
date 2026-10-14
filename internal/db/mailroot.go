@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"heliosian/internal/access"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 )
@@ -27,6 +28,8 @@ var listGroups = map[string][]string{
 	"newstudentfamilies":  {"parents"},
 	"parentsandstudents":  {"parents", "students"},
 	"community":           {"everyone"},
+	"chat":                {"everyone"},
+	"chat2":               {"everyone"},
 }
 
 var bandLists = map[string]string{"hawksandfalcons": "halcons-parents", "jaysandravens": "jayvens-parents", "condorsandospreys": "cospreys-parents"}
@@ -101,7 +104,7 @@ func (m *Model) mailGroups(list string) ([]string, error) {
 	if r, ok := strings.CutSuffix(room, ".students"); ok && m.classroomNamed(r) {
 		return m.groupsWhere(func(g map[string]string) bool { return g["kind"] == "classroom" && strings.EqualFold(g["name"], r) }, 1, name)
 	}
-	return m.groupsWhere(func(g map[string]string) bool { return g["kind"] == "group" && g["slug"] == "everyone" }, 1, list)
+	return nil, access.Invalid("the list %q is not the community's", list)
 }
 
 func (m *Model) classroomNamed(name string) bool {

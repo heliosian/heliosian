@@ -258,7 +258,7 @@ func TestInboxImportsOnlyTheCommunitysMailOnce(t *testing.T) {
 			t.Fatalf("the hook answered %d", code)
 		}
 	}
-	if len(filed) != 3 || filed[0] != personalMail || filed[1] != classMail || filed[2] != classMail {
+	if len(filed) != 2 || filed[0] != classMail || filed[1] != classMail {
 		t.Fatalf("the data model was handed %d messages", len(filed))
 	}
 	queue.Flush()
