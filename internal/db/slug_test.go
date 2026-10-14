@@ -29,6 +29,12 @@ func TestSlug(t *testing.T) {
 	if got := run(staff, `(from GROUP (where (= id (slug "super-admins"))))`); got.Err != nil || len(got.IDs) != 1 {
 		t.Errorf("a super admin's slug super-admins answered %v, %v", got.IDs, got.Err)
 	}
+	if got := run(guest, `(from PERSON (where (= id @viewer) (admin_of "who")))`); got.Err != nil || len(got.IDs) != 0 {
+		t.Errorf("a guest asking whether they are a Who admin answered %v, %v", got.IDs, got.Err)
+	}
+	if got := run(parent, `(from GROUP (where (manages (slug "nope"))))`); got.Err == nil || !strings.Contains(got.Err.Error(), `no group has the slug "nope"`) {
+		t.Errorf("a missing slug passed to a define answered %v, %v", got.IDs, got.Err)
+	}
 	for src, want := range map[string]string{
 		`(from GROUP (where (= id (slug hummingbirds))))`:           "slug takes quoted slugs",
 		`(from GROUP (where (= id (slug "hummingbirds" "staff"))))`: "slug takes one quoted slug where it stands for one group",

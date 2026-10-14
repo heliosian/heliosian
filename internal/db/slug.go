@@ -20,7 +20,7 @@ func (cx *compiler) slugNames(s *sexp, many bool) ([]string, error) {
 	if len(names) == 0 || !many && len(names) != 1 {
 		return nil, s.errorf("slug takes one quoted slug where it stands for one group, and one or more where it stands for a set")
 	}
-	if !cx.policy {
+	if !cx.policy && !s.policy {
 		cx.slugs = append(cx.slugs, names...)
 	}
 	return names, nil
@@ -31,7 +31,7 @@ func (cx *compiler) slugOperand(s *sexp) (operand, error) {
 	if err != nil {
 		return operand{}, err
 	}
-	policy := cx.policy
+	policy := cx.policy || s.policy
 	return operand{t: groupID, eval: func(f *frame) value {
 		return value{kind: ID, s: f.run.slugged(names[0], policy)}
 	}}, nil
@@ -42,7 +42,7 @@ func (cx *compiler) slugSet(s *sexp) (func(f *frame) *valueSet, typ, bool, error
 	if err != nil {
 		return nil, typ{}, false, err
 	}
-	policy := cx.policy
+	policy := cx.policy || s.policy
 	return func(f *frame) *valueSet {
 		out := newValueSet(false)
 		for _, name := range names {

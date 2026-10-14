@@ -638,7 +638,7 @@ func anchor(arg *sexp, sc *scope) *sexp {
 
 func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
 	if body.isList {
-		out := &sexp{isList: true, pos: body.pos}
+		out := &sexp{isList: true, pos: body.pos, policy: body.head() == "slug"}
 		for i, item := range body.list {
 			if i == 0 && !item.isList {
 				out.list = append(out.list, item)
