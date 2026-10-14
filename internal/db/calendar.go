@@ -502,6 +502,103 @@ func (v *Vocabulary) matchBatch(ctx context.Context, client anthropic.Client, as
 	return out, nil
 }
 
+const MatchGoogleSystem = `The school's Google calendar lists occasions that the parents' association may also run on its volunteer portal, as an activity people sign up for, or on its fundraiser site, as a party people buy tickets to. You are given Google events, each with the activities and parties on its dates. For each event, answer the id of the activity or party that is the same occasion, however differently worded or timed ("Spelling Bee" and "Spelling Bee", "Hawks and Falcons CAFE" and "CAFE Halcons"), or "none". A smaller part of an occasion, such as a coffee cart at the first day of school or a job at a fair, is not the occasion itself; a school day and a ceremony held on it are different occasions.`
+
+const noMatch = "none"
+
+type googleAsk struct {
+	item       CalendarItem
+	candidates []map[string]string
+}
+
+func (v *Vocabulary) MatchGoogle(ctx context.Context, client anthropic.Client, rows CalendarRows, items []CalendarItem) (map[string]string, error) {
+	p := newCalendarPlan(rows, v)
+	asks := []googleAsk{}
+	out := map[string]string{}
+	for _, it := range items {
+		candidates := p.candidates(it)
+		if len(candidates) == 0 {
+			out[it.Key] = ""
+			continue
+		}
+		asks = append(asks, googleAsk{item: it, candidates: candidates})
+	}
+	batches := [][]googleAsk{}
+	for start := 0; start < len(asks); start += matchBatch {
+		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
+	}
+	results, errs := FanOut(len(batches), func(i int) (map[string]string, error) {
+		return v.matchGoogleBatch(ctx, client, batches[i])
+	})
+	for i := range batches {
+		if errs[i] != nil {
+			return nil, fmt.Errorf("match google events to activities and parties, batch %d of %d: %w", i+1, len(batches), errs[i])
+		}
+		maps.Copy(out, results[i])
+	}
+	same := 0
+	for _, g := range out {
+		if g != "" {
+			same++
+		}
+	}
+	slog.InfoContext(ctx, "calendar import: matched to activities and parties", "asked", len(asks), "same occasion", same)
+	return out, nil
+}
+
+func (v *Vocabulary) matchGoogleBatch(ctx context.Context, client anthropic.Client, asks []googleAsk) (map[string]string, error) {
+	type event struct {
+		ID         string           `json:"id"`
+		Title      string           `json:"title"`
+		Start      string           `json:"start"`
+		End        string           `json:"end,omitempty"`
+		Location   string           `json:"location,omitempty"`
+		Candidates []matchCandidate `json:"activitiesAndParties"`
+	}
+	events := []event{}
+	properties := map[string]any{}
+	required := []string{}
+	groups := map[string]string{}
+	for i, a := range asks {
+		handle := "e" + strconv.Itoa(i+1)
+		e := event{ID: handle, Title: a.item.Title, Start: a.item.Start, End: a.item.End, Location: a.item.Location, Candidates: []matchCandidate{}}
+		ids := []string{noMatch}
+		for j, g := range a.candidates {
+			id := handle + "c" + strconv.Itoa(j+1)
+			groups[id] = g["id"]
+			ids = append(ids, id)
+			e.Candidates = append(e.Candidates, matchCandidate{ID: id, Title: g["name"], Start: g["start"], End: g["end"]})
+		}
+		events = append(events, e)
+		properties[handle] = enumOf(ids)
+		required = append(required, handle)
+	}
+	encoded, err := json.MarshalIndent(events, "", " ")
+	if err != nil {
+		return nil, err
+	}
+	schema := map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+	answers := map[string]string{}
+	if _, err := Ask(ctx, client, v.Glossary()+"\n"+MatchGoogleSystem, []anthropic.ContentBlockParamUnion{anthropic.NewTextBlock("Match each of these events:\n\n" + string(encoded))}, schema, &answers); err != nil {
+		return nil, err
+	}
+	out := map[string]string{}
+	for i, a := range asks {
+		handle := "e" + strconv.Itoa(i+1)
+		answer := answers[handle]
+		if answer == noMatch {
+			out[a.item.Key] = ""
+			continue
+		}
+		g, ok := groups[answer]
+		if !ok || !strings.HasPrefix(answer, handle+"c") {
+			return nil, fmt.Errorf("claude matched %q to %q, which is not one of its activities or parties", a.item.Title, answer)
+		}
+		out[a.item.Key] = g
+	}
+	return out, nil
+}
+
 func Collapse(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }

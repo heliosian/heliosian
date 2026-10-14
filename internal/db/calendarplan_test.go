@@ -78,7 +78,7 @@ func TestGooglePlan(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, feed) {
 			classified[it.Key] = answers[it.Key]
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified))
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, nil))
 	}
 
 	before := len(eventsOf(s.Model(), false))
@@ -136,7 +136,7 @@ func TestGooglePlan(t *testing.T) {
 	if pending := GoogleToClassify(rows, v, feed); len(pending) != 0 {
 		t.Fatalf("an unchanged feed asks to classify %v", pending)
 	}
-	if edits := GooglePlan(rows, v, feed, from, to, nil); len(edits) != 0 {
+	if edits := GooglePlan(rows, v, feed, from, to, nil, nil); len(edits) != 0 {
 		t.Fatalf("an unchanged feed plans %v", edits)
 	}
 
@@ -155,6 +155,128 @@ func TestGooglePlan(t *testing.T) {
 	sync([]GoogleEvent{cafe})
 	if n := len(eventsOf(s.Model(), true)); n != 0 {
 		t.Fatalf("a recurring event with no instances stayed: %d", n)
+	}
+}
+
+func TestAGoogleEventMergesIntoTheActivityItIs(t *testing.T) {
+	const night = "grp00000000512"
+	s, queue, _, _ := calendarSample(t)
+	from, to := feedWindow(testNow)
+	google := GoogleEvent{CalendarItem: CalendarItem{Key: "inight@google", Title: "International Night!", Start: "2027-02-05 17:00", End: "2027-02-05 21:00"}}
+	sync := func(feed []GoogleEvent, matched map[string]string) {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, err := NewVocabulary(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		classified := map[string]Classification{}
+		for _, it := range GoogleToClassify(rows, v, feed) {
+			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "families"}
+		}
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, matched))
+	}
+	toMatch := func(feed []GoogleEvent) []string {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, _ := NewVocabulary(rows)
+		keys := []string{}
+		for _, it := range GoogleToMatch(rows, v, feed) {
+			keys = append(keys, it.Key)
+		}
+		return keys
+	}
+
+	sync([]GoogleEvent{google}, map[string]string{google.Key: ""})
+	event := sourcesKeyed(s.Model(), google.Key)[0]["group"]
+	if g, _ := s.Model().Table("GROUP").Get(event); g["kind"] != "event" {
+		t.Fatalf("an unmatched event made %v", g)
+	}
+	if keys := toMatch([]GoogleEvent{google}); len(keys) != 0 {
+		t.Fatalf("an event asked about already is asked again: %v", keys)
+	}
+	moved := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "going", Row: map[string]any{"posting": "none", "replying": "none", "kind": "group", "parent": event, "name": "International Night! Going", "status": "open"}},
+		{Set: event, Cells: map[string]any{"rsvp_yes": "@going"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@going", "person": parent, "member": "yes"}},
+		{Insert: "ALIAS", Row: map[string]any{"alias": "oldinight", "target": event, "hidden": true}},
+	})
+	apply(t, s, queue, []Edit{{Set: night, Cells: map[string]any{"name": "International Night of Food"}}})
+	if keys := toMatch([]GoogleEvent{google}); len(keys) != 1 {
+		t.Fatalf("a changed activity on the event's date asks nothing again: %v", keys)
+	}
+
+	sync([]GoogleEvent{google}, map[string]string{google.Key: night})
+	m := s.Model()
+	if m.Has(event) {
+		t.Fatalf("the event %s outlived its merge into the activity", event)
+	}
+	sources := sourcesKeyed(m, google.Key)
+	if len(sources) != 1 || sources[0]["group"] != night {
+		t.Fatalf("the google source is %v, want it on the activity", sources)
+	}
+	g, _ := m.Table("GROUP").Get(night)
+	if g["name"] != "International Night of Food" || g["start"] != "2027-02-05 17:30" || g["parent"] != "grp00000000511" {
+		t.Fatalf("the activity took the event's cells: %v", g)
+	}
+	if g["rsvp_yes"] != moved[0] || !m.Has(moved[2]) {
+		t.Fatalf("the activity's going group is %q, want the event's %s with its answer", g["rsvp_yes"], moved[0])
+	}
+	if a, _ := m.Table("ALIAS").Get(moved[3]); a["target"] != night {
+		t.Fatalf("the event's old address names %q", a["target"])
+	}
+
+	google.Title, google.End = "International Night 2027", "2027-02-05 22:00"
+	sync([]GoogleEvent{google}, nil)
+	if g, _ := s.Model().Table("GROUP").Get(night); g["name"] != "International Night of Food" || g["end"] != "2027-02-05 22:00" {
+		t.Fatalf("the activity's own name should stay and its end, which agreed with google, follow it: %v", g)
+	}
+
+	sync(nil, nil)
+	if !s.Model().Has(night) || len(sourcesKeyed(s.Model(), google.Key)) != 0 {
+		t.Fatal("the activity went with its google source, or the source stayed")
+	}
+}
+
+func TestANewGoogleEventJoinsItsActivity(t *testing.T) {
+	const night = "grp00000000512"
+	s, queue, _, _ := calendarSample(t)
+	from, to := feedWindow(testNow)
+	google := GoogleEvent{CalendarItem: CalendarItem{Key: "inight@google", Title: "International Night", Start: "2027-02-05 17:00", End: "2027-02-05 21:00"}}
+	rows := s.Model().calendarRows()
+	v, _ := NewVocabulary(rows)
+	before := len(eventsOf(s.Model(), false))
+	apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{google}, from, to, map[string]Classification{google.Key: {Classrooms: []string{hummingbirds}, Who: "families"}}, map[string]string{google.Key: night}))
+	if n := len(eventsOf(s.Model(), false)) - before; n != 0 {
+		t.Fatalf("a matched event made %d events", n)
+	}
+	if sources := sourcesKeyed(s.Model(), google.Key); len(sources) != 1 || sources[0]["group"] != night || sources[0]["match"] == "" {
+		t.Fatalf("the matched event's source is %v", sources)
+	}
+}
+
+func TestAnImportedCellKeepsAHandCorrection(t *testing.T) {
+	s, queue, _, _ := calendarSample(t)
+	from, to := feedWindow(testNow)
+	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
+	sync := func() {
+		t.Helper()
+		rows := s.Model().calendarRows()
+		v, _ := NewVocabulary(rows)
+		classified := map[string]Classification{}
+		for _, it := range GoogleToClassify(rows, v, []GoogleEvent{cafe}) {
+			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "parents"}
+		}
+		apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{cafe}, from, to, classified, nil))
+	}
+	sync()
+	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
+	apply(t, s, queue, []Edit{{Set: event, Cells: map[string]any{"name": "Hummingbirds CAFE in the Library"}}})
+	cafe.Title, cafe.Location = "Hummingbirds Parent CAFE", "Room 4"
+	sync()
+	g, _ := s.Model().Table("GROUP").Get(event)
+	if g["name"] != "Hummingbirds CAFE in the Library" || g["location"] != "Room 4" {
+		t.Fatalf("after a hand correction the event reads %q at %q", g["name"], g["location"])
 	}
 }
 
@@ -190,7 +312,7 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, feed) {
 			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "parents"}
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified))
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, nil))
 	}
 	sync([]GoogleEvent{cafe})
 	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
@@ -222,7 +344,7 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: both, Who: "families", DayType: "Early Dismissal"}}))
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: both, Who: "families", DayType: "Early Dismissal"}}, nil))
 	}
 	pdf := func() {
 		t.Helper()
@@ -295,7 +417,7 @@ func TestPDFPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{btsnGoogle}, from, to, map[string]Classification{btsnGoogle.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents"}}))
+	apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{btsnGoogle}, from, to, map[string]Classification{btsnGoogle.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents"}}, nil))
 
 	both := []string{hummingbirds, ospreys}
 	year := func(doc string, entries ...YearEntry) YearCalendar {

@@ -443,6 +443,7 @@ var Tables = []Table{
 				v("first_day", "the school year's first day"),
 				v("last_day", "the school year's last day")).about("A PDF entry that bounds the school year."),
 			col("hash", Text).about("A hash of the input it was last classified or read with, so an unchanged entry is never sent to Claude again."),
+			col("match", Text).about("A hash of a Google event and the dated activities and parties it was last matched against, so it is asked again only when it or they change."),
 		},
 	},
 	{
