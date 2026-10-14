@@ -274,4 +274,40 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		slog.InfoContext(r.Context(), "described group", "viewer", env.Viewer, "name", d.Name, "members", len(members.Members))
 		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
 	})
+	mux.HandleFunc("POST /api/do/describe-activity", func(w http.ResponseWriter, r *http.Request) {
+		_, actor, ok := caller(w, r, s.Model(), tokens, now())
+		if !ok {
+			return
+		}
+		var body activityDraft
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&body); err != nil {
+			serve.Error(w, r, access.Invalid("send the activity as JSON: %v", err))
+			return
+		}
+		facts := describe.ActivityFacts{Title: body.Title, Parent: body.Parent, Category: body.Category, When: body.When, Notes: body.Notes}
+		description, err := describer.Activity(r.Context(), actor.Email, facts)
+		if errors.Is(err, claude.ErrTooMany) {
+			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", err))
+			return
+		}
+		if errors.Is(err, describe.ErrTooLong) {
+			serve.Error(w, r, access.Invalid("%v", err))
+			return
+		}
+		if err != nil {
+			slog.ErrorContext(r.Context(), "describe activity", "actor", actor.Email, "title", body.Title, "error", err)
+			serve.Error(w, r, access.Refuse(http.StatusBadGateway, "could not write a description right now"))
+			return
+		}
+		slog.InfoContext(r.Context(), "described activity", "actor", actor.Email, "title", body.Title)
+		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
+	})
+}
+
+type activityDraft struct {
+	Title    string `json:"title"`
+	Parent   string `json:"parent"`
+	Category string `json:"category"`
+	When     string `json:"when"`
+	Notes    string `json:"notes"`
 }

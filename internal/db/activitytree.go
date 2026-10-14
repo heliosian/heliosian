@@ -1,4 +1,4 @@
-package team
+package db
 
 import (
 	"fmt"
@@ -6,19 +6,18 @@ import (
 	"time"
 
 	"heliosian/internal/cells"
-	"heliosian/internal/db"
 	"heliosian/internal/store"
 )
 
-type tree struct {
-	m        *db.Model
-	groups   *db.Rows
+type activityTree struct {
+	m        *Model
+	groups   *Rows
 	everyone string
 }
 
-func (t *Team) tree() tree {
-	m := t.data.Model()
-	tr := tree{m: m, groups: m.Table("GROUP")}
+func (a *ActivityPages) tree() activityTree {
+	m := a.s.Model()
+	tr := activityTree{m: m, groups: m.Table("GROUP")}
 	for _, g := range tr.groups.All() {
 		if g["kind"] == "group" && g["slug"] == "everyone" {
 			tr.everyone = g["id"]
@@ -27,7 +26,7 @@ func (t *Team) tree() tree {
 	return tr
 }
 
-func (t tree) group(id string) store.Row {
+func (t activityTree) group(id string) store.Row {
 	if id == "" {
 		return nil
 	}
@@ -35,7 +34,7 @@ func (t tree) group(id string) store.Row {
 	return g
 }
 
-func (t tree) isYear(g store.Row) bool {
+func (t activityTree) isYear(g store.Row) bool {
 	if g["kind"] != "activity" {
 		return false
 	}
@@ -43,11 +42,11 @@ func (t tree) isYear(g store.Row) bool {
 	return p == nil || (p["kind"] == "category" && p["parent"] == "")
 }
 
-func (t tree) isActivity(g store.Row) bool {
+func (t activityTree) isActivity(g store.Row) bool {
 	return g != nil && g["kind"] == "activity" && !t.isYear(g)
 }
 
-func (t tree) up(g store.Row) store.Row {
+func (t activityTree) up(g store.Row) store.Row {
 	p := t.group(g["parent"])
 	for p != nil && p["kind"] == "category" {
 		p = t.group(p["parent"])
@@ -55,7 +54,7 @@ func (t tree) up(g store.Row) store.Row {
 	return p
 }
 
-func (t tree) above(g store.Row) []store.Row {
+func (t activityTree) above(g store.Row) []store.Row {
 	out := []store.Row{}
 	for p := t.up(g); t.isActivity(p); p = t.up(p) {
 		out = append(out, p)
@@ -63,7 +62,7 @@ func (t tree) above(g store.Row) []store.Row {
 	return out
 }
 
-func (t tree) yearOf(g store.Row) string {
+func (t activityTree) yearOf(g store.Row) string {
 	for p := t.up(g); p != nil; p = t.up(p) {
 		if t.isYear(p) {
 			return p["name"]
@@ -72,7 +71,7 @@ func (t tree) yearOf(g store.Row) string {
 	return ""
 }
 
-func (t tree) shown(g store.Row) bool {
+func (t activityTree) shown(g store.Row) bool {
 	if !t.isActivity(g) || (g["status"] != "open" && g["status"] != "done") {
 		return false
 	}
@@ -84,11 +83,11 @@ func (t tree) shown(g store.Row) bool {
 	return true
 }
 
-func (t tree) path(g store.Row) string {
+func (t activityTree) path(g store.Row) string {
 	return t.m.Link("GROUP", g, func(string) string { return "" })
 }
 
-func (t tree) named(key string) store.Row {
+func (t activityTree) named(key string) store.Row {
 	if g := t.group(key); t.isActivity(g) {
 		return g
 	}
@@ -106,7 +105,7 @@ func (t tree) named(key string) store.Row {
 	return nil
 }
 
-func (t tree) at(path string) store.Row {
+func (t activityTree) at(path string) store.Row {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
 	if len(segs) < 2 || (segs[0] != "v" && segs[0] != "activities") {
 		return nil
@@ -114,7 +113,7 @@ func (t tree) at(path string) store.Row {
 	return t.named(segs[len(segs)-1])
 }
 
-func (t tree) takenIn(g store.Row) int {
+func (t activityTree) takenIn(g store.Row) int {
 	n := 0
 	for _, m := range t.m.Table("MEMBER").Referencing("group", g["id"]) {
 		if m["member"] == "yes" {
@@ -124,7 +123,7 @@ func (t tree) takenIn(g store.Row) int {
 	return n
 }
 
-func schoolYear(at time.Time) string {
+func activityYear(at time.Time) string {
 	start := at.Year()
 	if at.Month() < time.July {
 		start--

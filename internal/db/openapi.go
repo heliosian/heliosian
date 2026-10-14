@@ -375,6 +375,26 @@ func spec() schema {
 				}),
 			},
 		},
+		"/api/do/saved-search": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Run a saved search's words, saved or not",
+				"description": "Answers the events, parties and activities the caller may read that run on the dates from and to, ordered by start, matching the words as a SAVED_SEARCH's search does and leaving out what the caller hid.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"search", "from", "to"},
+					"properties": schema{
+						"search": schema{"type": "array", "items": schema{"type": "array", "minItems": 1, "items": schema{"type": "string"}}, "description": "Lists of words, a word of every list matching: going, waitlisted or a group's slug."},
+						"from":   schema{"type": "string", "description": "The first date, as " + DateLayout},
+						"to":     schema{"type": "string", "description": "The last date, as " + DateLayout},
+					},
+				}}}},
+				"responses": refusals(schema{
+					"200": answers("The matching GROUP rows, in order.", "Answer"),
+					"400": failure("A word that is neither going, waitlisted nor a slug, a slug no group has, an empty list, or a date not as " + DateLayout + "."),
+				}),
+			},
+		},
 		"/api/do/compose": schema{
 			"post": schema{
 				"tags":        []string{"do"},

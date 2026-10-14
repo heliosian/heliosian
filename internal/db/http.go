@@ -156,6 +156,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 	registerDo(mux, s, queue, pics, tokens, now)
 	registerBlobs(mux, s, pics, tokens, now)
 	registerExplain(mux, s, tokens, now)
+	registerSavedSearch(mux, s, tokens, now)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		root := trace.New("request")

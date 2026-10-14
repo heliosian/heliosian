@@ -304,7 +304,7 @@ export function openActivity(act, options) {
     try {
       const parent = parentSelect.value ? activity(parentSelect.value) : null;
       const heading = parentSelect.value ? eventCategory : (suggesting ? null : category);
-      const {description: written} = await api('POST', '/api/team/describe', {
+      const {description: written} = await api('POST', '/api/do/describe-activity', {
         title: title.value,
         parent: parent ? parent.title : '',
         category: heading && heading.value && heading.selectedOptions[0] ? heading.selectedOptions[0].textContent : '',

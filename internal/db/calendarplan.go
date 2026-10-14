@@ -593,7 +593,7 @@ func GooglePlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, from, to t
 		if seen[key] {
 			continue
 		}
-		live := slices.ContainsFunc(p.children[s["group"]], func(child string) bool { return !p.deleted[child] })
+		live := slices.ContainsFunc(p.children[s["group"]], func(child string) bool { return !p.deleted[child] && p.groups[child]["kind"] == "event" })
 		if !live {
 			p.deleteGroup(s["group"])
 		}

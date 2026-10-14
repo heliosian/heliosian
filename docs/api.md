@@ -67,7 +67,7 @@ A family carries `veracrossAddress` and `veracrossPhone`, how Veracross shows it
 
 ## Helios Who?
 
-Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`internal/who/who.go`). Loop's pages are on the data model the same way: one named batch to `/api/q` for every list the viewer may see with its members, hand additions, rules, aliases and managers, `POST /api/q` batches for every change, and `/api/do/draft-members`, `/api/do/describe-group` and `/api/do/guest` for the editor (`docs/datamodel.md`, The query API); its server adds only the page routes and share card (`internal/loop/loop.go`).
+Who? is on the data model and uses none of the types above. A page loads everything it needs in one named batch to `/api/q`, writes with `POST /api/q` batches, and adds photos and recordings through `/api/do/photo` and `/api/do/pronunciation` (`docs/datamodel.md`, The query API). Its server adds only `GET /maps.js`, the browser Maps key as `export const mapsKey`, and the page routes (`registerDirectoryPages` in `internal/app/directory.go`). Loop's pages are on the data model the same way: one named batch to `/api/q` for every list the viewer may see with its members, hand additions, rules, aliases and managers, `POST /api/q` batches for every change, and `/api/do/draft-members`, `/api/do/describe-group` and `/api/do/guest` for the editor (`docs/datamodel.md`, The query API); its server adds only the page routes and about card (`internal/app/wiring.go`, `listAbout` in `internal/app/about.go`).
 
 The directory types above are the old directory, read-only and frozen since Who? moved: nothing writes their sheet but the geocoder. The apps still on the old model read them - Heliosian's rule editor `classrooms`, `grades?enrolled` and `tags`, Staff Birthdays `departments` - and `people` and `families` are reached as relations of other apps' types.
 
@@ -116,7 +116,7 @@ The portal's own pages read and write the data model (`docs/team/data.md`); this
 - **`team-settings`**: one resource for everyone: the viewer's `user` and household, `years`, `today`, the settings, grade colours, the built-in `uncategorized` category when an event sits in it, `people` for admins, and `notify` (the viewer's notification kinds) for admins. Actions `settings`, `notify` and `order-categories` (the page's). Three ordered relations of `activities` (`widget` in `internal/model/activities_widget.go`): `mine`, `needed` and `priority`.
 - **`activity-redirects`**: the Redirects tab, for admins, each ID derived from its old address; created, `edit`ed and deleted.
 
-Generate with AI (`POST /api/team/describe`), image search, the share cards and the redirects ahead of sign-in are Team's own routes, in `internal/team`.
+Generate with AI (`POST /api/do/describe-activity`, in `internal/db/draft.go`), the share cards and the redirects ahead of sign-in (`ActivityPages` in `internal/db`) are shared routes named for what they do; image search is wired on Team's host in `internal/app/wiring.go`.
 
 ## Heliosian
 

@@ -328,7 +328,7 @@ var Tables = []Table{
 			col("order", Order).about("Its place among their saved searches."),
 			col("default", Bool).about("The calendar When opens to for them."),
 			token("token", FeedTokenPrefix).about("The secret in its feed address. Minted by the server."),
-			col("search", Words).required().about("What it holds: a JSON list of lists of words, a thing holding when it matches a word of every list. A word is a group's slug - the thing is for every one of the group's effective members, or sits under the group - or going, which the viewer's household has a ticket, sign-up or yes for. A list of no lists holds everything."),
+			col("search", Words).required().about("What it holds: a JSON list of lists of words, a thing holding when it matches a word of every list. A word is a group's slug - the thing is for every one of the group's effective members, or sits under the group - going, which the viewer's household has a ticket, sign-up or yes for, or waitlisted, a party the household waits for. A list of no lists holds everything the viewer has not hidden."),
 			{Name: "condition", Kind: Text, Generated: true, Description: "The search as a condition on a group named @e, for a query to splice into its where: (from GROUP @e (where condition))."},
 		},
 	},

@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"image/color"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -30,19 +31,17 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/intercept"
 	"heliosian/internal/logging"
-	"heliosian/internal/loop"
 	"heliosian/internal/mail"
 	"heliosian/internal/mcp"
 	"heliosian/internal/model"
 	"heliosian/internal/ops"
 	"heliosian/internal/serve"
+	"heliosian/internal/sharecard"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/static"
 	"heliosian/internal/store"
-	"heliosian/internal/team"
 	"heliosian/internal/tools"
 	"heliosian/internal/vitals"
-	"heliosian/internal/who"
 )
 
 const deployOverlap = 30 * time.Second
@@ -158,16 +157,23 @@ func NewCore(cfg Config) *Core {
 			return key
 		}
 	}
-	whoAbout := who.About(appName("who"), taglineOf("who"))
+	whoAbout := directoryAbout(appName("who"), taglineOf("who"))
 	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
-	loopAbout := loop.About(appName("loop"), taglineOf("loop"))
+	loopAbout := listAbout(appName("loop"), taglineOf("loop"))
 	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
-	teamStyle := team.CardStyle(appName("team"), taglineOf("team"))
+	teamStyle := &sharecard.Style{
+		Palette: sharecard.Palette{
+			Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
+			Ink: color.RGBA{0x0e, 0x3a, 0x42, 0xff}, Yellow: color.RGBA{0xf8, 0xd9, 0x08, 0xff}, Panel: color.RGBA{0xdc, 0xe9, 0xe4, 0xff},
+		},
+		Name: appName("team"), Tagline: taglineOf("team"),
+		Mark: "web/public/team/brand/logo-mark.png", Lockup: "web/public/team/brand/logo-lockup.png", Corner: "web/team/toolbar_background.png",
+	}
 	celebrateStyle := model.PartiesCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := model.CalendarCardStyle(appName("when"), taglineOf("when"))
 	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
-	who.Register(mux, whoAbout, cfg.BrowserKey)
+	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
@@ -195,14 +201,16 @@ func NewCore(cfg Config) *Core {
 		Calendar: hooks,
 		Mailer:   cfg.Mail,
 	})
-	teamSite := team.Register(teamMux, team.Deps{
-		Data:      dataStore,
-		Bucket:    cfg.Bucket,
-		Images:    teamImages,
-		Search:    cfg.ImageSearch,
-		Describer: cfg.Describer,
-		Style:     teamStyle,
-	})
+	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}"} {
+		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/team/index.html")
+		})
+	}
+	teamSearch := cfg.ImageSearch
+	teamSearch.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
+	teamSearch.Register(teamMux, "/api/team", teamImages.Folder(), imagesearch.Members)
+	activityPages := db.NewActivityPages(dataStore, cfg.Bucket, teamStyle)
+	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
 	celebrateMux := http.NewServeMux()
 	parties := model.RegisterParties(celebrateMux, model.PartiesDeps{
@@ -219,7 +227,12 @@ func NewCore(cfg Config) *Core {
 		return err
 	})
 	loopMux := http.NewServeMux()
-	loop.Register(loopMux, loopAbout)
+	loopMux.Handle("GET /open/share/about.png", loopAbout)
+	for _, page := range []string{"/{$}", "/new", "/groups/{key}"} {
+		loopMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/loop/index.html")
+		})
+	}
 	listMail := db.RegisterListMail(loopMux, dataStore, queue, pictures, cfg.ListMail)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
 	adminMux := http.NewServeMux()
@@ -257,7 +270,7 @@ func NewCore(cfg Config) *Core {
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: teamSite.PreviewHead, Wrap: teamSite.Redirected},
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: model.PartiesPreviewHead(models, celebrateStyle)},
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: hooks.PreviewHead()},
@@ -280,7 +293,7 @@ func NewCore(cfg Config) *Core {
 	})
 	notifier := model.FeedbackNotifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: func() []string { return models.Model().Config.SuperAdmins }}
 	feedbackIntake := model.NewFeedbackIntake(models, cfg.Bucket, notifier.Notify)
-	optIn := who.OptInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
+	optIn := optInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		registry.Register(a.Mux)
@@ -297,6 +310,7 @@ func NewCore(cfg Config) *Core {
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, tokens, schoolNow)
 	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, tokens, schoolNow)
+	db.RegisterDrafts(teamMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, tokens, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)

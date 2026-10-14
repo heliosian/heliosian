@@ -29,6 +29,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "GROUP", fire: servingNames},
 	{table: "GROUP", fire: groupSlugMoved},
 	{table: "GROUP", fire: hiddenFor},
+	{table: "GROUP", fire: answerGroups},
 	{table: "GROUP", fire: hiddenGone},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
@@ -202,6 +203,26 @@ func hiddenFor(_ *Model, c Change) ([]Edit, error) {
 		}},
 		{Set: c.New["id"], Cells: map[string]any{"hidden_for": "@hidden"}},
 	}, nil
+}
+
+func answerGroups(_ *Model, c Change) ([]Edit, error) {
+	if c.Old != nil || c.New == nil || c.New["kind"] != "event" {
+		return nil, nil
+	}
+	writes := []Edit{}
+	for _, answer := range []struct{ column, suffix string }{{"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}} {
+		if c.New[answer.column] != "" {
+			continue
+		}
+		writes = append(writes,
+			Edit{Insert: "GROUP", As: answer.column, Row: map[string]any{
+				"kind": "group", "parent": c.New["id"], "name": c.New["name"] + answer.suffix, "status": "open", "listed": true,
+				"visible_to": c.New["visible_to"], "members_visible_to": c.New["members_visible_to"], "posting": "none", "replying": "none",
+			}},
+			Edit{Set: c.New["id"], Cells: map[string]any{answer.column: "@" + answer.column}},
+		)
+	}
+	return writes, nil
 }
 
 func hiddenGone(m *Model, c Change) ([]Edit, error) {

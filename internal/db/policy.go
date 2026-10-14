@@ -106,10 +106,11 @@ const PolicySource = `
 (define (hides @g)
   (exists GROUP (= hidden_for @g)))
 
-; the viewer manages @g, is a super admin, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change, or a hidden group, which each member joins and leaves alone
+; the viewer manages @g, is a super admin, is a When admin and @g an event, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change, or a hidden group, which each member joins and leaves alone
 (define (runs_list @g)
   (and (!= @g.kind "family") (not (hides @g))
        (or (manages @g) (super_admin)
+           (and (admin_of "when") (= @g.kind "event"))
            (and (admin_of "team")
                 (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
                     (and (= @g.kind "group") (= @g.parent.kind "activity")
@@ -123,10 +124,11 @@ const PolicySource = `
 (define (sourced @g)
   (exists GROUP_SOURCE (= group @g)))
 
-; @g is the kind of what it sits under, a heading, or under a heading the kind of what the heading sits under
+; @g is the kind of what it sits under, a heading, under a heading the kind of what the heading sits under, or an event filed under a category
 (define (child_kind @g)
   (or (= @g.kind @g.parent.kind) (= @g.kind "category")
-      (and (= @g.parent.kind "category") (= @g.kind @g.parent.parent.kind))))
+      (and (= @g.parent.kind "category") (= @g.kind @g.parent.parent.kind))
+      (and (= @g.kind "event") (= @g.parent.kind "category"))))
 
 ; the viewer may change @ph: a picture of themselves or someone in their family, or of a group they manage or run
 (define (edits_photo @ph)
@@ -307,6 +309,20 @@ const PolicySource = `
   true)
 ; the viewer's own saved searches
 (read SAVED_SEARCH (= person @viewer))
+; save a search of one's own
+(insert SAVED_SEARCH (= @new.person @viewer))
+; rename one's own saved search
+(set SAVED_SEARCH.name (= @old.person @viewer))
+; mark one's own saved search
+(set SAVED_SEARCH.emoji (= @old.person @viewer))
+; move one's own saved search among one's others
+(set SAVED_SEARCH.order (= @old.person @viewer))
+; make one's own saved search the one When opens to, or not
+(set SAVED_SEARCH.default (= @old.person @viewer))
+; change the words of one's own saved search
+(set SAVED_SEARCH.search (= @old.person @viewer))
+; remove one's own saved search
+(delete SAVED_SEARCH (= @old.person @viewer))
 ; every column of a saved search
 (read SAVED_SEARCH (id person name emoji order default token search condition) true)
 ; the viewer's own bug reports and ideas
@@ -627,6 +643,28 @@ const PolicySource = `
 
 ; every calendar group: events, days and their parts
 (read GROUP (and (admin_of "when") (in kind "event" "day" "day_part")))
+; add an event under a category, live
+(insert GROUP (and (admin_of "when") (= @new.kind "event") (= @new.parent.kind "category")))
+; add a top-level category
+(insert GROUP (and (admin_of "when") (= @new.kind "category") (blank @new.parent)))
+; a top-level category's name
+(set GROUP.name (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; a top-level category's description
+(set GROUP.description (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; whether When's filter starts with a top-level category on
+(set GROUP.default (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; a top-level category's place among the others
+(set GROUP.order (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; a top-level category's slug, the word saved searches name it by
+(set GROUP.slug (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; who may add events under a top-level category
+(set GROUP.adding (and (admin_of "when") (= @old.kind "category") (blank @old.parent)))
+; a top-level category nothing sits under
+(delete GROUP (and (admin_of "when") (= @old.kind "category") (blank @old.parent) (not (exists GROUP (= parent @old)))))
+; a top-level category's picture
+(insert PHOTO (and (admin_of "when") (= @new.group.kind "category") (blank @new.group.parent)))
+; remove a top-level category's picture
+(delete PHOTO (and (admin_of "when") (= @old.group.kind "category") (blank @old.group.parent)))
 ; open, cancel or close an event
 (set GROUP.status (and (admin_of "when") (= @old.kind "event")))
 ; name the group of those coming to an event
@@ -848,6 +886,16 @@ const PolicySource = `
        (!= @viewer.source "guest") (= @new.added_by @viewer) (blank @new.managed_by) (blank @new.url)
        (= @new.visible_to @new.parent.visible_to) (= @new.members_visible_to @new.parent.members_visible_to)
        (or (and (= @new.parent.adding "anyone") (= @new.status "open")) (= @new.status "pending"))))
+; anyone but a guest adds an event under a category, live, that nobody finds on the calendar: invite-only, seen by its managers alone until they show it to its guests, or unlisted, reached by its link
+(insert GROUP
+  (and (= @new.kind "event") (= @new.parent.kind "category") (!= @viewer.source "guest") (= @new.added_by @viewer)
+       (blank @new.managed_by) (blank @new.url) (= @new.status "open")
+       (or (blank @new.visible_to) (and (= @new.visible_to @new.parent.visible_to) (not @new.listed)))))
+; whoever added an event that has no managers gives it a plain group of their own to manage it, so they host it
+(set GROUP.managed_by
+  (and (= @old.kind "event") (= @old.added_by @viewer) (blank @old.managed_by)
+       (= @new.managed_by.kind "group") (= @new.managed_by.added_by @viewer) (= @new.managed_by.managed_by @new.managed_by)
+       (not (exists GROUP (= managed_by @new.managed_by) (!= id @new.managed_by) (!= id @old.id)))))
 ; a group's managers remove one under it that holds no one and nothing
 (delete GROUP
   (and (not (blank @old.parent)) (runs_list @old.parent)

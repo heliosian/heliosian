@@ -1,4 +1,4 @@
-package team
+package db
 
 import (
 	"net/http"
@@ -10,13 +10,13 @@ import (
 
 const maxHops = 20
 
-func (t *Team) Redirected(next http.Handler) http.Handler {
+func (a *ActivityPages) Redirected(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			next.ServeHTTP(w, r)
 			return
 		}
-		tr := t.tree()
+		tr := a.tree()
 		to, status := tr.canonical(r.URL.Path), http.StatusMovedPermanently
 		if to == "" {
 			to, status = tr.destination(r.URL.Path), http.StatusFound
@@ -35,7 +35,7 @@ func (t *Team) Redirected(next http.Handler) http.Handler {
 	})
 }
 
-func (t tree) canonical(path string) string {
+func (t activityTree) canonical(path string) string {
 	at := redirectPath(path)
 	g := t.at(at)
 	if g == nil || t.path(g) == at {
@@ -44,7 +44,7 @@ func (t tree) canonical(path string) string {
 	return t.path(g)
 }
 
-func (t tree) resolve(path string) store.Row {
+func (t activityTree) resolve(path string) store.Row {
 	if g := t.at(redirectPath(path)); g != nil {
 		return g
 	}
@@ -54,7 +54,7 @@ func (t tree) resolve(path string) store.Row {
 	return nil
 }
 
-func (t tree) destination(path string) string {
+func (t activityTree) destination(path string) string {
 	start := redirectPath(path)
 	if start == "" || t.at(start) != nil {
 		return ""
@@ -83,7 +83,7 @@ func (t tree) destination(path string) string {
 	return at
 }
 
-func (t tree) moved(at string) string {
+func (t activityTree) moved(at string) string {
 	moved, matched := "", ""
 	for _, r := range t.m.Table("REDIRECT").All() {
 		if r["app"] != "team" {

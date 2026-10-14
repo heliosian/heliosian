@@ -1,4 +1,4 @@
-package team
+package db
 
 import (
 	"errors"
@@ -13,7 +13,6 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
-	"heliosian/internal/db"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
@@ -26,21 +25,36 @@ const (
 )
 
 var (
-	markdownImage = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
-	markdownLink  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
-	markdownLead  = regexp.MustCompile(`(?m)^\s*(#{1,6}\s|>\s?|[-*+]\s+)`)
-	markdownMarks = strings.NewReplacer("**", "", "__", "", "*", "", "`", "")
+	blurbImage = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	blurbLink  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	blurbLead  = regexp.MustCompile(`(?m)^\s*(#{1,6}\s|>\s?|[-*+]\s+)`)
+	blurbMarks = strings.NewReplacer("**", "", "__", "", "*", "", "`", "")
 )
 
-func (t *Team) PreviewHead(r *http.Request) string {
-	tr := t.tree()
+type ActivityPages struct {
+	s      *Store
+	bucket *blob.Bucket
+	style  *sharecard.Style
+}
+
+func NewActivityPages(s *Store, bucket *blob.Bucket, style *sharecard.Style) *ActivityPages {
+	return &ActivityPages{s: s, bucket: bucket, style: style}
+}
+
+func (a *ActivityPages) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
+	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
+}
+
+func (a *ActivityPages) PreviewHead(r *http.Request) string {
+	tr := a.tree()
 	origin := "https://" + r.Host
 	var g store.Row
 	if first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]; first == "v" || first == "activities" {
 		g = tr.resolve(r.URL.Path)
 	}
 	if g == nil || !tr.shown(g) {
-		return t.upcomingHead(tr, origin, time.Now().In(db.School))
+		return a.upcomingHead(tr, origin, time.Now().In(School))
 	}
 	desc := blurb(g["description"])
 	if line := whenText(tr.timed(g)); line != "" {
@@ -57,11 +71,11 @@ func (t *Team) PreviewHead(r *http.Request) string {
 	if under := tr.lineage(g); under != "" {
 		title += " · " + under
 	}
-	return t.style.PreviewTags(title, desc, origin+tr.path(g), origin+"/open/share/"+g["id"]+".png")
+	return a.style.PreviewTags(title, desc, origin+tr.path(g), origin+"/open/share/"+g["id"]+".png")
 }
 
-func (t *Team) upcomingHead(tr tree, origin string, at time.Time) string {
-	desc := t.style.Tagline() + ". " + upcomingLead
+func (a *ActivityPages) upcomingHead(tr activityTree, origin string, at time.Time) string {
+	desc := a.style.Tagline() + ". " + upcomingLead
 	if list := tr.needs(at); len(list) > 0 {
 		names := []string{}
 		for _, g := range list[:min(len(list), needsCount)] {
@@ -73,24 +87,24 @@ func (t *Team) upcomingHead(tr tree, origin string, at time.Time) string {
 		}
 		desc = "Volunteers needed: " + strings.Join(names, "; ") + ". " + upcomingLead
 	}
-	return t.style.PreviewTags(t.style.Name(), desc, origin+"/", origin+"/open/share/upcoming.png")
+	return a.style.PreviewTags(a.style.Name(), desc, origin+"/", origin+"/open/share/upcoming.png")
 }
 
-func (t *Team) shareUpcoming(w http.ResponseWriter, r *http.Request) {
-	tr := t.tree()
+func (a *ActivityPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
+	tr := a.tree()
 	listing := &sharecard.Listing{Heading: "Volunteers needed", Empty: upcomingEmpty}
-	for _, g := range tr.needs(time.Now().In(db.School)) {
+	for _, g := range tr.needs(time.Now().In(School)) {
 		if len(listing.Items) == needsCount {
 			break
 		}
 		listing.Items = append(listing.Items, sharecard.Item{Title: g["name"], Note: tr.needNote(g)})
 	}
-	card := sharecard.Card{Title: t.style.Name(), Subtitle: t.style.Tagline(), Button: "See what's open", Listing: listing}
-	t.style.Serve(w, r, card, listing.Words()...)
+	card := sharecard.Card{Title: a.style.Name(), Subtitle: a.style.Tagline(), Button: "See what's open", Listing: listing}
+	a.style.Serve(w, r, card, listing.Words()...)
 }
 
-func (t *Team) shareCard(w http.ResponseWriter, r *http.Request) {
-	tr := t.tree()
+func (a *ActivityPages) shareCard(w http.ResponseWriter, r *http.Request) {
+	tr := a.tree()
 	g := tr.group(strings.TrimSuffix(r.PathValue("id"), ".png"))
 	if !tr.shown(g) {
 		http.NotFound(w, r)
@@ -99,9 +113,9 @@ func (t *Team) shareCard(w http.ResponseWriter, r *http.Request) {
 	name, whole := tr.picture(g)
 	var picture []byte
 	if name != "" {
-		content, _, err := t.bucket.Get(r.Context(), name)
+		content, _, err := a.bucket.Get(r.Context(), name)
 		if err != nil && !errors.Is(err, blob.ErrNotFound) {
-			slog.ErrorContext(r.Context(), "team: read a share card's picture", "group", g["id"], "name", name, "error", err)
+			slog.ErrorContext(r.Context(), "activity pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
 		}
 		picture = content
 	}
@@ -111,10 +125,10 @@ func (t *Team) shareCard(w http.ResponseWriter, r *http.Request) {
 		Kicker: under, Title: g["name"], Picture: picture, Whole: whole,
 		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
 	}
-	t.style.Serve(w, r, card, g["name"], under, day, hours, name)
+	a.style.Serve(w, r, card, g["name"], under, day, hours, name)
 }
 
-func (t tree) lineage(g store.Row) string {
+func (t activityTree) lineage(g store.Row) string {
 	names := []string{}
 	for _, a := range t.above(g) {
 		names = append([]string{a["name"]}, names...)
@@ -122,7 +136,7 @@ func (t tree) lineage(g store.Row) string {
 	return strings.Join(names, " › ")
 }
 
-func (t tree) timed(g store.Row) store.Row {
+func (t activityTree) timed(g store.Row) store.Row {
 	for _, n := range append([]store.Row{g}, t.above(g)...) {
 		if n["start"] != "" || n["timing"] != "" {
 			return n
@@ -131,7 +145,7 @@ func (t tree) timed(g store.Row) store.Row {
 	return g
 }
 
-func (t tree) picture(g store.Row) (string, bool) {
+func (t activityTree) picture(g store.Row) (string, bool) {
 	for _, n := range append([]store.Row{g}, t.above(g)...) {
 		if n["flyer"] != "" {
 			return n["flyer"], true
@@ -147,8 +161,8 @@ func (t tree) picture(g store.Row) (string, bool) {
 	return "", false
 }
 
-func (t tree) needs(at time.Time) []store.Row {
-	year, today := schoolYear(at), at.Format(db.DateLayout)
+func (t activityTree) needs(at time.Time) []store.Row {
+	year, today := activityYear(at), at.Format(DateLayout)
 	dated, undated := []store.Row{}, []store.Row{}
 	for _, g := range t.groups.All() {
 		if !t.shown(g) || g["status"] != "open" || len(t.above(g)) > 0 || t.yearOf(g) != year || g["join"] == "none" {
@@ -159,7 +173,7 @@ func (t tree) needs(at time.Time) []store.Row {
 		}
 		if g["start"] == "" {
 			undated = append(undated, g)
-		} else if g["start"][:min(len(g["start"]), len(db.DateLayout))] >= today {
+		} else if g["start"][:min(len(g["start"]), len(DateLayout))] >= today {
 			dated = append(dated, g)
 		}
 	}
@@ -167,7 +181,7 @@ func (t tree) needs(at time.Time) []store.Row {
 	return append(dated, undated...)
 }
 
-func (t tree) needNote(g store.Row) string {
+func (t activityTree) needNote(g store.Row) string {
 	parts := []string{}
 	if day, _ := whenLines(g); day != "" {
 		parts = append(parts, day)
@@ -184,9 +198,9 @@ func (t tree) needNote(g store.Row) string {
 }
 
 func blurb(markdown string) string {
-	text := markdownImage.ReplaceAllString(markdown, "")
-	text = markdownLink.ReplaceAllString(markdownLead.ReplaceAllString(text, ""), "$1")
-	text = strings.Join(strings.Fields(markdownMarks.Replace(text)), " ")
+	text := blurbImage.ReplaceAllString(markdown, "")
+	text = blurbLink.ReplaceAllString(blurbLead.ReplaceAllString(text, ""), "$1")
+	text = strings.Join(strings.Fields(blurbMarks.Replace(text)), " ")
 	if len(text) > 200 {
 		cut := strings.LastIndex(text[:200], " ")
 		if cut < 120 {
@@ -212,15 +226,15 @@ func whenLines(g store.Row) (string, string) {
 	if days, hours := spanLines(g); days != "" {
 		return days, hours
 	}
-	start, err := time.Parse(db.MomentLayout, g["start"])
+	start, err := time.Parse(MomentLayout, g["start"])
 	if err != nil {
-		if day, err := time.Parse(db.DateLayout, g["start"]); err == nil {
+		if day, err := time.Parse(DateLayout, g["start"]); err == nil {
 			return day.Format("Monday, January 2"), ""
 		}
 		return "", ""
 	}
 	day := start.Format("Monday, January 2")
-	end, err := time.Parse(db.MomentLayout, g["end"])
+	end, err := time.Parse(MomentLayout, g["end"])
 	if err != nil {
 		return day, start.Format("3:04 PM")
 	}
@@ -237,10 +251,10 @@ func spanLines(g store.Row) (string, string) {
 		return "", ""
 	}
 	days := start.Format("Monday, January 2") + " – " + end.Format("Monday, January 2")
-	if len(g["start"]) > len(db.DateLayout) && len(g["end"]) > len(db.DateLayout) {
+	if len(g["start"]) > len(DateLayout) && len(g["end"]) > len(DateLayout) {
 		return days, start.Format("Mon 3:04 PM") + " – " + end.Format("Mon 3:04 PM")
 	}
-	if len(g["start"]) > len(db.DateLayout) {
+	if len(g["start"]) > len(DateLayout) {
 		return days, start.Format("Mon 3:04 PM")
 	}
 	return days, ""

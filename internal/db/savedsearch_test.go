@@ -2,11 +2,16 @@ package db
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
 )
 
 func TestASavedSearchsConditionAnswersItsWords(t *testing.T) {
@@ -86,6 +91,65 @@ func TestWaitlistedIsAPartyTheHouseholdWaitsFor(t *testing.T) {
 	}
 	if got := holds(`[["waitlisted"]]`, staff); len(got) != 0 {
 		t.Errorf("waitlisted holds %v for someone waiting for nothing", got)
+	}
+}
+
+func TestASearchsWordsAreRunWithoutSavingThem(t *testing.T) {
+	s := sample(t)
+	mux := http.NewServeMux()
+	registerSavedSearch(mux, s, testTokens, func() time.Time { return testNow })
+	ask := func(body string) (int, []string) {
+		t.Helper()
+		r := httptest.NewRequest(http.MethodPost, "/api/do/saved-search", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		auth.Fixed("rowan.ashdown@example.org", mux).ServeHTTP(rec, r)
+		var out answer
+		if rec.Code == http.StatusOK {
+			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return rec.Code, out.Result
+	}
+	if code, got := ask(`{"search": [], "from": "2026-09-01", "to": "2027-08-31"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040", "grp00000000512", "grp00000000521"}) {
+		t.Fatalf("a search of no words over the year answered %d %v", code, got)
+	}
+	if code, got := ask(`{"search": [["community"]], "from": "2026-09-01", "to": "2027-08-31"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040"}) {
+		t.Fatalf("community over the year answered %d %v", code, got)
+	}
+	if code, got := ask(`{"search": [], "from": "2026-10-10", "to": "2027-02-05"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040", "grp00000000512"}) {
+		t.Fatalf("a window from the picnic's day to International Night's answered %d %v", code, got)
+	}
+	for body, want := range map[string]int{
+		`{"search": [["nope"]], "from": "2026-09-01", "to": "2027-08-31"}`:      http.StatusBadRequest,
+		`{"search": [["Community"]], "from": "2026-09-01", "to": "2027-08-31"}`: http.StatusBadRequest,
+		`{"search": [], "from": "September", "to": "2027-08-31"}`:               http.StatusBadRequest,
+		`{"search": [[]], "from": "2026-09-01", "to": "2027-08-31"}`:            http.StatusBadRequest,
+	} {
+		if code, _ := ask(body); code != want {
+			t.Errorf("%s answered %d, want %d", body, code, want)
+		}
+	}
+}
+
+func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}}})
+	for _, token := range []string{"fed00000000002", "oldfeedtoken"} {
+		ics, ok, err := s.Model().SavedSearchICS(t.Context(), token, "https://when.test", testNow)
+		if err != nil || !ok {
+			t.Fatalf("%s: %v %v", token, ok, err)
+		}
+		text := string(ics)
+		if !strings.Contains(text, "SUMMARY:Fall Picnic") || !strings.Contains(text, "X-WR-CALNAME:Juni's Calendar") || !strings.Contains(text, "https://when.test/e/fall-picnic") {
+			t.Fatalf("%s's feed reads %s", token, text)
+		}
+		if strings.Contains(text, "Taco Night") {
+			t.Fatalf("%s's feed carries what its words leave out: %s", token, text)
+		}
+	}
+	if _, ok, _ := s.Model().SavedSearchICS(t.Context(), "nope", "https://when.test", testNow); ok {
+		t.Fatal("a token no saved search has answered a feed")
 	}
 }
 
