@@ -1,7 +1,7 @@
-import {state, me, allows, settingsId, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
+import {state, me, allows, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
-import {act} from '/data.js';
+import {saveCategories, setPicture, setStatus, moveEvent} from '../writes.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {eventForm} from '../eventform.js';
 import {imageControl} from '../imagecontrol.js';
@@ -305,14 +305,20 @@ function categoriesTool() {
     const tags = [];
     for (const g of groups) {
       for (const t of g.tags) {
-        tags.push({id: t.id, name: t.name, description: t.description, group: g.name, default: t.on, image: t.image});
+        tags.push({id: t.id, name: t.name, slug: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), description: t.description, default: t.on, image: t.image});
       }
     }
     save.disabled = true;
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await act('when-settings', settingsId(), 'tags', {tags});
+      await saveCategories(tags);
+      for (const t of tags) {
+        const old = state.model.tags.find(x => x.id === t.id);
+        if (old && t.image !== old.image) {
+          await setPicture({id: t.id, photo: old.photo}, t.image);
+        }
+      }
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -416,7 +422,7 @@ function eventsTool() {
   };
   const decide = async (e, action, done) => {
     try {
-      await act('events', e.id, action);
+      await setStatus(e, action === 'approve' ? 'open' : 'closed');
     } catch (err) {
       toast(err.message);
       return;
@@ -477,7 +483,7 @@ function eventsTool() {
       const end = whenPicker(e.end);
       const save = button('Save', 'check', 'button button-small admin-event-save', async () => {
         try {
-          await act('events', e.id, 'move', {start: start.value(), end: end.value()});
+          await moveEvent(e, start.value(), end.value());
         } catch (err) {
           toast(err.message);
           return;

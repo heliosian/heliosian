@@ -4,7 +4,8 @@ const token = location.pathname.split('/').filter(Boolean).pop();
 const api = '/open/ext/' + encodeURIComponent(token);
 const card = document.getElementById('card');
 let view = null;
-const icons = {yes: 'check', maybe: 'clock', no: 'close'};
+const icons = {yes: 'check', no: 'close'};
+const choices = [['yes', 'Yes'], ['no', 'No']];
 function send(method, path, body) {
   return fetch(path, {method: method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(res => {
     if (!res.ok) {
@@ -22,13 +23,9 @@ function gone(words) {
 function paint() {
   document.title = view.title + ' · You’re invited';
   card.replaceChildren();
-  const banner = el('div', 'banner');
-  if (view.banner) {
-    banner.style.backgroundImage = 'url("' + view.banner + '")';
-  }
-  card.append(banner);
+  card.append(el('div', 'banner'));
   const body = el('div', 'body');
-  body.append(el('div', 'kicker', view.past ? 'This event has passed' : 'You’re invited'));
+  body.append(el('div', 'kicker', view.cancelled ? 'This event is cancelled' : view.past ? 'This event has passed' : 'You’re invited'));
   body.append(el('h1', '', view.title));
   body.append(el('div', 'when', view.day + (view.hours ? ' · ' + view.hours : '')));
   if (view.location) {
@@ -36,9 +33,6 @@ function paint() {
   }
   if (view.hosts.length) {
     body.append(el('div', 'hosts', 'Invited by ' + view.hosts.join(' and ') + (view.name ? ' · for ' + view.name : '')));
-  }
-  if (view.message) {
-    body.append(el('div', 'message', view.message));
   }
   if (view.description) {
     body.append(el('div', 'words', view.description));
@@ -53,13 +47,17 @@ function paint() {
     flyer.append(img);
     body.append(flyer);
   }
+  if (view.cancelled) {
+    card.append(body);
+    return;
+  }
   const ask = el('div', 'ask');
   const word = view.answer;
-  ask.append(el('div', 'ask-title', word === 'yes' ? 'You’re going' : word === 'no' ? 'Not going' : word === 'maybe' ? 'Maybe' : 'Are you going?'));
+  ask.append(el('div', 'ask-title', word === 'yes' ? 'You’re going' : word === 'no' ? 'Not going' : 'Are you going?'));
   ask.append(el('div', 'ask-lead', word ? 'Thanks for letting the hosts know. Change your answer any time.' : 'Let the hosts know with one tap.'));
   const buttons = el('div', 'buttons');
   const status = el('div', 'status');
-  [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']].forEach(pair => {
+  choices.forEach(pair => {
     const b = el('button', 'choice choice-' + pair[0] + (word === pair[0] ? ' is-on' : ''));
     b.type = 'button';
     b.append(svg(icons[pair[0]]), el('span', '', pair[1]));
@@ -80,7 +78,7 @@ function paint() {
       const row = el('div', 'guest family-row');
       row.append(el('span', '', m.name));
       const picks = el('div', 'family-picks');
-      [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No']].forEach(pair => {
+      choices.forEach(pair => {
         const b = el('button', 'family-pick choice-' + pair[0] + (m.answer === pair[0] ? ' is-on' : ''));
         b.type = 'button';
         b.append(svg(icons[pair[0]]), el('span', '', pair[1]));

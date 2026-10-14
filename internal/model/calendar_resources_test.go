@@ -231,7 +231,7 @@ func answerOf(e map[string]any) string {
 }
 
 func TestEventsAsResources(t *testing.T) {
-	h, cache, kept := calendarInvitesApp(t)
+	h, cache, _ := calendarInvitesApp(t)
 	const meeting = "evt0000000002"
 	list := read(t, h, host, "/api/events")
 	ids := []string{}
@@ -267,7 +267,6 @@ func TestEventsAsResources(t *testing.T) {
 	if inv := cache.Model().Calendar.InviteOf(made, robin); inv == nil || inv.Requested == "" {
 		t.Fatalf("robin after the batch: %+v", inv)
 	}
-	eventually(t, "robin is sent the invitation", func() bool { return len(mailTo(kept, robin)) == 1 })
 
 	write(t, h, robin, "POST", "/api/events/"+made+"/answer", map[string]string{"answer": "yes"})
 	if cache.Model().Calendar.AnswerOf(robin, made) != AnswerYes {

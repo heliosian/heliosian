@@ -1,6 +1,6 @@
 import {state, groupPath, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
 import {queries} from '/rail.js';
-import {rulesCard, ruleWords, ruleSaysSomething, newRule} from '../listrules.js';
+import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
 import {pageHead} from '../dom.js';
 import {visibilityWords} from './groups.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
@@ -51,10 +51,6 @@ function audienceField(label, notes, value, onChange) {
   const wrap = field(label, input);
   wrap.append(note);
   return wrap;
-}
-
-function ruleOf(row) {
-  return {id: row.id, exclude: row.exclude === 'Yes', target: row.target || '', replace_with: row.replace_with || '', within: row.within || '', person: row.person || '', search: row.search || ''};
 }
 
 function groupDraft(g, isNew) {
@@ -557,19 +553,6 @@ function editorActions(ed) {
 
 function visibleTo(visibility, id) {
   return {hidden: '', members: id, everyone: state.model.everyone}[visibility];
-}
-
-function ruleRow(group, r, order) {
-  const row = {group, order};
-  if (r.exclude) {
-    row.exclude = true;
-  }
-  for (const column of ['target', 'replace_with', 'within', 'person', 'search']) {
-    if (r[column]) {
-      row[column] = r[column];
-    }
-  }
-  return row;
 }
 
 function ruleEdits(ed, group) {

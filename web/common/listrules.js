@@ -1,6 +1,5 @@
 import {el, button, iconButton} from '/elements.js';
 import {select as selectInput, text as textInput} from '/form.js';
-import {rowsOf, state, personView} from './state.js';
 import {queries} from '/rail.js';
 
 const whoWords = {'': 'the people', parents: 'their parents', children: 'their children', household: 'their households'};
@@ -10,6 +9,16 @@ const kindWords = {group: 'group', classroom: 'classroom', grade: 'grade', band:
 const roleSlugs = ['students', 'parents', 'staff', 'adults'];
 
 let choices = null;
+
+let names = {group: () => null, person: () => ''};
+
+export function nameRulesWith(lookup) {
+  names = lookup;
+}
+
+function rowsOf(answer, table) {
+  return answer.result.map(id => answer.resources[table][id]);
+}
 
 export async function ruleChoices() {
   if (choices) {
@@ -29,7 +38,7 @@ export async function ruleChoices() {
 }
 
 function groupName(id) {
-  const g = (choices && choices.byId[id]) || state.model.groupNames[id];
+  const g = (choices && choices.byId[id]) || names.group(id);
   return g ? g.name : 'a group you cannot see';
 }
 
@@ -38,7 +47,7 @@ export function ruleWords(r) {
   if (r.target) {
     words = `${groupName(r.target)} — ${whoWords[r.replace_with || '']}`;
   } else if (r.person) {
-    words = personView(r.person).name;
+    words = names.person(r.person);
   } else if (r.search) {
     words = `whoever's name or address holds “${r.search}”`;
   }
@@ -54,6 +63,23 @@ export function ruleSaysSomething(r) {
 
 export function newRule() {
   return {exclude: false, target: '', replace_with: '', within: '', person: '', search: ''};
+}
+
+export function ruleOf(row) {
+  return {id: row.id, exclude: row.exclude === 'Yes', target: row.target || '', replace_with: row.replace_with || '', within: row.within || '', person: row.person || '', search: row.search || ''};
+}
+
+export function ruleRow(group, r, order) {
+  const row = {group, order};
+  if (r.exclude) {
+    row.exclude = true;
+  }
+  for (const column of ['target', 'replace_with', 'within', 'person', 'search']) {
+    if (r[column]) {
+      row[column] = r[column];
+    }
+  }
+  return row;
 }
 
 function label(g) {
@@ -83,7 +109,7 @@ function targetInput(rule, onChange) {
   return input;
 }
 
-function ruleRow(rule, {onChange, onRemove, count}) {
+function ruleLine(rule, {onChange, onRemove, count}) {
   const row = el('div', 'rule-edit-row');
   if (!rule.target && (rule.person || rule.search)) {
     row.append(el('span', 'rule-line-words', ruleWords(rule)), iconButton('close', 'Remove the rule', 'compact-remove', onRemove));
@@ -108,11 +134,30 @@ function ruleRow(rule, {onChange, onRemove, count}) {
   const n = count(rule);
   chip.textContent = n === undefined ? '' : `${n} ${rule.exclude ? 'left out' : 'match'}`;
   chip.hidden = n === undefined;
-  row.append(kind, targetInput(rule, onChange), who, only, chip, iconButton('close', 'Remove the rule', 'compact-remove', onRemove));
+  row.append(kind, targetInput(rule, onChange), who, only, chip);
+  if (onRemove) {
+    row.append(iconButton('close', 'Remove the rule', 'compact-remove', onRemove));
+  }
   return row;
 }
 
-export function rulesCard({list, onChange, onRemove, onAdd, count}) {
+export function ruleEditor(rule, onChange) {
+  const holder = el('div', 'rule-edit-rows');
+  const paint = () => {
+    holder.replaceChildren(ruleLine(rule, {onChange, onRemove: null, count: () => undefined}));
+  };
+  if (choices) {
+    paint();
+  } else {
+    holder.append(el('div', 'save-status', 'Loading the groups…'));
+    ruleChoices().then(paint, err => {
+      holder.replaceChildren(el('div', 'save-status error', err.message));
+    });
+  }
+  return holder;
+}
+
+export function rulesCard({list, onChange, onRemove, onAdd, count, empty = 'No rules yet: only the people added by hand are on the email list.', hint = 'Each rule takes in a group\'s members, or their parents, children or households, and can keep to one role. A Leave out rule keeps whoever it picks off the list.'}) {
   const card = el('div', 'card');
   const head = el('div', 'card-head');
   head.append(el('h2', '', 'Rules'));
@@ -132,10 +177,10 @@ export function rulesCard({list, onChange, onRemove, onAdd, count}) {
       return;
     }
     for (const rule of list()) {
-      rows.append(ruleRow(rule, {onChange, onRemove: () => onRemove(rule), count}));
+      rows.append(ruleLine(rule, {onChange, onRemove: () => onRemove(rule), count}));
     }
     if (!list().length) {
-      rows.append(el('div', 'rule-empty', 'No rules yet: only the people added by hand are on the email list.'));
+      rows.append(el('div', 'rule-empty', empty));
     }
   };
   const add = button('Add rule', 'plus', 'button button-small button-secondary', () => {
@@ -143,7 +188,7 @@ export function rulesCard({list, onChange, onRemove, onAdd, count}) {
     render();
   });
   head.append(add);
-  card.append(head, el('div', 'hint', 'Each rule takes in a group\'s members, or their parents, children or households, and can keep to one role. A Leave out rule keeps whoever it picks off the list.'), status, rows);
+  card.append(head, el('div', 'hint', hint), status, rows);
   render();
   return {card, render};
 }

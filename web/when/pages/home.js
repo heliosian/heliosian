@@ -9,10 +9,10 @@ import {load, render, setPath} from '/router.js';
 import {dayBar, dayChip, dayRow, eventRow} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
 import {attachPeek, attachRowPeek, hidePeek} from '../peek.js';
-import {query, act, create} from '/data.js';
+import {saveFeed} from '../writes.js';
 import {dayColumn, openAddEvent} from '../day.js';
 import {emptyNote} from '../events.js';
-import {answerOf, selectedTags, classroomNames, tagIds, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL, loadModel, settingsId} from '../state.js';
+import {answerOf, selectedTags, classroomNames, tagIds, defaultFeedName, showsFeed, activeFeed, setActiveFeed, defaultFeed, feedURL, webcalURL, loadModel} from '../state.js';
 
 let lastDate = '';
 
@@ -201,7 +201,7 @@ function saveCalendar() {
     };
     let made;
     try {
-      made = await create('calendar-feeds', body);
+      made = await saveFeed(null, body);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -220,12 +220,7 @@ function saveCalendar() {
 }
 
 async function feedPath(f) {
-  if (f.url) {
-    return f.url;
-  }
-  await act('when-settings', settingsId(), 'feed-token');
-  const read = await query('/api/calendar-feeds/' + encodeURIComponent(f.id));
-  return read.get(read.result).url;
+  return f.url;
 }
 
 const brandMarks = {
@@ -335,7 +330,7 @@ async function saveOnto(f) {
     tags: tags.length === tagIds().length ? [] : tagIds().filter(t => tags.includes(t)),
   };
   try {
-    await act('calendar-feeds', f.id, 'edit', body);
+    await saveFeed(f, body);
   } catch (err) {
     toast(err.message);
     return;

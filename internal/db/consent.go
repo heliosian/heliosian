@@ -168,6 +168,11 @@ func (m *Model) consentWrites(responses []map[string]string) ([]Edit, error) {
 		wants[p["id"]] = want
 		writes = appendChanges(writes, p, want)
 	}
+	for _, p := range m.Table("PERSON").All() {
+		if p["source"] == "guest" {
+			wants[p["id"]] = map[string]string{"consent": "listed", "address_consent": "withheld", "phone_consent": "withheld"}
+		}
+	}
 	students := m.students()
 	for _, g := range groups.All() {
 		if g["kind"] != "family" {

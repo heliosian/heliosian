@@ -1,11 +1,10 @@
 import {el, svg, button, toast, longToast} from '/elements.js';
 import {popup, closeModal, closeLayers} from '/modal.js';
 import {field, text as textInput} from '/form.js';
-import {load} from '/router.js';
 import {openPersonCard, doneButton} from '/personcard.js';
-import {act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
+import {bringGuest, sendTo, sendPending, takeOff, deleteEvent, cancelEvent} from './guestlist.js';
 import {state, me} from './state.js';
 import {personRow} from '/personrow.js';
 import {pageSize, fillPager} from '/members.js';
@@ -89,7 +88,7 @@ function guestForm(e, of, onDone) {
     }
     submit.disabled = true;
     try {
-      await act('events', e.id, 'bring-guest', body);
+      await bringGuest(e, body);
       toast(`${body.name} added`);
       onDone();
     } catch (err) {
@@ -119,7 +118,7 @@ export function openGuestCard(e, p, view, refresh) {
   const fields = [];
   if (view.party && p.invited) {
     const standing = el('div', 'guest-card-ticket is-' + (p.ticket || 'none'));
-    standing.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
+    standing.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : 'close'));
     const words = el('div');
     words.append(el('strong', '', ticketWords(p.ticket)), el('div', 'invite-line', ticketDetail(p.ticket)));
     standing.append(words);
@@ -136,10 +135,10 @@ export function openGuestCard(e, p, view, refresh) {
   }
   fields.push(ask);
   const links = el('div', 'guest-card-links');
-  if (p.invited && p.email) {
-    links.append(button(p.sent ? 'Resend invitation' : 'Send invitation', 'mail', 'link-button', async () => {
+  if (p.invited && p.email && !p.sent) {
+    links.append(button('Send invitation', 'mail', 'link-button', async () => {
       try {
-        await act('events', e.id, 'send', {emails: [p.key]});
+        await sendTo(e, [p.key]);
         longToast('The invitation is on its way');
         closeModal();
         refresh();
@@ -148,13 +147,13 @@ export function openGuestCard(e, p, view, refresh) {
       }
     }));
   }
-  if (p.invited || p.key === me().email) {
+  if (p.invited || p.key === me().id) {
     links.append(button('Take off the list', 'trash', 'link-button danger', async () => {
-      if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.via && p.via.startsWith('group:') ? ', and the group will not add them back' : ''}.`)) {
+      if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.byRule ? ', and the group will not add them back' : ''}.`)) {
         return;
       }
       try {
-        await act('events', e.id, 'uninvite', {email: p.key});
+        await takeOff(e, view, p);
         closeModal();
         refresh();
       } catch (err) {
@@ -168,65 +167,11 @@ export function openGuestCard(e, p, view, refresh) {
   return openPersonCard(person, [{label: 'Answer', icon: svg('calendar'), fields}], {actions: false});
 }
 
-export function warningChip(e, view, r, refresh) {
+export function warningChip(r) {
   const chip = el('span', 'guests-chip is-warning');
   chip.title = r.warningWords;
-  chip.append(svg('info'), el('span', '', r.warning === 'bounced' ? 'Bounced' : 'Not in the directory'));
-  const edit = el('button', 'guests-chip-edit');
-  edit.type = 'button';
-  edit.textContent = 'Edit email';
-  edit.addEventListener('click', ev => {
-    ev.stopPropagation();
-    openEmailEdit(e, view, r, refresh);
-  });
-  chip.append(edit);
+  chip.append(svg('info'), el('span', '', 'Bounced'));
   return chip;
-}
-
-function openEmailEdit(e, view, r, refresh) {
-  const form = el('form', 'admin-form');
-  form.append(el('p', 'hint', r.warningWords + ' Give a different address, or close this and send to it anyway.'));
-  const wrap = el('div', 'field');
-  const input = el('input', 'email-edit-input');
-  input.type = 'email';
-  input.required = true;
-  input.value = r.email;
-  wrap.append(el('span', '', 'Email address'), input);
-  form.append(wrap);
-  let everywhere = null;
-  if (view.moveEverywhere) {
-    everywhere = el('input');
-    everywhere.type = 'checkbox';
-    everywhere.checked = true;
-    const label = el('label', 'message-to-choice');
-    label.append(everywhere, el('span', '', 'Change it on every Celebrate party - tickets too - and resend invitations already sent'));
-    form.append(label);
-  }
-  const actions = el('div', 'modal-actions');
-  const status = el('span', 'save-status');
-  const submit = el('button', 'button');
-  submit.type = 'submit';
-  submit.append(svg('check'), el('span', '', 'Save'));
-  actions.append(submit, status);
-  form.append(actions);
-  let shut = null;
-  form.addEventListener('submit', async ev => {
-    ev.preventDefault();
-    submit.disabled = true;
-    try {
-      const all = Boolean(everywhere && everywhere.checked);
-      await act('events', e.id, 'change-email', {email: r.key, to: input.value.trim(), everywhere: all});
-      toast(all ? 'Address changed on every party' : 'Address changed');
-      shut();
-      refresh();
-    } catch (err) {
-      status.textContent = err.message;
-      status.classList.add('error');
-      submit.disabled = false;
-    }
-  });
-  shut = popup(`${r.name || r.email}’s email`, form).shut;
-  setTimeout(() => input.select(), 0);
 }
 
 export function openPending(e, view, refresh) {
@@ -245,7 +190,7 @@ export function openPending(e, view, refresh) {
   const sendAll = async () => {
     const emails = picked();
     try {
-      await act('events', e.id, 'send', {emails});
+      await sendTo(e, emails);
       longToast(emails.length === 1 ? 'One invite is on its way' : `${emails.length} invites are on their way`);
       shut();
       refresh();
@@ -255,7 +200,7 @@ export function openPending(e, view, refresh) {
   };
   const sendOne = async r => {
     try {
-      await act('events', e.id, 'send', {emails: [r.key]});
+      await sendTo(e, [r.key]);
       toast(`Invite sent to ${r.name || r.email}`);
       sent.add(r.key);
       refresh();
@@ -278,10 +223,7 @@ export function openPending(e, view, refresh) {
     let marks = null;
     if (r.warning && !done) {
       marks = el('div', 'guests-marks');
-      marks.append(warningChip(e, view, r, () => {
-        shut();
-        refresh();
-      }));
+      marks.append(warningChip(r));
     }
     const tick = el('input', 'pending-check');
     tick.type = 'checkbox';
@@ -318,12 +260,12 @@ export function openPending(e, view, refresh) {
   title = made.box.querySelector('.modal-header h2');
 }
 
-export async function sendInvites(e, to, count, words, refresh) {
+export async function sendInvites(e, count, words, refresh) {
   if (!confirm(words)) {
     return;
   }
   try {
-    await act('events', e.id, 'send', {to});
+    await sendPending(e);
     longToast(count === 1 ? 'One invite is on its way' : `${count} invites are on their way`);
     refresh();
   } catch (err) {
@@ -331,25 +273,15 @@ export async function sendInvites(e, to, count, words, refresh) {
   }
 }
 
-export async function deleteInvitation(e, view) {
-  const words = view.party
-    ? 'Delete the invitation? The guest list and every answer go; the party itself stays on Helios Celebrate.'
-    : view.linked
-      ? 'Delete the invitation? The guest list and every answer go; the event itself stays on HCA-Team.'
-      : 'Delete this event? It comes off the calendar with its guest list, as if it had never been made.';
-  if (!confirm(words)) {
+export async function deleteInvitation(e) {
+  if (!confirm('Delete this event? It comes off the calendar with its guest list.')) {
     return;
   }
-  const own = e.source === 'sheet';
   try {
-    await act('events', e.id, 'delete-invitation');
-    toast(own ? 'Event deleted' : 'Invitation deleted');
-    if (own) {
-      location.href = '/';
-    } else {
-      closeLayers();
-      await load();
-    }
+    await deleteEvent(e);
+    toast('Event deleted');
+    closeLayers();
+    location.href = '/';
   } catch (err) {
     toast(err.message);
   }
@@ -369,7 +301,7 @@ export function openCancel(e, view, refresh) {
   let shut = null;
   const cancel = async notify => {
     try {
-      await act('events', e.id, 'cancel', {notify, note: note.value});
+      await cancelEvent(e, notify, note.value);
       longToast(notify ? `Cancelled - ${sent} ${sent === 1 ? 'person' : 'people'} told` : 'Cancelled');
       shut();
       refresh();

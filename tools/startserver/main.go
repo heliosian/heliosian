@@ -198,6 +198,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 	go func() {
 		<-core.Settled
 		core.ListMail.Start()
+		core.Invites.Start()
 	}()
 	return core
 }

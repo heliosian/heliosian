@@ -1,4 +1,4 @@
-import {state, me, settingsId, today, bands, tagGroups, defaultTags, savedView, searchResults, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, findSearch, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -6,7 +6,7 @@ import {field, text} from '/form.js';
 import {dayColumn} from './day.js';
 import {initShell, appSymbol, onSlash} from '/shell.js';
 import {load, render, setPath} from '/router.js';
-import {act, remove as removeResource} from '/data.js';
+import {write, saveFeed, makeDefault, orderFeeds as orderSaved, forgetView} from './writes.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},
@@ -72,7 +72,7 @@ export function editFeedPopup(f) {
       return;
     }
     try {
-      await removeResource('calendar-feeds', f.id);
+      await write([{delete: f.id}]);
     } catch (err) {
       toast(err.message);
       return;
@@ -104,7 +104,7 @@ export function editFeedPopup(f) {
     status.textContent = 'Saving\u2026';
     const body = {name: name.value.trim(), emoji: input.value.trim(), classrooms: f.classrooms, tags: f.tags};
     try {
-      await act('calendar-feeds', f.id, 'edit', body);
+      await saveFeed(f, body);
     } catch (err) {
       status.textContent = err.message;
       status.classList.add('error');
@@ -121,7 +121,7 @@ export function editFeedPopup(f) {
 
 export async function makeDefaultFeed(f) {
   try {
-    await act('when-settings', settingsId(), 'default', {token: f.token});
+    await makeDefault(f);
   } catch (err) {
     toast(err.message);
     return;
@@ -132,7 +132,7 @@ export async function makeDefaultFeed(f) {
 
 async function orderFeeds(tokens) {
   try {
-    await act('when-settings', settingsId(), 'order-feeds', {tokens});
+    await orderSaved(tokens.map(token => allCalendars().find(f => f.token === token).id));
   } catch (err) {
     toast(err.message);
     return false;
@@ -322,7 +322,7 @@ async function removeFeed(f) {
     return;
   }
   try {
-    await removeResource('calendar-feeds', f.id);
+    await write([{delete: f.id}]);
   } catch (err) {
     toast(err.message);
     return;
@@ -529,7 +529,7 @@ export function fillFilters(wrap, opts = {}) {
   } else if (working && working.locked && savedView()) {
     foot.append(button('Forget my saved view', null, 'button button-secondary button-small', async () => {
       try {
-        await act('when-settings', settingsId(), 'forget-view');
+        await forgetView();
       } catch (err) {
         toast(err.message);
         return;
@@ -617,10 +617,16 @@ export function resetSearch() {
 
 function search(value) {
   sync(value);
-  showResults(value.trim());
-  if (onSearch) {
-    onSearch(value.trim());
-  }
+  const query = value.trim();
+  findSearch(query).then(() => {
+    if (typed().trim() !== query) {
+      return;
+    }
+    showResults(query);
+    if (onSearch) {
+      onSearch(query);
+    }
+  });
 }
 
 const resultLimit = 12;

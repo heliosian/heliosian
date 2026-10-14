@@ -1,25 +1,24 @@
 import {me, answer} from './state.js';
 import {el, svg, toast} from '/elements.js';
-import {act} from '/data.js';
-import {listed, emailOf} from '/directory.js';
-import {rulesEditor} from '/rules.js';
+import {listed} from '/directory.js';
+import {answerFor as answerOnList} from './guestlist.js';
 
-export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
+export const answerWords = {yes: 'Yes', no: 'No'};
 
 export function firstName(p) {
   return (p.name || p.email || '').split(' ')[0];
 }
 
 export function answerIcon(word) {
-  return word === 'yes' ? 'check' : word === 'maybe' ? 'clock' : word === 'no' ? 'close' : 'info';
+  return word === 'yes' ? 'check' : word === 'no' ? 'close' : 'info';
 }
 
 export async function answerFor(e, row, next) {
-  if (row.key === me().email) {
+  if (row.key === me().id) {
     await answer(e, next);
     return;
   }
-  await act('events', e.id, 'answer-for', {email: row.key, answer: next});
+  await answerOnList(row, next);
 }
 
 export function answerButtons(row, e, onChange, {small = true} = {}) {
@@ -50,14 +49,13 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
 }
 
 export function ticketWords(ticket) {
-  return ticket === 'ticket' ? 'Purchased ticket' : ticket === 'free' ? 'Free ticket' : ticket === 'waitlist' ? 'On the waitlist' : 'No ticket';
+  return ticket === 'ticket' ? 'Purchased ticket' : ticket === 'free' ? 'Free ticket' : 'No ticket';
 }
 
 export function ticketDetail(ticket) {
   return ticket === 'ticket' ? 'Their household bought a ticket on Helios Celebrate.'
-    : ticket === 'free' ? 'A ticket the hosts gave at no charge.'
-      : ticket === 'waitlist' ? 'Their household asked for a ticket; the party was full. They hold no ticket yet.'
-        : 'Invited, with no ticket to the party. Tickets are on the party page on Helios Celebrate.';
+    : ticket === 'free' ? 'A place the hosts gave at no charge.'
+      : 'Invited, with no ticket to the party. Tickets are on the party page on Helios Celebrate.';
 }
 
 export function stamp(s) {
@@ -79,7 +77,6 @@ export function answeredWords(r) {
   if (r.answeredBy) {
     bits.push(`by ${r.answeredBy}`);
   }
-  bits.push(r.answeredVia === 'calendar' ? 'from their calendar app' : 'on the page');
   if (r.answeredAt) {
     bits.push(moment(r.answeredAt));
   }
@@ -88,27 +85,4 @@ export function answeredWords(r) {
 
 export function pickerPeople(keep) {
   return async () => (await listed()).filter(keep);
-}
-
-export let ruleOptions = null;
-
-export function setRuleOptions(options) {
-  ruleOptions = options;
-}
-
-const names = new Map();
-
-export function setNames(people) {
-  for (const p of people) {
-    names.set(emailOf(p), p.name_show);
-  }
-}
-
-export const rules = rulesEditor({
-  options: () => ruleOptions,
-  personName: email => names.get(email) || '',
-});
-
-export function groupRule(g) {
-  return {...g.rule, tagLabels: g.tagNames};
 }

@@ -98,6 +98,7 @@ type Core struct {
 	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	ListMail  *db.ListMailer
+	Invites   *db.Invitations
 	Spoof     *auth.Spoof
 	Settled   <-chan struct{}
 	apps      []appSpec
@@ -258,6 +259,9 @@ func NewCore(cfg Config) *Core {
 		SignedIn: func(email string) bool { return dataStore.Model().SignedIn(email) != "" },
 		Now:      schoolNow,
 	}
+	invitations := db.RegisterInvitations(calendarMux, dataStore, queue, pictures, tokens, schoolNow, db.InvitationConfig{
+		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: model.Origin(cfg.Domain),
+	})
 	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: model.Origin(cfg.Domain), Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, mcp.Deps{
@@ -327,7 +331,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail,
+		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail, Invites: invitations,
 		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
@@ -443,6 +447,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		go func() {
 			<-core.Settled
 			core.ListMail.Start()
+			core.Invites.Start()
 			db.StartConsent(core.Data, core.Queue, sheet)
 			core.Search.StartMaking(anthropicKey)
 			watcher.Start()

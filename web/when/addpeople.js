@@ -1,12 +1,11 @@
-import {el, button, toast, longToast} from '/elements.js';
+import {el, button, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {api} from '/api.js';
-import {query, act, create} from '/data.js';
 import {personAdder, outsideAdder} from '/members.js';
-import {ruleOptions, setRuleOptions, rules} from './inviteparts.js';
+import {ruleEditor, newRule, ruleSaysSomething} from '/listrules.js';
+import {addPeople, addRule, previewRules} from './guestlist.js';
 import {state} from './state.js';
 
-export const outsideNote = 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming.';
+export const outsideNote = 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming. Everyone in a family answers for the others.';
 
 export function inviteWords(host, people) {
   const n = people.length;
@@ -17,10 +16,10 @@ export function inviteWords(host, people) {
 }
 
 export function guestAdders(e, view, done) {
-  const onList = new Set([...(view.list || []), ...(view.coming || []), ...view.mine].filter(r => r.invited && r.email).map(r => r.email));
+  const onList = new Set([...(view.list || []), ...view.mine].filter(r => r.invited && r.email).map(r => r.email));
   const isOn = email => onList.has(email);
   const onAdd = close => async people => {
-    await act('events', e.id, 'invite', {people});
+    await addPeople(e, view, people);
     close();
     done(inviteWords(view.host, people));
   };
@@ -30,13 +29,7 @@ export function guestAdders(e, view, done) {
   };
 }
 
-export async function openPicker(e, view, refresh, {tab = 'person'} = {}) {
-  try {
-    setRuleOptions(view.host ? await api('GET', '/api/when/invites/options') : ruleOptions);
-  } catch (err) {
-    toast(err.message);
-    return;
-  }
+export function openPicker(e, view, refresh, {tab = 'person'} = {}) {
   const box = el('div', 'picker');
   const tabs = el('div', 'tabs');
   const panel = el('div', 'picker-panel');
@@ -63,7 +56,7 @@ export async function openPicker(e, view, refresh, {tab = 'person'} = {}) {
   const adders = guestAdders(e, view, done);
   const paintPanel = () => {
     panel.replaceChildren();
-    const made = active === 'group' ? groupPanel(e, done) : adders[active](() => {});
+    const made = active === 'group' ? groupPanel(e, view, done) : adders[active](() => {});
     panel.append(made);
     if (made.focus) {
       setTimeout(() => made.focus(), 0);
@@ -74,48 +67,43 @@ export async function openPicker(e, view, refresh, {tab = 'person'} = {}) {
   shut = popup('Add to the guest list', box, {wide: true}).shut;
 }
 
-function groupPanel(e, done) {
+function groupPanel(e, view, done) {
   const wrap = el('div', 'picker-group');
-  const rule = rules.newRule('include');
-  const holder = el('div', 'rule is-include picker-rule');
+  const rule = newRule();
   const preview = el('div', 'audience-preview picker-preview');
   let timer = null;
   const askPreview = () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
-      if (!rules.ruleSaysSomething(rule)) {
+      if (!ruleSaysSomething(rule)) {
         preview.textContent = '';
         return;
       }
       try {
-        const answer = await api('POST', '/api/when/invites/preview', {id: e.id, rule});
-        preview.textContent = answer.count ? `Picks out ${answer.count} ${answer.count === 1 ? 'person' : 'people'} now: ${answer.names.join(', ')}${answer.count > answer.names.length ? '…' : ''}` : 'Picks out nobody yet.';
+        const answer = await previewRules(e, view, [rule]);
+        const n = answer.ruleCounts[0] || 0;
+        const names = answer.members.filter(m => m.reasons.some(r => r.rule === 0)).map(m => m.name).filter(Boolean).slice(0, 12);
+        preview.textContent = n ? `Picks out ${n} ${n === 1 ? 'person' : 'people'} now: ${names.join(', ')}${n > names.length ? '…' : ''}` : 'Picks out nobody yet.';
       } catch (err) {
         preview.textContent = err.message;
       }
     }, 300);
   };
-  holder.append(rules.ruleControls(rule, askPreview));
-  wrap.append(holder, preview);
-  const auto = el('label', 'picker-auto');
-  const box = el('input');
-  box.type = 'checkbox';
-  box.checked = true;
-  auto.append(box, el('span', '', 'Auto-invite new members'), el('small', '', 'Whoever comes to match this later - a family joining the classroom, a ticket sold - goes on the list either way. With this on they are sent their invitation too, once you have sent this group its invitations yourself; off, they wait in Pending for you.'));
-  wrap.append(auto);
+  wrap.append(ruleEditor(rule, askPreview), preview);
+  wrap.append(el('small', 'hint', view.autoInvite ? 'Whoever comes to match this later goes on the list and is sent the invitation as they come.' : 'Whoever comes to match this later goes on the list, and waits in Pending for you to send.'));
   const foot = el('div', 'modal-actions');
   const status = el('span', 'save-status');
   const add = button('Add group', 'plus', 'button', async () => {
-    if (!rules.ruleSaysSomething(rule)) {
-      status.textContent = 'Pick a role, some words, a classroom, a grade or a tag.';
+    if (!ruleSaysSomething(rule)) {
+      status.textContent = 'Pick a group, a class, a grade or an activity.';
       status.classList.add('error');
       return;
     }
     add.disabled = true;
     try {
-      const made = await create('invite-groups', {id: e.id, rule, auto: box.checked});
-      const read = await query('/api/invite-groups/' + encodeURIComponent(made.id));
-      const added = read.get(read.result).count;
+      const answer = await previewRules(e, view, [rule]);
+      await addRule(e, view, rule);
+      const added = answer.ruleCounts[0] || 0;
       done(`Group added, with ${added} ${added === 1 ? 'person' : 'people'} on the list now.`);
     } catch (err) {
       status.textContent = err.message;

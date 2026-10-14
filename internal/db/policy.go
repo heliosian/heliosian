@@ -25,9 +25,10 @@ const PolicySource = `
        (exists GROUP (= managed_by @g) (= kind k))
        (not (exists GROUP (= managed_by @g) (!= kind k) (!= id @g)))))
 
-; @g is the group that manages a group the viewer may see
+; @g is the group that manages a group the viewer may see, unless its managers hid it by blanking who sees it
 (define (manages_visible @g)
-  (exists GROUP @v (= managed_by @g) (visible @v)))
+  (and (not (blank @g.visible_to))
+       (exists GROUP @v (= managed_by @g) (visible @v))))
 
 ; @g holds those who said they are coming, or not, to a group the viewer may see
 (define (answers_visible @g)
@@ -215,11 +216,17 @@ const PolicySource = `
   (and (= @c.mime "text/markdown")
        (not (exists DOCUMENT (= content @c) (!= kind "wiki") (!= relation "side")))))
 
-; the viewer sent or received @m, or manages the group it went to
+; the viewer sent @m, received it, manages the group it went to, or it is an invitation to a student in their family
 (define (message_visible @m)
   (or (= @m.from_person @viewer)
       (exists RECIPIENT (= message @m) (= person @viewer))
-      (manages @m.group)))
+      (manages @m.group)
+      (and (in @m.kind "invitation" "skip")
+           (exists RECIPIENT (= message @m) (child_of_viewer person)))))
+
+; @p is a student in the viewer's family
+(define (child_of_viewer @p)
+  (and (in @p (household @viewer)) (in @p (members (slug "students")))))
 
 ;; Consent
 
@@ -298,6 +305,12 @@ const PolicySource = `
 (delete PHOTO (edits_photo @old))
 ; the viewer's own app settings
 (read PERSON_SETTING (= person @viewer))
+; write an app setting of one's own
+(insert PERSON_SETTING (= @new.person @viewer))
+; change an app setting of one's own
+(set PERSON_SETTING.value (= @old.person @viewer))
+; remove an app setting of one's own
+(delete PERSON_SETTING (= @old.person @viewer))
 ; every column of an app setting
 (read PERSON_SETTING (id person app key value) true)
 ; the birthday years of people the viewer may see, to the Birthdays team
@@ -345,7 +358,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for auto_invite priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -418,6 +431,14 @@ const PolicySource = `
            (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
+; note that the viewer or someone in their family opened the invitation to a group the viewer sees, on a row that puts nobody in it
+(insert MEMBER
+  (and (visible @new.group) (self_or_household @new.person) (blank @new.member) (not (blank @new.opened))
+       (blank @new.guest_of) (blank @new.price) (blank @new.purchase_id) (blank @new.note) (blank @new.added_by)))
+; note when the viewer or someone in their family first opened the invitation
+(set MEMBER.opened (and (self_or_household @old.person) (blank @old.opened)))
+; take back a guest the viewer brought to a group that takes joining and no payment
+(delete MEMBER (and (= @old.guest_of @viewer) (not (blank @old.group.join)) (blank @old.group.price)))
 ; hide something the viewer sees from themselves: join its hidden group, oneself alone
 (insert MEMBER
   (and (= @new.group.join "self") (= @new.person @viewer) (= @new.member "yes") (= @new.added_by @viewer)
@@ -499,9 +520,10 @@ const PolicySource = `
 (read MESSAGE
   (id direction kind group about parent from_person from_address subject header_id content created state detail)
   true)
-; the viewer's own deliveries, deliveries of mail they sent, and of mail to groups they manage
+; the viewer's own deliveries, invitations to the students in their family, deliveries of mail they sent, and of mail to groups they manage
 (read RECIPIENT
   (or (= person @viewer)
+      (and (in message.kind "invitation" "skip") (child_of_viewer person))
       (= message.from_person @viewer)
       (manages message.group)))
 ; every column of a delivery but its link token
@@ -847,6 +869,8 @@ const PolicySource = `
 (set GROUP.capacity (runs_list @old))
 ; a group's managers give it a poster
 (set GROUP.flyer (runs_list @old))
+; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
+(set GROUP.auto_invite (runs_list @old))
 ; a group's managers say who may join it by themselves and add others
 (set GROUP.join (runs_list @old))
 ; a group's managers say whose members may join it, naming only a group whose members they see

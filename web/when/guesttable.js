@@ -1,6 +1,6 @@
 import {el, svg, button, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {act} from '/data.js';
+import {mailList} from './guestlist.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {dataGrid} from '/datagrid.js';
 import {answerWords, answerIcon, answerButtons, ticketWords, stamp} from './inviteparts.js';
@@ -47,7 +47,7 @@ export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp
   }
   const sections = [];
   if (rsvp) {
-    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, {value: 'maybe', label: 'Maybe'}, ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: 'No response'}], chosen: answers});
+    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: 'No response'}], chosen: answers});
   }
   if (gradeValues.length) {
     sections.push({label: 'Grade', icon: 'school', values: gradeValues, chosen: grades});
@@ -56,7 +56,7 @@ export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp
     sections.push({label: 'Classroom', icon: 'classrooms', values: roomValues, chosen: rooms});
   }
   if (view.party && view.host) {
-    sections.push({label: 'Ticket', icon: 'ticket', values: [{value: 'ticket', label: 'Purchased ticket'}, {value: 'free', label: 'Free ticket'}, {value: 'waitlist', label: 'Waitlist'}, {value: '', label: 'No ticket'}], chosen: tickets});
+    sections.push({label: 'Ticket', icon: 'ticket', values: [{value: 'ticket', label: 'Purchased ticket'}, {value: 'free', label: 'Free ticket'}, {value: '', label: 'No ticket'}], chosen: tickets});
   }
   if (view.host && view.sent && rsvp) {
     sections.push({label: 'Opened', icon: 'eye', values: [{value: 'yes', label: 'Opened the invitation'}, {value: 'no', label: 'Not yet'}], chosen: opens});
@@ -154,7 +154,7 @@ export function openMessage(e, view, refresh, preset = {}) {
   head.append(mark, words);
   box.append(head);
   const counts = view.counts || {};
-  const to = new Set(preset.to || ['yes', 'maybe', 'none']);
+  const to = new Set(preset.to || ['yes', 'none']);
   const picked = new Set();
   box.append(el('div', 'compose-label', 'Send to'));
   const tiles = el('div', 'send-tiles');
@@ -191,7 +191,6 @@ export function openMessage(e, view, refresh, preset = {}) {
   pickTile.addEventListener('click', () => openPick(e, view, picked, paintPick));
   tiles.append(
     tile('yes', 'Yes', counts.yes || 0, 'is-yes'),
-    tile('maybe', 'Maybe', counts.maybe || 0, 'is-maybe'),
     tile('no', 'No', counts.no || 0, 'is-no'),
     tile('none', 'No response', view.list.filter(r => r.invited && r.sent && !r.answer).length, 'is-waiting'),
     pickTile,
@@ -210,11 +209,11 @@ export function openMessage(e, view, refresh, preset = {}) {
   box.append(el('div', 'compose-label', 'Message'));
   const message = el('textarea', 'compose-message');
   message.rows = 6;
-  message.maxLength = 1000;
+  message.maxLength = 5000;
   message.value = preset.message || '';
   const counter = el('div', 'compose-count');
   const paintCount = () => {
-    counter.textContent = `${message.value.length}/1000`;
+    counter.textContent = `${message.value.length}/5000`;
   };
   message.addEventListener('input', paintCount);
   paintCount();
@@ -238,9 +237,8 @@ export function openMessage(e, view, refresh, preset = {}) {
     }
     send.disabled = true;
     try {
-      await act('events', e.id, 'message', {subject: subject.value.trim(), message: message.value.trim(), to: [...to], emails: [...picked], attach: Boolean(preset.attach)});
-      const reached = view.list.filter(r => r.invited && r.email && (to.has(r.answer && r.answer !== 'hidden' ? r.answer : r.sent ? 'none' : 'unsent') || picked.has(r.key))).length;
-      longToast(reached === 1 ? 'Sent to one person' : `Sent to ${reached} people`);
+      const made = await mailList(e, {kind: preset.attach ? 'reminder' : 'message', subject: subject.value.trim(), text: message.value.trim(), to: [...to], people: [...picked]});
+      longToast(made.sent === 1 ? 'Sent to one person' : `Sent to ${made.sent} people`);
       shut();
       refresh();
     } catch (err) {
@@ -262,7 +260,7 @@ function openPick(e, view, picked, onDone) {
   search.placeholder = 'Search the guest list';
   const kinds = new Set();
   const chips = el('div', 'filter-chips picker-roles');
-  for (const [key, label] of [['yes', 'Yes'], ['maybe', 'Maybe'], ['no', 'No'], ['none', 'No response']]) {
+  for (const [key, label] of [['yes', 'Yes'], ['no', 'No'], ['none', 'No response']]) {
     const chip = el('button', 'filter-chip pick-chip is-' + key, label);
     chip.type = 'button';
     chip.addEventListener('click', () => {

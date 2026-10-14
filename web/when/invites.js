@@ -1,13 +1,11 @@
-import {state, me, allows, answer, isParty, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {state, me, answer, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
 import {el, svg, button, iconButton, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {api} from '/api.js';
-import {query, act, create, remove as removeResource} from '/data.js';
 import {checkbox} from '/form.js';
-import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
+import {known} from '/directory.js';
 import {uploadImage} from './imagecontrol.js';
-import {answerWords, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople, setRuleOptions, setNames, groupRule, rules} from './inviteparts.js';
+import {answerWords, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from './inviteparts.js';
 import {openGuestForm, openGuestCard, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker, guestAdders} from './addpeople.js';
@@ -17,24 +15,53 @@ import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 import {countList} from '/countlist.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
-import {listed, emailOf, photoOf, wordsOf, gradeOf, isStudent} from '/directory.js';
+import {rulesCard, ruleWords} from '/listrules.js';
 import {tabbedFields} from '/tabs.js';
-
-export async function startParty(e) {
-  await act('events', e.id, 'start');
-  const read = await query('/api/events/' + encodeURIComponent(e.id) + '?include=guest-list.invite-groups');
-  const key = (isParty(e) ? 'party:' : 'activity:') + e.linkedId;
-  const group = read.all('invite-groups').find(g => g.rule.tags.includes(key));
-  return {added: group.count};
-}
+import * as guests from './guestlist.js';
 
 export async function fetchInvites(e) {
-  const read = await query('/api/events/' + encodeURIComponent(e.id) + '?include=guest-list');
-  const view = read.follow(read.get(read.result), 'guest-list');
+  const view = await guests.fetchInvites(e);
   if (view.can.opened) {
-    act('guest-lists', view.id, 'opened').catch(err => toast(err.message));
+    guests.noteOpened(e, view).catch(err => toast(err.message));
   }
   return view;
+}
+
+function ownKey(view) {
+  const self = view.mine.find(r => r.key === me().id && !r.guestOf);
+  return self ? self.key : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
+}
+
+function removeGuestButton(e, view, r, className, refresh) {
+  const remove = el('button', className);
+  remove.type = 'button';
+  remove.title = 'Remove this guest';
+  remove.append(svg('close'));
+  remove.addEventListener('click', async () => {
+    try {
+      await guests.takeOff(e, view, r);
+      toast(`${r.name} removed`);
+      refresh();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  return remove;
+}
+
+function hideButton(e, refresh) {
+  const hide = el('button', 'rsvp-clear', 'Hide event');
+  hide.type = 'button';
+  hide.addEventListener('click', async () => {
+    try {
+      await answer(e, 'hidden');
+      toast('Hidden - it shows on the month in gray');
+      refresh();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  return hide;
 }
 
 function bigChoices(e, r, refresh) {
@@ -75,7 +102,7 @@ function answerItems(e, r, refresh, clear) {
   return items;
 }
 
-function memberRow(e, r, refresh) {
+function memberRow(e, view, r, refresh) {
   const row = el('div', 'rsvp-panel-person');
   row.append(personRow(r, {
     className: 'rsvp-person',
@@ -83,61 +110,37 @@ function memberRow(e, r, refresh) {
     gradeColors: state.model.gradeColors,
   }), bigChoices(e, r, refresh));
   if (r.guestOf && r.mine) {
-    const remove = el('button', 'invite-remove rsvp-person-remove');
-    remove.type = 'button';
-    remove.title = 'Remove this guest';
-    remove.append(svg('close'));
-    remove.addEventListener('click', async () => {
-      try {
-        await act('events', e.id, 'uninvite', {email: r.key});
-        toast(`${r.name} removed`);
-        refresh();
-      } catch (err) {
-        toast(err.message);
-      }
-    });
-    row.append(remove);
+    row.append(removeGuestButton(e, view, r, 'invite-remove rsvp-person-remove', refresh));
   }
   return row;
 }
 
 export function familyBand(e, view, refresh) {
   const box = el('div', 'rsvp-panel');
-  const self = view.mine.find(r => r.key === me().email && !r.guestOf);
+  const self = view.mine.find(r => r.key === me().id && !r.guestOf);
   const others = view.mine.filter(r => r !== self);
   const asked = view.mine.some(r => r.invited);
-  const hosts = view.hosts.filter(h => h.email !== me().email).map(h => h.name).filter(Boolean);
-  const by = asked && hosts.length ? `Invited by ${hosts.join(' and ')}. ` : '';
+  const hosts = view.hosts.filter(h => h.key !== me().id).map(h => h.name).filter(Boolean);
+  const by = asked && hosts.length && !view.hostsHidden ? `Invited by ${hosts.join(' and ')}. ` : '';
   const top = el('div', 'rsvp-panel-top');
   const icon = el('div', 'guests-table-mark');
   icon.append(svg('person'));
   const words = el('div', 'guests-start-words');
-  words.append(el('div', 'guests-title', self ? 'Your RSVP' : 'Your family\u2019s RSVP'), el('div', 'guests-start-lead', by + (self ? 'Will you be attending?' : 'Choose who from your family will be attending.')));
+  words.append(el('div', 'guests-title', self ? 'Your RSVP' : 'Your family’s RSVP'), el('div', 'guests-start-lead', by + (self ? 'Will you be attending?' : 'Choose who from your family will be attending.')));
   top.append(icon, words);
   if (self) {
     top.append(bigChoices(e, self, refresh));
   }
   box.append(top);
   for (const r of others) {
-    box.append(memberRow(e, r, refresh));
+    box.append(memberRow(e, view, r, refresh));
   }
   const foot = el('div', 'rsvp-panel-foot');
-  const of = self ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
+  const of = ownKey(view);
   if (of && (view.guests || view.host)) {
     foot.append(button('Add guests', 'plus', 'rsvp-clear rsvp-add', () => openGuestForm(e, of, refresh)));
   }
-  const hide = el('button', 'rsvp-clear', 'Hide event');
-  hide.type = 'button';
-  hide.addEventListener('click', async () => {
-    try {
-      await answer(e, 'hidden');
-      toast('Hidden - it shows on the month in gray');
-      refresh();
-    } catch (err) {
-      toast(err.message);
-    }
-  });
-  foot.append(hide);
+  foot.append(hideButton(e, refresh));
   box.append(foot);
   return box;
 }
@@ -155,57 +158,29 @@ export function rsvpRow(e, view, refresh) {
   body.append(el('div', 'side-title', 'My RSVP'));
   for (const r of view.mine) {
     const line = el('div', 'rsvp-row-line' + (r.guestOf ? ' is-guest' : ''));
-    const paintLine = () => {
-      line.replaceChildren();
-      const said = el(r.mine ? 'button' : 'span', 'invite-said rsvp-row-said is-' + (r.answer || 'none'));
-      const mark = el('span', 'invite-said-mark');
-      mark.append(svg(answerIcon(r.answer)));
-      said.append(mark, el('strong', '', r.key === me().email ? 'You' : firstName(r)), el('span', 'rsvp-row-word', r.answer ? answerWords[r.answer] : 'No response'));
-      if (r.mine) {
-        said.type = 'button';
-        said.title = 'Change the answer';
-        said.append(svg('chevron-down'));
-        line.append(dropMenu(said, answerItems(e, r, refresh, 'Clear'), true));
-      } else {
-        line.append(said);
-      }
-      if (r.guestOf && r.mine) {
-        const remove = el('button', 'invite-remove rsvp-row-remove');
-        remove.type = 'button';
-        remove.title = 'Remove this guest';
-        remove.append(svg('close'));
-        remove.addEventListener('click', async () => {
-          try {
-            await act('events', e.id, 'uninvite', {email: r.key});
-            toast(`${r.name} removed`);
-            refresh();
-          } catch (err) {
-            toast(err.message);
-          }
-        });
-        line.append(remove);
-      }
-    };
-    paintLine();
+    const said = el(r.mine ? 'button' : 'span', 'invite-said rsvp-row-said is-' + (r.answer || 'none'));
+    const mark = el('span', 'invite-said-mark');
+    mark.append(svg(answerIcon(r.answer)));
+    said.append(mark, el('strong', '', r.key === me().id ? 'You' : firstName(r)), el('span', 'rsvp-row-word', r.answer ? answerWords[r.answer] : 'No response'));
+    if (r.mine) {
+      said.type = 'button';
+      said.title = 'Change the answer';
+      said.append(svg('chevron-down'));
+      line.append(dropMenu(said, answerItems(e, r, refresh, 'Clear'), true));
+    } else {
+      line.append(said);
+    }
+    if (r.guestOf && r.mine) {
+      line.append(removeGuestButton(e, view, r, 'invite-remove rsvp-row-remove', refresh));
+    }
     body.append(line);
   }
   const foot = el('div', 'invite-foot');
-  const of = view.mine.find(r => r.key === me().email && !r.guestOf) ? me().email : (view.mine.find(r => r.mine && !r.guestOf) || {}).key;
+  const of = ownKey(view);
   if (of && (view.guests || view.host)) {
     foot.append(button('Add a guest', 'plus', 'link-button', () => openGuestForm(e, of, refresh)));
   }
-  const hide = el('button', 'rsvp-clear', 'Hide event');
-  hide.type = 'button';
-  hide.addEventListener('click', async () => {
-    try {
-      await answer(e, 'hidden');
-      toast('Hidden - it shows on the month in gray');
-      refresh();
-    } catch (err) {
-      toast(err.message);
-    }
-  });
-  foot.append(hide);
+  foot.append(hideButton(e, refresh));
   body.append(foot);
   row.append(icon, body);
   return row;
@@ -214,7 +189,7 @@ export function rsvpRow(e, view, refresh) {
 export function comingCard(e, view, refresh) {
   const card = el('section', 'rsvps-card coming-section');
   if (view.host) {
-    const unsent = view.list.filter(r => r.invited && !r.sent && r.email);
+    const unsent = view.list.filter(r => r.pending && r.email);
     if (unsent.length) {
       const pending = el('div', 'rsvps-pending');
       const mark = el('span', 'rsvps-pending-mark');
@@ -223,31 +198,29 @@ export function comingCard(e, view, refresh) {
       const sub = el('div', 'rsvps-pending-sub');
       sub.append(el('span', '', `${unsent.length} ${unsent.length === 1 ? 'invitation' : 'invitations'} not sent yet`), button('More info', 'info', 'link-button rsvps-pending-info', () => openPending(e, view, refresh)));
       words.append(el('div', 'rsvps-pending-title', 'Pending'), sub);
-      const send = button('Send Now', 'mail', 'button rsvps-pending-send', () => sendInvites(e, 'new', unsent.length, `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh));
+      const send = button('Send Now', 'mail', 'button rsvps-pending-send', () => sendInvites(e, unsent.length, `Send the invitation to ${unsent.length} ${unsent.length === 1 ? 'person' : 'people'} who have not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh));
       pending.append(mark, words, send);
       card.append(pending);
     }
   }
-  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
+  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
-  head.append(el('h2', 'section section-swoosh', 'Who\u2019s coming'));
-  const imported = e.source === 'google' || e.source === 'pdf';
+  head.append(el('h2', 'section section-swoosh', 'Who’s coming'));
   card.append(head);
-  if (view.host && imported) {
+  if (view.host) {
     card.append(el('div', 'side-line coming-privacy', view.listPrivate ? 'Only the hosts see this list.' : 'Everyone who opens the event sees this list.'));
   }
   const grid = el('div', 'coming-grid');
   let byFamily = true;
   let current = rows;
-  const unsent = r => view.host && r.invited && !r.sent && r.email && !r.answer;
+  const unsent = r => view.host && r.pending && r.email && !r.answer;
   const groups = [
     {key: 'yes', label: 'Yes', cls: 'is-yes', has: r => r.answer === 'yes'},
-    {key: 'maybe', label: 'Maybe', cls: 'is-maybe', has: r => r.answer === 'maybe'},
     ...(view.host ? [{key: 'no', label: 'No', cls: 'is-no', has: r => r.answer === 'no'}] : []),
     {key: 'waiting', label: 'No response', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
     ...(view.host ? [{key: 'pending', label: 'Pending (Unsent)', cls: 'is-pending', has: unsent}] : []),
   ];
-  const familyRank = ['yes', 'maybe', 'waiting', 'pending', 'no'];
+  const familyRank = ['yes', 'waiting', 'pending', 'no'];
   const familyGroup = family => familyRank.map(key => groups.find(g => g.key === key)).find(g => g && family.some(g.has));
   const cardOf = p => personCard(p, {
     onClick: () => openGuestCard(e, p, view, refresh),
@@ -302,17 +275,17 @@ function ticketMark(view, p) {
   }
   const mark = el('span', 'ticket-mark is-' + (p.ticket || 'none'));
   mark.title = ticketWords(p.ticket);
-  mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : p.ticket === 'waitlist' ? 'clock' : 'close'));
+  mark.append(svg(p.ticket === 'ticket' ? 'ticket' : p.ticket === 'free' ? 'gift' : 'close'));
   return mark;
 }
 
 function guestFamilyRow(e, view, family, refresh) {
   return familyRow(family, family.map(r => {
-    const unsent = view.host && r.invited && !r.sent && r.email && !r.answer;
+    const unsent = view.host && r.pending && r.email && !r.answer;
     const said = familySaid(unsent ? 'pending' : r.answer, r.mine);
     const send = {icon: 'mail', words: 'Send Now', cls: 'is-send', run: async () => {
       try {
-        await act('events', e.id, 'send', {emails: [r.key]});
+        await guests.sendTo(e, [r.key]);
         toast(`Invite sent to ${r.name || r.email}`);
         refresh();
       } catch (err) {
@@ -322,7 +295,7 @@ function guestFamilyRow(e, view, family, refresh) {
     return {
       person: r,
       kind: r.guestOf ? 'guest' : r.isStudent ? 'kid' : r.isParent ? 'parent' : '',
-      name: r.key === me().email ? 'You' : firstName(r),
+      name: r.key === me().id ? 'You' : firstName(r),
       role: r.guestOf ? 'Guest' : r.isStudent ? r.grade || 'Student' : r.isParent ? 'Parent' : r.isStaff ? 'Staff' : '',
       onClick: () => openGuestCard(e, r, view, refresh),
       corner: ticketMark(view, r),
@@ -344,46 +317,32 @@ export function inviteCall(e, view, refresh) {
 }
 
 export function hostsRow(e, view, refresh) {
-  const s = view.settings || {};
-  const cohosts = new Set(s.hosts || []);
-  const self = me().email;
+  const self = me().id;
   const tiles = [];
   for (const h of view.hosts) {
     const tile = personTile(h, {
       onClick: () => openPersonCard(h),
-      title: [h.name, h.line].filter(Boolean).join(' \u00b7 '),
+      title: [h.name, h.line].filter(Boolean).join(' · '),
       gradeColors: state.model.gradeColors,
     });
-    const own = h.email === self;
-    const poster = !own && allows('when.act-as-host') && h.email === view.poster;
-    if (view.host && (own ? cohosts.has(self) || view.poster === self : cohosts.has(h.email) || poster)) {
+    const own = h.key === self;
+    if (view.host && (own || view.hosts.length > 1)) {
       const x = el('button', 'hosts-card-remove');
       x.type = 'button';
-      x.title = own ? 'Step down as host' : poster ? `Step ${h.name} down as host` : `Take ${h.name} off as a co-host`;
-      x.textContent = '\u00d7';
+      x.title = own ? 'Step down as host' : `Take ${h.name} off as a host`;
+      x.textContent = '×';
       x.addEventListener('click', async ev => {
         ev.stopPropagation();
-        const lose = view.poster === self ? 'edit it or run its guest list' : 'run its guest list';
-        const alone = !view.hosts.some(o => o.email !== self);
-        const others = view.hosts.filter(o => o.email !== h.email).length;
+        const alone = view.hosts.length === 1;
         const ask = own
-          ? `Step down as host of ${e.title}? You won't be able to ${lose} any more${alone ? ', and it will have no host - an admin can still change it' : ''}.`
-          : poster
-            ? `Step ${h.name} down as host of ${e.title}? They added it and stay named as the one who shared it, but can no longer edit it or run its guest list${others ? '' : ', and it will have no host'}.`
-            : `Take ${h.name} off as a co-host?`;
+          ? `Step down as host of ${e.title}? You won't be able to edit it or run its guest list any more${alone ? ', and it will have no host - an admin can still change it' : ''}.`
+          : `Take ${h.name} off as a host of ${e.title}?`;
         if (!confirm(ask)) {
           return;
         }
         try {
-          if (own) {
-            await act('events', e.id, 'step-down', {});
-            toast('You no longer host this event.');
-          } else if (poster) {
-            await act('events', e.id, 'step-down', {email: h.email});
-            toast(`${h.name} no longer hosts this event.`);
-          } else {
-            await act('events', e.id, 'settings', {hosts: [...cohosts].filter(x => x !== h.email)});
-          }
+          await guests.removeHost(e, view, h);
+          toast(own ? 'You no longer host this event.' : `${h.name} no longer hosts this event.`);
           refresh();
         } catch (err) {
           toast(err.message);
@@ -394,13 +353,13 @@ export function hostsRow(e, view, refresh) {
     tiles.push(tile);
   }
   const after = [];
-  if (view.host) {
+  if (view.host && view.managedBy) {
     const tools = el('div', 'hosts-tools');
     tools.append(button('Add co-host', 'plus', 'link-button', () => openAddHost(e, view, refresh)));
-    const hidden = Boolean(view.hostsHidden);
+    const hidden = view.hostsHidden;
     tools.append(button(hidden ? 'Show hosts' : 'Hide hosts', hidden ? 'eye' : 'eye-off', 'link-button', async () => {
       try {
-        await act('events', e.id, 'settings', {hideHosts: !hidden});
+        await guests.setHostsHidden(e, view, !hidden);
         toast(hidden ? 'Everyone who opens the event sees its hosts again.' : 'Only the hosts see who hosts this event now.');
         refresh();
       } catch (err) {
@@ -422,7 +381,7 @@ function openAddHost(e, view, refresh) {
   const form = el('form', 'admin-form');
   form.append(el('p', 'hint', 'A co-host builds and sends the list, reads every answer and hears replies, as you do.'));
   const mount = el('div', 'cohost-picker cohost-add');
-  const picker = createPersonPicker(mount, {people: pickerPeople(p => !view.hosts.some(h => h.email === emailOf(p)))});
+  const picker = createPersonPicker(mount, {people: pickerPeople(p => !view.hosts.some(h => h.key === p.id))});
   form.append(mount);
   const actions = el('div', 'modal-actions');
   const status = el('span', 'save-status');
@@ -434,15 +393,15 @@ function openAddHost(e, view, refresh) {
   let shut = null;
   form.addEventListener('submit', async ev => {
     ev.preventDefault();
-    const email = picker.value;
-    if (!email) {
+    const p = picker.value && known(picker.value);
+    if (!p) {
       status.textContent = 'Pick someone from the directory first.';
       status.classList.add('error');
       return;
     }
     submit.disabled = true;
     try {
-      await act('events', e.id, 'settings', {hosts: [...((view.settings || {}).hosts || []), email]});
+      await guests.addHost(e, view, p.id);
       toast('Co-host added');
       shut();
       refresh();
@@ -500,6 +459,27 @@ function dropMenu(toggle, items, below = false) {
   return holder;
 }
 
+function flyerFile(e, refresh) {
+  const file = el('input');
+  file.type = 'file';
+  file.accept = 'image/*';
+  file.hidden = true;
+  file.addEventListener('change', async () => {
+    if (!file.files.length) {
+      return;
+    }
+    try {
+      const made = await uploadImage(file.files[0]);
+      await guests.setFlyer(e, made.name);
+      toast('Flyer saved');
+      refresh();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+  return file;
+}
+
 export function flyerCard(e, view, refresh) {
   if (!view.flyer) {
     return null;
@@ -517,37 +497,18 @@ export function flyerCard(e, view, refresh) {
   open.append(img);
   card.append(open);
   if (view.host) {
-    const save = async image => {
+    const bar = el('div', 'flyer-actions');
+    const upload = el('label', 'button button-secondary button-small');
+    upload.append(svg('plus'), el('span', '', 'Replace'), flyerFile(e, refresh));
+    bar.append(upload, button('Remove', 'trash', 'button button-secondary button-small', async () => {
       try {
-        await act('events', e.id, 'settings', {flyer: image});
-        toast(image ? 'Flyer saved' : 'Flyer removed');
+        await guests.setFlyer(e, '');
+        toast('Flyer removed');
         refresh();
       } catch (err) {
         toast(err.message);
       }
-    };
-    const bar = el('div', 'flyer-actions');
-    const file = el('input');
-    file.type = 'file';
-    file.accept = 'image/*';
-    file.hidden = true;
-    file.addEventListener('change', async () => {
-      if (!file.files.length) {
-        return;
-      }
-      try {
-        const made = await uploadImage(file.files[0]);
-        await save(made.name);
-      } catch (err) {
-        toast(err.message);
-      }
-    });
-    const upload = el('label', 'button button-secondary button-small');
-    upload.append(svg('plus'), el('span', '', 'Replace'), file);
-    bar.append(upload);
-    if (view.flyer) {
-      bar.append(button('Remove', 'trash', 'button button-secondary button-small', () => save('')));
-    }
+    }));
     card.append(bar);
   }
   return card;
@@ -557,25 +518,8 @@ export function addFlyerLink(e, view, refresh) {
   if (!view.host || view.flyer) {
     return null;
   }
-  const file = el('input');
-  file.type = 'file';
-  file.accept = 'image/*';
-  file.hidden = true;
-  file.addEventListener('change', async () => {
-    if (!file.files.length) {
-      return;
-    }
-    try {
-      const made = await uploadImage(file.files[0]);
-      await act('events', e.id, 'settings', {flyer: made.name});
-      toast('Flyer saved');
-      refresh();
-    } catch (err) {
-      toast(err.message);
-    }
-  });
   const link = el('label', 'side-add-flyer');
-  link.append(svg('plus'), el('span', '', 'Add a flyer'), file);
+  link.append(svg('plus'), el('span', '', 'Add a flyer'), flyerFile(e, refresh));
   return link;
 }
 
@@ -583,32 +527,19 @@ export function guestListSection(e, view, refresh) {
   const section = el('section', 'side-card guests-section');
   section.append(guestsHead(e, view, refresh), guestCounts(e, view, refresh));
   if (!view.list.length) {
-    section.append(el('p', 'guests-note', 'Add people from the directory, a classroom, one of your lists' + (view.party ? ', the ticket holders' : '') + ', or by email - then send the invitation.'));
+    section.append(el('p', 'guests-note', 'Add people from the directory, a classroom, one of your lists, or by email - then send the invitation.'));
     return section;
   }
-  if (view.sent) {
+  if (view.sent && e.source === 'sheet') {
     const foot = el('div', 'guests-cancel');
-    foot.append(view.linked
-      ? button('Delete invite', 'trash', 'link-button danger', () => deleteInvitation(e, view))
-      : button('Cancel event', 'close', 'link-button danger', () => openCancel(e, view, refresh)));
+    foot.append(button('Cancel event', 'close', 'link-button danger', () => openCancel(e, view, refresh)));
     section.append(foot);
   }
   return section;
 }
 
-
-export async function openGuestSettings(e, view, refresh) {
-  let people = null;
-  try {
-    const [options, everyone] = await Promise.all([api('GET', '/api/when/invites/options'), listed()]);
-    setRuleOptions(options);
-    people = new Map(everyone.map(p => [emailOf(p), p]));
-    setNames(everyone);
-  } catch (err) {
-    toast('Couldn’t load the guest list’s rules: ' + err.message);
-    return;
-  }
-  const guests = el('div');
+export function openGuestSettings(e, view, refresh) {
+  const panel = el('div');
   const again = async () => {
     refresh();
     try {
@@ -617,107 +548,74 @@ export async function openGuestSettings(e, view, refresh) {
       toast(err.message);
       return;
     }
-    paintGuests(e, view, people, guests, again);
+    paintGuests(e, view, panel, again);
   };
-  paintGuests(e, view, people, guests, again);
+  paintGuests(e, view, panel, again);
   const box = el('div', 'guest-settings');
-  box.append(tabbedFields([{label: 'Guests', fields: [guests]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}]));
+  box.append(tabbedFields([{label: 'Guests', fields: [panel]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}]));
   popup('Guest List Settings', box, {wide: true});
 }
 
-function autoToggle(rule, again) {
-  const auto = el('label', 'guests-group-auto');
-  const box = el('input');
-  box.type = 'checkbox';
-  box.checked = rule.auto !== false;
-  box.addEventListener('change', async () => {
-    rule.auto = box.checked;
-    if (!rule.id) {
-      return;
-    }
+function paintGuests(e, view, panel, again) {
+  const draft = view.rules.map(r => ({...r}));
+  const counts = new Map();
+  const status = el('span', 'save-status');
+  const save = button('Save rules', 'check', 'button button-small', async () => {
+    save.disabled = true;
     try {
-      await act('invite-groups', rule.id, 'edit', {auto: box.checked});
-      toast(box.checked ? (rule.sent ? 'Auto-invite on: newcomers are sent their invitation' : 'Auto-invite on: newcomers are sent theirs once you have sent this rule its invites') : 'Auto-invite off: newcomers wait in Pending for you to send');
+      await guests.saveRules(e, view, draft.filter(r => r.target || r.person || r.search));
+      toast('Rules saved');
       again();
     } catch (err) {
-      toast(err.message);
-      box.checked = !box.checked;
-      rule.auto = box.checked;
+      status.textContent = err.message;
+      status.classList.add('error');
+      save.disabled = false;
     }
   });
-  const info = el('span', 'guests-group-info');
-  info.title = 'Whoever comes to match this rule later goes on the list; with Auto-invite on they are sent the invitation too, once you have sent this rule its invites.';
-  info.append(svg('info'));
-  auto.append(box, el('span', '', 'Auto-invite'), info);
-  return auto;
-}
-
-function ruleCells(r) {
-  return {kind: r.kind, roles: r.roles, search: r.search, classrooms: r.classrooms, grades: r.grades, tags: r.tags, family: r.family};
-}
-
-function guestView(r, items, people) {
-  const reasons = r.guestOf ? [{guestOf: r.guestOfName}]
-    : (r.via || '').startsWith('group:') ? [{rule: items.findIndex(i => 'group:' + i.id === r.via)}]
-      : r.via === 'invited' && r.invitedBy ? [{invitedBy: r.invitedBy}] : [{added: true}];
-  const p = people.get(r.email);
-  if (!p) {
-    return {email: r.email, name: r.name, key: r.key, words: 'Outside the directory', outside: true, reasons};
-  }
-  return {email: emailOf(p), name: p.name_show, key: r.key, photoUrl: photoOf(p), words: wordsOf(p), grade: isStudent(p) ? gradeOf(p) : '', reasons};
-}
-
-function paintGuests(e, view, people, panel, again) {
-  const items = (view.groups || []).map(g => ({...groupRule(g), roles: [...g.rule.roles], classrooms: [...g.rule.classrooms], grades: [...g.rule.grades], tags: [...g.rule.tags], family: [...g.rule.family], id: g.id, count: g.count, auto: g.auto, sent: g.sent}));
-  const ruleCard = rules.rulesCard({
-    hint: 'Someone is on the guest list if any include rule matches them and no exclude rule does, or if you or a guest added them yourselves; a rule matches only if every choice in it holds. Whoever comes to match an include rule later goes on too.',
-    list: () => items,
+  save.disabled = true;
+  let timer = null;
+  const changed = () => {
+    save.disabled = false;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      try {
+        const preview = await guests.previewRules(e, view, draft.filter(r => r.target || r.person || r.search));
+        counts.clear();
+        draft.filter(r => r.target || r.person || r.search).forEach((r, i) => counts.set(r, preview.ruleCounts[i]));
+        made.render();
+      } catch (err) {
+        status.textContent = err.message;
+        status.classList.add('error');
+      }
+    }, 300);
+  };
+  const made = rulesCard({
+    list: () => draft,
+    onAdd: rule => {
+      draft.push(rule);
+      changed();
+    },
+    onChange: changed,
+    onRemove: rule => {
+      draft.splice(draft.indexOf(rule), 1);
+      made.render();
+      changed();
+    },
+    count: rule => counts.get(rule),
     empty: 'No rules yet: everyone on the list was added one at a time.',
-    onAdd: rule => items.push(rule),
-    onChange: () => {},
-    onRemove: async rule => {
-      if (!rule.id) {
-        items.splice(items.indexOf(rule), 1);
-        ruleCard.list.render();
-        return;
-      }
-      const ask = rule.kind === 'exclude' ? 'Remove this exclude rule? Whoever it left out goes back on the list if an include rule matches them.' : 'Remove this rule? Anyone already sent an invitation will stay, but pending guests will be removed.';
-      if (!confirm(ask)) {
-        return;
-      }
-      try {
-        await removeResource('invite-groups', rule.id);
-        toast('Rule removed');
-        again();
-      } catch (err) {
-        toast(err.message);
-      }
-    },
-    onDone: async rule => {
-      try {
-        if (rule.id) {
-          await act('invite-groups', rule.id, 'edit', {rule: ruleCells(rule)});
-          toast('Rule saved');
-        } else {
-          await create('invite-groups', {id: e.id, rule: ruleCells(rule), auto: rule.auto !== false});
-          toast(rule.kind === 'exclude' ? 'Exclude rule added' : 'Rule added');
-        }
-        again();
-      } catch (err) {
-        toast(err.message);
-      }
-    },
-    count: rule => (rule.id ? rule.count : undefined),
-    extra: rule => (rule.kind === 'include' ? autoToggle(rule, again) : null),
-    fixed: rule => Boolean(e.linkedId) && rule.tags.includes((isParty(e) ? 'party:' : 'activity:') + e.linkedId),
+    hint: 'Someone is on the guest list if a rule takes them in and no Leave out rule picks them, or if you or a guest added them by hand.',
   });
+  const foot = el('div', 'modal-actions');
+  foot.append(save, status);
+  made.card.append(foot);
   const adders = guestAdders(e, view, words => {
     longToast(words);
     again();
   });
   const takeOff = async m => {
+    const row = view.list.find(r => r.key === m.person);
     try {
-      await act('events', e.id, 'uninvite', {email: m.key});
+      await guests.takeOff(e, view, row);
       toast(`${m.name || m.email} taken off the list`);
       again();
     } catch (err) {
@@ -728,26 +626,26 @@ function paintGuests(e, view, people, panel, again) {
     noun: ['guest', 'guests'],
     listWord: 'guest list',
     adders: memberAdders(adders.person, adders.outside),
-    phrase: rules.personWords,
+    phrase: ruleWords,
     chip: () => null,
     onExclude: takeOff,
     onRemove: takeOff,
     gradeColors: state.model.gradeColors,
   });
-  const byRule = r => (r.via || '').startsWith('group:');
-  const invited = view.list.filter(r => r.invited).sort((a, b) => byRule(a) - byRule(b) || (b.invitedAt || '').localeCompare(a.invitedAt || ''));
-  members.show({members: invited.map(r => guestView(r, items, people)), rules: items});
-  panel.replaceChildren(ruleCard.card, members.card);
+  const reasons = r => r.guestOf ? [{guestOf: r.guestOfName}] : r.byHand ? [{added: true}] : r.byRule ? [{rule: view.rules.findIndex(x => 'group:rule ' + x.order === r.via)}] : [{added: true}];
+  const shown = view.list.filter(r => r.invited).map(r => ({person: r.key, email: r.email, name: r.name, photoUrl: r.photoUrl, words: r.words, grade: r.grade, outside: r.outside, reasons: reasons(r)}));
+  members.show({members: shown, rules: view.rules});
+  panel.replaceChildren(made.card, members.card);
 }
 
 function settingsPanel(e, view, refresh) {
   const box = el('div', 'guests-settings');
-  const setting = (label, on, hint, body, words) => {
+  const setting = (label, on, hint, run, words) => {
     const toggle = checkbox(label, on, hint);
     toggle.input.addEventListener('change', async () => {
       const next = toggle.input.checked;
       try {
-        await act('events', e.id, 'settings', body(next));
+        await run(next);
         toast(words(next));
         refresh();
       } catch (err) {
@@ -757,17 +655,19 @@ function settingsPanel(e, view, refresh) {
     });
     box.append(toggle.wrap);
   };
-  setting('Show the guest list to everyone', !view.listPrivate, 'Everyone who can open the event sees who said yes or maybe, and who has not answered. Only the hosts see who said no.',
-    on => ({publicList: on}), on => (on ? 'Everyone who opens the event sees who is coming now.' : 'Only the hosts see who is coming now.'));
+  setting('Show the guest list to everyone', !view.listPrivate, 'Everyone who can open the event sees who said yes, and who has not answered. Only the hosts see who said no.',
+    on => guests.setPublicList(e, on), on => (on ? 'Everyone who opens the event sees who is coming now.' : 'Only the hosts see who is coming now.'));
   setting('People can invite others', view.guests, 'Anyone invited may invite more people and bring guests of their own. Off, only the hosts add to the list.',
-    on => ({guests: on}), on => (on ? 'People can invite others now.' : 'Only the hosts add to the list now.'));
+    on => guests.setGuestsInvite(e, on), on => (on ? 'People can invite others now.' : 'Only the hosts add to the list now.'));
+  setting('Send new guests their invitation', view.autoInvite, 'Whoever comes onto the list later - a family joining a class, someone a rule now takes in - is sent the invitation as they come. Off, they wait in Pending for you to send.',
+    on => guests.setAutoInvite(e, on), on => (on ? 'New guests are sent the invitation as they come.' : 'New guests wait in Pending for you to send.'));
   setting('Notify me when people respond', view.notifyMe, 'An email to you as each answer comes in.',
-    on => ({notifyMe: on}), on => (on ? 'You’ll get an email as answers come in' : 'No more emails about answers'));
+    on => guests.setNotifyMe(e, view, on), on => (on ? 'You’ll get an email as answers come in' : 'No more emails about answers'));
   return box;
 }
 
 function guestsHead(e, view, refresh) {
-  const unsent = view.list.filter(r => r.invited && !r.sent).length;
+  const unsent = view.list.filter(r => r.pending && r.email).length;
   const head = el('div', 'guests-head');
   const headMark = el('div', 'guests-head-mark');
   headMark.append(svg('groups'));
@@ -798,20 +698,20 @@ function sendMenu(e, view, refresh) {
   const first = eventDates(e)[0];
   const day = weekdayLong(first) + ', ' + parseDate(first).toLocaleDateString('en-US', {month: 'long', day: 'numeric'});
   const when = e.allDay ? day : `${day}, ${timeLine(e)}`;
-  const pending = view.list.filter(r => r.invited && !r.sent && r.email).length;
-  const pendingItem = {icon: 'send', words: `Pending invites \u00b7 ${pending}`, run: () => openPending(e, view, refresh)};
+  const pending = view.list.filter(r => r.pending && r.email).length;
+  const pendingItem = {icon: 'send', words: `Pending invites · ${pending}`, run: () => openPending(e, view, refresh)};
   if (!view.sent) {
     return pending ? menuButton('Send', 'mail', [pendingItem]) : null;
   }
   return menuButton('Send', 'mail', [
     ...(pending ? [pendingItem] : []),
-    {icon: 'clock', words: `RSVP reminder \u00b7 ${waiting}`, run: () => openMessage(e, view, refresh, {
-      title: 'Send RSVP reminder', to: ['none'], subject: 'Reminder: you\u2019re invited!', attach: true,
-      message: `We haven\u2019t heard back from you yet - please let us know if you can make it on ${when}.`,
+    {icon: 'clock', words: `RSVP reminder · ${waiting}`, run: () => openMessage(e, view, refresh, {
+      title: 'Send RSVP reminder', to: ['none'], subject: 'Reminder: you’re invited!', attach: true,
+      message: `We haven’t heard back from you yet - please let us know if you can make it on ${when}.`,
     })},
     {icon: 'calcheck', words: 'Event reminder', run: () => openMessage(e, view, refresh, {
-      title: 'Send event reminder', to: ['yes', 'maybe', 'none'], subject: `Reminder: ${day}`, attach: true,
-      message: `Just a reminder that we\u2019re on for ${when}${e.location ? ' at ' + e.location : ''}. See you there!`,
+      title: 'Send event reminder', to: ['yes', 'none'], subject: `Reminder: ${day}`, attach: true,
+      message: `Just a reminder that we’re on for ${when}${e.location ? ' at ' + e.location : ''}. See you there!`,
     })},
     {icon: 'chat', words: 'Message', run: () => openMessage(e, view, refresh)},
   ]);
@@ -820,48 +720,24 @@ function sendMenu(e, view, refresh) {
 function guestCounts(e, view, refresh) {
   const c = view.counts;
   const listOf = keep => () => familiesOf(view.list).flat().filter(keep).map(r => guestPlainRow(e, view, r, refresh));
-  const unsent = r => r.invited && !r.sent && r.email && !r.answer;
+  const unsent = r => r.pending && r.email && !r.answer;
   const sent = r => !unsent(r);
   const waiting = r => !r.answer && sent(r);
   const items = [
     {icon: 'mail', label: 'Invited', count: view.list.filter(sent).length, tone: 'all', expand: listOf(sent)},
     {icon: 'check', label: 'Yes', count: c.yes, tone: 'yes', expand: listOf(r => r.answer === 'yes')},
-    {icon: 'help', label: 'Maybe', count: c.maybe, tone: 'maybe', expand: listOf(r => r.answer === 'maybe')},
     {icon: 'ban', label: 'No', count: c.no, tone: 'no', expand: listOf(r => r.answer === 'no')},
     {icon: 'reply', label: 'No reply yet', count: view.list.filter(waiting).length, tone: 'waiting', expand: listOf(waiting)},
     {icon: 'clock', label: 'Unsent (Pending)', count: view.list.filter(unsent).length, tone: 'pending', expand: listOf(unsent)},
   ];
-  if (view.ticketHolders) {
-    items.push(ticketHoldersItem(e, view, refresh));
-  }
   if (view.sent) {
     items.push({icon: 'eye', label: 'Opened', count: view.list.filter(r => r.opened).length, tone: 'opened', expand: listOf(r => r.opened)});
   }
   return countList(items);
 }
 
-function ticketHoldersItem(e, view, refresh) {
-  const holders = view.ticketHolders;
-  return {icon: 'ticket', label: 'Ticket holders', count: holders.length, tone: 'ticket', expand: () => familiesOf(holders).flat().map(r => guestPlainRow(e, view, r, refresh))};
-}
-
-export function ticketHoldersSection(e, view, refresh) {
-  if (!view.ticketHolders) {
-    return null;
-  }
-  const section = el('section', 'side-card guests-section');
-  const head = el('div', 'guests-head');
-  const mark = el('div', 'guests-head-mark');
-  mark.append(svg('ticket'));
-  const words = el('div', 'guests-head-words');
-  words.append(el('div', 'guests-title', 'Tickets'), el('div', 'guests-subtitle', 'Who holds a ticket on Celebrate.'));
-  head.append(mark, words);
-  section.append(head, countList([ticketHoldersItem(e, view, refresh)]));
-  return section;
-}
-
 function guestPlainRow(e, view, r, refresh) {
-  const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.invited && !r.sent ? 'Not sent' : r.opened ? 'Opened' : ''].filter(Boolean);
+  const bits = [r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.pending ? 'Not sent' : r.opened ? 'Opened' : ''].filter(Boolean);
   const after = [];
   if (r.warning) {
     const warn = el('span', 'guests-plain-warn');
@@ -876,178 +752,26 @@ function guestPlainRow(e, view, r, refresh) {
   return personRow(r, {
     className: 'guests-plain' + (r.guestOf ? ' is-guest' : ''),
     onClick: () => openGuestCard(e, r, view, refresh),
-    lines: [bits.join(' \u00b7 ')],
+    lines: [bits.join(' · ')],
     after,
     gradeColors: state.model.gradeColors,
   });
 }
 
-export function openSettings(e, view, refresh) {
-  let shut = null;
-  const form = settingsForm(e, view, refresh, () => shut());
-  shut = popup('Edit the invitation', form, {wide: Boolean(view.linked)}).shut;
-}
-
-export function settingsForm(e, view, refresh, shut, part = 'invitation') {
-  const s = view.settings || {audience: 'both', guests: true, message: '', hosts: []};
-  const form = el('form', 'admin-form');
-  const invitation = part === 'invitation';
-  const field = (label, input, note) => {
-    const wrap = el('div', 'field');
-    wrap.append(el('span', '', label), input);
-    if (note) {
-      wrap.append(el('small', '', note));
-    }
-    return wrap;
-  };
-  let details = null;
-  if (view.linked && invitation) {
-    const text = (value, placeholder) => {
-      const input = el('input');
-      input.type = 'text';
-      input.value = value || '';
-      input.placeholder = placeholder || '';
-      return input;
-    };
-    const o = view.original || {title: e.title, start: e.start, end: e.end, location: e.location || '', description: e.description || ''};
-    const title = text(s.title || o.title);
-    const startDate = el('input');
-    startDate.type = 'date';
-    const startTime = el('input');
-    startTime.type = 'time';
-    const endDate = el('input');
-    endDate.type = 'date';
-    const endTime = el('input');
-    endTime.type = 'time';
-    const start = s.start || o.start;
-    const end = s.start ? s.end : o.end;
-    if (start) {
-      startDate.value = start.slice(0, 10);
-      startTime.value = start.slice(11, 16);
-      endDate.value = (end || start).slice(0, 10);
-      endTime.value = (end || '').slice(11, 16);
-    }
-    const location = text(s.location || o.location);
-    addressSuggest(location);
-    const description = el('textarea');
-    description.rows = 3;
-    description.value = s.description || o.description;
-    const block = el('div', 'invite-details');
-    block.append(field('Title', title));
-    const whenRow = el('div', 'admin-when');
-    whenRow.append(field('Starts', startDate), field('At', startTime), field('Ends', endDate), field('Until', endTime));
-    block.append(whenRow, field('Location', location), field('Description', description));
-    form.append(block);
-    const when = (date, time) => (date ? date + (time ? ' ' + time : '') : '');
-    const differs = (value, own) => (value === own ? '' : value);
-    details = () => {
-      const start = when(startDate.value, startTime.value);
-      const end = startDate.value ? when(endDate.value || startDate.value, endTime.value || startTime.value) : '';
-      const sameWhen = start === o.start && (end === o.end || (!o.end && end === start));
-      return {
-        title: differs(title.value.trim(), o.title), location: differs(location.value.trim(), o.location), description: differs(description.value.trim(), o.description),
-        start: sameWhen ? '' : start, end: sameWhen ? '' : end,
-      };
-    };
+export async function openEditor(e, view, refresh) {
+  if (!e.can.edit && !e.can.correct) {
+    return;
   }
-  const message = el('textarea');
-  message.rows = 4;
-  message.value = s.message || '';
-  message.placeholder = 'A few words on the invitation - what to bring, where to park\u2026';
-  const messageField = field('Email invitation text', message, 'Your own words on the invitation email, under the event and before its description. Leave it blank and the email carries the event\u2019s title, date, place and description, with your name as the host.');
-  if (!invitation) {
-    form.append(el('p', 'hint', 'Everyone invited gets the same email: who sent it, the event, its picture, and the way to RSVP. Edit the text below to add a note of your own.'));
-    form.append(messageField);
-  }
-
-  const actions = el('div', 'modal-actions');
-  const status = el('span', 'save-status');
-  const submit = el('button', 'button');
-  submit.type = 'submit';
-  submit.append(svg('check'), el('span', '', 'Save'));
-  actions.append(submit, status);
-  form.append(actions);
-  form.addEventListener('submit', async ev => {
-    ev.preventDefault();
-    submit.disabled = true;
-    try {
-      const own = details ? details() : {};
-      await act('events', e.id, 'settings', {...(invitation ? {} : {message: message.value}), ...own});
-      toast('Saved');
-      shut();
-      await refresh();
-      if (details) {
-        const before = {title: s.title || '', start: s.start || '', end: s.end || '', location: s.location || ''};
-        const changed = ['title', 'start', 'end', 'location'].filter(key => (own[key] || '') !== before[key]);
-        if (changed.length && view.sent) {
-          offerUpdate(e, changed);
-        }
-      }
-    } catch (err) {
-      status.textContent = err.message;
-      status.classList.add('error');
-      submit.disabled = false;
-    }
-  });
-  return form;
-}
-
-export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
   const {eventForm} = await import('./eventform.js');
-  const host = Boolean(view && view.host);
-  const own = e.can.edit;
-  const imported = e.can.correct;
   let shut = null;
   const box = el('div', 'editor');
-  const panels = {};
-  if (own || imported) {
-    const more = host ? [{label: 'Message', panel: settingsForm(e, view, refresh, () => shut(), 'email')}] : [];
-    panels.event = eventForm({edit: e, override: imported, more, onDone: async (ids, changed) => {
-      shut();
-      await refresh();
-      if (changed && changed.length) {
-        offerUpdate(e, changed);
-      }
-    }});
-  } else if (host) {
-    if (view.linked) {
-      panels.invitation = settingsForm(e, view, refresh, () => shut(), 'invitation');
+  box.append(eventForm({edit: e, override: e.can.correct, more: [], onDone: async (ids, changed) => {
+    shut();
+    await refresh();
+    if (changed && changed.length) {
+      offerUpdate(e, changed);
     }
-    panels.email = settingsForm(e, view, refresh, () => shut(), 'email');
-  }
-  const keys = Object.keys(panels);
-  if (keys.length > 1) {
-    const tabs = el('div', 'tabs');
-    let active = keys.includes(tab) ? tab : keys[0];
-    const paint = () => {
-      for (const [key, panel] of Object.entries(panels)) {
-        panel.hidden = key !== active;
-      }
-      for (const b of tabs.children) {
-        b.classList.toggle('is-active', b.dataset.key === active);
-      }
-    };
-    for (const [key, label] of [['event', 'Event'], ['invitation', 'Invitation'], ['email', 'Email Invitation']]) {
-      if (!panels[key]) {
-        continue;
-      }
-      const b = el('button', 'tab-button', label);
-      b.type = 'button';
-      b.dataset.key = key;
-      b.addEventListener('click', () => {
-        active = key;
-        paint();
-      });
-      tabs.append(b);
-    }
-    box.append(tabs);
-    for (const panel of Object.values(panels)) {
-      box.append(panel);
-    }
-    paint();
-  } else {
-    box.append(...Object.values(panels));
-  }
+  }}));
   if (view && view.host && e.source === 'sheet' && !e.cancelled) {
     const foot = el('div', 'editor-danger');
     foot.append(view.sent
@@ -1055,18 +779,10 @@ export async function openEditor(e, view, refresh, {tab = 'event'} = {}) {
         shut();
         openCancel(e, view, refresh);
       })
-      : button('Delete event', 'trash', 'link-button danger', () => deleteInvitation(e, view)));
+      : button('Delete event', 'trash', 'link-button danger', () => deleteInvitation(e)));
     box.append(foot);
   }
-  if (view && view.host && isParty(e) && view.settings) {
-    const foot = el('div', 'editor-danger');
-    foot.append(button('Delete invite', 'trash', 'link-button danger', () => deleteInvitation(e, view)));
-    box.append(foot);
-  }
-  if (!Object.keys(panels).length && !box.childElementCount) {
-    return;
-  }
-  shut = popup(own || imported ? 'Edit ' + e.title : 'Edit the invitation', box, {wide: true}).shut;
+  shut = popup('Edit ' + e.title, box, {wide: true}).shut;
 }
 
 export async function offerUpdate(e, changed) {
@@ -1080,20 +796,23 @@ export async function offerUpdate(e, changed) {
   if (!view.host || !view.sent) {
     return;
   }
-  const people = view.list.filter(r => r.invited && r.sent && r.email && r.answer !== 'no');
+  const people = view.list.filter(r => r.sent && r.email && r.answer !== 'no');
   if (!people.length) {
     return;
   }
-  const nos = view.list.filter(r => r.invited && r.sent && r.email && r.answer === 'no').length;
+  const nos = view.list.filter(r => r.sent && r.email && r.answer === 'no').length;
   const words = {title: 'the title', start: 'the date or time', end: 'the end time', location: 'the location'};
   const what = [...new Set(changed.map(k => words[k]).filter(Boolean))].join(', ').replace(/, ([^,]*)$/, ' and $1');
+  if (!what) {
+    return;
+  }
   const box = el('div');
   box.append(el('p', 'hint', `You changed ${what}. ${people.length} ${people.length === 1 ? 'person has' : 'people have'} the invitation already - send it again with the new details? Their calendar invite is replaced with the new one.${nos ? ` The ${nos === 1 ? 'one who' : nos + ' who'} said no ${nos === 1 ? 'is' : 'are'} not sent it.` : ''}`));
   const actions = el('div', 'modal-actions');
   let shut = null;
   actions.append(button(`Send the update to ${people.length}`, 'mail', 'button', async () => {
     try {
-      await act('events', e.id, 'send', {to: 'sent', update: true});
+      await guests.sendUpdate(e);
       longToast(people.length === 1 ? 'The update is on its way' : `${people.length} updates are on their way`);
       shut();
     } catch (err) {
@@ -1108,21 +827,7 @@ export function inviteHostCall(e, view, refresh) {
   const card = el('div', 'guests-start');
   card.append(svg('people'));
   const words = el('div', 'guests-start-words');
-  words.append(el('div', 'guests-start-title', e.link ? 'Invite your guests' : 'Invite people'), el('div', 'guests-start-lead', isParty(e) ? 'Ask the ticket holders to confirm they are coming - or invite anyone else - and see who has answered beside who has a ticket.' : e.link ? 'Ask the volunteers to confirm they are coming - or invite anyone else - and see who has answered beside the sign-ups on HCA-Team.' : 'Build a guest list from the directory, a classroom, your lists or anyone by email, then send everyone the invitation with a calendar invite attached.'));
-  card.append(words);
-  if (e.link) {
-    const party = isParty(e);
-    card.append(button(party ? 'Add the Ticket Holders' : 'Invite the volunteers', party ? 'ticket' : 'people', 'button', async () => {
-      try {
-        const made = await startParty(e);
-        const who = party ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
-        longToast(made.added ? `${made.added} ${who[0]} on the list - it follows ${who[1]} from here.` : `The list follows ${who[1]} from here.`);
-        refresh();
-      } catch (err) {
-        toast(err.message);
-      }
-    }));
-  }
-  card.append(button(isParty(e) ? 'Add Others' : 'Add People', 'plus', 'button' + (isParty(e) ? ' button-secondary' : ''), () => openPicker(e, view, refresh)));
+  words.append(el('div', 'guests-start-title', 'Invite people'), el('div', 'guests-start-lead', 'Build a guest list from the directory, a classroom, your lists or anyone by email, then send everyone the invitation with a calendar invite attached.'));
+  card.append(words, button('Add People', 'plus', 'button', () => openPicker(e, view, refresh)));
   return card;
 }

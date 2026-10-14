@@ -2,6 +2,9 @@ import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
 import {navQueries, navLists, viewerListCondition, listIncludes, queries, fetchGroups} from '/rail.js';
+import {nameRulesWith} from '/listrules.js';
+
+nameRulesWith({group: id => state.model.groupNames[id] || null, person: id => personView(id).name});
 
 export const domain = 'loop.heliosian.com';
 

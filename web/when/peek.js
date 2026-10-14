@@ -98,7 +98,6 @@ function fillEventPeek(node, date, e) {
   }
   buttons.append(
     button('Yes', 'check', 'button button-small' + (word === 'yes' ? '' : ' button-secondary'), () => say(word === 'yes' ? '' : 'yes')),
-    button('Maybe', 'clock', 'button button-small' + (word === 'maybe' ? '' : ' button-secondary'), () => say(word === 'maybe' ? '' : 'maybe')),
     button('No', 'close', 'button button-small' + (word === 'no' ? '' : ' button-secondary'), () => say(word === 'no' ? '' : 'no')),
   );
   if (word === 'yes' || word === 'maybe' || word === 'no') {

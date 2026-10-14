@@ -1,6 +1,6 @@
-import {state, allows, tagGroups, bands, classroomNames, categoryTags, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, allows, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
-import {act, create} from '/data.js';
+import {addEvent, editEvent, setPicture} from './writes.js';
 import {el, svg, toast, longToast} from '/elements.js';
 
 export function eventForm({from = null, shift = 0, edit = null, override = false, more = [], onDone}) {
@@ -182,9 +182,8 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
 
   const picture = {name: from ? from.title : '', image: from && from.source === 'sheet' && from.image ? from.image.replace(/^\//, '') : '', imageUrl: from && from.source === 'sheet' ? from.image || '' : ''};
 
-  const builtIn = new Set(state.model.tags.filter(t => t.builtIn).map(t => t.id));
   const rooms = new Set(from ? from.classrooms : classroomNames());
-  const cats = new Set(from ? categoryTags(from).filter(t => !builtIn.has(t)) : []);
+  const cats = new Set(from && from.category ? [from.category] : []);
   const chip = (label, on, onClick, color) => {
     const b = el('button', 'filter-chip' + (on ? ' is-on' : ''), label);
     b.type = 'button';
@@ -234,9 +233,9 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       const chips = el('div', 'filter-chips');
       for (const t of group.tags.filter(t => !t.builtIn)) {
         chips.append(chip(t.name, cats.has(t.id), () => {
-          if (cats.has(t.id)) {
-            cats.delete(t.id);
-          } else {
+          const on = cats.has(t.id);
+          cats.clear();
+          if (!on) {
             cats.add(t.id);
           }
           paintCats();
@@ -249,9 +248,6 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   paintCats();
   catField.append(catLines, el('small', '', 'What kind of thing it is. An event with none is filed under Misc.'));
   tagFields.append(catField);
-
-  const keywords = text(from ? (from.keywords || []).join(', ') : '', 'half day, kinder, short day');
-  tagFields.append(field('Search words', keywords, 'Words a parent might type that are not in the title, separated by commas.'));
 
   const paintWho = () => {
     const invite = sharing !== 'Public';
@@ -299,7 +295,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     return {
       title: title.value.trim(), start: when(startDate.value, startTime.value), end: when(endDate.value || startDate.value, endTime.value || startTime.value),
       location: place.value.trim(), description: description.value.trim(), source: invite ? '' : source.value.trim(), image: picture.image, sharing,
-      tags: invite ? [] : [...state.model.classrooms.filter(c => rooms.has(c.name)).map(c => c.id), ...cats], keywords: keywords.value.split(',').map(w => w.trim()).filter(Boolean),
+      classrooms: invite ? null : classroomNames().filter(c => rooms.has(c)), category: [...cats][0] || '',
     };
   };
   const before = edit ? bodyOf() : null;
@@ -317,14 +313,16 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     let made;
     try {
       if (override) {
-        await act('events', edit.id, 'correct', {...body, address: address.value.trim()});
+        await editEvent(edit, {...body, classrooms: null, category: '', address: address.value.trim()});
       } else if (edit) {
-        const changes = Object.fromEntries(Object.entries(body).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(before[key])));
-        if (Object.keys(changes).length) {
-          await act('events', edit.id, 'edit', changes);
+        if (JSON.stringify(body) !== JSON.stringify(before)) {
+          await editEvent(edit, body);
         }
       } else {
-        made = await create('events', slug.value.trim() ? {...body, address: slug.value.trim()} : body);
+        made = await addEvent(slug.value.trim() ? {...body, address: slug.value.trim()} : body);
+        if (body.image) {
+          await setPicture({id: made.id, photo: ''}, body.image);
+        }
       }
     } catch (err) {
       status.textContent = err.message;

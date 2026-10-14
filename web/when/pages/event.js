@@ -8,12 +8,12 @@ import {heroImageBar, detailHero} from '/heroimage.js';
 import {openPersonCard} from '/personcard.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
-import {act} from '/data.js';
+import {setPicture, setStatus} from '../writes.js';
 import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
 import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, ticketHoldersSection,inviteHostCall, startParty, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
+import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
 
 function hero(e) {
   return detailHero({
@@ -31,7 +31,7 @@ function imported(e) {
 function imageEdit(e) {
   const save = async image => {
     try {
-      await act('events', e.id, imported(e) ? 'image' : 'edit', {image});
+      await setPicture(e, image);
     } catch (err) {
       toast(err.message);
       return;
@@ -166,29 +166,15 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
     keepAsk = ask.querySelector('.rsvp-panel') ? e.id : null;
     await load();
   };
-  if (view.host && e.link && new URLSearchParams(location.search).get('invite') && !view.settings) {
-    try {
-      const made = await startParty(e);
-      const who = isParty(e) ? ['ticket holders', 'the tickets'] : ['volunteers', 'the sign-ups'];
-      longToast(made.added ? `Guest list started with ${made.added} ${who[0]} - it follows ${who[1]} from here. Send the invites when it is ready.` : `Guest list started - it follows ${who[1]} from here.`);
-    } catch (err) {
-      toast(err.message);
-    }
-    history.replaceState(null, '', location.pathname);
-    view = await fetched();
-    if (!view || !ask.isConnected) {
-      return;
-    }
-  }
   const keep = keepAsk === e.id;
   keepAsk = null;
   if (view.mine.length) {
     ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
-    const self = view.mine.find(r => r.key === me().email && !r.guestOf);
+    const self = view.mine.find(r => r.key === me().id && !r.guestOf);
     const done = self ? Boolean(self.answer) : familyAnswered(view);
     ask.replaceChildren(done && !keep ? '' : familyBand(e, view, refresh));
   } else if ((view.guests || view.host) && (e.sharing === 'Public' || e.sharing === 'Link') && !isParty(e) && guest.repaint) {
-    guest.add = () => openGuestForm(e, me().email, refresh);
+    guest.add = () => openGuestForm(e, me().id, refresh);
     guest.repaint();
   }
   editorView = view;
@@ -209,13 +195,13 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       heroWrap.append(imageBar(e));
     }
   }
-  const listed = view.host && Boolean(view.settings || view.list.some(r => r.invited));
+  const listed = view.host && view.list.some(r => r.invited);
   const call = !view.host || listed ? inviteCall(e, view, refresh) : null;
   if (call) {
     ask.append(call);
   }
   const invited = (view.host ? view.list : view.coming || []).some(r => r.invited);
-  if (view.coming && (!e.link || invited)) {
+  if (view.coming && invited) {
     ask.append(comingCard(e, view, refresh));
   }
   if (view.host) {
@@ -223,11 +209,8 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       answered.replaceChildren(guestListSection(e, view, refresh));
     } else {
       ask.append(inviteHostCall(e, view, refresh));
-      const tickets = ticketHoldersSection(e, view, refresh);
-      answered.replaceChildren(...(tickets ? [tickets] : []));
+      answered.replaceChildren();
     }
-  } else if (e.invitation) {
-    answered.replaceChildren();
   }
   if ((view.hosts.length || view.host) && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
@@ -314,7 +297,6 @@ function rsvpCard(e, slot, guest) {
     }
     const answers = () => [
       button('Yes', answerIcon('yes'), 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
-      button('Maybe', answerIcon('maybe'), 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe')),
       button('No', answerIcon('no'), 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
     ];
     if (settled) {
@@ -416,7 +398,7 @@ function pendingBand(e) {
   const band = el('div', 'pending-band' + (e.declined ? ' is-declined' : ''));
   const words = el('div', 'pending-words');
   const who = state.model.names && state.model.names[e.addedBy] ? state.model.names[e.addedBy] : e.addedBy;
-  const mine = e.addedBy === me().email;
+  const mine = e.addedBy === me().id;
   const decides = e.can.approve && !mine;
   if (e.declined) {
     words.append(el('div', 'pending-title', 'Declined'), el('div', 'pending-lead', mine ? 'An admin declined this event, so it is not on the calendar. You can still edit it; an admin can approve it later.' : decides ? `Shared by ${who} and declined. Approve it to put it on the calendar after all.` : `Shared by ${who}. An admin declined it, so it is not on the calendar.`));
@@ -428,7 +410,7 @@ function pendingBand(e) {
     const actions = el('div', 'pending-actions');
     const decide = async (action, done) => {
       try {
-        await act('events', e.id, action);
+        await setStatus(e, action === 'approve' ? 'open' : 'closed');
       } catch (err) {
         toast(err.message);
         return;
@@ -476,48 +458,6 @@ function rsvpsCard(e) {
     card.append(list);
   }
   return card;
-}
-
-function keywordsEditor(e) {
-  const wrap = el('div');
-  const paint = () => {
-    wrap.replaceChildren();
-    const line = el('div', 'side-line', 'Search words' + (e.keywords && e.keywords.length ? ':' : ': none'));
-    wrap.append(line);
-    if (e.keywords && e.keywords.length) {
-      const chips = el('div', 'side-keywords');
-      for (const w of e.keywords) {
-        chips.append(el('span', 'side-keyword', w));
-      }
-      wrap.append(chips);
-    }
-    const edit = button('Edit search words', 'edit', 'link-button', () => {
-      wrap.replaceChildren();
-      const input = el('input', 'side-keywords-edit');
-      input.type = 'text';
-      input.value = (e.keywords || []).join(', ');
-      input.placeholder = 'words, separated by commas';
-      const save = button('Save', 'check', 'button button-small', async () => {
-        const keywords = input.value.split(',').map(w => w.trim()).filter(Boolean);
-        try {
-          await act('events', e.id, 'keywords', {keywords});
-        } catch (err) {
-          toast(err.message);
-          return;
-        }
-        toast('Search words saved');
-        await load();
-      });
-      const cancel = button('Cancel', null, 'button button-secondary button-small', paint);
-      const row = el('div', 'modal-actions');
-      row.append(save, cancel);
-      wrap.append(el('div', 'side-line', 'Search words:'), input, row);
-      input.focus();
-    });
-    wrap.append(edit);
-  };
-  paint();
-  return wrap;
 }
 
 function sourceCard(e, adminOnly = false) {
@@ -588,9 +528,6 @@ function sourceCard(e, adminOnly = false) {
     }
     if (p.corrected && p.corrected.length) {
       admin.append(el('div', 'side-line', `Corrected in Overrides: ${p.corrected.join(', ').toLowerCase()}.${p.note ? ' Note: \u201c' + p.note + '\u201d' : ''}`));
-    }
-    if (e.can.keywords && (!e.link || e.source === 'google' || e.source === 'pdf' || e.source === 'sheet')) {
-      admin.append(keywordsEditor(e));
     }
     if (adminOnly && admin.childElementCount === 1) {
       return null;

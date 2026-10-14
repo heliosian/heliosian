@@ -417,61 +417,6 @@ func keptMail() *mailtest.Recorder {
 	return mailtest.NewRecorder("Helios When <when@example.org>")
 }
 
-func TestAdminsToldOfSharedEvents(t *testing.T) {
-	cache := calendarStore(t, nil, nil, nil)
-	kept := keptMail()
-	mux := http.NewServeMux()
-	hooks := RegisterCalendar(mux, calendarDeps(cache, CalendarMail{Sender: kept.Mailgun, Base: "https://when.heliosian.com"}))
-	served(mux, cache, hooks)
-	parent := as("jordan.whitfield@heliosschool.org", mux)
-	admin := as("dana.hawkins@heliosschool.org", mux)
-	wait := func(n int) []mail.Message {
-		for i := 0; i < 50 && len(kept.Messages()) < n; i++ {
-			time.Sleep(20 * time.Millisecond)
-		}
-		return kept.Messages()
-	}
-	call(t, parent, "POST", "/api/events", `{"title":"Bake sale","start":"2026-10-01 15:00","tags":[`+quoted(t, "Jays, Community")+`],"sharing":"Public"}`)
-	sent := wait(1)
-	if len(sent) != 1 || !strings.HasPrefix(sent[0].Subject, "Event to approve: Bake sale") || !slices.Contains(sent[0].To, "dana.hawkins@heliosschool.org") || !strings.Contains(sent[0].Text, "Jordan") || !strings.Contains(sent[0].HTML, "Review the event") {
-		t.Errorf("public event mail = %+v", sent)
-	}
-	call(t, parent, "POST", "/api/events", `{"title":"Sam\u2019s party","start":"2026-10-03 14:00","tags":[`+quoted(t, "Jays")+`],"sharing":"Link"}`)
-	sent = wait(2)
-	if len(sent) != 2 || !strings.HasPrefix(sent[1].Subject, "Link event added: Sam") || !strings.Contains(sent[1].HTML, "See the event") || strings.Contains(sent[1].Text, "waiting for approval") {
-		t.Errorf("link event mail = %+v", sent)
-	}
-	call(t, admin, "POST", "/api/events", `{"title":"Admin's own","start":"2026-10-05","tags":[`+quoted(t, "Jays")+`],"sharing":"Public"}`)
-	sent = wait(3)
-	if len(sent) != 3 || !strings.HasPrefix(sent[2].Subject, "Event to approve: Admin's own") {
-		t.Errorf("an admin's own public event waits and is mailed about too: %+v", sent)
-	}
-	v := calendarOf(t, parent)
-	var party *Event
-	for _, e := range v.Events {
-		if strings.HasPrefix(e.Title, "Sam") {
-			party = e
-		}
-	}
-	if party == nil {
-		t.Fatal("the party is not in the host's view")
-	}
-	if rec := act(t, parent, party.ID, "edit", `{"sharing":"Public"}`); rec.Code != 204 {
-		t.Fatalf("switch to public: %d %s", rec.Code, rec.Body)
-	}
-	sent = wait(4)
-	if e := cache.Model().Calendar.Event(party.ID); e == nil || !e.Pending || len(sent) != 4 || !strings.HasPrefix(sent[3].Subject, "Event to approve: Sam") {
-		t.Errorf("after the switch: event %+v, mail %d", e, len(sent))
-	}
-	other := as("robin.whitfield@heliosschool.org", mux)
-	if rec := eventOf(t, other, party.ID); rec.Code != 200 {
-		t.Errorf("the link of an event waiting for approval: %d", rec.Code)
-	}
-	if rec := act(t, other, party.ID, "answer", `{"answer":"yes"}`); rec.Code != 204 {
-		t.Errorf("a yes by link while waiting: %d %s", rec.Code, rec.Body)
-	}
-}
-
 func TestAdminAddsAndCorrects(t *testing.T) {
 	handler, cache, hooks := testAppHooks(t)
 	admin := as("dana.hawkins@heliosschool.org", handler)

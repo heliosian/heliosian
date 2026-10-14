@@ -15,6 +15,7 @@ const (
 	extractInbox
 	geocodeInbox
 	sweepInbox
+	inviteInbox
 	inboxCount
 )
 

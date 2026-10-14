@@ -71,6 +71,12 @@ var committedTriggers = []committedTrigger{
 	{table: "GROUP_SOURCE", to: warmInbox},
 	{table: "MEMBER", to: warmInbox},
 	{table: "RULE", to: warmInbox},
+	{table: "MEMBER", to: inviteInbox},
+	{table: "RULE", to: inviteInbox},
+	{table: "GROUP", to: inviteInbox},
+	{table: "PERSON", to: inviteInbox},
+	{table: "MESSAGE", to: inviteInbox},
+	{table: "RECIPIENT", to: inviteInbox},
 }
 
 func committedInboxes(s *Store, table string) []*inbox {
@@ -209,20 +215,24 @@ func answerGroups(_ *Model, c Change) ([]Edit, error) {
 	if c.Old != nil || c.New == nil || c.New["kind"] != "event" {
 		return nil, nil
 	}
+	return answerGroupEdits(c.New), nil
+}
+
+func answerGroupEdits(g store.Row) []Edit {
 	writes := []Edit{}
 	for _, answer := range []struct{ column, suffix string }{{"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}} {
-		if c.New[answer.column] != "" {
+		if g[answer.column] != "" {
 			continue
 		}
 		writes = append(writes,
 			Edit{Insert: "GROUP", As: answer.column, Row: map[string]any{
-				"kind": "group", "parent": c.New["id"], "name": c.New["name"] + answer.suffix, "status": "open", "listed": true,
-				"visible_to": c.New["visible_to"], "members_visible_to": c.New["members_visible_to"], "posting": "none", "replying": "none",
+				"kind": "group", "parent": g["id"], "name": g["name"] + answer.suffix, "status": "open", "listed": true,
+				"visible_to": g["visible_to"], "members_visible_to": g["members_visible_to"], "posting": "none", "replying": "none",
 			}},
-			Edit{Set: c.New["id"], Cells: map[string]any{answer.column: "@" + answer.column}},
+			Edit{Set: g["id"], Cells: map[string]any{answer.column: "@" + answer.column}},
 		)
 	}
-	return writes, nil
+	return writes
 }
 
 func hiddenGone(m *Model, c Change) ([]Edit, error) {
@@ -319,7 +329,7 @@ func (m *Model) familyName(group string) string {
 
 func named(p store.Row) bool {
 	hidden, _ := cells.YesNo(p["hidden"], false)
-	return !hidden && p["deactivated"] == "" && strings.EqualFold(p["consent"], "listed")
+	return !hidden && p["deactivated"] == "" && (p["source"] == "guest" || strings.EqualFold(p["consent"], "listed"))
 }
 
 func photoNotReady(_ *Model, c Change) ([]Edit, error) {

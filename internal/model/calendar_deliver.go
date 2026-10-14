@@ -72,12 +72,6 @@ func owedBy(cell string) (string, bool) {
 	return strings.CutPrefix(cell, owed+":")
 }
 
-func (a calendarApp) deliverLoop(kick <-chan struct{}) {
-	for range kick {
-		a.deliver(context.Background())
-	}
-}
-
 func (a calendarApp) deliver(ctx context.Context) {
 	a.fillGroups(ctx)
 	a.mailInvitations(ctx)

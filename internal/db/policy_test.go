@@ -258,7 +258,7 @@ func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	made := apply(t, s, queue, []Edit{
 		{Insert: "GROUP", As: "managers", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Fairs Managers", "status": "open"}},
-		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
+		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers", "visible_to": "@managers"}},
 		{Insert: "GROUP", As: "fairs", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Fairs", "status": "open", "visible_to": "grp00000000004", "managed_by": "@managers"}},
 		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "event", "name": "Book Fair", "parent": "@fairs", "status": "pending", "visible_to": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": parent, "member": "yes"}},
@@ -276,6 +276,13 @@ func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
 	}
 	if n := len(as(t, s, student, `(from GROUP (where (= id "`+managers+`")))`)); n != 1 {
 		t.Error("whoever sees the category can't read the group that manages it")
+	}
+	apply(t, s, queue, []Edit{{Set: managers, Cells: map[string]any{"visible_to": ""}}})
+	if n := len(as(t, s, student, `(from MEMBER (where (= group "`+managers+`")))`)); n != 0 {
+		t.Errorf("hidden managers: whoever sees the category reads %d of them, want 0", n)
+	}
+	if n := len(as(t, s, parent, `(from MEMBER (where (= group "`+managers+`")))`)); n != 1 {
+		t.Errorf("hidden managers: a manager reads %d of them, want 1", n)
 	}
 	apply(t, s, queue, []Edit{{Set: managing, Cells: map[string]any{"member": "excluded"}}})
 	if n := len(as(t, s, parent, fair)); n != 0 {

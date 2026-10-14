@@ -13,10 +13,7 @@
 <link rel="stylesheet" href="/fonts/fonts.css">
 <link rel="stylesheet" href="/palette.css">
 <style>
-/* An outside person's page: the event on one card over the calendar's
-   teal, with nothing of anyone else on it. Self-contained, since it is
-   served ahead of sign-in and the app's own files are not. */
-:root { color-scheme: light; --ink: #1b2a2c; --green: #2f9e6a; --amber: #e8a33d; }
+:root { color-scheme: light; --ink: #1b2a2c; --green: #2f9e6a; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; background: var(--brand) url('/brand/symbol-watermark.png') no-repeat right -80px bottom -120px / 520px auto; font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
 .top { display: flex; justify-content: center; padding: 28px 16px 8px; }
@@ -30,7 +27,6 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
 .when { font-size: 16px; font-weight: 600; color: var(--brand); }
 .where { font-size: 15px; color: var(--muted); margin-top: 2px; }
 .hosts { font-size: 14.5px; color: var(--muted); margin-top: 12px; }
-.message { margin: 16px 0 0; padding: 12px 16px; border-left: 3px solid var(--accent); background: #eef6f5; border-radius: 0 10px 10px 0; font-size: 15px; line-height: 1.5; white-space: pre-wrap; }
 .words { font-size: 15px; line-height: 1.55; color: #333; margin-top: 16px; white-space: pre-wrap; }
 .flyer { display: block; margin-top: 16px; }
 .flyer img { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid var(--line); }
@@ -42,8 +38,6 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
 .choice svg { width: 17px; height: 17px; stroke-width: 2.5; }
 .choice-yes { border-color: var(--green); color: #1d6b48; }
 .choice-yes.is-on { background: var(--green); border-color: var(--green); color: #fff; box-shadow: 0 0 0 4px rgba(47, 158, 106, 0.3); }
-.choice-maybe { border-color: #e0c27a; color: #7a5a00; }
-.choice-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.3); }
 .choice-no.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .note { font-size: 13px; color: #5b7a6b; margin-top: 10px; }
 .guests { margin-top: 18px; }
@@ -57,7 +51,6 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
 .family-pick { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; border: 1.5px solid var(--line); background: #fff; font: inherit; font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
 .family-pick svg { width: 13px; height: 13px; stroke-width: 2.5; }
 .family-pick.choice-yes.is-on { background: var(--green); border-color: var(--green); color: #fff; }
-.family-pick.choice-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; }
 .family-pick.choice-no.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
 .add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
 .add input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; }

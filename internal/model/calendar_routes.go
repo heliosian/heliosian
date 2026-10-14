@@ -95,16 +95,6 @@ func (a calendarApp) sources() AudienceSources {
 
 func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	a := newCalendarApp(d)
-	kick := make(chan struct{}, 1)
-	poke := func() {
-		select {
-		case kick <- struct{}{}:
-		default:
-		}
-	}
-	d.Queue.OnSwap(poke)
-	d.Queue.OnTick(poke)
-	go a.deliverLoop(kick)
 	for _, page := range pages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
@@ -113,19 +103,12 @@ func RegisterCalendar(mux *http.ServeMux, d CalendarDeps) CalendarHooks {
 	}
 	mux.HandleFunc("GET /api/when/invites/options", serve.JSON(a.groupOptions))
 	mux.HandleFunc("POST /api/when/invites/preview", serve.JSON(a.groupPreview))
-	mux.HandleFunc("GET /ext/{token}", a.extPage)
-	mux.HandleFunc("GET /open/ext/{token}", serve.JSON(a.extView))
-	mux.HandleFunc("POST /open/ext/{token}", serve.JSON(a.extAnswer))
-	mux.HandleFunc("POST /open/ext/{token}/guest", serve.JSON(a.extGuest))
-	mux.HandleFunc("DELETE /open/ext/{token}/guest", serve.JSON(a.extRemoveGuest))
 	a.search.Register(mux, "/api/when", a.images.Folder(), imagesearch.Members)
 	mux.HandleFunc("GET /open/feed/{file}", a.feed)
 	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id...}", a.shareCard)
 	mux.HandleFunc("GET /open/flyer/{id...}", a.flyer)
 	mux.HandleFunc("GET /open/banner/{id...}", a.banner)
-	mux.HandleFunc("POST /hooks/replies/mime", a.replies)
-	mux.HandleFunc("POST /hooks/events", a.deliveryEvents)
 	return CalendarHooks{app: a}
 }
 

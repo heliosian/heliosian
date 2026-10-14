@@ -2,12 +2,8 @@ package model
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"log/slog"
-	"net/http"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
@@ -19,11 +15,6 @@ type Bounce struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-const (
-	maxEventBody  = 1 << 20
-	deliveryActor = "mail events"
-)
-
 func (b *builder) bounces(rows []store.Row) {
 	for _, row := range rows {
 		email := mail.Normalize(row["Email"])
@@ -32,69 +23,6 @@ func (b *builder) bounces(rows []store.Row) {
 		}
 		b.model.Bounced[email] = Bounce{When: strings.TrimSpace(row["When"]), Reason: strings.TrimSpace(row["Reason"])}
 	}
-}
-
-func (a calendarApp) deliveryEvents(w http.ResponseWriter, r *http.Request) {
-	if a.mail.SigningKey == "" {
-		http.Error(w, "events are not set up", http.StatusNotFound)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxEventBody))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	var event struct {
-		Signature struct {
-			Timestamp string `json:"timestamp"`
-			Token     string `json:"token"`
-			Signature string `json:"signature"`
-		} `json:"signature"`
-		Data struct {
-			Event     string `json:"event"`
-			Severity  string `json:"severity"`
-			Recipient string `json:"recipient"`
-			Reason    string `json:"reason"`
-			Status    struct {
-				Message     string `json:"message"`
-				Description string `json:"description"`
-			} `json:"delivery-status"`
-		} `json:"event-data"`
-	}
-	if err := json.Unmarshal(body, &event); err != nil {
-		http.Error(w, "bad request body", http.StatusBadRequest)
-		return
-	}
-	if err := mail.VerifyMailgun(a.mail.SigningKey, event.Signature.Timestamp, event.Signature.Token, event.Signature.Signature, time.Now()); err != nil {
-		slog.WarnContext(r.Context(), "calendar: event call refused", "error", err)
-		http.Error(w, "signature", http.StatusNotAcceptable)
-		return
-	}
-	d := event.Data
-	if d.Event != "failed" || d.Severity != "permanent" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	email := mail.Normalize(mail.AddressOf(d.Recipient))
-	if email == "" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-	reason := strings.TrimSpace(d.Status.Description)
-	if reason == "" {
-		reason = strings.TrimSpace(d.Status.Message)
-	}
-	if reason == "" {
-		reason = d.Reason
-	}
-	actor := access.System(deliveryActor)
-	if err := a.store.CommitAndWait(r.Context(), actor, CalendarApp, bounceOps(actor, email, reason)...); err != nil {
-		slog.ErrorContext(r.Context(), "calendar: note bounce", "email", email, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	slog.InfoContext(r.Context(), "calendar: bounce noted", "email", email, "reason", reason)
-	w.WriteHeader(http.StatusOK)
 }
 
 type addressBody struct {
