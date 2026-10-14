@@ -22,7 +22,6 @@ type sexp struct {
 	kind   atomKind
 	text   string
 	pos    int
-	policy bool
 }
 
 func (s *sexp) head() string {

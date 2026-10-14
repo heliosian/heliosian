@@ -70,7 +70,7 @@ const PolicySource = `
 
 ; the viewer is in effect a member of super-admins
 (define (super_admin)
-  (exists EFFECTIVE_MEMBER (= group (slug "super-admins")) (= person @viewer)))
+  (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
 
 ; @g is not closed, and the viewer manages it, added it while it is pending or, unless it is pending, is an effective member of the group it is visible to
 (define (visible @g)
