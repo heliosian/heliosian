@@ -57,7 +57,7 @@ func memberRow(t testing.TB, s *Store, group, person string) string {
 
 func TestSampleLoads(t *testing.T) {
 	m := sample(t).Model()
-	if n := m.Table("PERSON").Len(); n != 4 {
+	if n := m.Table("PERSON").Len(); n != 101 {
 		t.Fatalf("PERSON has %d rows", n)
 	}
 	if n := len(m.Table("MEMBER").Referencing("group", "grp00000000040")); n != 3 {
@@ -84,7 +84,6 @@ func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
 		t.Fatalf("Veracross's grade and classroom read %q %q", juni["grade"], juni["classroom"])
 	}
 	apply(t, s, queue, []Edit{
-		{Insert: "GROUP", Row: map[string]any{"parent": "grp00000000012", "kind": "grade", "status": "open", "slug": "grade-4", "name": "Grade 4", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}},
 		{Set: "per00000000001", Cells: map[string]any{"grade_override": "4", "job_title_override": "Reader"}},
 	})
 	juni, _ = s.Model().Table("PERSON").Get("per00000000001")

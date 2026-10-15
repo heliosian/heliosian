@@ -41,7 +41,7 @@ func TestReadShowsTables(t *testing.T) {
 	}
 	out := &strings.Builder{}
 	show(out, a, nil)
-	for _, want := range []string{"MEMBER: 2\n", "PERSON: 2\n", "id  ", "Juni (Juniper) Ashdown", "Rowan Ashdown"} {
+	for _, want := range []string{"MEMBER: 4\n", "PERSON: 4\n", "id  ", "Juni (Juniper) Ashdown", "Rowan Ashdown"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("the output lacks %q:\n%s", want, out)
 		}
@@ -56,7 +56,7 @@ func TestReadShowsTables(t *testing.T) {
 	}
 	out.Reset()
 	show(out, a, nil)
-	if !strings.Contains(out.String(), "EFFECTIVE_MEMBER: 2\n") {
+	if !strings.Contains(out.String(), "EFFECTIVE_MEMBER: 4\n") {
 		t.Errorf("generated rows:\n%s", out)
 	}
 }

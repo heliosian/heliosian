@@ -14,14 +14,13 @@ func calendarSample(t *testing.T) (s *Store, queue *store.Queue, ospreys, confer
 	t.Helper()
 	s, queue = sampleWithQueue(t)
 	edits := []Edit{
-		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "classroom", "name": "Ospreys", "status": "open", "visible_to": "grp00000000004"}},
 		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}},
 	}
 	for name := range DayTemplates {
 		edits = append(edits, Edit{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}})
 	}
 	ids := apply(t, s, queue, edits)
-	return s, queue, ids[0], ids[1]
+	return s, queue, "grp00000020026", ids[0]
 }
 
 func groupsOf(m *Model, kind string) []store.Row {
@@ -336,6 +335,10 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 	calendar := apply(t, s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}}})[0]
 	from, to := feedWindow(testNow)
 	both := []string{hummingbirds, ospreys}
+	every := []string{}
+	for _, g := range groupsOf(s.Model(), "classroom") {
+		every = append(every, g["id"])
+	}
 	early := GoogleEvent{CalendarItem: CalendarItem{Key: "early@google", Title: "Early dismissal", Start: "2026-10-07", End: "2026-10-07", AllDay: true}}
 	google := func(feed []GoogleEvent) {
 		t.Helper()
@@ -344,7 +347,7 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: both, Who: "families", DayType: "Early Dismissal"}}, nil))
+		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: every, Who: "families", DayType: "Early Dismissal"}}, nil))
 	}
 	pdf := func() {
 		t.Helper()

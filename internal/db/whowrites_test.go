@@ -109,8 +109,8 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 }
 
 func TestWhoWrites(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	staffColor := apply(t, s, queue, []Edit{{Insert: "SETTING", Row: map[string]any{"app": "platform", "key": "Staff Color", "value": "#000000"}}})[0]
+	s := sample(t)
+	const staffColor = "set00000020004"
 	insert := func(table string, row store.Row) Change { return Change{Table: table, New: row} }
 	for _, c := range []struct {
 		name   string
