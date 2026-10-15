@@ -4,3 +4,9 @@ set00000000002,team,Expense Form URL,https://example.com/expenses
 set00000000003,celebrate,Current,grp00000000520
 set00000000004,celebrate,Parties Intro,Every party raises money for the school.
 set00000000005,celebrate,Ticket Note,You'll be invoiced after signing up.
+set00000020001,platform,Photo Stale Years,0.75
+set00000020002,platform,Facts Stale Years,0.6
+set00000020003,platform,Family Photo Stale Years,1.5
+set00000020004,platform,Staff Color,#1f4d53
+set00000020005,platform,Veracross Preferences URL,https://example.org/directory-preferences
+set00000020006,platform,Helios Who Opt-In URL,https://example.org/opt-in

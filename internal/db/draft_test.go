@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -42,7 +43,11 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 	if _, rowan := ask("maya.lindqvist@example.org", `{"email": "rowan.ashdown@example.org"}`); rowan != parent {
 		t.Fatalf("a directory address answered %s", rowan)
 	}
-	apply(t, s, queue, []Edit{{Delete: memberRow(t, s, "grp00000000513", parent)}})
+	apply(t, s, queue, []Edit{
+		{Delete: memberRow(t, s, "grp00000000513", parent)},
+		{Delete: memberRow(t, s, "grp00000020073", parent)},
+		{Delete: memberRow(t, s, "grp00000020075", parent)},
+	})
 	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusForbidden {
 		t.Fatalf("someone who runs no group added a guest: %d", code)
 	}
@@ -71,7 +76,7 @@ func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("the draft answered %d: %s", rec.Code, rec.Body)
 	}
-	if len(out.RuleCounts) != 1 || out.RuleCounts[0] != 1 || len(out.Members) != 2 {
+	if len(out.RuleCounts) != 1 || out.RuleCounts[0] != 11 || len(out.Members) != 12 {
 		t.Fatalf("the draft reads %+v", out)
 	}
 	for _, m := range out.Members {
@@ -85,10 +90,12 @@ func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 				t.Errorf("the hand addition reads %+v", m)
 			}
 		default:
-			t.Errorf("someone else is on it: %+v", m)
+			if len(m.Reasons) != 1 || m.Reasons[0].Rule == nil || *m.Reasons[0].Rule != 0 {
+				t.Errorf("someone else is on it: %+v", m)
+			}
 		}
 	}
-	if _, out := ask("rowan.ashdown@example.org", `{"rules": [{"target": "`+hummingbirds+`", "replace_with": "parents"}], "members": [{"person": "`+parent+`", "member": "excluded"}]}`); len(out.Members) != 0 {
+	if _, out := ask("rowan.ashdown@example.org", `{"rules": [{"target": "`+hummingbirds+`", "replace_with": "parents"}], "members": [{"person": "`+parent+`", "member": "excluded"}]}`); len(out.Members) != 10 || slices.ContainsFunc(out.Members, func(m draftPerson) bool { return m.Person == parent }) {
 		t.Fatalf("someone kept off is on the draft: %+v", out)
 	}
 	if rec, _ := ask("rowan.ashdown@example.org", `{"rules": [{"target": "`+picnicManagers+`"}]}`); rec.Code != http.StatusForbidden {

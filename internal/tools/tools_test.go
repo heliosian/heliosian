@@ -86,14 +86,14 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 		{"helios_whoami", `{}`, []string{`"id":"` + rowan + `"`, `"roles":["parent"]`, `"Ashdown Family"`, `"Juni Ashdown"`, `"roles":["student"]`, `"International Night"`, `"lead":true`, `"rowan@example.com"`}, false},
 		{"helios_find_people", `{"role": "staff"}`, []string{`"Maya Lindqvist"`, `"job_title":"Teacher"`, `"classroom":"Hummingbirds"`, `"email":"maya.lindqvist@example.org"`}, false},
 		{"helios_find_people", `{}`, []string{"name at least one"}, true},
-		{"helios_classroom", `{"name": "Hummingbirds"}`, []string{`"band":"Jayvens"`, `"color":"#5b8def"`, `"grades":["3"]`, `"teachers":[{"id":"` + maya, `"Robins"`, `"Juni Ashdown"`, `"Jayvens Room Parents"`, `"Rowan Ashdown"`}, false},
+		{"helios_classroom", `{"name": "Hummingbirds"}`, []string{`"band":"Jayvens"`, `"color":"#5b8def"`, `"grades":["3","4"]`, `"teachers":[{"id":"` + maya, `"Robins"`, `"Juni Ashdown"`, `"Jayvens Room Parents"`, `"Rowan Ashdown"`}, false},
 		{"helios_classroom", `{}`, []string{`"Hummingbirds"`, `"Maya Lindqvist"`}, false},
-		{"helios_classroom", `{"name": "Ravens"}`, []string{"no classroom named"}, true},
-		{"helios_group", `{"id": "` + ashdown + `"}`, []string{`"roles":["parent"]`, `"roles":["student"]`, `"memberCount":2`}, false},
+		{"helios_classroom", `{"name": "Penguins"}`, []string{"no classroom named"}, true},
+		{"helios_group", `{"id": "` + ashdown + `"}`, []string{`"roles":["parent"]`, `"roles":["student"]`, `"memberCount":4`}, false},
 		{"helios_group", `{"id": "grp00000000512"}`, []string{`"lead":true`, `"via":"International Night Managers"`}, false},
 		{"helios_get", `{"id": "` + rowan + `"}`, []string{`"families"`, `"Ashdown Family"`, `"PERSON_EMAIL.person"`}, false},
 		{"helios_nearby_families", `{}`, []string{`"from":{"id":"` + ashdown, `"Lindqvist Family"`, `"milesAway":0.7`, `"Maya Lindqvist"`}, false},
-		{"helios_nearby_families", `{"grade": "5"}`, []string{`"families":[]`}, false},
+		{"helios_nearby_families", `{"grade": "5"}`, []string{`"name":"Abernathy Family"`, `"name":"Okonkwo Family"`, `"name":"Whitaker Family"`, `"name":"Lund Family"`, `"milesAway":0.2`}, false},
 		{"helios_events", `{"from": "2026-10-01"}`, []string{`"Fall Picnic"`, `"category":"Community"`, `"yourAnswer":"yes"`, `"forYourHousehold":true`}, false},
 		{"helios_events", `{"words": "taco"}`, []string{`"Taco Night"`, `"kind":"party"`}, false},
 		{"helios_events", `{"from": "tomorrow"}`, []string{"YYYY-MM-DD"}, true},
@@ -148,7 +148,7 @@ func TestAnEventIsForWhomItsAudienceHolds(t *testing.T) {
 
 func TestADayIsOnePlanPerClassroom(t *testing.T) {
 	set, s, queue := sample(t)
-	write(t, s, queue, append(schoolDayEdits(), db.Edit{Insert: "GROUP", Row: map[string]any{"kind": "classroom", "parent": "grp00000000012", "name": "Wrens", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}})...)
+	write(t, s, queue, schoolDayEdits()...)
 	day := func(name string) []db.Edit {
 		return []db.Edit{
 			{Insert: "GROUP", As: "t", Row: map[string]any{"kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
@@ -169,7 +169,7 @@ func TestADayIsOnePlanPerClassroom(t *testing.T) {
 	}
 	write(t, s, queue, append(day("Early Dismissal"), db.Edit{Insert: "RULE", Row: map[string]any{"group": "@d", "order": "i", "target": "grp00000000010"}})...)
 	got := plans()
-	if len(got) != 2 || got[0].Type != "Regular" || !slices.Equal(got[0].Classrooms, []string{"Wrens"}) || got[0].ForYou || got[1].Type != "Early Dismissal" || !slices.Equal(got[1].Classrooms, []string{"Hummingbirds"}) || !got[1].ForYou {
+	if len(got) != 2 || got[0].Type != "Regular" || !slices.Equal(got[0].Classrooms, []string{"Condors", "Egrets", "Falcons", "Hawks", "Herons", "Jays", "Ospreys", "Ravens"}) || got[0].ForYou || got[1].Type != "Early Dismissal" || !slices.Equal(got[1].Classrooms, []string{"Hummingbirds"}) || !got[1].ForYou {
 		t.Errorf("an early dismissal for the Hummingbirds over a regular day: %+v", got)
 	}
 	write(t, s, queue, day("No School")...)

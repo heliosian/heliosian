@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -62,7 +63,7 @@ func main() {
 	settle := flag.Duration("settle", 0, "how long to wait after the last click before capturing, for --capture")
 	as := flag.String("as", "", "view as this directory address through Spoof Mode, for --capture")
 	snapshot := flag.Bool("snapshot", false, "serve the snapshot tools/snapshot took under "+snapshotRoot+", disconnected: writes stay in memory and the media bucket is read but never written")
-	email := flag.String("email", "", "the directory address to sign in as, for --snapshot")
+	email := flag.String("email", "", "the directory address to sign in as: anyone the sample's directory lists (the sample parent when left out), or, with --snapshot, the snapshot's")
 	run := flag.Bool("run", false, "start the server the other flags pick, run the command written after the flags against it, shut the server down, and exit with the command's status")
 	flag.Parse()
 	slog.SetDefault(logging.Console())
@@ -93,11 +94,12 @@ func main() {
 	case *detach:
 		detachReal()
 	case *capturePath != "":
+		user := cmp.Or(*email, sampleUser)
 		cookie := "heliosian-quan-shown=1"
 		if *as != "" {
-			cookie += "; spoof=" + auth.SpoofToken([]byte("sample"), sampleUser, *as, time.Now().Add(time.Hour))
+			cookie += "; spoof=" + auth.SpoofToken([]byte("sample"), user, *as, time.Now().Add(time.Hour))
 		}
-		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: cookie, Click: *click, Settle: *settle}, *out)
+		captureOnce(capture.Options{URL: *capturePath, Wait: *wait, Width: *width, Height: *height, Cookie: cookie, Click: *click, Settle: *settle}, *out, user)
 	default:
 		app.Serve(chosen(*real, *snapshot, *email))
 	}
@@ -114,10 +116,10 @@ func chosen(real, snapshot bool, email string) (*http.Server, *store.Queue) {
 		devcache.Install()
 		return localTLS(app.Production(app.DevDomain, app.DevDomain+":"+app.Port()))
 	}
-	return sampleServer()
+	return sampleServer(cmp.Or(email, sampleUser))
 }
 
-func sampleServer() (*http.Server, *store.Queue) {
+func sampleServer(user string) (*http.Server, *store.Queue) {
 	intercept.GoogleLogin("local/google")
 	bucket := blob.NewMemoryBucket()
 	fillSampleBucket(bucket)
@@ -131,8 +133,8 @@ func sampleServer() (*http.Server, *store.Queue) {
 			logging.Fatal("file a sample document", "path", path, "error", err)
 		}
 	}
-	slog.Info("serving sample data", "as", sampleUser)
-	return localServer(core, sampleUser)
+	slog.Info("serving sample data", "as", user)
+	return localServer(core, user)
 }
 
 func snapshotServer(email string) (*http.Server, *store.Queue) {
@@ -192,6 +194,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		Ops:           app.OpsDeps(&feedback.GitHubApp{ID: "sample", PrivateKey: githubKey}, "sample"),
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},
 	})
+	core.Queue.Refresh()
 	core.Search.StartMaking("sample")
 	db.StartWarmer(core.Data)
 	db.StartIdleWorkers(core.Data)
@@ -258,10 +261,10 @@ func serverLog() *os.File {
 	return logFile
 }
 
-func captureOnce(opts capture.Options, out string) {
+func captureOnce(opts capture.Options, out, user string) {
 	var png []byte
 	var captureErr error
-	server, queue := sampleServer()
+	server, queue := sampleServer(user)
 	serving(server, queue, func() {
 		png, captureErr = capture.PNG(opts)
 	})

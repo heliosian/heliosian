@@ -35,7 +35,7 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 	tech, techManagers, viewers, sciOly := made[0], made[1], made[4], made[6]
 	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
 	slices.Sort(got)
-	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", viewers}
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000020073", "grp00000020075", "grp00000020077", viewers}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("implementation only: %v, want %v", got, want)
@@ -66,7 +66,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 		queries = append(queries, mustParse(t, src))
 	}
 	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
-	if len(results[3].IDs) != 7 {
+	if len(results[3].IDs) != 10 {
 		t.Fatalf("the fourth query found %v", results[3].IDs)
 	}
 	passes := map[string]int{}
@@ -227,24 +227,84 @@ func TestRun(t *testing.T) {
 		viewer, src, column string
 		want                []string
 	}{
-		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{"per00000000001", "per00000000002", "per00000000003"}},
-		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000000003"}},
+		{"", `(from PERSON (where (= source "veracross")) (order name_sort asc))`, "id", []string{
+			"per00000020053", "per00000020055", "per00000020054", "per00000020001", "per00000020082", "per00000020083",
+			"per00000020018", "per00000000001", "per00000000002", "per00000020019", "per00000020097", "per00000020095",
+			"per00000020096", "per00000020016", "per00000020036", "per00000020035", "per00000020014", "per00000020009",
+			"per00000020037", "per00000020087", "per00000020084", "per00000020086", "per00000020085", "per00000020002",
+			"per00000020080", "per00000020081", "per00000020056", "per00000020011", "per00000020015", "per00000020022",
+			"per00000020024", "per00000020025", "per00000020006", "per00000020062", "per00000020063", "per00000020065",
+			"per00000020064", "per00000020029", "per00000020028", "per00000020030", "per00000020017", "per00000020094",
+			"per00000020093", "per00000020004", "per00000020067", "per00000020068", "per00000020066", "per00000020005",
+			"per00000020021", "per00000020020", "per00000000003", "per00000020073", "per00000020071", "per00000020072",
+			"per00000020008", "per00000020060", "per00000020061", "per00000020059", "per00000020088", "per00000020090",
+			"per00000020089", "per00000020047", "per00000020049", "per00000020048", "per00000020042", "per00000020043",
+			"per00000020041", "per00000020040", "per00000020027", "per00000020026", "per00000020007", "per00000020032",
+			"per00000020031", "per00000020033", "per00000020034", "per00000020046", "per00000020044", "per00000020045",
+			"per00000020010", "per00000020003", "per00000020023", "per00000020069", "per00000020070", "per00000020058",
+			"per00000020057", "per00000020051", "per00000020050", "per00000020052", "per00000020013", "per00000020012",
+			"per00000020078", "per00000020079", "per00000020039", "per00000020038", "per00000020091", "per00000020092",
+		}},
+		{"", `(from PERSON (where (= source "veracross")) (order name_sort desc) (limit 1))`, "id", []string{"per00000020092"}},
 		{"", `(from MEMBER (where (= group "grp00000000040") (= member "yes")) (order person.name_sort asc))`, "person", []string{"per00000000002", "per00000000003", "per00000000004"}},
-		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{"grp00000000020", "grp00000000512", "grp00000000513"}},
+		{"per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g.managed_by) (= person @viewer))))`, "id", []string{
+			"grp00000000020", "grp00000000512", "grp00000000513", "grp00000020073", "grp00000020074", "grp00000020075",
+			"grp00000020076",
+		}},
 		{"", `(from MEMBER (where (in group (select GROUP.leads))))`, "person", []string{"per00000000003", "per00000000002"}},
-		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{"grp00000000040"}},
+		{"", `(from GROUP @g (where (> (count MEMBER (= group @g) (= member "yes")) 2)))`, "id", []string{
+			"grp00000000001", "grp00000000002", "grp00000000003", "grp00000000010", "grp00000000011", "grp00000000020",
+			"grp00000000040", "grp00000000501", "grp00000000503", "grp00000020002", "grp00000020003", "grp00000020007",
+			"grp00000020008", "grp00000020009", "grp00000020012", "grp00000020015", "grp00000020017", "grp00000020021",
+			"grp00000020022", "grp00000020023", "grp00000020026", "grp00000020030", "grp00000020031", "grp00000020032",
+			"grp00000020035", "grp00000020038", "grp00000020040", "grp00000020041", "grp00000020043", "grp00000020045",
+			"grp00000020046", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051", "grp00000020052",
+			"grp00000020053", "grp00000020054", "grp00000020055", "grp00000020056", "grp00000020057", "grp00000020059",
+			"grp00000020062", "grp00000020064", "grp00000020065", "grp00000020068", "grp00000020074", "grp00000020076",
+			"grp00000020078",
+		}},
 		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
-		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002"}},
+		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002", "per00000020018", "per00000020019"}},
 		{"", `(from SAVED_SEARCH (where (contains search "community")))`, "token", []string{"fed00000000002"}},
-		{"", `(from PERSON (where (not hidden)))`, "id", []string{"per00000000001", "per00000000002", "per00000000003", "per00000000004"}},
-		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003"}},
+		{"", `(from PERSON (where (not hidden)))`, "id", []string{
+			"per00000000001", "per00000000002", "per00000000003", "per00000000004", "per00000020001", "per00000020002",
+			"per00000020003", "per00000020004", "per00000020005", "per00000020006", "per00000020007", "per00000020008",
+			"per00000020009", "per00000020010", "per00000020011", "per00000020012", "per00000020013", "per00000020014",
+			"per00000020015", "per00000020016", "per00000020017", "per00000020018", "per00000020019", "per00000020020",
+			"per00000020021", "per00000020022", "per00000020023", "per00000020024", "per00000020025", "per00000020026",
+			"per00000020027", "per00000020028", "per00000020029", "per00000020030", "per00000020031", "per00000020032",
+			"per00000020033", "per00000020034", "per00000020035", "per00000020036", "per00000020037", "per00000020038",
+			"per00000020039", "per00000020040", "per00000020041", "per00000020042", "per00000020043", "per00000020044",
+			"per00000020045", "per00000020046", "per00000020047", "per00000020048", "per00000020049", "per00000020050",
+			"per00000020051", "per00000020052", "per00000020053", "per00000020054", "per00000020055", "per00000020056",
+			"per00000020057", "per00000020058", "per00000020059", "per00000020060", "per00000020061", "per00000020062",
+			"per00000020063", "per00000020064", "per00000020065", "per00000020066", "per00000020067", "per00000020068",
+			"per00000020069", "per00000020070", "per00000020071", "per00000020072", "per00000020073", "per00000020078",
+			"per00000020079", "per00000020080", "per00000020081", "per00000020082", "per00000020083", "per00000020084",
+			"per00000020085", "per00000020086", "per00000020087", "per00000020088", "per00000020089", "per00000020090",
+			"per00000020091", "per00000020092", "per00000020093", "per00000020094", "per00000020095", "per00000020096",
+			"per00000020097",
+		}},
+		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003", "per00000020036", "per00000020043", "per00000020081", "per00000020090"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
-		{"", `(from GROUP (where (or (= kind "family") (= replying "everyone"))))`, "id", []string{"grp00000000020", "grp00000000030", "grp00000000503"}},
+		{"", `(from GROUP (where (or (= kind "family") (= replying "everyone"))))`, "id", []string{
+			"grp00000000020", "grp00000000030", "grp00000000503", "grp00000020043", "grp00000020044", "grp00000020045",
+			"grp00000020046", "grp00000020047", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051",
+			"grp00000020052", "grp00000020053", "grp00000020054", "grp00000020055", "grp00000020056", "grp00000020057",
+			"grp00000020058", "grp00000020059", "grp00000020061", "grp00000020062", "grp00000020063", "grp00000020064",
+			"grp00000020065", "grp00000020066", "grp00000020067", "grp00000020068",
+		}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from GROUP (where (contains name "LL PICnic") (= kind "event")))`, "id", []string{"grp00000000040"}},
 		{"", `(from GROUP (where (contains description "picnic")))`, "id", nil},
-		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{"grp00000000020", "grp00000000503"}},
+		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{
+			"grp00000000020", "grp00000000503", "grp00000020043", "grp00000020044", "grp00000020045", "grp00000020046",
+			"grp00000020047", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051", "grp00000020052",
+			"grp00000020053", "grp00000020054", "grp00000020055", "grp00000020056", "grp00000020057", "grp00000020058",
+			"grp00000020059", "grp00000020061", "grp00000020062", "grp00000020063", "grp00000020064", "grp00000020065",
+			"grp00000020066", "grp00000020067", "grp00000020068",
+		}},
 		{"", `(from PERSON (where (= (length vc_name) 0)))`, "id", []string{"per00000000004"}},
 		{"", `(from MEMBER (where (= (length guest_of.name_short) 5)))`, "person", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
@@ -379,7 +439,7 @@ func TestInclude(t *testing.T) {
 		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from RULE (include target))`)
-	if len(r.Resources["GROUP"]) != 3 {
+	if len(r.Resources["GROUP"]) != 19 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
@@ -403,24 +463,24 @@ func effective(t *testing.T, s *Store, group string) []string {
 
 func TestEffectiveMembers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	if got := effective(t, s, "grp00000000030"); !slices.Equal(got, []string{"per00000000002"}) {
+	if got := effective(t, s, "grp00000000030"); !slices.Equal(got, []string{"per00000000002", "per00000020013", "per00000020018", "per00000020035", "per00000020037", "per00000020038", "per00000020040", "per00000020041", "per00000020080", "per00000020088", "per00000020089"}) {
 		t.Fatalf("the Hummingbirds parents list holds %v", got)
 	}
 	if got := effective(t, s, "grp00000000006"); !slices.Equal(got, []string{"per00000000003"}) {
 		t.Fatalf("Who? admins are %v", got)
 	}
-	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001", "per00000000003"}) {
+	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001", "per00000000003", "per00000020009", "per00000020024", "per00000020036", "per00000020043", "per00000020054", "per00000020068", "per00000020081", "per00000020090"}) {
 		t.Fatalf("the Jayvens band, through its grades and classrooms, holds %v", got)
 	}
 	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000020073", "grp00000020075", "grp00000020078"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": "per00000000002", "member": "excluded"}}})
-	if got := effective(t, s, "grp00000000030"); len(got) != 0 {
+	if got := effective(t, s, "grp00000000030"); len(got) != 10 || slices.Contains(got, "per00000000002") {
 		t.Fatalf("an excluded parent stays on the list: %v", got)
 	}
 }
@@ -480,7 +540,7 @@ func TestParentsAndChildrenFollowStudents(t *testing.T) {
 		{Insert: "GROUP", As: "rowanParents", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Rowan's parents"}},
 		{Insert: "RULE", Row: map[string]any{"group": "@rowanParents", "order": "a", "person": parent, "replace_with": "parents"}},
 	})
-	for group, want := range map[string][]string{made[0]: {parent}, made[2]: {student}, made[4]: nil} {
+	for group, want := range map[string][]string{made[0]: {parent, "per00000020018"}, made[2]: {student, "per00000020019"}, made[4]: nil} {
 		if got := effective(t, s, group); !slices.Equal(got, want) {
 			t.Errorf("%s holds %v, want %v", group, got, want)
 		}
@@ -495,8 +555,14 @@ func TestRuleSelectors(t *testing.T) {
 		{Insert: "RULE", Row: map[string]any{"group": "@tag", "order": "b", "exclude": "Yes", "search": "lindqvist"}},
 		{Insert: "RULE", Row: map[string]any{"group": "@tag", "order": "c", "person": "per00000000001", "replace_with": "household"}},
 	})[0]
-	if got := effective(t, s, tag); !slices.Equal(got, []string{"per00000000001", "per00000000002"}) {
+	got := effective(t, s, tag)
+	if len(got) != 93 || !slices.Contains(got, "per00000000001") || !slices.Contains(got, "per00000000002") {
 		t.Fatalf("the tag holds %v", got)
+	}
+	for _, lindqvist := range []string{"per00000000003", "per00000020020", "per00000020021"} {
+		if slices.Contains(got, lindqvist) {
+			t.Fatalf("the tag holds %s, whom the search excludes", lindqvist)
+		}
 	}
 	if _, err := applyErr(s, queue, []Edit{{Insert: "RULE", Row: map[string]any{"group": tag, "order": "d", "property": "colour", "value": "red"}}}); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
 		t.Fatalf("a rule on no column: %v", err)

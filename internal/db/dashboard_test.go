@@ -62,7 +62,7 @@ func TestTheDashboardIsForSuperAdmins(t *testing.T) {
 			people = table.Rows
 		}
 	}
-	if people != 4 {
+	if people != 101 {
 		t.Errorf("PERSON rows %d", people)
 	}
 	if len(last.Queues) == 0 || last.Queues[len(last.Queues)-1].Name != "pending writes" {

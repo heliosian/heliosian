@@ -244,7 +244,7 @@ func TestImportAgainstTheSample(t *testing.T) {
 	c, s := sampleServer(t)
 	x := sampleExport(t, true)
 	p, photos := importOnce(t, c, x)
-	if p.counts["people added"] != 3 || p.counts["people deactivated"] != 0 || photos != 3 {
+	if p.counts["people added"] != 3 || p.counts["people deactivated"] != 97 || photos != 3 {
 		t.Fatalf("the first run: %v, %d photos", p.counts, photos)
 	}
 	ines := personNamed(s, "Ines Okafor")

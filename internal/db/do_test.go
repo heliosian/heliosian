@@ -248,7 +248,7 @@ func TestGroupPhotos(t *testing.T) {
 	if store.CompareKeys(second["order"], first["order"]) >= 0 {
 		t.Fatalf("the family's second photo %q is not before its first %q", second["order"], first["order"])
 	}
-	if visible := as(t, s, parent, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 2 {
+	if visible := as(t, s, parent, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 3 {
 		t.Fatalf("a family member sees %d of the family's photos", len(visible))
 	}
 	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"visible_to": ""}}})

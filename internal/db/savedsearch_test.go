@@ -44,6 +44,7 @@ func TestAWordIsForAnEventsAudience(t *testing.T) {
 		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "parent": "grp00000000040", "name": "Fall Picnic Audience", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		{Set: "grp00000000040", Cells: map[string]any{"audience": "@audience"}},
 		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000000011", "replace_with": "household"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "j", "target": "grp00000020015", "replace_with": "household"}},
 	})
 	for search, want := range map[string][]string{
 		`[["hummingbirds"]]`:         {"grp00000000521"},

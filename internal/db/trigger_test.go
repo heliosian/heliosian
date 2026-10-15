@@ -39,6 +39,9 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		t.Fatalf("the sample's student is in %v", got)
 	}
 
+	if err := write(`{"batch": [{"set": "grp00000020015", "cells": {"slug": ""}}]}`); err != nil {
+		t.Fatal(err)
+	}
 	err := write(`{"batch": [{"set": "per00000000001", "cells": {"vc_grade": "4"}}]}`)
 	if err == nil || !strings.Contains(err.Error(), "grade-4") {
 		t.Fatalf("a grade with no group: %v", err)

@@ -63,11 +63,11 @@ func TestTokens(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, body := ask(t, s, "application/json", importing, `["from", "PERSON"]`)
-	if code != http.StatusOK || len(out.Result) != 4 {
+	if code != http.StatusOK || len(out.Result) != 101 {
 		t.Fatalf("a super admin in import mode sees every person, the hidden one too, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `["from", "PERSON"]`); len(out.Result) != 3 {
-		t.Fatalf("a super admin's token without import mode sees %d people, want the 3 the consent view holds", len(out.Result))
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `["from", "PERSON"]`); len(out.Result) != 96 {
+		t.Fatalf("a super admin's token without import mode sees %d people, want the 96 the consent view holds", len(out.Result))
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, `["from", "MEMBER", ["where", ["=", {"n": "person"}, "per00000000001"]]]`); len(out.Result) != 0 {
 		t.Fatalf("a super admin in the browser sees %d of a hidden person's memberships", len(out.Result))

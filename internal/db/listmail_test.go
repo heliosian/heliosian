@@ -132,8 +132,8 @@ func TestAPostIsSentOnToEveryMemberOnceAndFiled(t *testing.T) {
 	}
 	copies := h.s.Model().Table("RECIPIENT").Referencing("message", out[0]["id"])
 	sends := h.sender.Raws()
-	if len(copies) != 2 || len(sends) != 2 {
-		t.Fatalf("%d copies recorded and %d sent, want 2", len(copies), len(sends))
+	if len(copies) != 12 || len(sends) != 12 {
+		t.Fatalf("%d copies recorded and %d sent, want 12", len(copies), len(sends))
 	}
 	to := map[string]bool{}
 	for _, s := range sends {
@@ -166,7 +166,7 @@ func TestAPostIsSentOnToEveryMemberOnceAndFiled(t *testing.T) {
 		t.Fatalf("a replay answered %d", rec.Code)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if len(h.posts(parentsList, "in")) != 1 || len(h.sender.Raws()) != 2 {
+	if len(h.posts(parentsList, "in")) != 1 || len(h.sender.Raws()) != 12 {
 		t.Fatal("a replayed notification recorded or sent the post again")
 	}
 }
@@ -288,8 +288,13 @@ func TestUnsubscribingByLinkAndByMailKeepsThemOff(t *testing.T) {
 	if rec := h.inbound(loopNotice(raw, hummingbirdsTo)); rec.Code != http.StatusOK {
 		t.Fatalf("inbound answered %d", rec.Code)
 	}
-	if post := h.settled(parentsList); post["state"] != postSent || len(h.sender.Raws()) != 0 {
+	if post := h.settled(parentsList); post["state"] != postSent || len(h.sender.Raws()) != 10 {
 		t.Fatalf("a post after both unsubscribed reads %v and sent %d copies", post, len(h.sender.Raws()))
+	}
+	for _, sent := range h.sender.Raws() {
+		if sent.To[0] == "rowan.ashdown@example.org" || sent.To[0] == "maya.lindqvist@example.org" {
+			t.Fatalf("a post after both unsubscribed went to %s", sent.To[0])
+		}
 	}
 	if rec := h.serve(httptest.NewRequest(http.MethodGet, "/open/unsubscribe/"+tok+"x", nil)); rec.Code != http.StatusNotFound {
 		t.Fatalf("a forged token answered %d", rec.Code)
