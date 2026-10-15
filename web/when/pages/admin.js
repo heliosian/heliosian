@@ -1,4 +1,4 @@
-import {state, me, tagGroups, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
+import {state, me, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
 import {saveCategories, setPicture, setStatus, moveEvent} from '../writes.js';
@@ -8,100 +8,31 @@ import {imageControl} from '../imagecontrol.js';
 import {load} from '/router.js';
 
 function working() {
-  return tagGroups().map(g => ({name: g.name, open: true, tags: g.tags.filter(t => !t.builtIn).map(t => ({id: t.id, name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}))})).filter(g => g.tags.length);
+  return state.model.tags.filter(t => !t.builtIn).map(t => ({id: t.id, name: t.name, description: t.description, on: t.default, image: t.image || '', imageUrl: t.imageUrl || ''}));
 }
-
-function move(list, from, to) {
-  if (to < 0 || to >= list.length || from === to) {
-    return;
-  }
-  const [item] = list.splice(from, 1);
-  list.splice(to, 0, item);
-}
-
-function arrow(icon, label, disabled, onClick) {
-  const b = button('', icon, 'icon-button admin-arrow', onClick);
-  b.setAttribute('aria-label', label);
-  b.disabled = disabled;
-  return b;
-}
-
-const newGroupChoice = '+new';
 
 function categoriesTool() {
   const wrap = el('div', 'card admin-tool');
-  const groups = working();
-  const board = el('div', 'admin-groups');
+  const tags = working();
+  const board = el('div', 'admin-list');
   const status = el('span', 'save-status');
   let dragging = null;
 
-  const groupNames = () => groups.map(g => g.name).filter(Boolean);
-
-  const placeGroup = name => {
-    const group = {name, open: true, tags: []};
-    const loose = groups.findIndex(g => !g.name);
-    groups.splice(name && loose >= 0 ? loose : groups.length, 0, group);
-    return group;
-  };
-
   const head = el('div', 'admin-tool-head');
   head.append(el('h2', '', 'Categories'));
-  head.append(button('Add category group', 'plus', 'button', () => {
-    const name = (prompt('Name for the new group') || '').trim();
-    if (!name) {
-      return;
-    }
-    if (groups.some(g => g.name === name)) {
-      toast(`There is already a group called ${name}`);
-      return;
-    }
-    placeGroup(name);
-    paint();
-  }));
   wrap.append(head);
-  wrap.append(el('p', 'hint', 'The categories events are filed under, in the groups and the order the filters show them. A group with no name is the plain Categories line at the end. Rename a group here to rename it for every category in it; a category itself keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off. A category\u2019s picture is what an event under it wears across the top of its page when it has none of its own; the first of an event\u2019s categories with a picture wins.'));
+  wrap.append(el('p', 'hint', 'The categories events are filed under, in the order the filters show them; drag one to move it. A category keeps its name, since every event carries it. A category that is off by default is one people see only when they switch it on, and Reset filters leaves it off. A category\u2019s picture is what an event under it wears across the top of its page when it has none of its own; the first of an event\u2019s categories with a picture wins.'));
 
-  const groupPicker = (g, t) => {
-    const select = el('select', 'admin-select');
-    for (const name of [...groupNames(), '']) {
-      const option = el('option', '', name || 'No group');
-      option.value = name;
-      option.selected = name === g.name;
-      select.append(option);
-    }
-    const fresh = el('option', '', 'New group…');
-    fresh.value = newGroupChoice;
-    select.append(fresh);
-    select.addEventListener('change', () => {
-      let target = select.value;
-      if (target === newGroupChoice) {
-        target = (prompt('Name for the new group') || '').trim();
-        if (!target) {
-          paint();
-          return;
-        }
-      }
-      g.tags.splice(g.tags.indexOf(t), 1);
-      const dest = groups.find(x => x.name === target) || placeGroup(target);
-      dest.tags.push(t);
-      dest.open = true;
-      paint();
-    });
-    return select;
-  };
-
-  const dropOn = (dest, index) => {
+  const dropOn = index => {
     if (!dragging) {
       return;
     }
-    const from = dragging.group;
-    const at = from.tags.indexOf(dragging.tag);
-    from.tags.splice(at, 1);
-    if (from === dest && at < index) {
+    const at = tags.indexOf(dragging);
+    tags.splice(at, 1);
+    if (at < index) {
       index -= 1;
     }
-    dest.tags.splice(Math.min(index, dest.tags.length), 0, dragging.tag);
-    dest.open = true;
+    tags.splice(Math.min(index, tags.length), 0, dragging);
     dragging = null;
     paint();
   };
@@ -112,70 +43,14 @@ function categoriesTool() {
     }
   };
 
-  const groupHead = (g, gi) => {
-    const head = el('div', 'admin-group-head');
-    head.append(svg('tag'));
-    const name = el('input', 'admin-group-name');
-    name.type = 'text';
-    name.maxLength = 40;
-    name.placeholder = 'No group';
-    name.value = g.name;
-    name.readOnly = true;
-    name.addEventListener('change', () => {
-      g.name = name.value.trim();
-      paint();
-    });
-    name.addEventListener('blur', () => {
-      name.readOnly = true;
-    });
-    name.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        name.blur();
-      }
-    });
-    head.append(name);
-    head.append(el('span', 'admin-count', `${g.tags.length} categor${g.tags.length === 1 ? 'y' : 'ies'}`));
-    head.append(button('Rename group', 'edit', 'button button-secondary button-small admin-rename', () => {
-      name.readOnly = false;
-      name.focus();
-      name.select();
-    }));
-    head.append(arrow('chevron-left', 'Move group up', gi === 0, () => {
-      move(groups, gi, gi - 1);
-      paint();
-    }));
-    head.append(arrow('chevron-right', 'Move group down', gi === groups.length - 1, () => {
-      move(groups, gi, gi + 1);
-      paint();
-    }));
-    const fold = button('', 'chevron-right', 'icon-button admin-fold', () => {
-      g.open = !g.open;
-      paint();
-    });
-    fold.setAttribute('aria-label', g.open ? 'Fold' : 'Unfold');
-    head.append(fold);
-    head.addEventListener('dragover', e => {
-      if (dragging) {
-        e.preventDefault();
-        head.classList.add('is-over');
-      }
-    });
-    head.addEventListener('dragleave', () => head.classList.remove('is-over'));
-    head.addEventListener('drop', e => {
-      e.preventDefault();
-      dropOn(g, g.tags.length);
-    });
-    return head;
-  };
-
-  const tagRow = (g, t, ti) => {
+  const tagRow = (t, ti) => {
     const row = el('div', 'admin-row');
     const handle = el('span', 'admin-handle');
     handle.append(svg('menu'));
     handle.title = 'Drag to move';
     handle.draggable = true;
     handle.addEventListener('dragstart', e => {
-      dragging = {group: g, tag: t};
+      dragging = t;
       row.classList.add('is-dragging');
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', t.name);
@@ -186,7 +61,7 @@ function categoriesTool() {
       clearOver();
     });
     row.addEventListener('dragover', e => {
-      if (dragging && dragging.tag !== t) {
+      if (dragging && dragging !== t) {
         e.preventDefault();
         const below = e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
         row.classList.toggle('is-over-below', below);
@@ -197,7 +72,7 @@ function categoriesTool() {
     row.addEventListener('drop', e => {
       e.preventDefault();
       const below = row.classList.contains('is-over-below');
-      dropOn(g, ti + (below ? 1 : 0));
+      dropOn(ti + (below ? 1 : 0));
     });
     row.append(handle, imageControl(t, paint), el('span', 'admin-row-name', t.name));
     const description = el('input', 'admin-row-description');
@@ -215,32 +90,19 @@ function categoriesTool() {
       t.on = !t.on;
       paint();
     });
-    row.append(on, groupPicker(g, t));
+    row.append(on);
     return row;
   };
 
   const paint = () => {
-    board.replaceChildren();
-    groups.forEach((g, gi) => {
-      const card = el('div', 'admin-group' + (g.open ? ' is-open' : ''));
-      card.append(groupHead(g, gi));
-      if (g.open) {
-        const list = el('div', 'admin-list');
-        if (!g.tags.length) {
-          list.append(el('div', 'admin-empty', 'Nothing here yet - drag a category in, or add one below. An empty group is not kept.'));
-        }
-        g.tags.forEach((t, ti) => list.append(tagRow(g, t, ti)));
-        card.append(list);
-      }
-      board.append(card);
-    });
+    board.replaceChildren(...tags.map(tagRow));
   };
   paint();
   wrap.append(board);
 
   const builtIn = state.model.tags.filter(t => t.builtIn);
   if (builtIn.length) {
-    wrap.append(el('p', 'admin-note', `${builtIn.map(t => t.name).join(', ')} are built in and sit under ${[...new Set(builtIn.map(t => t.group || 'Categories'))].join(', ')}; their rows are changed in the sheet.`));
+    wrap.append(el('p', 'admin-note', `${builtIn.map(t => t.name).join(' and ')} are built in: each person's own, from their household's answers, tickets and sign-ups.`));
   }
 
   const add = el('form', 'feed-form admin-add');
@@ -258,42 +120,21 @@ function categoriesTool() {
   newDesc.type = 'text';
   newDesc.required = true;
   descField.append(newDesc, el('small', '', 'What the category means - the definition the classifier files events by.'));
-  const groupField = el('label', 'field');
-  groupField.append(el('span', '', 'Group'));
-  const newGroup = el('input');
-  newGroup.type = 'text';
-  newGroup.maxLength = 40;
-  newGroup.placeholder = 'No group';
-  newGroup.setAttribute('list', 'tag-groups');
-  const known = el('datalist');
-  known.id = 'tag-groups';
-  groupField.append(newGroup, known);
-  add.append(nameField, descField, groupField);
+  add.append(nameField, descField);
   const addActions = el('div', 'modal-actions');
   const addButton = el('button', 'button button-secondary');
   addButton.type = 'submit';
   addButton.append(svg('plus'), el('span', '', 'Add to the list'));
   addActions.append(addButton);
   add.append(addActions);
-  add.addEventListener('focusin', () => {
-    known.replaceChildren();
-    for (const name of groupNames()) {
-      const option = el('option');
-      option.value = name;
-      known.append(option);
-    }
-  });
   add.addEventListener('submit', e => {
     e.preventDefault();
     const name = newName.value.trim();
-    if (groups.some(g => g.tags.some(t => t.name === name)) || state.model.tags.some(t => t.name === name)) {
+    if (tags.some(t => t.name === name) || state.model.tags.some(t => t.name === name)) {
       toast(`There is already a category called ${name}`);
       return;
     }
-    const target = newGroup.value.trim();
-    const dest = groups.find(g => g.name === target) || placeGroup(target);
-    dest.tags.push({id: '', name, description: newDesc.value.trim(), on: true, image: '', imageUrl: ''});
-    dest.open = true;
+    tags.push({id: '', name, description: newDesc.value.trim(), on: true, image: '', imageUrl: ''});
     add.reset();
     paint();
     toast(`${name} added - Save categories to keep it`);
@@ -302,18 +143,13 @@ function categoriesTool() {
 
   const actions = el('div', 'modal-actions admin-save');
   const save = button('Save categories', 'check', 'button', async () => {
-    const tags = [];
-    for (const g of groups) {
-      for (const t of g.tags) {
-        tags.push({id: t.id, name: t.name, slug: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), description: t.description, default: t.on, image: t.image});
-      }
-    }
+    const saving = tags.map(t => ({id: t.id, name: t.name, slug: t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''), description: t.description, default: t.on, image: t.image}));
     save.disabled = true;
     status.classList.remove('error');
     status.textContent = 'Saving…';
     try {
-      await saveCategories(tags);
-      for (const t of tags) {
+      await saveCategories(saving);
+      for (const t of saving) {
         const old = state.model.tags.find(x => x.id === t.id);
         if (old && t.image !== old.image) {
           await setPicture({id: t.id, photo: old.photo}, t.image);
