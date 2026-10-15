@@ -105,8 +105,7 @@ var designQueries = []string{
 	`(from GROUP @p
   (where (= kind "party")
          (>= start today)
-         (> capacity (count MEMBER (= group @p) (= member "yes")
-                                  (not (blank purchase_id))))))`,
+         (> capacity (count MEMBER (= group @p) (= member "yes")))))`,
 }
 
 func mustParse(t *testing.T, src string) *Query {
@@ -447,10 +446,10 @@ func TestInclude(t *testing.T) {
 func TestSum(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	apply(t, s, queue, []Edit{
-		{Set: memberRow(t, s, "grp00000000040", "per00000000002"), Cells: map[string]any{"price": "12.50"}},
-		{Set: memberRow(t, s, "grp00000000040", "per00000000004"), Cells: map[string]any{"price": "7.25"}},
+		{Insert: "PAYMENT", Row: map[string]any{"person": "per00000000002", "group": "grp00000000040", "amount": "12.50", "added": "2026-09-28 18:30"}},
+		{Insert: "PAYMENT", Row: map[string]any{"person": "per00000000002", "for": "per00000000004", "group": "grp00000000040", "amount": "7.25", "added": "2026-09-28 18:30"}},
 	})
-	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75)))`).Rows(), "id")
+	got := ids(runAs(t, s.Model(), "", `(from GROUP @g (where (= (sum amount PAYMENT (= group @g)) 19.75)))`).Rows(), "id")
 	if !slices.Equal(got, []string{"grp00000000040"}) {
 		t.Fatalf("sum matched %v", got)
 	}

@@ -107,7 +107,7 @@ const PolicySource = `
 (define (hides @g)
   (exists GROUP (= hidden_for @g)))
 
-; the viewer manages @g, is a super admin, is a When admin and @g an event, or is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, unless it is a family, whose members only super admins change, or a hidden group, which each member joins and leaves alone
+; the viewer manages @g, is a super admin, is a When admin and @g an event, is a Team admin and @g an activity, a heading under one or one's co-chair offers or leads group, or is a Celebrate admin and @g a party, a celebration, a heading under one or a party's waitlist, unless it is a family, whose members only super admins change, or a hidden group, which each member joins and leaves alone
 (define (runs_list @g)
   (and (!= @g.kind "family") (not (hides @g))
        (or (manages @g) (super_admin)
@@ -115,7 +115,10 @@ const PolicySource = `
            (and (admin_of "team")
                 (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
                     (and (= @g.kind "group") (= @g.parent.kind "activity")
-                         (exists GROUP (or (= chair_offers @g) (= leads @g)))))))))
+                         (exists GROUP (or (= chair_offers @g) (= leads @g))))))
+           (and (admin_of "celebrate")
+                (or (in @g.kind "party" "celebration") (and (= @g.kind "category") (= @g.parent.kind "celebration"))
+                    (party_waitlist @g))))))
 
 ; @g is the leads group of a group of kind k
 (define (leads_for @g k)
@@ -125,11 +128,14 @@ const PolicySource = `
 (define (sourced @g)
   (exists GROUP_SOURCE (= group @g)))
 
-; @g is the kind of what it sits under, a heading, under a heading the kind of what the heading sits under, or an event filed under a category
+; @g is the kind of what it sits under, a heading, under a heading the kind of what the heading sits under, an event filed under a category, or a party under a celebration or a heading of one
 (define (child_kind @g)
   (or (= @g.kind @g.parent.kind) (= @g.kind "category")
       (and (= @g.parent.kind "category") (= @g.kind @g.parent.parent.kind))
-      (and (= @g.kind "event") (= @g.parent.kind "category"))))
+      (and (= @g.kind "event") (= @g.parent.kind "category"))
+      (and (= @g.kind "party")
+           (or (= @g.parent.kind "celebration")
+               (and (= @g.parent.kind "category") (= @g.parent.parent.kind "celebration"))))))
 
 ; the viewer may change @ph: a picture of themselves or someone in their family, or of a group they manage or run
 (define (edits_photo @ph)
@@ -413,12 +419,10 @@ const PolicySource = `
            (or (manages group)
                (manages_visible group)
                (sees_members group)))))
-; every column of a membership but what it cost
+; every column of a membership
 (read MEMBER
   (id group person member opened guest_of note added_by added)
   true)
-; what a membership cost and its payment reference, to the member, their host and the group's managers
-(read MEMBER (price purchase_id) (or (= person @viewer) (= guest_of @viewer) (manages group)))
 ; say someone is coming, or not, to a group the viewer may see, for whoever the viewer may answer for
 (insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
@@ -434,7 +438,7 @@ const PolicySource = `
 ; note that the viewer or someone in their family opened the invitation to a group the viewer sees, on a row that puts nobody in it
 (insert MEMBER
   (and (visible @new.group) (self_or_household @new.person) (blank @new.member) (not (blank @new.opened))
-       (blank @new.guest_of) (blank @new.price) (blank @new.purchase_id) (blank @new.note) (blank @new.added_by)))
+       (blank @new.guest_of) (blank @new.note) (blank @new.added_by)))
 ; note when the viewer or someone in their family first opened the invitation
 (set MEMBER.opened (and (self_or_household @old.person) (blank @old.opened)))
 ; take back a guest the viewer brought to a group that takes joining and no payment
@@ -455,6 +459,11 @@ const PolicySource = `
                     (= @old.guest_of @viewer))
                 (= @new.member "cancelled"))
            (and (manages @old.group) (not (hides @old.group))))))
+; what the viewer, their household or a ticket of theirs was billed, and what was billed for a group they manage
+(read PAYMENT
+  (or (self_or_household person) (and (not (blank for)) (self_or_household for)) (manages group)))
+; every column of a payment
+(read PAYMENT (id person for group name amount added stripe_invoice status) true)
 ; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them, but never who hid something
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
@@ -791,8 +800,16 @@ const PolicySource = `
 (set GROUP.rsvp_no (and (admin_of "celebrate") (= @old.kind "party")))
 ; every party's and celebration's ticket holders and hosts
 (read MEMBER (and (admin_of "celebrate") (in group.kind "party" "celebration")))
-; what every party ticket cost and its payment reference
-(read MEMBER (price purchase_id) (and (admin_of "celebrate") (in group.kind "party")))
+; every payment
+(read PAYMENT (admin_of "celebrate"))
+; say where a payment stands
+(set PAYMENT.status (admin_of "celebrate"))
+; say who pays
+(set PAYMENT.person (admin_of "celebrate"))
+; Celebrate's introduction, ticket note, current celebration and banner
+(set SETTING.value (and (admin_of "celebrate") (= @old.app "celebrate")))
+; a Celebrate setting not yet written
+(insert SETTING (and (admin_of "celebrate") (= @new.app "celebrate")))
 ; make a plain group to host parties
 (insert GROUP (and (admin_of "celebrate") (= @new.kind "group")))
 ; name the group that hosts a party, or what manages a party's hosts
@@ -853,8 +870,10 @@ const PolicySource = `
   (and (runs_list @old)
        (or (blank @new.members_visible_to) (= @new.members_visible_to @old.id)
            (= @new.members_visible_to (slug "everyone")))))
-; a group's managers close it, open it again, approve it, or say it happened
-(set GROUP.status (and (runs_list @old) (in @new.status "open" "closed" "done")))
+; a group's managers close it, open it again or say it happened, and whoever runs what it sits under approves it
+(set GROUP.status
+  (and (runs_list @old) (in @new.status "open" "closed" "done")
+       (or (!= @old.status "pending") (runs_list @old.parent))))
 ; a group's managers say when it starts, unless the calendar import brings it
 (set GROUP.start (and (runs_list @old) (not (sourced @old))))
 ; a group's managers say when it ends, unless the calendar import brings it
@@ -865,8 +884,23 @@ const PolicySource = `
 (set GROUP.location (and (runs_list @old) (not (sourced @old))))
 ; a group's managers say in words when it happens
 (set GROUP.timing (runs_list @old))
+; a group's managers write the line under its name
+(set GROUP.subtitle (runs_list @old))
 ; a group's managers say how many places it has
 (set GROUP.capacity (runs_list @old))
+; a party's hosts set its price
+(set GROUP.price (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts say what its price is per
+(set GROUP.unit (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts say how many it needs to go ahead
+(set GROUP.minimum (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts say whether a student's place needs a parent with one
+(set GROUP.parent_ticket_required (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts say whether students may be dropped off
+(set GROUP.drop_off_allowed (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts give it a waitlist, naming a group under it, or take it away
+(set GROUP.waitlist
+  (and (runs_list @old) (= @old.kind "party") (or (blank @new.waitlist) (= @new.waitlist.parent @old.id))))
 ; a group's managers give it a poster
 (set GROUP.flyer (runs_list @old))
 ; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
@@ -915,9 +949,9 @@ const PolicySource = `
   (and (= @new.kind "event") (= @new.parent.kind "category") (!= @viewer.source "guest") (= @new.added_by @viewer)
        (blank @new.managed_by) (blank @new.url) (= @new.status "open")
        (or (blank @new.visible_to) (and (= @new.visible_to @new.parent.visible_to) (not @new.listed)))))
-; whoever added an event that has no managers gives it a plain group of their own to manage it, so they host it
+; whoever added an event or party that has no managers gives it a plain group of their own to manage it, so they host it
 (set GROUP.managed_by
-  (and (= @old.kind "event") (= @old.added_by @viewer) (blank @old.managed_by)
+  (and (in @old.kind "event" "party") (= @old.added_by @viewer) (blank @old.managed_by)
        (= @new.managed_by.kind "group") (= @new.managed_by.added_by @viewer) (= @new.managed_by.managed_by @new.managed_by)
        (not (exists GROUP (= managed_by @new.managed_by) (!= id @new.managed_by) (!= id @old.id)))))
 ; a group's managers remove one under it that holds no one and nothing
@@ -1001,8 +1035,8 @@ const PolicySource = `
 (read ALIAS (exists MEMBER @m (= id @row.target) (person_visible @m.person)))
 ; every column of an alias
 (read ALIAS (id alias target hidden) true)
-; the wiki's and Team's old page addresses, so an old link still finds its page
-(read REDIRECT (in app "wiki" "team"))
+; the wiki's, Team's and Celebrate's old page addresses, so an old link still finds its page
+(read REDIRECT (in app "wiki" "team" "celebrate"))
 ; every column of a redirect
 (read REDIRECT (id app old new added) true)
 ; every column of a search entry, to whoever may read it

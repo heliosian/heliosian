@@ -93,8 +93,12 @@ func TestWhoeverAddsAnEventHostsItAndAPrivateOneGoesLive(t *testing.T) {
 		t.Error("a public event went live without approval")
 	}
 	public["status"] = "pending"
-	if _, err := write(parent, hosted(public)...); err != nil {
-		t.Errorf("someone can't suggest and host a public event: %v", err)
+	suggested, err := write(parent, hosted(public)...)
+	if err != nil {
+		t.Fatalf("someone can't suggest and host a public event: %v", err)
+	}
+	if _, err := write(parent, Edit{Set: suggested[0], Cells: map[string]any{"status": "open"}}); err == nil {
+		t.Error("the host of a suggested event approved it")
 	}
 	bare, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "event", "parent": community, "name": "Bare", "status": "pending", "start": "2026-11-05", "added_by": parent, "listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}})
 	if err != nil {

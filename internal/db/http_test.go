@@ -165,7 +165,7 @@ func TestServeQuery(t *testing.T) {
 			t.Fatalf("%s: query %q", kind, out.Query)
 		}
 		last := out.Resources["MEMBER"][out.Result[2]]
-		if out.Result[2] != "mem00000000015" || last["guest_of"] != "per00000000002" || last["price"] != "" {
+		if out.Result[2] != "mem00000000015" || last["guest_of"] != "per00000000002" {
 			t.Fatalf("%s: the guest's row %s reads %v", kind, out.Result[2], last)
 		}
 	}
@@ -225,7 +225,7 @@ func TestTextAndJSONAreOneTree(t *testing.T) {
 	for src, raw := range map[string]string{
 		picnicText: picnicJSON,
 		`(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020"))) (not hidden) (blank consent) true) (limit 3))`: `["from", "PERSON", ["where", ["in", {"n": "id"}, ["select", "MEMBER.person", ["=", {"n": "group"}, "grp00000000020"]]], ["not", {"n": "hidden"}], ["blank", {"n": "consent"}], true], ["limit", 3]]`,
-		`(from GROUP @g (where (= (sum price MEMBER (= group @g)) 19.75) (>= start now)))`:                                            `["from", "GROUP", {"n": "@g"}, ["where", ["=", ["sum", "price", "MEMBER", ["=", {"n": "group"}, {"n": "@g"}]], 19.75], [">=", {"n": "start"}, {"n": "now"}]]]`,
+		`(from GROUP @g (where (= (sum amount PAYMENT (= group @g)) 19.75) (>= start now)))`:                                          `["from", "GROUP", {"n": "@g"}, ["where", ["=", ["sum", "amount", "PAYMENT", ["=", {"n": "group"}, {"n": "@g"}]], 19.75], [">=", {"n": "start"}, {"n": "now"}]]]`,
 		`(from PERSON (where (< (length vc_name) 4)))`:                                                                                `["from", "PERSON", ["where", ["<", ["length", {"n": "vc_name"}], 4]]]`,
 		`(from MEMBER (where (in group (select GROUP.id @g (= @g.kind "family")))) (include person) (columns person member))`:         `["from", "MEMBER", ["where", ["in", {"n": "group"}, ["select", "GROUP.id", {"n": "@g"}, ["=", {"n": "@g.kind"}, "family"]]]], ["include", "person"], ["columns", "person", "member"]]`,
 		`(from GROUP (where (exists MEMBER @m (= @m.member "yes")) (in id (slug "students" "staff"))) (order start desc name asc))`:   `["from", "GROUP", ["where", ["exists", "MEMBER", {"n": "@m"}, ["=", {"n": "@m.member"}, "yes"]], ["in", {"n": "id"}, ["slug", "students", "staff"]]], ["order", "start", "desc", "name", "asc"]]`,

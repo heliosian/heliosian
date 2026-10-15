@@ -35,7 +35,7 @@ func TestPoliciesRefuse(t *testing.T) {
 	for src, want := range map[string]string{
 		strings.Replace(PolicySource, "(read SETTING (id app key value) true)", "(read SETTING (id app key) true)", 1): "SETTING.value has no read grant",
 		PolicySource + `(read PERSON (vc_phone) (mode "import"))`:                                                      "PERSON.vc_phone is private",
-		PolicySource + `(read MEMBER.price true)`:                                                                      "policies are define",
+		PolicySource + `(read MEMBER.note true)`:                                                                       "policies are define",
 		PolicySource + `(show MEMBER (= person @viewer))`:                                                              "not @viewer",
 		PolicySource + `(show MEMBER (mode "import"))`:                                                                 "not the request's mode",
 		PolicySource + `(show MEMBER (super_admin))`:                                                                   "not @viewer",
@@ -533,14 +533,17 @@ func TestPrivateColumnsNeverShow(t *testing.T) {
 	}
 }
 
-func TestPriceAndToken(t *testing.T) {
+func TestPaymentAndToken(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: memberRow(t, s, "grp00000000040", guest), Cells: map[string]any{"price": "7.25"}}})
-	q := `(from MEMBER (where (= person "per00000000004") (= member "yes") (= guest_of "per00000000002")))`
-	for viewer, want := range map[string]string{student: "", parent: "7.25", staff: "7.25", guest: "7.25"} {
-		if got := cellAs(t, s, viewer, q, "price"); got != want {
-			t.Errorf("the guest's price as %s = %q, want %q", viewer, got, want)
+	apply(t, s, queue, []Edit{{Insert: "PAYMENT", Row: map[string]any{"person": parent, "group": "grp00000000040", "amount": "7.25", "added": "2026-09-28 18:30"}}})
+	q := `(from PAYMENT (where (= group "grp00000000040")))`
+	for _, viewer := range []string{student, parent, staff} {
+		if got := cellAs(t, s, viewer, q, "amount"); got != "7.25" {
+			t.Errorf("the payment's amount as %s = %q, want 7.25", viewer, got)
 		}
+	}
+	if len(as(t, s, guest, q)) != 0 {
+		t.Error("someone outside the payer's household read their payment")
 	}
 	for viewer, want := range map[string]string{parent: "tok00000000001", staff: "tok00000000001"} {
 		if got := cellAs(t, s, viewer, `(from RECIPIENT)`, "token"); got != want {

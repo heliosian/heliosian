@@ -107,14 +107,13 @@ func TestStoredLeavesOutGenerated(t *testing.T) {
 func TestCheck(t *testing.T) {
 	member, _ := Lookup("MEMBER")
 	good := map[string]string{
-		"id":          "memX7pQ2m9KdLr",
-		"group":       "grpX7pQ2m9KdLr",
-		"person":      "perX7pQ2m9KdLr",
-		"member":      "Yes",
-		"price":       "12.50",
-		"purchase_id": "pi_3PqXyZ2eZvKYlo2C",
-		"added":       "2026-09-24 16:00",
-		"unknown":     "a column added by hand",
+		"id":       "memX7pQ2m9KdLr",
+		"group":    "grpX7pQ2m9KdLr",
+		"person":   "perX7pQ2m9KdLr",
+		"member":   "Yes",
+		"guest_of": "perX7pQ2m9KdLs",
+		"added":    "2026-09-24 16:00",
+		"unknown":  "a column added by hand",
 	}
 	if err := member.Check(good); err != nil {
 		t.Fatalf("Check(%v) = %v", good, err)
@@ -127,7 +126,6 @@ func TestCheck(t *testing.T) {
 		"group":    "perX7pQ2m9KdLr",
 		"person":   "",
 		"member":   "waitlist",
-		"price":    "12.5.0",
 		"added":    "yesterday",
 		"guest_of": " perX7pQ2m9KdLr",
 		"id":       "grpX7pQ2m9KdLr",

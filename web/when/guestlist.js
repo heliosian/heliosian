@@ -39,7 +39,8 @@ export async function fetchInvites(e) {
     runs: `(from GROUP @g (where (= id ${id}) (runs_list @g)) (columns kind))`,
     hostGroup: `(from GROUP (where (in id (select GROUP.managed_by (= id ${id})))) (columns visible_to))`,
     hosts: `(from MEMBER (where (in group (select GROUP.managed_by (= id ${id}))) (= member "yes")) (columns group person))`,
-    members: `(from MEMBER (where (= group ${id})) (columns person member opened guest_of added_by added price))`,
+    members: `(from MEMBER (where (= group ${id})) (columns person member opened guest_of added_by added))`,
+    paid: `(from PAYMENT (where (= group ${id}) (not (blank for))) (columns for))`,
     effective: `(from EFFECTIVE_MEMBER (where (= group ${id})) (columns person reasons))`,
     rules: `(from RULE (where (= group ${id})) (order order asc) (include target within))`,
     messages: `(from MESSAGE (where (= group ${id}) (in kind "invitation" "skip")) (columns kind from_person created))`,
@@ -58,6 +59,7 @@ export async function fetchInvites(e) {
   const emailOfId = Object.fromEntries(rowsOf(a.emails, 'PERSON_EMAIL').map(x => [x.person, x.address]));
   const dir = Object.fromEntries((await listed()).map(p => [p.id, p]));
   const memberOf = Object.fromEntries(rowsOf(a.members, 'MEMBER').map(m => [m.person, m]));
+  const paid = new Set(rowsOf(a.paid, 'PAYMENT').map(p => p.for));
   const effective = new Map(rowsOf(a.effective, 'EFFECTIVE_MEMBER').map(x => [x.person, x]));
   const copies = {};
   for (const c of rowsOf(a.copies, 'RECIPIENT')) {
@@ -98,7 +100,7 @@ export async function fetchInvites(e) {
       guestOf: m && m.guest_of ? m.guest_of : '', guestOfName: m && m.guest_of ? nameOf(m.guest_of) : '',
       invitedBy: m && m.added_by && !host ? nameOf(m.added_by) : '', invitedAt: m ? m.added || '' : '',
       mine: host || household.has(pid) || Boolean(m && m.guest_of && household.has(m.guest_of)),
-      ticket: isParty(e) && m && m.member === 'yes' ? (m.price ? 'ticket' : 'free') : '',
+      ticket: isParty(e) && m && m.member === 'yes' ? (paid.has(pid) ? 'ticket' : 'free') : '',
       warning: copy && copy.failed ? 'bounced' : '', warningWords: copy && copy.failed ? `Mail to this address failed: ${copy.detail || 'it could not be delivered'}.` : '',
     };
   };
