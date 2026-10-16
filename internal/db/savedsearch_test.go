@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -11,13 +10,12 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 )
 
 func TestASavedSearchsConditionAnswersItsWords(t *testing.T) {
 	s := sample(t)
 	row, ok := s.Model().Table("SAVED_SEARCH").Get("sav00000000001")
-	if !ok || !strings.Contains(row["condition"], `(slug "hummingbirds-parents")`) {
+	if !ok || !strings.Contains(row["condition"], `(searched_for @e "hummingbirds-parents")`) {
 		t.Fatalf("the sample's saved search reads %v", row)
 	}
 	events := func(condition string) []string {
@@ -95,41 +93,22 @@ func TestWaitlistedIsAPartyTheHouseholdWaitsFor(t *testing.T) {
 	}
 }
 
-func TestASearchsWordsAreRunWithoutSavingThem(t *testing.T) {
+func TestAPagesWordsRunAsDefinitionCalls(t *testing.T) {
 	s := sample(t)
-	mux := http.NewServeMux()
-	registerSavedSearch(mux, s, testTokens, func() time.Time { return testNow })
-	ask := func(body string) (int, []string) {
+	viewer := s.Model().personAt("rowan.ashdown@example.org")
+	ask := func(words string) ([]string, error) {
 		t.Helper()
-		r := httptest.NewRequest(http.MethodPost, "/api/do/saved-search", strings.NewReader(body))
-		rec := httptest.NewRecorder()
-		auth.Fixed("rowan.ashdown@example.org", mux).ServeHTTP(rec, r)
-		var out answer
-		if rec.Code == http.StatusOK {
-			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-				t.Fatal(err)
-			}
-		}
-		return rec.Code, out.Result
+		got := s.Model().Run(t.Context(), mustParse(t, `(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) `+words+` (not (hidden_by_viewer @e))) (order start asc))`), Env{Viewer: viewer, Now: testNow})
+		return got.IDs, got.Err
 	}
-	if code, got := ask(`{"search": [], "from": "2026-09-01", "to": "2027-08-31"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040", "grp00000000512", "grp00000000521"}) {
-		t.Fatalf("a search of no words over the year answered %d %v", code, got)
+	if got, err := ask(""); err != nil || !slices.Equal(got, []string{"grp00000000040", "grp00000000512", "grp00000000521"}) {
+		t.Fatalf("no words answered %v %v", got, err)
 	}
-	if code, got := ask(`{"search": [["community"]], "from": "2026-09-01", "to": "2027-08-31"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040"}) {
-		t.Fatalf("community over the year answered %d %v", code, got)
+	if got, err := ask(`(or (searched_for @e "community"))`); err != nil || !slices.Equal(got, []string{"grp00000000040"}) {
+		t.Fatalf("community answered %v %v", got, err)
 	}
-	if code, got := ask(`{"search": [], "from": "2026-10-10", "to": "2027-02-05"}`); code != http.StatusOK || !slices.Equal(got, []string{"grp00000000040", "grp00000000512"}) {
-		t.Fatalf("a window from the picnic's day to International Night's answered %d %v", code, got)
-	}
-	for body, want := range map[string]int{
-		`{"search": [["nope"]], "from": "2026-09-01", "to": "2027-08-31"}`:      http.StatusBadRequest,
-		`{"search": [["Community"]], "from": "2026-09-01", "to": "2027-08-31"}`: http.StatusBadRequest,
-		`{"search": [], "from": "September", "to": "2027-08-31"}`:               http.StatusBadRequest,
-		`{"search": [[]], "from": "2026-09-01", "to": "2027-08-31"}`:            http.StatusBadRequest,
-	} {
-		if code, _ := ask(body); code != want {
-			t.Errorf("%s answered %d, want %d", body, code, want)
-		}
+	if _, err := ask(`(or (searched_for @e "nope"))`); err == nil || !strings.Contains(err.Error(), `no group has the slug "nope"`) {
+		t.Fatalf("a slug no group has answered %v", err)
 	}
 }
 

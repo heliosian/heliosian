@@ -331,17 +331,16 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Fill a linked document still to fetch",
-				"description": "Takes what a fetch got for a linked document whose content is blank: its body, which becomes the document's content if it is kept, or sets fetch to refused if not; or a stop, which sets fetch to it.",
+				"description": "Takes the body a fetch got for a linked document whose content is blank, which becomes the document's content if it is kept, or sets fetch to refused if not.",
 				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
 					"type":     "object",
-					"required": []string{"document"},
+					"required": []string{"document", "body"},
 					"properties": schema{
 						"document": schema{"type": "string", "pattern": idPattern(DocumentPrefix)},
 						"body":     schema{"type": "string", "contentMediaType": "application/octet-stream"},
-						"stop":     schema{"type": "string", "enum": []string{"gone", "sign_in", "refused"}},
 					},
 				}}}},
-				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or neither a body nor a stop.")}),
+				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or no body.")}),
 			},
 		},
 		"/api/do/search": schema{
@@ -372,26 +371,6 @@ func spec() schema {
 						},
 					}}}},
 					"400": failure("No words, or a limit naming a table search does not answer, or under 0."),
-				}),
-			},
-		},
-		"/api/do/saved-search": schema{
-			"post": schema{
-				"tags":        []string{"do"},
-				"summary":     "Run a saved search's words, saved or not",
-				"description": "Answers the events, parties and activities the caller may read that run on the dates from and to, ordered by start, matching the words as a SAVED_SEARCH's search does and leaving out what the caller hid.",
-				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
-					"type":     "object",
-					"required": []string{"search", "from", "to"},
-					"properties": schema{
-						"search": schema{"type": "array", "items": schema{"type": "array", "minItems": 1, "items": schema{"type": "string"}}, "description": "Lists of words, a word of every list matching: going, waitlisted or a group's slug."},
-						"from":   schema{"type": "string", "description": "The first date, as " + DateLayout},
-						"to":     schema{"type": "string", "description": "The last date, as " + DateLayout},
-					},
-				}}}},
-				"responses": refusals(schema{
-					"200": answers("The matching GROUP rows, in order.", "Answer"),
-					"400": failure("A word that is neither going, waitlisted nor a slug, a slug no group has, an empty list, or a date not as " + DateLayout + "."),
 				}),
 			},
 		},

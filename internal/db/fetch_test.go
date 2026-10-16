@@ -198,8 +198,8 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	if code, _ := post(importing, map[string]string{"document": scheduleDoc}, schedule); code != http.StatusBadRequest {
 		t.Fatalf("a filled document was filled again: %d", code)
 	}
-	if code, answer := post(importing, map[string]string{"document": goneDoc, "stop": "gone"}, nil); code != http.StatusOK || answer.Fetch != "gone" {
-		t.Fatalf("the import could not stop a fetch: %d %+v", code, answer)
+	if code, _ := post(importing, map[string]string{"document": goneDoc, "stop": "gone"}, nil); code != http.StatusBadRequest {
+		t.Fatalf("a post with no body was taken: %d", code)
 	}
 	if code, answer := post(importing, map[string]string{"document": pageDoc}, []byte("<html><body>sign in</body></html>")); code != http.StatusOK || answer.Fetch != "refused" {
 		t.Fatalf("a page was kept as an image: %d %+v", code, answer)
@@ -210,7 +210,7 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 	if page, _ := s.Model().Table("DOCUMENT").Get(handbook); page["content"] == "" || page["fetch"] != "" {
 		t.Fatalf("the link's page: %v", page)
 	}
-	for id, want := range map[string]string{goneDoc: "gone", pageDoc: "refused"} {
+	for id, want := range map[string]string{goneDoc: "sign_in", pageDoc: "refused"} {
 		if row, _ := s.Model().Table("DOCUMENT").Get(id); row["fetch"] != want || row["content"] != "" {
 			t.Errorf("%s: %v, want fetch %s", id, row, want)
 		}

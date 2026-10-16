@@ -250,6 +250,25 @@ const PolicySource = `
   (or (and (self_or_household @p) (eligible_for @g @p))
       (and (= @p.source "guest") (not (exists MEMBER (= person @p))))))
 
+; the viewer's household holds a ticket, a sign-up or a yes for @e
+(define (going @e)
+  (or (in @e (select MEMBER.group (in person (household @viewer)) (= member "yes")))
+      (in @e.rsvp_yes (select MEMBER.group (in person (household @viewer)) (= member "yes")))))
+
+; someone in the viewer's household is on @e's waitlist
+(define (waitlisted @e)
+  (in @e.waitlist (select MEMBER.group (in person (household @viewer)) (= member "yes"))))
+
+; the group whose slug is w covers @e's audience, has people when @e has no audience, or sits above @e
+(define (searched_for @e w)
+  (or (covers @e.audience (members (slug w)))
+      (and (blank @e.audience) (exists PERSON (in id (members (slug w)))))
+      (exists GROUP (= id (slug w)) (in id (ancestors @e)))))
+
+; the viewer hid @e from themselves
+(define (hidden_by_viewer @e)
+  (in @e.hidden_for (select EFFECTIVE_MEMBER.group (= person @viewer))))
+
 ;; Consent
 
 ; a person shows when they are a guest, or consented to the directory and are not hidden; a row naming one who doesn't show doesn't show either

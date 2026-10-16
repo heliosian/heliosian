@@ -116,23 +116,21 @@ func sendAgain(c *qclient.Client, id string, body []byte, stop string) (answer, 
 }
 
 func send(c *qclient.Client, id string, body []byte, stop string) (answer, error) {
+	if stop != "" {
+		_, err := c.Write(db.Batch{Batch: []db.Edit{{Set: id, Cells: map[string]any{"fetch": stop}}}})
+		return answer{Fetch: stop}, err
+	}
 	buf := &bytes.Buffer{}
 	form := multipart.NewWriter(buf)
 	if err := form.WriteField("document", id); err != nil {
 		return answer{}, err
 	}
-	if stop != "" {
-		if err := form.WriteField("stop", stop); err != nil {
-			return answer{}, err
-		}
-	} else {
-		part, err := form.CreateFormFile("body", "body")
-		if err != nil {
-			return answer{}, err
-		}
-		if _, err := part.Write(body); err != nil {
-			return answer{}, err
-		}
+	part, err := form.CreateFormFile("body", "body")
+	if err != nil {
+		return answer{}, err
+	}
+	if _, err := part.Write(body); err != nil {
+		return answer{}, err
 	}
 	if err := form.Close(); err != nil {
 		return answer{}, err

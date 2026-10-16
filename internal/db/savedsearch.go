@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
@@ -20,12 +18,6 @@ const (
 	goingWord      = "going"
 	waitlistedWord = "waitlisted"
 )
-
-const goingCondition = `(or (in id (select MEMBER.group (in person (household @viewer)) (= member "yes"))) (in rsvp_yes (select MEMBER.group (in person (household @viewer)) (= member "yes"))))`
-
-const waitlistedCondition = `(in waitlist (select MEMBER.group (in person (household @viewer)) (= member "yes")))`
-
-const shownCondition = `(not (in hidden_for (select EFFECTIVE_MEMBER.group (= person @viewer))))`
 
 func searchWords(raw string) ([][]string, error) {
 	var lists [][]string
@@ -144,56 +136,14 @@ func parseMoment(s string) (time.Time, error) {
 	return time.ParseInLocation(DateLayout, s, School)
 }
 
-type savedSearchRequest struct {
-	Search [][]string `json:"search"`
-	From   string     `json:"from"`
-	To     string     `json:"to"`
-}
-
-func registerSavedSearch(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
-	mux.HandleFunc("POST /api/do/saved-search", func(w http.ResponseWriter, r *http.Request) {
-		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens, now())
-		if !ok {
-			return
-		}
-		var req savedSearchRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&req); err != nil {
-			serve.Error(w, r, access.Invalid("send the search as JSON: %v", err))
-			return
-		}
-		for _, d := range []string{req.From, req.To} {
-			if _, err := time.Parse(DateLayout, d); err != nil {
-				serve.Error(w, r, access.Invalid("from and to are dates as %s, not %q", DateLayout, d))
-				return
-			}
-		}
-		if err := checkWords(req.Search); err != nil {
-			serve.Error(w, r, access.Invalid("the search %v", err))
-			return
-		}
-		q, err := Parse(savedSearchQuery(req.Search, req.From, req.To))
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		result := m.Run(r.Context(), q, env)
-		if result.Err != nil {
-			serve.Error(w, r, access.Invalid("%v", result.Err))
-			return
-		}
-		serve.Write(w, r, http.StatusOK, answer{Now: env.Now.Format(cells.StampFormat), Query: q.String(), Result: result.IDs, Resources: result.Resources})
-	})
-}
-
 func wordCondition(w string) string {
 	switch w {
 	case goingWord:
-		return goingCondition
+		return "(going @e)"
 	case waitlistedWord:
-		return waitlistedCondition
+		return "(waitlisted @e)"
 	}
-	return fmt.Sprintf(`(or (covers @e.audience (members (slug %q))) (and (blank @e.audience) (exists PERSON (in id (members (slug %q))))) (exists GROUP (= id (slug %q)) (in id (ancestors @e))))`, w, w, w)
+	return fmt.Sprintf("(searched_for @e %q)", w)
 }
 
 func searchCondition(lists [][]string) string {
@@ -205,7 +155,7 @@ func searchCondition(lists [][]string) string {
 		}
 		clauses = append(clauses, "(or "+strings.Join(words, " ")+")")
 	}
-	return "(and " + strings.Join(append(clauses, shownCondition), " ") + ")"
+	return "(and " + strings.Join(append(clauses, "(not (hidden_by_viewer @e))"), " ") + ")"
 }
 
 func savedSearchGenerated(row map[string]string) {

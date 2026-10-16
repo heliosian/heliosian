@@ -220,12 +220,9 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 		}
 		return fetchedAnswer{Result: []string{id}, Fetch: why, Why: reason}, nil
 	}
-	if why := r.FormValue("stop"); why != "" {
-		return stop(why, "the fetcher stopped")
-	}
 	file, _, err := r.FormFile("body")
 	if err != nil {
-		return fetchedAnswer{}, access.Invalid("the body, or a stop, is required")
+		return fetchedAnswer{}, access.Invalid("the body is required")
 	}
 	defer file.Close()
 	content, err := io.ReadAll(file)

@@ -26,8 +26,6 @@ const byDate = new Map();
 
 const kinds = '(in kind "event" "party" "activity")';
 
-const whole = {from: '2000-01-01', to: '2099-12-31'};
-
 const dayRoles = {'Regular': 'regular', 'No School': 'no-school', 'Early Dismissal': 'early-dismissal'};
 
 function rowsOf(answer, table) {
@@ -272,9 +270,11 @@ export async function refreshMatches() {
     state.matching = new Set();
     return;
   }
-  const answer = await api('POST', '/api/do/saved-search', {search: lists, ...whole});
+  const word = w => w === 'going' ? '(going @e)' : w === 'waitlisted' ? '(waitlisted @e)' : `(searched_for @e ${JSON.stringify(w)})`;
+  const terms = lists.map(l => `(or ${l.map(word).join(' ')})`).join(' ');
+  const a = await queries({matching: `(from GROUP @e (where ${kinds} (!= status "closed") (not (blank start)) ${terms} (not (hidden_by_viewer @e))) (columns status))`});
   if (run === matchRun) {
-    state.matching = new Set(answer.result);
+    state.matching = new Set(a.matching.result);
   }
 }
 
