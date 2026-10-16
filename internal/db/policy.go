@@ -232,7 +232,23 @@ const PolicySource = `
 
 ; @p is a student in the viewer's family
 (define (child_of_viewer @p)
-  (and (in @p (household @viewer)) (in @p (members (slug "students")))))
+  (and (in @p (household @viewer)) (student @p)))
+
+; @p is a student
+(define (student @p)
+  (in @p (members (slug "students"))))
+
+; the viewer runs a group, or is no student and sees a party taking joining that has a price or a waitlist
+(define (brings_guests)
+  (or (exists GROUP @l (runs_list @l))
+      (and (not (student @viewer))
+           (exists GROUP @p (= kind "party") (in join "direct" "others") (visible @p)
+             (or (not (blank price)) (not (blank waitlist)))))))
+
+; @p may hold a place the viewer buys at @g: someone in the viewer's household it admits, or a guest of the viewer's who holds no place anywhere yet
+(define (buys_for @g @p)
+  (or (and (self_or_household @p) (eligible_for @g @p))
+      (and (= @p.source "guest") (not (exists MEMBER (= person @p))))))
 
 ;; Consent
 
@@ -464,6 +480,29 @@ const PolicySource = `
   (or (self_or_household person) (and (not (blank for)) (self_or_household for)) (manages group)))
 ; every column of a payment
 (read PAYMENT (id person for group name amount added stripe_invoice status) true)
+; pay for a place at a party at its price, owed and not yet invoiced: the viewer, not a student, for themselves or an adult in their household, for someone they may buy a place for
+(insert PAYMENT
+  (and (= @new.group.kind "party") (visible @new.group) (in @new.group.join "direct" "others") (not (student @viewer))
+       (self_or_household @new.person) (not (student @new.person))
+       (= @new.amount @new.group.price) (blank @new.status) (blank @new.stripe_invoice) (blank @new.name)
+       (not (blank @new.for)) (buys_for @new.group @new.for)))
+; take a paid place at a party that takes joining and has room, once its payment is in: the viewer, not a student, for someone they may buy a place for, a guest of theirs brought as theirs
+(insert MEMBER
+  (and (visible @new.group) (= @new.group.kind "party") (in @new.group.join "direct" "others") (not (blank @new.group.price))
+       (= @new.member "yes") (= @new.added_by @viewer) (not (student @viewer))
+       (buys_for @new.group @new.person)
+       (or (!= @new.person.source "guest") (= @new.guest_of @viewer))
+       (or (blank @new.group.capacity)
+           (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))
+       (exists PAYMENT (= group @new.group) (= for @new.person) (blank status))))
+; ask for another place on a party's waitlist: a guest who holds no place yet, brought by the viewer or someone in their household
+(insert MEMBER
+  (and (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
+       (= @new.person.source "guest") (not (exists MEMBER (= person @new.person))) (self_or_household @new.guest_of)))
+; pass a party ticket to someone else: its holder, their household, whoever brought them, or the party's hosts
+(set MEMBER.person
+  (and (= @old.group.kind "party") (= @old.member "yes")
+       (or (self_or_household @old.person) (= @old.guest_of @viewer) (runs_list @old.group))))
 ; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them, but never who hid something
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
@@ -890,6 +929,10 @@ const PolicySource = `
 (set GROUP.capacity (runs_list @old))
 ; a party's hosts set its price
 (set GROUP.price (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts bill a place they give at its price, owed and not yet invoiced
+(insert PAYMENT
+  (and (= @new.group.kind "party") (runs_list @new.group) (= @new.amount @new.group.price)
+       (blank @new.status) (blank @new.stripe_invoice) (blank @new.name)))
 ; a party's hosts say what its price is per
 (set GROUP.unit (and (runs_list @old) (= @old.kind "party")))
 ; a party's hosts say how many it needs to go ahead
@@ -989,13 +1032,12 @@ const PolicySource = `
 (set MEMBER.member (and (runs_list @old.group) (!= @old.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers take away a hand addition or a keeping off
 (delete MEMBER (and (runs_list @old.group) (!= @old.group.kind "admins")))
-; whoever runs a group adds someone outside the directory, to put on one by hand
+; whoever runs a group adds someone outside the directory, to put on one by hand, as does anyone but a student who sees a party they could buy a place at or wait for, to bring as their guest
 (insert PERSON
-  (and (= @new.source "guest") (!= @viewer.source "guest") (exists GROUP @l (runs_list @l))))
+  (and (= @new.source "guest") (!= @viewer.source "guest") (brings_guests)))
 ; and gives them their address
 (insert PERSON_EMAIL
-  (and (= @new.source "guest") (= @new.person.source "guest") (!= @viewer.source "guest")
-       (exists GROUP @l (runs_list @l))))
+  (and (= @new.source "guest") (= @new.person.source "guest") (!= @viewer.source "guest") (brings_guests)))
 ; a mail list's managers give it another address
 (insert ALIAS (and (not @new.hidden) (exists GROUP @l (= id @new.target) (runs_list @l))))
 ; a mail list's managers take one of its other addresses away, but never a past ID

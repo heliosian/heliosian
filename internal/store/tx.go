@@ -14,6 +14,7 @@ type Tx struct {
 	staged  []*stage
 	swapped []func()
 	after   []func()
+	values  map[any]any
 }
 
 type stage struct {
@@ -36,6 +37,18 @@ func (tx *Tx) After(run func()) {
 
 func (tx *Tx) Swapped(run func()) {
 	tx.swapped = append(tx.swapped, run)
+}
+
+func (tx *Tx) Value(key any, make func() any) any {
+	if v, ok := tx.values[key]; ok {
+		return v
+	}
+	if tx.values == nil {
+		tx.values = map[any]any{}
+	}
+	v := make()
+	tx.values[key] = v
+	return v
 }
 
 func (tx *Tx) stageOf(owner any) *stage {

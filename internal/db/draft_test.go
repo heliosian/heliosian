@@ -47,9 +47,14 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 		{Delete: memberRow(t, s, "grp00000000513", parent)},
 		{Delete: memberRow(t, s, "grp00000020073", parent)},
 		{Delete: memberRow(t, s, "grp00000020075", parent)},
+		{Set: tacoNight, Cells: map[string]any{"join": "none"}},
 	})
 	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusForbidden {
-		t.Fatalf("someone who runs no group added a guest: %d", code)
+		t.Fatalf("someone who runs no group, with no party to bring a guest to, added a guest: %d", code)
+	}
+	apply(t, s, queue, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "direct"}}})
+	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusOK {
+		t.Fatalf("someone who sees a party they could buy at can't add a guest to bring: %d", code)
 	}
 }
 

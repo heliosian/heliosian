@@ -15,8 +15,9 @@ import (
 )
 
 type MembershipMailConfig struct {
-	Sender *mail.Mailgun
-	Origin func(app string) string
+	Sender    *mail.Mailgun
+	Celebrate *mail.Mailgun
+	Origin    func(app string) string
 }
 
 type MembershipMailer struct {
@@ -34,6 +35,7 @@ const (
 	placeJoined = "joined"
 	placeLeft   = "left"
 	placeAdded  = "added"
+	placeMoved  = "moved"
 )
 
 var teamBrand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA volunteer portal"}
@@ -67,6 +69,9 @@ func placeChanges(c Change, env Env) []placeChange {
 		case was && !is:
 			place.what = placeLeft
 			changes = append(changes, place)
+		case was && is && c.Old["person"] != c.New["person"]:
+			place.what = placeMoved
+			changes = append(changes, place)
 		}
 	case "GROUP":
 		if c.Old == nil && c.New["parent"] != "" {
@@ -78,10 +83,25 @@ func placeChanges(c Change, env Env) []placeChange {
 
 func (mm *MembershipMailer) run() {
 	for range mm.in.wake {
+		ctx := context.Background()
+		parties := map[partyWrite][]placeChange{}
+		order := []partyWrite{}
 		for _, d := range mm.in.take() {
 			for _, change := range placeChanges(d.change, d.env) {
-				mm.mail(context.Background(), change)
+				party, waiting, ok := mm.s.Model().partyOf(change)
+				if !ok {
+					mm.mail(ctx, change)
+					continue
+				}
+				key := partyWrite{write: d.write, party: party, what: change.what, waiting: waiting}
+				if _, seen := parties[key]; !seen {
+					order = append(order, key)
+				}
+				parties[key] = append(parties[key], change)
 			}
+		}
+		for _, key := range order {
+			mm.partyMail(ctx, key, parties[key])
 		}
 	}
 }
@@ -365,7 +385,7 @@ func (mm *MembershipMailer) thank(ctx context.Context, m *Model, g store.Row, ch
 	if dated {
 		l.Calendar = e.GoogleLink()
 	}
-	mm.send(ctx, m, g, "notice", "Thanks for volunteering for "+g["name"], l, to, chairs, chairs, nil)
+	mm.send(ctx, mm.config.Sender, m, g, "notice", "Thanks for volunteering for "+g["name"], l, to, chairs, chairs, nil)
 	if !dated {
 		return
 	}
@@ -374,7 +394,7 @@ func (mm *MembershipMailer) thank(ctx context.Context, m *Model, g store.Row, ch
 	il.Intro = fmt.Sprintf("Here's the calendar invite for %s - accept it and it's on your calendar. The details of your sign-up are in the note that came with it.", g["name"])
 	il.Button = "See the details"
 	il.Calendar = l.Calendar
-	mm.send(ctx, m, g, "calendar", "Calendar invite: "+g["name"], il, to, nil, chairs, []mail.Attachment{mm.calendar(e, mail.MethodRequest)})
+	mm.send(ctx, mm.config.Sender, m, g, "calendar", "Calendar invite: "+g["name"], il, to, nil, chairs, []mail.Attachment{mm.calendar(e, mail.MethodRequest)})
 }
 
 func (mm *MembershipMailer) removed(ctx context.Context, m *Model, g store.Row, change placeChange) {
@@ -391,7 +411,7 @@ func (mm *MembershipMailer) removed(ctx context.Context, m *Model, g store.Row, 
 	}
 	l.Button = "See the details"
 	chairs := without(m.managersAbove(g), change.person)
-	mm.send(ctx, m, g, "notice", "Removed: "+g["name"], l, to, chairs, chairs, []mail.Attachment{mm.calendar(e, mail.MethodCancel)})
+	mm.send(ctx, mm.config.Sender, m, g, "notice", "Removed: "+g["name"], l, to, chairs, chairs, []mail.Attachment{mm.calendar(e, mail.MethodCancel)})
 }
 
 func (mm *MembershipMailer) leads(ctx context.Context, m *Model, g store.Row, change placeChange) {
@@ -412,7 +432,7 @@ func (mm *MembershipMailer) leads(ctx context.Context, m *Model, g store.Row, ch
 	}
 	l.Button = "Open " + g["name"]
 	l.Footnote = "The other co-chairs are copied on this note."
-	mm.send(ctx, m, g, "notice", "You're a co-chair of "+g["name"], l, []string{change.person}, others, others, nil)
+	mm.send(ctx, mm.config.Sender, m, g, "notice", "You're a co-chair of "+g["name"], l, []string{change.person}, others, others, nil)
 }
 
 func (mm *MembershipMailer) notice(ctx context.Context, m *Model, g store.Row, actor, person, subject, heading, intro string, rows [][2]string) {
@@ -425,7 +445,7 @@ func (mm *MembershipMailer) notice(ctx context.Context, m *Model, g store.Row, a
 		l.Brand = heliosianBrand
 	}
 	l.Heading, l.Intro, l.Rows, l.Button = heading, intro, rows, "Open "+g["name"]
-	mm.send(ctx, m, g, "notice", subject, l, to, nil, nil, nil)
+	mm.send(ctx, mm.config.Sender, m, g, "notice", subject, l, to, nil, nil, nil)
 }
 
 func (mm *MembershipMailer) addresses(m *Model, people []string) []string {
@@ -438,7 +458,7 @@ func (mm *MembershipMailer) addresses(m *Model, people []string) []string {
 	return out
 }
 
-func (mm *MembershipMailer) send(ctx context.Context, m *Model, g store.Row, kind, subject string, l mail.Letter, to, cc, replyTo []string, attachments []mail.Attachment) {
+func (mm *MembershipMailer) send(ctx context.Context, sender *mail.Mailgun, m *Model, g store.Row, kind, subject string, l mail.Letter, to, cc, replyTo []string, attachments []mail.Attachment) {
 	msg := l.Message(subject, mm.addresses(m, to), mm.addresses(m, cc), mm.addresses(m, replyTo))
 	if len(msg.To) == 0 {
 		return
@@ -452,7 +472,7 @@ func (mm *MembershipMailer) send(ctx context.Context, m *Model, g store.Row, kin
 		log.Error("membership mail: not recorded", "error", err)
 		return
 	}
-	sent := sendCopies(ctx, mm.config.Sender, composeShared(msg, mm.config.Sender.From(), ids[0]), m.outCopies(edits, ids))
+	sent := sendCopies(ctx, sender, composeShared(msg, sender.From(), ids[0]), m.outCopies(edits, ids))
 	if _, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), env, Batch{Batch: sent}); err != nil {
 		log.Error("membership mail: sends not recorded", "error", err)
 		return

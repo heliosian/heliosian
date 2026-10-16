@@ -2,11 +2,122 @@ package db
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/mail"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit/mailtest"
 )
+
+const avery = "per00000020018"
+
+func partyMailer(s *Store, queue *store.Queue) *mailtest.Recorder {
+	sender := mailtest.NewRecorder(mailtest.From)
+	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: mailtest.Discard(), Celebrate: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	return sender
+}
+
+func subjects(messages []mail.Message) []string {
+	out := []string{}
+	for _, m := range messages {
+		out = append(out, m.Subject)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func TestBuyingTicketsIsJoiningTheParty(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	sender := partyMailer(s, queue)
+	paid := func(person string) Edit {
+		return Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": person, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00"}}
+	}
+	ticket := func(person string) Edit {
+		return Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": person, "member": "yes", "added_by": parent, "guest_of": parent}}
+	}
+	tobin := "per00000020019"
+	if _, err := write(tobin,
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": tobin, "for": tobin, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": tobin, "member": "yes", "added_by": tobin}},
+	); err == nil {
+		t.Error("a student bought a ticket")
+	}
+	if _, err := write(parent, ticket(avery)); err == nil {
+		t.Error("someone took a paid place without paying for it")
+	}
+	if _, err := write(parent, Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "1", "added": "2026-10-15 09:00"}}); err == nil {
+		t.Error("someone paid less than the party's price")
+	}
+	if _, err := write(parent,
+		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
+		paid(student), ticket(student), paid("@g"), ticket("@g"),
+	); err != nil {
+		t.Fatalf("someone can't buy tickets for their child and a guest: %v", err)
+	}
+	messages := sender.Wait(t, 2)
+	time.Sleep(100 * time.Millisecond)
+	if got := subjects(sender.Messages()); !slices.Equal(got, []string{"Calendar invite: Taco Night", "Your tickets to Taco Night"}) {
+		t.Fatalf("buying two tickets in one write sent %q", got)
+	}
+	for _, m := range messages {
+		if m.Subject != "Your tickets to Taco Night" {
+			continue
+		}
+		if !slices.Contains(m.To, "rowan.ashdown@example.org") || !slices.Contains(m.CC, "maya.lindqvist@example.org") {
+			t.Errorf("the tickets note goes to %q copying %q", m.To, m.CC)
+		}
+		for _, want := range []string{"Juni Ashdown and Robin Guest", "$80 (2 × $40)", "Billed to: Rowan Ashdown"} {
+			if !strings.Contains(m.Text, want) {
+				t.Errorf("the tickets note lacks %q:\n%s", want, m.Text)
+			}
+		}
+	}
+}
+
+func TestTheWaitlistAndPassingATicketOnMailWhoTheyShould(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	made := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "join": "direct", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
+		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
+	})
+	sender := partyMailer(s, queue)
+	if _, err := write(parent,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": made[0], "person": avery, "member": "yes", "added_by": parent, "note": "Two if we can"}},
+		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": made[0], "person": "@g", "member": "yes", "added_by": parent, "guest_of": avery}},
+	); err != nil {
+		t.Fatalf("someone can't ask for two places on a waitlist: %v", err)
+	}
+	waited := sender.Wait(t, 2)
+	if got := subjects(waited); !slices.Equal(got, []string{"Waitlist for Taco Night: Avery Ashdown wants 2 tickets", "You're on the waitlist for Taco Night"}) {
+		t.Fatalf("a waitlist request sent %q", got)
+	}
+	for _, m := range waited {
+		if strings.HasPrefix(m.Subject, "Waitlist for") && (len(m.To) != 1 || m.To[0] != "maya.lindqvist@example.org" || !strings.Contains(m.Text, "Two if we can")) {
+			t.Errorf("the hosts' note goes to %q and says:\n%s", m.To, m.Text)
+		}
+	}
+
+	if _, err := write(guest, Edit{Set: "mem00000000025", Cells: map[string]any{"person": avery}}); err == nil {
+		t.Error("someone passed on a ticket that isn't theirs")
+	}
+}
+
+func TestPassingATicketOnMailsItsNewHolder(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	sender := partyMailer(s, queue)
+	if _, err := write(parent, Edit{Set: "mem00000000025", Cells: map[string]any{"person": avery}}); err != nil {
+		t.Fatalf("someone can't pass their ticket to someone in their family: %v", err)
+	}
+	passed := sender.Wait(t, 1)[0]
+	if passed.Subject != "Avery Ashdown's ticket to Taco Night" || !slices.Contains(passed.To, "avery.ashdown@example.org") || !slices.Contains(passed.CC, "rowan.ashdown@example.org") {
+		t.Errorf("passing a ticket on sent %q to %q copying %q", passed.Subject, passed.To, passed.CC)
+	}
+}
 
 const (
 	celebration = "grp00000000520"
@@ -81,6 +192,7 @@ func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
 	}
 	if _, err := write(parent,
 		Edit{Delete: made[2]},
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": guest, "for": guest, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": guest, "member": "yes", "added_by": parent}},
 	); err != nil {
 		t.Fatalf("a host can't move someone off the waitlist onto the party: %v", err)

@@ -351,8 +351,7 @@ func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
 		next := pending[0]
 		pending = pending[1:]
 		for _, in := range committedInboxes(s, next.Table) {
-			d := delivery{change: next, env: env}
-			tx.Swapped(func() { in.deliver(d) })
+			s.Model().services.collect(tx, in, delivery{change: next, env: env})
 		}
 		for _, t := range stagedTriggers {
 			if t.table != next.Table {

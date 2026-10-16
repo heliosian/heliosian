@@ -65,13 +65,10 @@ func partiesServeWith(t *testing.T, mailer *mail.Mailgun) (*Store, *http.ServeMu
 		Images:   blob.NewImages(blob.New(blob.NewMemoryBucket()), "celebrate"),
 		Calendar: calendar,
 		Mailer:   mailer,
-		Style:    partiesTestStyle,
 	})
 	typedRegistry(s, queue, DirectoryResources(), calendar.Resources(), parties.Resources()).Register(mux)
 	return s, mux
 }
-
-var partiesTestStyle = PartiesCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" })
 
 func partiesServer(t *testing.T) (*Store, *http.ServeMux) {
 	t.Helper()
@@ -1071,34 +1068,6 @@ func TestFriendlyAddresses(t *testing.T) {
 	if after := len(partiesTables(t)[partyRedirectsTab]); after != before {
 		t.Fatalf("a retitle left a redirect: %d then %d", before, after)
 	}
-}
-
-func TestPartiesSharePreview(t *testing.T) {
-	cache, mux := partiesServer(t)
-	previews := []testkit.Preview{{
-		URL: "https://celebrate.heliosian.com/p/fondue",
-		Want: []string{`og:title" content="Fondue &amp; Fort Night"`, `og:url" content="https://celebrate.heliosian.com/p/fondue"`,
-			`og:image" content="https://celebrate.heliosian.com/open/share/pty0000000001.png"`, `Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos — A cozy evening`},
-		Never: []string{"Alder"},
-	}}
-	for _, path := range []string{"/", "/parties/pty0000000013", "/my", "/p/nothing"} {
-		previews = append(previews, testkit.Preview{
-			URL: "https://celebrate.heliosian.com" + path,
-			Want: []string{`og:title" content="Upcoming Parties"`, `og:url" content="https://celebrate.heliosian.com/"`,
-				`og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
-				`Next up: Fondue &amp; Fort Night — Saturday, September 19 · 5:00 – 9:00 PM — The Parks&#39; House in Los Altos. Also coming: Dink &amp; Clink (Sep 26), K-Pop for a Cause! (Sep 27), Wurst Helios Party (Oct 3).`},
-			Never: []string{"Alder", "Baegels", "Backyard", "Crochet"},
-		})
-	}
-	testkit.Previews(t, PartiesPreviewHead(cache, partiesTestStyle), previews...)
-	ids := []string{}
-	for _, p := range upcoming(cache.Model().Parties) {
-		ids = append(ids, p.ID)
-	}
-	if strings.Join(ids, " ") != "pty0000000001 pty0000000002 pty0000000003 pty0000000004 pty0000000012 pty0000000005 pty0000000009" {
-		t.Errorf("upcoming: %v", ids)
-	}
-	testkit.Cards(t, mux, []string{"/open/share/pty0000000001.png", "/open/share/upcoming.png"}, "/open/share/pty0000000013.png")
 }
 
 func TestPartiesMail(t *testing.T) {

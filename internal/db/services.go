@@ -1,6 +1,11 @@
 package db
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+
+	"heliosian/internal/store"
+)
 
 type inboxName int
 
@@ -23,6 +28,13 @@ var idleInboxes = []inboxName{consentInbox, fetchInbox, classifyInbox, extractIn
 
 type services struct {
 	inboxes [inboxCount]*inbox
+	writes  atomic.Uint64
+}
+
+type heldWrite struct {
+	write uint64
+	by    map[*inbox][]delivery
+	order []*inbox
 }
 
 func newServices(index *SearchIndex) *services {
@@ -38,9 +50,27 @@ func (sv *services) inbox(name inboxName) *inbox {
 	return sv.inboxes[name]
 }
 
+func (sv *services) collect(tx *store.Tx, in *inbox, d delivery) {
+	h := tx.Value(sv, func() any {
+		h := &heldWrite{write: sv.writes.Add(1), by: map[*inbox][]delivery{}}
+		tx.Swapped(func() {
+			for _, in := range h.order {
+				in.deliverAll(h.by[in])
+			}
+		})
+		return h
+	}).(*heldWrite)
+	if _, ok := h.by[in]; !ok {
+		h.order = append(h.order, in)
+	}
+	d.write = h.write
+	h.by[in] = append(h.by[in], d)
+}
+
 type delivery struct {
 	change Change
 	env    Env
+	write  uint64
 }
 
 type inbox struct {
@@ -52,6 +82,13 @@ type inbox struct {
 func (in *inbox) deliver(d delivery) {
 	in.mu.Lock()
 	in.pending = append(in.pending, d)
+	in.mu.Unlock()
+	in.wake.poke()
+}
+
+func (in *inbox) deliverAll(ds []delivery) {
+	in.mu.Lock()
+	in.pending = append(in.pending, ds...)
 	in.mu.Unlock()
 	in.wake.poke()
 }

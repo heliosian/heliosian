@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
-	"heliosian/internal/sharecard"
 )
 
 const (
@@ -32,7 +31,6 @@ type partiesApp struct {
 	calendar calendarApp
 	search   imagesearch.Search
 	mailer   *mail.Mailgun
-	style    *sharecard.Style
 }
 
 type PartiesDeps struct {
@@ -41,7 +39,6 @@ type PartiesDeps struct {
 	Calendar CalendarHooks
 	Search   imagesearch.Search
 	Mailer   *mail.Mailgun
-	Style    *sharecard.Style
 }
 
 type PartiesHooks struct {
@@ -50,14 +47,12 @@ type PartiesHooks struct {
 
 func RegisterParties(mux *http.ServeMux, d PartiesDeps) PartiesHooks {
 	d.Search.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	a := partiesApp{store: d.Store, images: d.Images, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer, style: d.Style}
+	a := partiesApp{store: d.Store, images: d.Images, calendar: d.Calendar.app, search: d.Search, mailer: d.Mailer}
 	for _, page := range partiesPages {
 		mux.HandleFunc("GET "+page, a.page)
 	}
 	mux.HandleFunc("GET /parties/{id}", a.partyPage)
 	a.search.Register(mux, "/api/celebrate", a.images.Folder(), imagesearch.Members)
-	mux.HandleFunc("GET /open/share/upcoming.png", a.shareUpcoming)
-	mux.HandleFunc("GET /open/share/{id}", a.shareCard)
 	mux.HandleFunc("GET /api/celebrate/invoices.csv", a.invoicesCSV)
 	return PartiesHooks{app: a}
 }
