@@ -182,10 +182,13 @@ const calloutKinds = {
   caution: {label: 'Caution', icon: 'stop'},
 };
 
-const calloutMarker = /^> \[!(note|tip|important|warning|caution)\]\s*$/i;
+const calloutMarker = /^> \[!(note|tip|important|warning|caution)\]\s*(.*)$/i;
+
+const leadingEmoji = /^(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}|\p{Emoji_Modifier})*)\s*(.*)$/u;
 
 function callout(lines, i, cards) {
-  const kind = lines[i].match(calloutMarker)[1].toLowerCase();
+  const [, marked, named] = lines[i].match(calloutMarker);
+  const kind = marked.toLowerCase();
   const {label, icon} = calloutKinds[kind];
   const body = [];
   i++;
@@ -195,9 +198,38 @@ function callout(lines, i, cards) {
   }
   const box = el('div', 'callout callout-' + kind);
   const title = el('p', 'callout-title');
-  title.append(svg(icon), label);
+  const emoji = named.trim().match(leadingEmoji);
+  if (emoji) {
+    title.append(el('span', 'callout-emoji', emoji[1]));
+    inline(title, emoji[2], cards);
+  } else {
+    title.append(svg(icon));
+    inline(title, named.trim() || label, cards);
+  }
   box.append(title, render(body.join('\n'), cards));
   return [box, i];
+}
+
+const chipMarker = /^> \[!chip\]\s*(.*)$/i;
+
+export function chipsOf(text) {
+  return (text || '').replace(/\r/g, '').split('\n').map(l => l.match(chipMarker)).filter(m => m && m[1].trim()).map(m => m[1].trim());
+}
+
+export function withoutChips(text) {
+  return (text || '').replace(/\r/g, '').split('\n').filter(l => !chipMarker.test(l)).join('\n').trim();
+}
+
+function chips(lines, i) {
+  const row = el('p', 'md-chips');
+  while (i < lines.length && chipMarker.test(lines[i])) {
+    const words = lines[i].match(chipMarker)[1].trim();
+    if (words) {
+      row.append(el('span', 'md-chip', words));
+    }
+    i++;
+  }
+  return [row, i];
 }
 
 const questionMarker = /^> \[!question\]\s*(.*)$/i;
@@ -293,6 +325,12 @@ export function render(text, cards = {}) {
     }
     if (questionMarker.test(line)) {
       const [node, next] = question(lines, i, cards);
+      out.append(node);
+      i = next;
+      continue;
+    }
+    if (chipMarker.test(line)) {
+      const [node, next] = chips(lines, i);
       out.append(node);
       i = next;
       continue;

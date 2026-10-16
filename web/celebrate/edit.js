@@ -1,9 +1,10 @@
-import {state, me, allows, settingsId, household, billable, admits, inAudience, audienceWords, ticketFor, myTickets, money, currentCelebration, partyPath, party} from './state.js';
+import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, write, celebration, category, categoriesOf} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, known, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
-import {act, create, remove} from '/data.js';
+import {api} from '/api.js';
+import {keyBetween} from '/order.js';
 import {el, svg, toast, button} from '/elements.js';
 import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
@@ -15,6 +16,56 @@ import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
 
 export const {uploadImage, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
+
+function stamp() {
+  const d = new Date();
+  const two = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+}
+
+async function knownGuest(who, editor) {
+  if (who.email) {
+    const {person} = await api('POST', '/api/do/person-at', {address: who.email});
+    if (person) {
+      const listed = known(who.email);
+      if (listed && !editor && !household().some(h => h.id === person)) {
+        throw new Error(`${who.email} is ${listed.name_show}'s address in the directory: a ticket for someone outside your family is added by the party's hosts.`);
+      }
+      return {id: person, name: who.name};
+    }
+    return who;
+  }
+  const want = who.name.toLowerCase();
+  const named = state.model.guests.find(g => g.name.toLowerCase() === want);
+  return named ? {id: named.id, name: who.name} : who;
+}
+
+function guestEdits(as, guest) {
+  const edits = [{insert: 'PERSON', as, row: guest.name ? {source: 'guest', name_long_override: guest.name} : {source: 'guest'}}];
+  if (guest.email) {
+    edits.push({insert: 'PERSON_EMAIL', row: {person: '@' + as, address: guest.email, primary: true, source: 'guest'}});
+  }
+  return edits;
+}
+
+function paidPlace(p, payer, holder, member) {
+  const edits = [];
+  if (p.price) {
+    edits.push({insert: 'PAYMENT', row: {person: payer, for: holder, group: p.id, amount: p.row.price, added: stamp()}});
+  }
+  edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: stamp(), ...member}});
+  return edits;
+}
+
+async function saved(edits, words) {
+  try {
+    await write(edits);
+    await load();
+    toast(words);
+  } catch (err) {
+    toast(err.message);
+  }
+}
 
 function peoplePicker(options) {
   return createPersonPicker(el('div'), {people: listed, address: true, ...options});
@@ -37,17 +88,33 @@ function personChip(person, on, disabledWhy) {
   return chip;
 }
 
-function takenCounts(id) {
-  const mine = myTickets(party(id));
-  return {
-    sold: mine.filter(a => a.status === 'Ticket').length,
-    waitlisted: mine.filter(a => a.status === 'Waitlist').reduce((n, a) => n + (a.quantity || 1), 0),
-  };
+function buyEdits(p, payer, places, note, editor) {
+  const viewer = me().id;
+  const room = editor || !p.capacity ? places.length : p.remaining;
+  const edits = [];
+  let sold = 0;
+  let waited = 0;
+  places.forEach((who, i) => {
+    let ref = who.id;
+    if (!ref) {
+      edits.push(...guestEdits('g' + i, who));
+      ref = '@g' + i;
+    }
+    const brought = who.id && household().some(h => h.id === who.id) ? {} : {guest_of: viewer};
+    if (i < room) {
+      edits.push(...paidPlace(p, payer, ref, {...brought, note}));
+      sold++;
+      return;
+    }
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: ref, member: 'yes', added_by: viewer, added: stamp(), ...brought, note}});
+    waited++;
+  });
+  return {edits, sold, waited};
 }
 
 export function openBuy(p) {
   const editor = p.can.edit;
-  if (p.availability === 'waitlist' && !p.offered) {
+  if (p.availability === 'waitlist') {
     openWaitlist(p);
     return;
   }
@@ -90,7 +157,7 @@ export function openBuy(p) {
       const have = ticketFor(p, person.email);
       if (have && have.status === 'Ticket') {
         why = `${person.name} already has a ticket`;
-      } else if (have && !p.offered) {
+      } else if (have) {
         why = `${person.name} is already on the waitlist`;
       } else if (!admits(p, person)) {
         why = `This party is for ${audienceWords(p)}`;
@@ -154,11 +221,8 @@ export function openBuy(p) {
       return;
     }
     total.append(el('span', 'buy-total-sum', `${n} ${n === 1 ? 'ticket' : 'tickets'} × ${money(p.price)} = ${money(n * p.price)}`));
-    if (!editor && p.offered) {
-      total.append(el('span', 'buy-total-hint', `The hosts offered your family ${p.offered} ${p.offered === 1 ? 'ticket' : 'tickets'}.`));
-    }
-    const room = p.remaining + (p.offered || 0);
-    if (!editor && p.remaining >= 0 && n > room) {
+    const room = p.remaining;
+    if (!editor && p.capacity && n > room) {
       const over = n - room;
       total.append(el('span', 'buy-total-hint', room
         ? `Only ${room} left: ${over} of these will go on the waitlist.`
@@ -171,101 +235,81 @@ export function openBuy(p) {
     fields.push(el('p', 'buy-note', state.model.settings.ticketNote));
   }
 
-  let before = null;
+  let done = null;
   openModal(waiting ? `Join the waitlist for ${p.title}` : `Tickets for ${p.title}`, fields, {
     saveLabel: waiting ? 'Join Waitlist' : 'Get Tickets',
     submit: async () => {
-      if (!purchaser) {
+      const payer = bills.find(b => b.email === purchaser);
+      if (!payer) {
         throw new Error('Pick who to bill.');
       }
-      const attendees = [...chosen].map(email => ({email}))
-        .concat(added.map(a => (a.guest ? {name: a.name, email: a.email || ''} : {email: a.email})));
-      if (!attendees.length) {
+      const others = await Promise.all(added.map(a => (a.guest ? knownGuest({name: a.name, email: a.email || ''}, editor) : {id: a.id})));
+      const places = [...chosen].map(email => household().find(h => h.email === email)).concat(others);
+      if (!places.length) {
         throw new Error('Pick at least one person.');
       }
-      before = takenCounts(p.id);
-      return act('parties', p.id, 'buy', {purchaser, note: note.value, attendees});
+      done = buyEdits(p, payer.id, places, note.value.trim(), editor);
+      return write(done.edits);
     },
     afterSave: () => {
-      const after = takenCounts(p.id);
-      const sold = after.sold - before.sold;
-      const waitlisted = after.waitlisted - before.waitlisted;
       const parts = [];
-      if (sold) {
-        parts.push(`${sold} ${sold === 1 ? 'ticket' : 'tickets'} taken`);
+      if (done.sold) {
+        parts.push(`${done.sold} ${done.sold === 1 ? 'ticket' : 'tickets'} taken`);
       }
-      if (waitlisted) {
-        parts.push(`${waitlisted} on the waitlist`);
+      if (done.waited) {
+        parts.push(`${done.waited} on the waitlist`);
       }
       toast(parts.join(', ') || 'Done');
     },
   });
 }
 
+function waitlistEdits(p, have, want, note) {
+  const viewer = me().id;
+  const edits = [];
+  let extras = have ? have.extra.length : 0;
+  if (!have) {
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: viewer, member: 'yes', added_by: viewer, added: stamp(), note}});
+  }
+  for (const extra of have ? have.extra.slice(Math.max(0, want - 1)) : []) {
+    edits.push({delete: extra.id});
+    extras--;
+  }
+  for (let i = 0; extras + 1 < want; i++, extras++) {
+    edits.push({insert: 'PERSON', as: 'w' + i, row: {source: 'guest'}});
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: '@w' + i, member: 'yes', added_by: viewer, added: stamp(), guest_of: have ? have.person : viewer}});
+  }
+  return edits;
+}
+
 export function openWaitlist(p) {
-  const bills = billable();
-  const purchaser = bills.length ? bills[0].email : '';
   const have = [...p.waitlisted].find(a => a.mine);
   const fields = [];
-  fields.push(el('p', 'form-lead', `${p.title} is full. Say how many tickets your family would like and the hosts will offer them as places open up - nothing is billed until then, and you\u2019ll get a note when it happens.`));
+  fields.push(el('p', 'form-lead', `${p.title} is full. Say how many tickets your family would like and the hosts will give them as places open up - nothing is billed until then, and you\u2019ll get a note when it happens.`));
   const quantity = text(have ? have.quantity || 1 : 1, {type: 'number', min: 1, max: 20, step: 1, required: true});
   const qWrap = el('div', 'field-unit');
   qWrap.append(quantity, el('span', 'field-unit-label', `at ${money(p.price)} each, if a place opens up`));
   fields.push(field('How many tickets?', qWrap, `This party is for ${audienceWords(p)}.`, true));
-  const note = textarea(have ? have.note || '' : '', 2);
-  note.placeholder = 'Anything the hosts should know - who it\u2019s for, dates that work (optional)';
-  fields.push(field('Note', note));
-  const billed = bills.find(b => b.email === purchaser);
-  if (billed) {
-    fields.push(el('p', 'buy-note', `If the hosts offer you places, the tickets are billed to ${billed.name}.`));
+  const note = textarea('', 2);
+  if (!have) {
+    note.placeholder = 'Anything the hosts should know - who it\u2019s for, dates that work (optional)';
+    fields.push(field('Note', note));
+  } else if (have.note) {
+    fields.push(field('Note', el('p', 'buy-note', `\u201c${have.note}\u201d`)));
   }
+  const asker = have ? have.addedBy || have.name : me().name;
+  fields.push(el('p', 'buy-note', `If the hosts give you places, the tickets are billed to ${asker}.`));
   openModal(have ? `Your place on the waitlist for ${p.title}` : `Join the waitlist for ${p.title}`, fields, {
     saveLabel: have ? 'Update' : 'Join Waitlist',
-    submit: () => act('parties', p.id, 'join-waitlist', {purchaser, quantity: Number(quantity.value) || 1, note: note.value}),
+    submit: () => {
+      const edits = waitlistEdits(p, have, Math.max(1, Number(quantity.value) || 1), note.value.trim());
+      return edits.length ? write(edits) : null;
+    },
     afterSave: () => toast(have ? 'Waitlist request updated' : 'You\u2019re on the waitlist'),
-    onDelete: have ? () => remove('tickets', have.ticketId) : null,
+    onDelete: have ? () => write([{delete: have.ticketId}, ...have.extra.map(x => ({delete: x.id}))]) : null,
     deleteLabel: 'Leave waitlist',
     confirmDelete: `Leave the waitlist for ${p.title}?`,
   });
-}
-
-const calloutEmoji = ['📣', '⚠️', 'ℹ️', '⭐', '🎉', '🎈', '🎁', '🍫', '🍕', '🍷', '🍸', '🧁', '🎂', '🎶', '🎮', '🏊', '🌧️', '☀️', '👟', '🧥', '🚗', '🅿️', '🐶', '🧒', '👨‍👩‍👧', '🔥', '💡', '❤️', '✅', '🕒'];
-
-function emojiPicker(value) {
-  const input = text(value || '', {maxLength: 16, placeholder: '📣'});
-  input.className = 'note-emoji-input';
-  input.setAttribute('aria-label', 'Emoji');
-  const wrap = el('div', 'emoji-pick');
-  const caret = el('button', 'emoji-pick-caret');
-  caret.type = 'button';
-  caret.setAttribute('aria-label', 'Choose an emoji');
-  caret.append(svg('chevron-down'));
-  const menu = el('div', 'emoji-pick-menu');
-  menu.hidden = true;
-  for (const e of calloutEmoji) {
-    const b = el('button', 'emoji-pick-item', e);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      input.value = e;
-      menu.hidden = true;
-      input.dispatchEvent(new Event('input', {bubbles: true}));
-    });
-    menu.append(b);
-  }
-  caret.addEventListener('click', e => {
-    e.stopPropagation();
-    menu.hidden = !menu.hidden;
-    if (!menu.hidden) {
-      const box = wrap.getBoundingClientRect();
-      menu.classList.toggle('is-up', window.innerHeight - box.bottom < 280);
-      document.addEventListener('click', () => {
-        menu.hidden = true;
-      }, {once: true});
-    }
-  });
-  menu.addEventListener('click', e => e.stopPropagation());
-  wrap.append(input, caret, menu);
-  return {wrap, input};
 }
 
 function guestWords(p) {
@@ -278,11 +322,23 @@ function guestWords(p) {
   return {lead: 'A guest is anyone who isn\u2019t in the directory - a visiting cousin, a non-Helios sibling, a friend.', label: 'Full name', example: 'e.g., Percy Jackson'};
 }
 
+let guestListId = 0;
+
 function guestFields(p, name, email) {
   const words = guestWords(p);
+  const suggestions = el('datalist');
+  suggestions.id = 'known-guests-' + ++guestListId;
+  for (const g of state.model.guests) {
+    const option = el('option');
+    option.value = g.name;
+    suggestions.append(option);
+  }
+  name.setAttribute('list', suggestions.id);
+  const named = field(words.label, name, words.example, true);
+  named.append(suggestions);
   return [
     el('p', 'form-lead', words.lead),
-    field(words.label, name, words.example, true),
+    named,
     field('Email address', email, 'Optional - so the hosts can reach them, e.g., percy.jackson@gmail.com'),
   ];
 }
@@ -350,7 +406,7 @@ function openAddSomeone(p, editor, onAdd, opts = {}) {
     }
     const label = kinds.length === 2 ? 'Search the directory…' : `Search for ${kinds.join(' or ')}…`;
     picker = peoplePicker({placeholder: label, allow: person => inAudience(p, person), onPick: (email, person) => {
-      chosen = {email, name: person ? person.name_show : email, photoUrl: person ? photoOf(person) : '', title: person ? wordsOf(person) : ''};
+      chosen = {email, id: person ? person.id : '', name: person ? person.name_show : email, photoUrl: person ? photoOf(person) : '', title: person ? wordsOf(person) : ''};
       if (!opts.hold) {
         submit();
         return;
@@ -435,80 +491,52 @@ export function openReassign(p, a) {
     replace: true,
     saveLabel: 'Reassign',
     submit: async () => {
-      const body = {};
       if (mode === 'directory') {
-        picked = picker.value;
+        picked = picker.person;
         if (!picked) {
           throw new Error('Pick someone from the directory.');
         }
-        body.email = picked;
-      } else {
-        if (!name.value.trim()) {
-          throw new Error('Give the guest a name.');
-        }
-        body.name = name.value.trim();
-        body.email = email.value.trim().toLowerCase();
+        return write([{set: a.ticketId, cells: {person: picked.id}}]);
       }
-      return act('tickets', a.ticketId, 'reassign', body);
+      if (!name.value.trim()) {
+        throw new Error('Give the guest a name.');
+      }
+      const who = await knownGuest({name: name.value.trim(), email: email.value.trim().toLowerCase()}, p.can.edit);
+      if (who.id) {
+        return write([{set: a.ticketId, cells: {person: who.id}}]);
+      }
+      return write([...guestEdits('g', who), {set: a.ticketId, cells: {person: '@g'}}]);
     },
     afterSave: () => toast('Ticket reassigned'),
   });
 }
 
-export function openMoveAddress(a, onDone) {
-  const to = text('', {type: 'email', placeholder: 'percy.jackson@gmail.com', maxLength: 200});
-  const name = text(a.name || '', {placeholder: 'Percy Jackson', maxLength: 120});
-  const fields = [
-    el('p', 'form-lead', `${a.email} moves to the new address on every party - tickets, waitlist requests and guest lists alike - and anyone already sent an invitation there is sent it again.`),
-    field('New email address', to, null, true),
-    field('Name', name, 'The directory no longer holds them, so this is what the parties call them.'),
-  ];
-  openModal(`Change ${a.name}'s address`, fields, {
-    replace: true,
-    saveLabel: 'Change address',
-    submit: () => {
-      if (!to.value.trim()) {
-        throw new Error('Give the new address.');
-      }
-      return act('celebrate-settings', settingsId(), 'move-address', {old: a.email, to: to.value.trim().toLowerCase(), name: name.value.trim()});
-    },
-    afterSave: () => {
-      toast('Address changed on every party');
-      if (onDone) {
-        onDone();
-      }
-    },
-  });
+function removeEdits(a) {
+  return [{delete: a.ticketId}, ...(a.extra || []).map(x => ({delete: x.id}))];
 }
 
 export async function removeTicket(p, a) {
-  const what = a.status === 'Ticket' ? `Remove ${a.name}'s ticket to ${p.title}?`
-    : a.status === 'Offered' ? `Withdraw the offer to ${a.name} for ${p.title}?`
-    : `Take ${a.name} off the waitlist for ${p.title}?`;
+  const what = a.status === 'Ticket' ? `Remove ${a.name}'s ticket to ${p.title}?` : `Take ${a.name} off the waitlist for ${p.title}?`;
   if (!confirm(what)) {
     return;
   }
-  try {
-    await remove('tickets', a.ticketId);
-    await load();
-    toast(a.status === 'Ticket' ? 'Ticket removed' : a.status === 'Offered' ? 'Offer withdrawn' : 'Off the waitlist');
-  } catch (err) {
-    toast(err.message);
-  }
+  await saved(removeEdits(a), a.status === 'Ticket' ? 'Ticket removed' : 'Off the waitlist');
 }
 
-export async function offerTickets(p, a, quantity) {
-  const n = quantity || a.quantity || 1;
-  if (!confirm(`Offer ${a.name} ${n === 1 ? 'a ticket' : n + ' tickets'} to ${p.title}? They\u2019re told by email and can buy them, even while the party is full or closed, until you withdraw the offer.`)) {
+export async function givePlace(p, a) {
+  const n = a.quantity || 1;
+  const payer = a.addedById || a.person;
+  const places = n === 1 ? 'a ticket' : n + ' tickets';
+  const billed = p.price ? `, billed to ${a.addedBy || a.name} at ${money(p.price)} each` : '';
+  if (!confirm(`Give ${a.name} ${places} to ${p.title}${billed}? They come off the waitlist and are emailed their tickets.`)) {
     return;
   }
-  try {
-    await act('tickets', a.ticketId, 'offer', {quantity: n});
-    await load();
-    toast(`${a.name} was offered ${n === 1 ? 'a ticket' : n + ' tickets'}`);
-  } catch (err) {
-    toast(err.message);
+  const edits = removeEdits(a);
+  edits.push(...paidPlace(p, payer, a.person, a.guestOf ? {guest_of: a.guestOf} : {}));
+  for (const x of a.extra) {
+    edits.push(...paidPlace(p, payer, x.person, {guest_of: a.person}));
   }
+  await saved(edits, `${a.name} has ${places}`);
 }
 
 export function openAddTicket(p) {
@@ -539,7 +567,7 @@ export function openAddTicket(p) {
   };
   const show = () => {
     lead.textContent = paid
-      ? `A ticket at the party\u2019s price, ${money(p.price)}, added to the invoicing ledger.`
+      ? `A ticket at the party\u2019s price, ${money(p.price)}, billed to whoever the Invoice picker names.`
       : 'A ticket at no charge - for a helper, a performer, a family you\u2019d like to treat. Nothing is billed.';
     guestOfField.hidden = paid;
     paidPanel.hidden = !paid;
@@ -556,22 +584,29 @@ export function openAddTicket(p) {
   }
   box.append(lead, paidPanel);
   show();
-  openAddSomeone(p, true, async person => {
-    const attendees = [{email: person.email || '', name: person.guest ? person.name : ''}];
+  openAddSomeone(p, true, async picked => {
+    let person = picked;
     try {
-      if (paid) {
-        await act('parties', p.id, 'buy', {invoice: invoice.value, attendees});
-      } else {
-        await act('parties', p.id, 'buy', {free: true, purchaser: person.guest ? guestOf.value : '', raiseCapacity: Boolean(raise && raise.input.checked), note: 'Free ticket from the hosts', attendees});
-      }
-      await load();
-      const host = person.guest && guestOf.person;
-      const billed = invoice.person;
-      toast(paid ? (billed ? `${person.name} has a ticket, invoiced to ${billed.name_show}` : `${person.name} has a ticket`)
-        : host ? `${person.name} has a free ticket as ${host.name_show}'s guest` : `${person.name} has a free ticket`);
+      person = picked.guest ? {...picked, ...await knownGuest(picked, true)} : picked;
     } catch (err) {
       toast(err.message);
+      return;
     }
+    const fresh = person.guest && !person.id;
+    const edits = fresh ? guestEdits('g', person) : [];
+    const holder = fresh ? '@g' : person.id;
+    const host = person.guest && guestOf.person;
+    const billed = invoice.person;
+    if (paid) {
+      edits.push(...paidPlace(p, billed ? billed.id : person.guest ? me().id : person.id, holder, person.guest ? {guest_of: me().id} : {}));
+    } else {
+      edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: stamp(), note: 'Free ticket from the hosts', ...(person.guest ? {guest_of: host ? host.id : me().id} : {})}});
+      if (raise && raise.input.checked) {
+        edits.push({set: p.id, cells: {capacity: String(p.capacity + 1)}});
+      }
+    }
+    await saved(edits, paid ? (billed ? `${person.name} has a ticket, invoiced to ${billed.name_show}` : `${person.name} has a ticket`)
+      : host ? `${person.name} has a free ticket as ${host.name_show}'s guest` : `${person.name} has a free ticket`);
   }, {title: 'Add a ticket', foot: box, beside: raise && raise.wrap, hold: 'Add Ticket', onChoose: billTo, guestExtra: guestOfField});
 }
 
@@ -596,20 +631,19 @@ function ticketForm(p, a) {
   fact('Price', a.price ? money(a.price) : 'Free');
   fact('Taken', a.added);
   fact('Added by', a.addedBy);
-  fields.push(facts);
-  const note = textarea(a.note || '', 2);
-  fields.push(field('Note', note));
-  let quantity = null;
   if (a.status === 'Waitlist') {
-    quantity = text(a.quantity || 1, {type: 'number', min: 1, step: 1});
-    fields.push(field('Tickets asked for', quantity));
+    fact('Tickets asked for', String(a.quantity || 1));
+  }
+  fact('Note', a.note);
+  fields.push(facts);
+  if (a.status === 'Waitlist') {
     const card = el('div', 'appoint-card');
     const words = el('div', 'setting-text');
-    words.append(el('div', 'setting-label', 'Offer the tickets'), el('div', 'setting-hint', 'They get a note saying so, and can buy that many tickets even while the party is full or closed, until you withdraw the offer. Nothing is billed until they do.'));
+    words.append(el('div', 'setting-label', 'Give the places'), el('div', 'setting-hint', 'They come off the waitlist and hold the tickets, billed to whoever asked, and are emailed them.'));
     const n = a.quantity || 1;
-    card.append(words, button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-small', () => {
+    card.append(words, button(`Give ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-small', () => {
       closeModal();
-      offerTickets(p, a, Number(quantity.value) || n);
+      givePlace(p, a);
     }));
     fields.push(card);
   }
@@ -620,25 +654,11 @@ function ticketForm(p, a) {
     card.append(words, button('Reassign', 'people', 'button button-secondary button-small', () => openReassign(p, a)));
     fields.push(card);
   }
-  if (state.model.can['move-address'] && a.email && a.kind === 'Guest') {
-    const card = el('div', 'appoint-card');
-    const words = el('div', 'setting-text');
-    words.append(el('div', 'setting-label', 'Change their address'), el('div', 'setting-hint', 'An alum whose school address closed, or any address that no longer reaches them - on every party at once.'));
-    card.append(words, button('Change address', 'mail', 'button button-secondary button-small', () => openMoveAddress(a)));
-    fields.push(card);
-  }
   return {
     fields,
-    submit: () => {
-      const body = {note: note.value};
-      if (quantity) {
-        body.quantity = Number(quantity.value) || 1;
-      }
-      return act('tickets', a.ticketId, 'edit', body);
-    },
-    onDelete: () => remove('tickets', a.ticketId),
-    deleteLabel: a.status === 'Offered' ? 'Withdraw offer' : 'Remove',
-    confirmDelete: a.status === 'Offered' ? `Withdraw the offer to ${a.name} for ${p.title}?` : `Remove ${a.name} from ${p.title}?`,
+    onDelete: () => write(removeEdits(a)),
+    deleteLabel: 'Remove',
+    confirmDelete: `Remove ${a.name} from ${p.title}?`,
   };
 }
 
@@ -665,7 +685,10 @@ function hostChips(initial) {
       return;
     }
     const person = picker.person;
-    hosts.push({email, name: person ? person.name_show : email, photoUrl: person ? photoOf(person) : ''});
+    if (!person) {
+      return;
+    }
+    hosts.push({id: person.id, email, name: person.name_show, photoUrl: photoOf(person)});
     picker.reset();
     paint();
   });
@@ -674,7 +697,165 @@ function hostChips(initial) {
   paint();
   list.classList.add('chip-pick-roomy');
   wrap.append(list, row);
-  return {wrap, value: () => hosts.map(h => h.email)};
+  return {wrap, value: () => hosts.map(h => h.id)};
+}
+
+function today() {
+  return stamp().slice(0, 10);
+}
+
+function waitlistGroupEdits(ref, title, visibleTo, eligible) {
+  const edits = [
+    {insert: 'GROUP', as: 'wl', row: {kind: 'group', parent: ref, name: `${title} Waitlist`, status: 'open', listed: true, added_by: me().id, visible_to: visibleTo, members_visible_to: visibleTo}},
+    {set: '@wl', cells: eligible ? {join: 'direct', eligible} : {join: 'direct'}},
+    {set: ref, cells: {waitlist: '@wl'}},
+  ];
+  return edits;
+}
+
+function eligibleOf(t) {
+  if (t.adults && !t.students) {
+    return state.model.roleGroups.adults;
+  }
+  if (t.students && !t.adults) {
+    return state.model.roleGroups.students;
+  }
+  return '';
+}
+
+function whenCells(f) {
+  return {start: f.start, end: f.end, all_day: Boolean(f.start) && f.start.length === 10};
+}
+
+function ticketCells(t) {
+  if (!t.adults && !t.students) {
+    throw new Error('Let adults, students, or both hold a ticket.');
+  }
+  return {
+    price: t.price ? String(t.price) : '', unit: t.unit.trim(), capacity: t.capacity ? String(t.capacity) : '', minimum: t.minimum ? String(t.minimum) : '',
+    join: t.ticketsOpen ? 'direct' : 'none', eligible: eligibleOf(t), drop_off_allowed: t.students && t.dropOff, parent_ticket_required: t.adults && t.students && t.parentTicket,
+  };
+}
+
+function changed(cells, row) {
+  const out = {};
+  for (const [k, v] of Object.entries(cells)) {
+    const was = row[k] || '';
+    const now = typeof v === 'boolean' ? (v ? 'Yes' : 'No') : v;
+    if (now !== was && !(now === 'No' && was === '')) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function hideEdits(p, hidden) {
+  const shownTo = hidden ? '' : (celebration(p.celebration) || {row: {}}).row.visible_to || '';
+  const edits = [{set: p.id, cells: {visible_to: shownTo}}];
+  if (p.waitlistGroup) {
+    edits.push({set: p.waitlistGroup, cells: {visible_to: shownTo, members_visible_to: shownTo}});
+  }
+  return edits;
+}
+
+function waitlistSwitch(p, on, eligible) {
+  if (on && !p.waitlistGroup) {
+    return waitlistGroupEdits(p.id, p.title, p.row.visible_to || '', eligible);
+  }
+  if (!on && p.waitlistGroup) {
+    if (p.waitlisted.length) {
+      throw new Error('People are waiting: give them places or take them off the waitlist before turning it off.');
+    }
+    return [{set: p.id, cells: {waitlist: ''}}, {delete: p.waitlistGroup}];
+  }
+  return [];
+}
+
+function hostEdits(p, ids) {
+  const edits = [];
+  for (const id of ids) {
+    if (!p.hostRows.some(m => m.person === id)) {
+      edits.push({insert: 'MEMBER', row: {group: p.row.managed_by, person: id, member: 'yes'}});
+    }
+  }
+  for (const m of p.hostRows) {
+    if (!ids.includes(m.person)) {
+      edits.push({delete: m.id});
+    }
+  }
+  return edits;
+}
+
+export async function setPicture(groupId, name, old) {
+  const blob = await (await fetch('/' + name)).blob();
+  const form = new FormData();
+  form.append('group', groupId);
+  form.append('photo', blob, name.split('/').pop());
+  await api('POST', '/api/do/photo', form);
+  if (old) {
+    await write([{delete: old}]);
+  }
+}
+
+function parentOf(celebrationId, categoryId) {
+  return categoryId || celebrationId;
+}
+
+async function hostParty(f, t, curates) {
+  const c = celebration(f.celebration);
+  const under = f.category ? category(f.category).row : c.row;
+  const hidden = curates && f.status === 'Hidden';
+  const cells = {
+    kind: 'party', parent: under.id, name: f.title.trim(), subtitle: f.subtitle.trim(), description: f.description.trim(), slug: f.prettyId.trim().toLowerCase(),
+    location: f.location.trim(), address_override: f.address.trim(), ...whenCells(f), ...ticketCells(t),
+    status: curates && f.status !== 'Pending' ? 'open' : 'pending', listed: true, added_by: me().id, added: today(),
+    visible_to: hidden ? '' : under.visible_to || '', members_visible_to: under.members_visible_to || '',
+  };
+  for (const k of Object.keys(cells)) {
+    if (cells[k] === '' || cells[k] === false) {
+      delete cells[k];
+    }
+  }
+  const edits = [
+    {insert: 'GROUP', as: 'p', row: cells},
+    {insert: 'GROUP', as: 'm', row: {kind: 'group', name: `${cells.name} Managers`, status: 'open', added_by: me().id}},
+    {set: '@m', cells: {managed_by: '@m'}},
+    ...f.hostIds.map(id => ({insert: 'MEMBER', row: {group: '@m', person: id, member: 'yes'}})),
+    {set: '@p', cells: {managed_by: '@m'}},
+  ];
+  if (t.waitlist) {
+    edits.push(...waitlistGroupEdits('@p', cells.name, cells.visible_to || '', cells.eligible || ''));
+  }
+  const ids = await write(edits);
+  return ids.result[0];
+}
+
+function partyEdits(p, f, curates) {
+  const edits = [];
+  const cells = changed({
+    name: f.title.trim(), subtitle: f.subtitle.trim(), description: f.description.trim(), slug: f.prettyId.trim().toLowerCase(),
+    location: f.location.trim(), address_override: f.address.trim(), ...whenCells(f),
+  }, p.row);
+  if (curates) {
+    const parent = parentOf(f.celebration, f.category);
+    if (parent !== p.row.parent) {
+      cells.parent = parent;
+    }
+    if (f.status === 'Open' && p.status === 'Pending') {
+      cells.status = 'open';
+    }
+    if (f.status === 'Pending' && p.status !== 'Pending') {
+      cells.status = 'pending';
+    }
+  }
+  if (Object.keys(cells).length) {
+    edits.push({set: p.id, cells});
+  }
+  if (curates && (f.status === 'Hidden') !== (p.status === 'Hidden')) {
+    edits.push(...hideEdits(p, f.status === 'Hidden'));
+  }
+  edits.push(...hostEdits(p, f.hostIds));
+  return edits;
 }
 
 export function openParty(p) {
@@ -682,46 +863,8 @@ export function openParty(p) {
   const user = me();
   const title = text(p ? p.title : '', {required: true, maxLength: 120, placeholder: 'Fondue & Fort Night'});
   const subtitle = text(p ? p.subtitle : '', {maxLength: 120, placeholder: 'Sweet & Savory Fondue, plus Build-Your-Own Fort'});
-  const summary = textarea(p ? p.summary : '', 2);
-  summary.placeholder = 'One or two sentences for the party card';
-  const description = textarea(p ? p.description : '', 6);
+  const description = textarea(p ? p.row.description || '' : '', 10);
   description.placeholder = 'Everything a guest should know about the party';
-  const needToKnow = textarea(p ? p.needToKnow : '', 2);
-  needToKnow.placeholder = 'Adults only; bring a swimsuit; drop-off is fine';
-  const emojiPick = emojiPicker(p ? p.noteEmoji : '');
-  const noteEmoji = emojiPick.input;
-  const noteTitle = text(p ? p.noteTitle : '', {maxLength: 60, placeholder: 'Good to know'});
-  noteTitle.setAttribute('aria-label', 'Title');
-  const noteHead = el('div', 'note-head-inputs');
-  noteHead.append(emojiPick.wrap, noteTitle);
-  const calloutBox = el('div', 'callout-editor');
-  const calloutHead = el('div', 'callout-editor-head');
-  const removeCallout = el('button', 'link-button', 'Remove callout');
-  removeCallout.type = 'button';
-  calloutHead.append(el('span', 'callout-editor-title', 'Callout'), removeCallout);
-  calloutBox.append(
-    calloutHead,
-    el('p', 'form-lead', 'A tinted note under the description for the one thing every guest should know.'),
-    field('Emoji and title', noteHead, 'Blank means the megaphone and "Good to know".'),
-    field('Words', needToKnow, '', true),
-  );
-  const createCallout = button('Create Callout', 'plus', 'button button-secondary button-small', () => {
-    calloutBox.hidden = false;
-    createCallout.hidden = true;
-    needToKnow.focus();
-  });
-  removeCallout.addEventListener('click', () => {
-    needToKnow.value = '';
-    noteEmoji.value = '';
-    noteTitle.value = '';
-    calloutBox.hidden = true;
-    createCallout.hidden = false;
-  });
-  calloutBox.hidden = !(p && p.needToKnow);
-  createCallout.hidden = !calloutBox.hidden;
-  const callout = el('div', 'callout-field');
-  callout.append(createCallout, calloutBox);
-  const audience = text(p ? p.audience : '', {maxLength: 60, placeholder: 'Adults, Families, Kids & Adults, Grades 3-6'});
   const pretty = text(p ? p.prettyId : '', {maxLength: 40, placeholder: 'fondue'});
   const prettyHint = el('small', '', '');
   const paintPretty = () => {
@@ -733,9 +876,9 @@ export function openParty(p) {
   const prettyField = field('Friendly address', pretty);
   prettyField.append(prettyHint);
   const basics = [
-    field('Title', title, '', true), field('Subtitle', subtitle), field('Summary', summary, 'Shown on the party card.'),
-    field('Audience', audience, 'The words on the card: who the party is for.'),
-    field('Description', description), callout, prettyField,
+    field('Title', title, '', true), field('Subtitle', subtitle),
+    field('Description', description, 'Markdown works: **bold**, *italic*, - a list, [words](https://a.link). The first paragraph is the card’s summary; a line "> [!chip] Adults" puts a chip above the title, and "> [!note] 📣 Good to know" starts a tinted callout.'),
+    prettyField,
   ];
 
   const start = whenPickers('Starts', p ? p.start : '', null, 'No start time');
@@ -745,7 +888,7 @@ export function openParty(p) {
   // Named place, not location: window.location is what the address hint
   // under the friendly-address field reads.
   const place = text(p ? p.location : '', {maxLength: 120, placeholder: "The Parks' House in Los Altos"});
-  const address = addressSuggest(text(p ? p.address : '', {maxLength: 200, placeholder: '1420 Alder Court, Los Altos, CA 94024'}));
+  const address = addressSuggest(text(p ? p.row.address_override || '' : '', {maxLength: 200, placeholder: '1420 Alder Court, Los Altos, CA 94024'}));
   const when = [
     field('When', whenWrap),
     field('Where, in words', place, 'Shown to everyone: the neighborhood or the venue, not the street.'),
@@ -754,12 +897,10 @@ export function openParty(p) {
 
   const tickets = adding ? ticketFields(null) : null;
 
-  const hostsText = text(p ? p.hosts : '', {maxLength: 120, placeholder: 'McDowell and Park/Gulliver Families'});
-  const initialHosts = p ? p.hostPeople : [{email: user.email, name: user.name, photoUrl: user.photoUrl}];
-  const hostEmails = hostChips(initialHosts);
+  const initialHosts = p ? p.hostPeople : [{id: user.id, email: user.email, name: user.name, photoUrl: user.photoUrl}];
+  const hostIds = hostChips(initialHosts);
   const hosts = [
-    field('Hosts, as shown', hostsText, 'The names on the party page: "Hosted by …".'),
-    field('Who runs it', hostEmails.wrap, 'These people can edit the party and see who is coming. Click a face to remove it.'),
+    field('Who runs it', hostIds.wrap, 'These people can edit the party and see who is coming, and the page names them as its hosts. Click a face to remove it.'),
   ];
 
   const panels = [
@@ -774,8 +915,16 @@ export function openParty(p) {
   const curates = allows('celebrate.curate');
   if (curates) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
-    celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.id})), p ? p.celebration : (currentCelebration() || {}).id);
-    category = select([{label: 'No category', value: ''}, ...state.model.categories.map(c => ({label: c.title, value: c.id}))], p ? p.category : '');
+    const shownCelebration = p ? p.celebration : (currentCelebration() || {}).id;
+    celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.id})), shownCelebration);
+    category = select([], '');
+    const paintCategories = () => {
+      const was = category.value || (p ? p.category : '');
+      category.replaceChildren(new Option('No category', ''), ...categoriesOf(celebrationPick.value).map(c => new Option(c.title, c.id)));
+      category.value = categoriesOf(celebrationPick.value).some(c => c.id === was) ? was : '';
+    };
+    celebrationPick.addEventListener('change', paintCategories);
+    paintCategories();
     panels.push({label: 'Admin', icon: svg('shield'), fields: [
       field('Status', status, 'Open is listed for everyone; Pending waits for approval; Hidden is parked.'),
       field('Celebration', celebrationPick, 'Which year the party belongs to.'),
@@ -784,25 +933,28 @@ export function openParty(p) {
   }
   const intro = adding && !curates ? [el('p', 'form-lead', 'Thank you for hosting! Fill this in and the celebration committee will review it and open it for tickets.')] : [];
   const fields = () => ({
-    title: title.value, subtitle: subtitle.value, summary: summary.value, description: description.value, needToKnow: needToKnow.value,
-    noteEmoji: noteEmoji.value.trim(), noteTitle: noteTitle.value.trim(),
-    hosts: hostsText.value, hostEmails: hostEmails.value(), audience: audience.value,
+    title: title.value, subtitle: subtitle.value, description: description.value, hostIds: hostIds.value(),
     start: start.value(), end: end.value(), location: place.value, address: address.value, prettyId: pretty.value,
-    ...(curates ? {status: status.value, celebration: celebrationPick.value, category: category.value} : {}),
+    status: curates ? status.value : '', celebration: curates ? celebrationPick.value : state.celebration, category: curates ? category.value : '',
   });
-  let known = null;
+  let made = '';
   openModal(adding ? 'Host a Party' : `Edit ${p.title}`, [...intro, tabbedFields(panels)], {
     wide: true,
     saveLabel: adding ? (curates ? 'Add Party' : 'Submit for Approval') : 'Save',
-    submit: () => {
-      if (!adding) {
-        return act('parties', p.id, 'edit', fields());
+    submit: async () => {
+      const f = fields();
+      if (!f.hostIds.length) {
+        throw new Error('A party needs at least one host.');
       }
-      known = new Set(state.model.parties.map(x => x.partyId));
-      return act('celebrate-settings', settingsId(), 'host', {...fields(), ...tickets.values()});
+      if (adding) {
+        made = await hostParty(f, tickets.values(), curates);
+        return made;
+      }
+      const edits = partyEdits(p, f, curates);
+      return edits.length ? write(edits) : null;
     },
     afterSave: () => {
-      const saved = adding ? state.model.parties.find(x => !known.has(x.partyId)) : party(p.id);
+      const saved = party(adding ? made : p.id);
       if (saved) {
         navigate(partyPath(saved));
         if (adding && !curates) {
@@ -810,10 +962,28 @@ export function openParty(p) {
         }
       }
     },
-    onDelete: p && curates ? () => remove('parties', p.id) : null,
+    onDelete: p && curates ? () => write(deleteEdits(p)) : null,
     confirmDelete: p ? `Delete ${p.title}? This cannot be undone.` : '',
     afterDelete: () => navigate('/'),
   });
+}
+
+function deleteEdits(p) {
+  if (p.attendees.length || p.waitlisted.length) {
+    throw new Error('Remove its tickets and waitlist first, or hide it instead.');
+  }
+  const edits = [];
+  if (p.image) {
+    edits.push({delete: p.image});
+  }
+  if (p.waitlistGroup) {
+    edits.push({set: p.id, cells: {waitlist: ''}}, {delete: p.waitlistGroup});
+  }
+  for (const answers of [p.row.rsvp_yes, p.row.rsvp_no].filter(Boolean)) {
+    edits.push({set: p.id, cells: {[answers === p.row.rsvp_yes ? 'rsvp_yes' : 'rsvp_no']: ''}}, {delete: answers});
+  }
+  edits.push({delete: p.id});
+  return edits;
 }
 
 function ticketFields(p) {
@@ -842,9 +1012,7 @@ function ticketFields(p) {
   unit.addEventListener('input', paintSummary);
   paintSummary();
   const priceBox = el('div', 'tix-price');
-  const bought = Boolean(p && p.raised > 0);
-  price.disabled = bought;
-  priceBox.append(field('Price per ticket', priceInput, bought ? 'Fixed now that tickets have been bought.' : '', true), summary);
+  priceBox.append(field('Price per ticket', priceInput, p && p.raised > 0 ? 'Tickets already bought keep the price they were bought at.' : '', true), summary);
 
   unit.setAttribute('list', 'tix-units');
   const units = el('datalist');
@@ -905,13 +1073,31 @@ function ticketFields(p) {
 export function openTickets(p) {
   const tickets = ticketFields(p);
   openModal(`Edit tickets for ${p.title}`, tickets.fields, {
-    submit: () => act('parties', p.id, 'edit', tickets.values()),
+    submit: () => {
+      const t = tickets.values();
+      const wanted = ticketCells(t);
+      const cells = changed(wanted, p.row);
+      const edits = [...(Object.keys(cells).length ? [{set: p.id, cells}] : []), ...waitlistSwitch(p, t.waitlist, wanted.eligible)];
+      if (cells.eligible !== undefined && p.waitlistGroup) {
+        edits.push({set: p.waitlistGroup, cells: {eligible: cells.eligible}});
+      }
+      return edits.length ? write(edits) : null;
+    },
   });
 }
 
 export async function savePartyFields(p, changes) {
   try {
-    await act('parties', p.id, 'edit', changes);
+    if (changes.image !== undefined) {
+      if (changes.image) {
+        await setPicture(p.id, changes.image, p.image);
+      } else if (p.image) {
+        await write([{delete: p.image}]);
+      }
+    }
+    if (changes.flyer !== undefined) {
+      await write([{set: p.id, cells: {flyer: changes.flyer}}]);
+    }
     await load();
   } catch (err) {
     toast(err.message);
@@ -919,13 +1105,7 @@ export async function savePartyFields(p, changes) {
 }
 
 export async function setPartyStatus(p, status) {
-  try {
-    await act('parties', p.id, 'status', {status});
-    await load();
-    toast(status === 'Open' ? `${p.title} is open` : `${p.title} is ${status.toLowerCase()}`);
-  } catch (err) {
-    toast(err.message);
-  }
+  await saved(status === 'Open' ? [{set: p.id, cells: {status: 'open'}}] : hideEdits(p, true), status === 'Open' ? `${p.title} is open` : `${p.title} is hidden`);
 }
 
 export async function openContacts(p) {
@@ -966,7 +1146,7 @@ export async function openContacts(p) {
     return link;
   };
   const statusOf = a => {
-    if (a.status === 'Waitlist' || a.status === 'Offered') {
+    if (a.status === 'Waitlist') {
       return `${a.status} (${a.quantity || 1})`;
     }
     if (a.status === 'Ticket' && !a.price) {
@@ -1016,50 +1196,88 @@ export function openCelebration(c) {
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
   const place = text(c ? c.location : '', {maxLength: 120});
-  const address = text(c ? c.address : '', {maxLength: 200});
+  const address = text(c ? c.row.address_override || '' : '', {maxLength: 200});
   const description = textarea(c ? c.description : '', 4);
-  const isCalendar = Boolean(c && c.buttonUrl === 'calendar');
-  const buttonText = text(c ? c.buttonText : '', {maxLength: 40, placeholder: 'Learn More'});
-  const buttonUrl = text(c && !isCalendar ? c.buttonUrl : '', {type: 'url', maxLength: 500, placeholder: 'https://www.heliosschool.org/spring-celebration'});
-  const urlField = field('Button link', buttonUrl, 'Where it goes - the celebration\u2019s own site, say.');
-  urlField.hidden = isCalendar;
-  let buttonKind = isCalendar ? 'calendar' : 'link';
-  const kind = segmented([{label: 'Opens a link', value: 'link'}, {label: 'Save the Date', value: 'calendar'}], buttonKind, v => {
-    buttonKind = v;
-    urlField.hidden = v === 'calendar';
-    if (v === 'calendar' && !buttonText.value.trim()) {
-      buttonText.value = 'Save the Date';
-    }
-  });
-  const kindField = field('Button', kind.wrap, 'Save the Date adds the celebration - its date, place and theme - to the reader\u2019s calendar.');
+  const hosting = checkbox('Takes parties', c ? c.adding === 'approval' : false, 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
   const current = checkbox('This is the current celebration', c ? c.current : true, 'Its parties are what the parties page lists first.');
-  const banner = checkbox('Show its banner at the top', c ? c.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
+  const banner = checkbox('Show its banner at the top', c ? c.id === state.model.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
   const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
-  const form = () => ({
-    code: code.value.trim(), title: title.value, subtitle: subtitle.value, start: start.value(), end: end.value(),
-    location: place.value, address: address.value, description: description.value, image: image.value(), buttonText: buttonText.value, buttonUrl: buttonKind === 'calendar' ? 'calendar' : buttonUrl.value, current: current.input.checked, banner: banner.input.checked,
-  });
   openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
     field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
     field('Subtitle', subtitle, 'The banner\u2019s small line above it: the theme.'),
-    field('When', whenWrap), field('Where', place), field('Address', address), field('Description', description),
-    el('div', 'field-group-label', 'Banner button'),
-    kindField, field('Button text', buttonText, 'Leave it blank for no button.'), urlField,
-    current.wrap, banner.wrap, image.wrap,
+    field('When', whenWrap), field('Where', place), field('Address', address),
+    field('Description', description, 'Markdown works. Each link in it, like [Learn More](https://celebrate.heliosschool.org), is a button on the banner; Add to Calendar is there while the celebration is still to come.'),
+    current.wrap, banner.wrap, hosting.wrap, image.wrap,
   ], {
-    submit: () => (c ? act('celebrations', c.id, 'edit', form()) : create('celebrations', form())),
-    onDelete: c ? () => remove('celebrations', c.id) : null,
-    confirmDelete: c ? `Delete ${c.title}?` : '',
+    submit: async () => {
+      const cells = {
+        slug: code.value.trim().toLowerCase(), name: title.value.trim(), subtitle: subtitle.value.trim(), ...whenCells({start: start.value(), end: end.value()}),
+        location: place.value.trim(), address_override: address.value.trim(), description: description.value.trim(), adding: hosting.input.checked ? 'approval' : '',
+      };
+      let id = c ? c.id : '@c';
+      const edits = [];
+      if (c) {
+        const diff = changed(cells, c.row);
+        if (Object.keys(diff).length) {
+          edits.push({set: c.id, cells: diff});
+        }
+      } else {
+        const top = state.model.top;
+        if (!top) {
+          throw new Error('There is no Celebrate category to file a celebration under.');
+        }
+        edits.push({insert: 'GROUP', as: 'c', row: {...cells, kind: 'celebration', parent: top.id, status: 'open', added_by: me().id, visible_to: top.visible_to || '', members_visible_to: top.members_visible_to || ''}});
+      }
+      if (current.input.checked && state.model.current !== (c && c.id)) {
+        edits.push(settingEdit('Current', id));
+      }
+      if (banner.input.checked && state.model.banner !== (c && c.id)) {
+        edits.push(settingEdit('Banner', id));
+      }
+      if (edits.length) {
+        const written = await write(edits);
+        if (!c) {
+          id = written.result[0];
+        }
+      }
+      const picked = image.value();
+      if (picked && picked !== (c ? c.image : '')) {
+        await setPicture(id, picked, c ? c.image : '');
+      } else if (!picked && c && c.image) {
+        await write([{delete: c.image}]);
+      }
+    },
+    onDelete: c ? () => write([...(c.image ? [{delete: c.image}] : []), {delete: c.id}]) : null,
+    confirmDelete: c ? `Delete ${c.title}? Only a celebration with no parties or categories can be deleted.` : '',
   });
 }
 
-export function openCategory(c, after) {
+function settingEdit(key, value) {
+  const row = state.model.settingRows.find(s => s.key === key);
+  return row ? {set: row.id, cells: {value}} : {insert: 'SETTING', row: {app: 'celebrate', key, value}};
+}
+
+export async function saveSetting(key, value) {
+  await write([settingEdit(key, value)]);
+}
+
+export function openCategory(c, celebrationId, after) {
   const input = text(c ? c.title : '', {required: true, maxLength: 120});
-  openModal(c ? 'Rename category' : 'Add a category', [field('Title', input, '', true)], {
-    submit: () => (c ? act('party-categories', c.id, 'edit', {title: input.value}) : create('party-categories', {title: input.value})),
+  const under = celebration(celebrationId);
+  openModal(c ? 'Rename category' : `Add a category to ${under.title}`, [field('Title', input, '', true)], {
+    submit: () => {
+      if (c) {
+        return write([{set: c.id, cells: {name: input.value.trim()}}]);
+      }
+      const last = categoriesOf(celebrationId).at(-1);
+      return write([{insert: 'GROUP', row: {
+        kind: 'category', parent: celebrationId, name: input.value.trim(), status: 'open', listed: true, added_by: me().id,
+        order: keyBetween(last ? last.order : undefined, undefined), visible_to: under.row.visible_to || '', members_visible_to: under.row.members_visible_to || '',
+      }}]);
+    },
     afterSave: after,
-    onDelete: c ? () => remove('party-categories', c.id) : null,
-    confirmDelete: c ? `Delete the category ${c.title}?` : '',
+    onDelete: c ? () => write([{delete: c.id}]) : null,
+    confirmDelete: c ? `Delete the category ${c.title}? Only one with no parties filed under it can be deleted.` : '',
     afterDelete: after,
   });
 }
@@ -1068,12 +1286,10 @@ export function openSettings() {
   const s = state.model.settings;
   const intro = textarea(s.partiesIntro, 3);
   const note = textarea(s.ticketNote, 4);
-  const hosting = checkbox('Hosting open', s.hostingOpen, 'Anyone can post a party. Off, Host a Party goes away for everyone but an admin.');
   openModal('Settings', [
     field('Parties intro', intro, 'The line under the parties page heading.'),
     field('Ticket note', note, 'Shown on the ticket form: how invoicing works, the refund policy.'),
-    hosting.wrap,
   ], {
-    submit: () => act('celebrate-settings', settingsId(), 'settings', {partiesIntro: intro.value, ticketNote: note.value, hostingOpen: hosting.input.checked}),
+    submit: () => write([settingEdit('Parties Intro', intro.value.trim()), settingEdit('Ticket Note', note.value.trim())]),
   });
 }

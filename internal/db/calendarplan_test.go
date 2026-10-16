@@ -280,8 +280,7 @@ func TestAnImportedCellKeepsAHandCorrection(t *testing.T) {
 }
 
 func TestCelebrateIsNoCategoryToClassifyInto(t *testing.T) {
-	s, queue, _, _ := calendarSample(t)
-	apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Celebrate", "slug": "celebrate", "status": "open", "visible_to": "grp00000000004"}}})
+	s, _, _, _ := calendarSample(t)
 	v, err := NewVocabulary(s.Model().calendarRows())
 	if err != nil {
 		t.Fatal(err)

@@ -49,7 +49,7 @@ function dateStamp(p) {
 }
 
 function footButton(p, mine) {
-  if ((p.availability === 'available' || p.offered) && p.can.buy) {
+  if (p.availability === 'available' && p.can.buy) {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }
   if (p.availability === 'waitlist' && !mine.length && p.can['join-waitlist']) {
@@ -83,7 +83,7 @@ export function partyCard(p) {
       const item = el('div', 'card-under-item');
       item.append(svg(a.status === 'Ticket' ? 'ticket' : 'hourglass'), el('span', 'card-under-name', a.name));
       if (a.status !== 'Ticket') {
-        item.append(el('span', 'card-under-wait', a.status === 'Offered' ? 'offered' : 'waitlist'));
+        item.append(el('span', 'card-under-wait', 'waitlist'));
       }
       under.append(item);
     }
@@ -95,7 +95,7 @@ export function partyCard(p) {
     subtitle: p.subtitle,
     text: p.summary,
     media,
-    chips: p.audience ? [p.audience] : [],
+    chips: p.chips,
     marks,
     under,
     foot: [footButton(p, mine)],

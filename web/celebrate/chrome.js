@@ -1,4 +1,4 @@
-import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, matches, partyPath} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -62,7 +62,7 @@ export function listTab() {
 
 export function listCategory() {
   const want = new URLSearchParams(location.search).get('category');
-  const found = want && state.model.categories.find(c => slug(c.title) === want);
+  const found = want && categoriesOf(state.celebration).find(c => slug(c.title) === want);
   return found ? found.id : '';
 }
 

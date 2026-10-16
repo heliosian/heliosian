@@ -38,6 +38,11 @@ var stagedTriggers = []stagedTrigger{
 	{table: "SAVED_SEARCH", fire: savedSearchSlugs},
 }
 
+// Staged before the row's own delete; a blank table is every table.
+var deleteTriggers = []stagedTrigger{
+	{fire: aliasesGone},
+}
+
 var committedTriggers = []committedTrigger{
 	{table: "MEMBER", to: mailInbox},
 	{table: "GROUP", to: mailInbox},
@@ -246,6 +251,46 @@ func hiddenGone(m *Model, c Change) ([]Edit, error) {
 	return append(writes, Edit{Delete: c.Old["hidden_for"]}), nil
 }
 
+func aliasesGone(m *Model, c Change) ([]Edit, error) {
+	if c.Table == "ALIAS" {
+		return nil, nil
+	}
+	writes := []Edit{}
+	for _, row := range m.Table("ALIAS").Referencing("target", c.Old["id"]) {
+		writes = append(writes, Edit{Delete: row["id"]})
+	}
+	return writes, nil
+}
+
+func beforeDelete(s *Store, tx *store.Tx, c Change, where string) ([]Change, error) {
+	staged := []Change{}
+	for _, t := range deleteTriggers {
+		if t.table != "" && t.table != c.Table {
+			continue
+		}
+		writes, err := t.fire(s.In(tx), c)
+		if err != nil {
+			return nil, access.Invalid("%s: %v", where, err)
+		}
+		for _, w := range writes {
+			_, before, err := stageWrite(s, tx, w, where, nil, true, unchecked)
+			if err != nil {
+				return nil, err
+			}
+			staged = append(staged, before)
+		}
+	}
+	return staged, nil
+}
+
+func inOrder(c Change) []Change {
+	out := []Change{}
+	for _, b := range c.Before {
+		out = append(out, inOrder(b)...)
+	}
+	return append(out, c)
+}
+
 func personFamilyNames(m *Model, c Change) ([]Edit, error) {
 	p := c.New
 	if p == nil {
@@ -347,7 +392,7 @@ func unchecked(*Model, Change) error {
 }
 
 func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
-	for pending := []Change{c}; len(pending) > 0; {
+	for pending := inOrder(c); len(pending) > 0; {
 		next := pending[0]
 		pending = pending[1:]
 		for _, in := range committedInboxes(s, next.Table) {
@@ -370,7 +415,7 @@ func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
 				if w.As != "" {
 					names[w.As] = id
 				}
-				pending = append(pending, c)
+				pending = append(pending, inOrder(c)...)
 			}
 		}
 	}

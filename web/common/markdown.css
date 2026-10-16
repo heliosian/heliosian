@@ -10,6 +10,12 @@ li > ul, li > ol { margin: 4px 0 0; }
 
 .callout-title svg { width: 16px; height: 16px; flex-shrink: 0; }
 
+.callout-emoji { font-size: 24px; line-height: 1; flex-shrink: 0; }
+
+.md-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.md-chip { padding: 3px 10px; border-radius: 999px; background: var(--callout-note-wash); color: var(--callout-note); font-size: 13px; font-weight: 600; }
+
 .callout-note { --callout: var(--callout-note); --callout-wash: var(--callout-note-wash); }
 
 .callout-tip { --callout: var(--callout-tip); --callout-wash: var(--callout-tip-wash); }

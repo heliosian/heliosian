@@ -29,7 +29,13 @@ var (
 	blurbLink  = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	blurbLead  = regexp.MustCompile(`(?m)^\s*(#{1,6}\s|>\s?|[-*+]\s+)`)
 	blurbMarks = strings.NewReplacer("**", "", "__", "", "*", "", "`", "")
+	chipLine   = regexp.MustCompile(`(?m)^>[ \t]?\[!chip\][^\n]*(\n|$)`)
+	calloutTag = regexp.MustCompile(`(?m)^(>[ \t]?)\[![A-Za-z]+\][ \t]*`)
 )
+
+func withoutMarkers(markdown string) string {
+	return strings.TrimSpace(calloutTag.ReplaceAllString(chipLine.ReplaceAllString(markdown, ""), "$1"))
+}
 
 type ActivityPages struct {
 	s      *Store
@@ -198,7 +204,7 @@ func (t activityTree) needNote(g store.Row) string {
 }
 
 func blurb(markdown string) string {
-	text := blurbImage.ReplaceAllString(markdown, "")
+	text := blurbImage.ReplaceAllString(withoutMarkers(markdown), "")
 	text = blurbLink.ReplaceAllString(blurbLead.ReplaceAllString(text, ""), "$1")
 	text = strings.Join(strings.Fields(blurbMarks.Replace(text)), " ")
 	if len(text) > 200 {

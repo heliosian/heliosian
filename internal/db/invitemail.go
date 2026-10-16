@@ -187,7 +187,7 @@ func (iv *Invitations) calendarEvent(m *Model, g store.Row, person, token, link 
 	}
 	return mail.Event{
 		UID: g["id"] + whenUID, Start: from, End: until, AllDay: allDay, Summary: g["name"],
-		Description: strings.TrimSpace(g["description"] + "\n\n" + link), Location: g["location"], URL: link,
+		Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: g["location"], URL: link,
 		Organizer: mail.Person{Name: hosts, Email: mail.AddressOf(iv.organizer(token))},
 		Attendees: []mail.Person{{Name: m.nameOf(person), Email: m.addressOf(person)}}, RSVP: true,
 	}, true
@@ -281,8 +281,9 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	if hours != "" {
 		fmt.Fprintf(&text, "%s\n", hours)
 	}
-	if g["description"] != "" {
-		fmt.Fprintf(&text, "\n%s\n", g["description"])
+	description := withoutMarkers(g["description"])
+	if description != "" {
+		fmt.Fprintf(&text, "\n%s\n", description)
 	}
 	fmt.Fprintf(&text, "\n%s\nOpen the invitation: %s\n", rsvpFor, link)
 	if g["location"] != "" {
@@ -300,8 +301,8 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(sentBy))
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:26px;line-height:1.25;text-align:center">%s</p>`, esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;font-size:15px;text-align:center;color:#444">%s</p>`, esc(day))
-	if g["description"] != "" {
-		fmt.Fprintf(&h, `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap">%s</p>`, esc(g["description"]))
+	if description != "" {
+		fmt.Fprintf(&h, `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap">%s</p>`, esc(description))
 	}
 	fmt.Fprintf(&h, `<p style="margin:0 0 12px;font-size:15px;font-weight:700;text-align:center"><a href="%s" style="color:#1b2a2c">%s</a></p>`, esc(link), esc(rsvpFor))
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;text-align:center"><a href="%s" style="display:inline-block;padding:13px 26px;border-radius:4px;background:#1f4d53;color:#fff;font-size:14px;font-weight:600;letter-spacing:0.06em;text-decoration:none">OPEN INVITATION</a></p>`, esc(link))

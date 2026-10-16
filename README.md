@@ -84,7 +84,7 @@ Helios Staff Birthdays, in `docs/birthday/`:
 Helios Celebrate, in `docs/celebrate/`:
 
 - [celebrate.md](docs/celebrate/celebrate.md) — the fun(d)raiser parties site spec
-- [data.md](docs/celebrate/data.md) — the Celebrate sheet and its rules
+- [data.md](docs/celebrate/data.md) — where Celebrate's parties, tickets and payments live in the data model
 
 Helios When, in `docs/when/`:
 

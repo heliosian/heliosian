@@ -127,11 +127,7 @@ const (
 func celebrateSample(t *testing.T) (*Store, *store.Queue, func(viewer string, edits ...Edit) ([]string, error)) {
 	t.Helper()
 	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
-		{Insert: "GROUP", As: "admins", Row: map[string]any{"kind": "admins", "name": "Celebrate Admins", "status": "open", "managed_by": "grp00000000005"}},
-		{Insert: "MEMBER", Row: map[string]any{"group": "@admins", "person": student, "member": "yes"}},
-		{Insert: "APP", Row: map[string]any{"key": "celebrate", "name": "Helios Celebrate", "admins": "@admins", "visible_to": "grp00000000004"}},
-	})
+	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000009", "person": student, "member": "yes"}}})
 	return s, queue, func(viewer string, edits ...Edit) ([]string, error) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
@@ -179,6 +175,77 @@ func TestPartiesAreHostedWhileTheCelebrationTakesThem(t *testing.T) {
 	}
 }
 
+func TestHostingAPartyWithItsWaitlistInOneWrite(t *testing.T) {
+	s, _, write := celebrateSample(t)
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"adding": "approval"}}); err != nil {
+		t.Fatalf("a Celebrate admin can't open hosting: %v", err)
+	}
+	made, err := write(parent,
+		Edit{Insert: "GROUP", As: "p", Row: map[string]any{
+			"kind": "party", "parent": celebration, "name": "Dumpling Night", "description": "> [!chip] Kids\n\nFold, cook, eat.", "slug": "dumplings",
+			"location": "Montara", "address_override": "1 Main St, Montara", "start": "2027-04-10 17:00", "end": "2027-04-10 19:00",
+			"price": "40", "unit": "child", "capacity": "8", "join": "direct", "eligible": "grp00000000001", "drop_off_allowed": true,
+			"status": "pending", "listed": true, "added_by": parent, "added": "2026-10-15", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004",
+		}},
+		Edit{Insert: "GROUP", As: "m", Row: map[string]any{"kind": "group", "name": "Dumpling Night Managers", "status": "open", "added_by": parent}},
+		Edit{Set: "@m", Cells: map[string]any{"managed_by": "@m"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@m", "person": parent, "member": "yes"}},
+		Edit{Set: "@p", Cells: map[string]any{"managed_by": "@m"}},
+		Edit{Insert: "GROUP", As: "wl", Row: map[string]any{"kind": "group", "parent": "@p", "name": "Dumpling Night Waitlist", "status": "open", "listed": true, "added_by": parent, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
+		Edit{Set: "@wl", Cells: map[string]any{"join": "direct", "eligible": "grp00000000001"}},
+		Edit{Set: "@p", Cells: map[string]any{"waitlist": "@wl"}},
+	)
+	if err != nil {
+		t.Fatalf("a parent can't host a party with its waitlist: %v", err)
+	}
+	party, waitlist := made[0], made[5]
+	if g, _ := s.Model().Table("GROUP").Get(party); g["waitlist"] != waitlist || g["status"] != "pending" || g["address_override"] != "1 Main St, Montara" {
+		t.Fatalf("the hosted party reads %v", g)
+	}
+	if _, err := write(parent,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": made[1], "person": staff, "member": "yes"}},
+		Edit{Set: party, Cells: map[string]any{"name": "Dumpling Time", "capacity": "10", "join": "none", "minimum": "4", "address_override": "2 Main St, Montara"}},
+	); err != nil {
+		t.Fatalf("a host can't add a co-host and edit their party: %v", err)
+	}
+	if _, err := write(guest, Edit{Set: party, Cells: map[string]any{"address_override": "3 Main St, Montara"}}); err == nil {
+		t.Error("someone who doesn't host a party gave its address")
+	}
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"address_override": "4249 El Camino Real, Palo Alto"}}); err != nil {
+		t.Errorf("a Celebrate admin can't give a celebration's address: %v", err)
+	}
+	if _, err := write(student,
+		Edit{Set: party, Cells: map[string]any{"status": "open"}},
+		Edit{Set: party, Cells: map[string]any{"visible_to": ""}},
+		Edit{Set: waitlist, Cells: map[string]any{"visible_to": "", "members_visible_to": ""}},
+	); err != nil {
+		t.Fatalf("a Celebrate admin can't approve and hide a party: %v", err)
+	}
+	if _, err := write(parent, Edit{Set: party, Cells: map[string]any{"waitlist": ""}}, Edit{Delete: waitlist}); err != nil {
+		t.Fatalf("a host can't turn off an empty waitlist: %v", err)
+	}
+}
+
+func TestCelebrateAdminsKeepACelebrationsCategories(t *testing.T) {
+	_, _, write := celebrateSample(t)
+	made, err := write(student, Edit{Insert: "GROUP", Row: map[string]any{"kind": "category", "parent": celebration, "name": "Adult Social", "status": "open", "order": "m", "added_by": student, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}})
+	if err != nil {
+		t.Fatalf("a Celebrate admin can't add a category to a celebration: %v", err)
+	}
+	if _, err := write(student, Edit{Set: made[0], Cells: map[string]any{"name": "Grown-Up Social", "order": "n"}}); err != nil {
+		t.Errorf("a Celebrate admin can't rename and reorder a category: %v", err)
+	}
+	if _, err := write(student, Edit{Delete: made[0]}); err != nil {
+		t.Errorf("a Celebrate admin can't delete an empty category: %v", err)
+	}
+	if _, err := write(student, Edit{Insert: "GROUP", Row: map[string]any{"kind": "celebration", "parent": "grp00000000013", "slug": "sc-2028", "name": "Helios Spring Celebration 2028", "status": "open", "added_by": student, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}}); err != nil {
+		t.Errorf("a Celebrate admin can't add a celebration: %v", err)
+	}
+	if _, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"kind": "celebration", "parent": "grp00000000013", "slug": "sc-2029", "name": "Helios Spring Celebration 2029", "status": "open", "added_by": parent, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}}); err == nil {
+		t.Error("someone who isn't a Celebrate admin added a celebration")
+	}
+}
+
 func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
 	s, queue, write := celebrateSample(t)
 	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": parent, "member": "yes"}}})
@@ -202,6 +269,129 @@ func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
 	}
 	if _, ok := s.Model().Table("MEMBER").Find(tacoNight, guest); !ok {
 		t.Error("the moved person holds no ticket")
+	}
+}
+
+func tacoWaitlist(t *testing.T, s *Store, queue *store.Queue, capacity string) string {
+	t.Helper()
+	return apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "join": "direct", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
+		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w", "capacity": capacity}},
+	})[0]
+}
+
+func TestAHostAddsAPaidGuestAndAFreeTicket(t *testing.T) {
+	s, _, write := celebrateSample(t)
+	if _, err := write(staff,
+		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
+		Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@g", "address": "robin.guest@example.com", "primary": true, "source": "guest"}},
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": "@g", "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": "@g", "member": "yes", "added_by": staff, "guest_of": staff, "added": "2026-10-15 09:00:00"}},
+	); err != nil {
+		t.Fatalf("a host can't add a guest's ticket billed to someone else: %v", err)
+	}
+	if _, err := write(staff,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": staff, "note": "Free ticket from the hosts", "added": "2026-10-15 09:01:00"}},
+		Edit{Set: tacoNight, Cells: map[string]any{"capacity": "21"}},
+	); err != nil {
+		t.Fatalf("a host can't give a free ticket and raise the capacity: %v", err)
+	}
+	if g, _ := s.Model().Table("GROUP").Get(tacoNight); g["capacity"] != "21" {
+		t.Errorf("the capacity reads %q", g["capacity"])
+	}
+	if _, ok := s.Model().Table("MEMBER").Find(tacoNight, avery); !ok {
+		t.Error("the free ticket isn't there")
+	}
+}
+
+func TestPlacesPastCapacityGoOnTheWaitlistInTheSameWrite(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, queue, "2")
+	if _, err := write(parent,
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": parent, "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": "@g", "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
+	); err != nil {
+		t.Fatalf("someone can't take the last place and wait for another: %v", err)
+	}
+	if _, ok := s.Model().Table("MEMBER").Find(tacoNight, avery); !ok {
+		t.Error("the place taken isn't there")
+	}
+	if _, err := write(parent,
+		Edit{Insert: "PERSON", As: "h", Row: map[string]any{"source": "guest", "name_long_override": "Sam Guest"}},
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": "@h", "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": "@h", "member": "yes", "added_by": parent, "guest_of": parent}},
+	); err == nil {
+		t.Error("someone took a place at a full party")
+	}
+}
+
+func TestAFamilyLeavesTheWaitlistWithItsExtraPlaces(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, queue, "1")
+	made, err := write(parent,
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": parent, "member": "yes", "added_by": parent, "note": "Two if we can", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "PERSON", As: "w0", Row: map[string]any{"source": "guest"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": "@w0", "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
+	)
+	if err != nil {
+		t.Fatalf("someone can't ask for two places: %v", err)
+	}
+	if _, err := write(parent, Edit{Delete: made[0]}, Edit{Delete: made[2]}); err != nil {
+		t.Fatalf("someone can't leave the waitlist with their extra place: %v", err)
+	}
+}
+
+func TestATicketPassesToANewGuestWithAnAddress(t *testing.T) {
+	s, _, write := celebrateSample(t)
+	if _, err := write(parent,
+		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
+		Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@g", "address": "robin.guest@example.com", "primary": true, "source": "guest"}},
+		Edit{Set: "mem00000000025", Cells: map[string]any{"person": "@g"}},
+	); err != nil {
+		t.Fatalf("someone can't pass their ticket to a guest: %v", err)
+	}
+	if m, _ := s.Model().Table("MEMBER").Get("mem00000000025"); m["person"] == parent {
+		t.Error("the ticket still reads its old holder")
+	}
+}
+
+func TestAnyGuestMayBeBoughtAPlace(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	made := apply(t, s, queue, []Edit{
+		{Insert: "GROUP", As: "elsewhere", Row: map[string]any{"kind": "group", "name": "Somewhere Hidden", "status": "open"}},
+		{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Isaac Guest"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@elsewhere", "person": "@g", "member": "yes", "guest_of": staff}},
+	})
+	isaac := made[1]
+	if len(as(t, s, parent, `(from PERSON (where (= id "`+isaac+`")))`)) != 0 {
+		t.Fatal("the parent sees a guest they shouldn't")
+	}
+	if _, err := write(parent,
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": isaac, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": isaac, "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
+	); err != nil {
+		t.Fatalf("someone can't buy a place for a guest another family brought: %v", err)
+	}
+}
+
+func TestDeletingARowTakesItsAliases(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, queue, "1")
+	made := apply(t, s, queue, []Edit{
+		{Insert: "MEMBER", As: "w", Row: map[string]any{"group": waitlist, "person": guest, "member": "yes", "added": "2026-03-08 09:53"}},
+		{Insert: "ALIAS", Row: map[string]any{"alias": "t9mqt6y0rw8ac", "target": "@w", "hidden": true}},
+	})
+	if _, err := write(staff,
+		Edit{Delete: made[0]},
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": guest, "for": guest, "group": tacoNight, "amount": "40", "added": "2026-10-16 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": guest, "member": "yes", "added_by": staff}},
+	); err != nil {
+		t.Fatalf("a host can't give a place to someone waiting under an old ID: %v", err)
+	}
+	if _, ok := s.Model().Table("ALIAS").Get(made[1]); ok {
+		t.Error("the deleted place's old ID still names it")
 	}
 }
 

@@ -123,7 +123,7 @@ func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now ti
 		link := origin + "/e/" + key
 		c.Events = append(c.Events, mail.Event{
 			UID: id + "@when.heliosian.com", Start: start, End: end, AllDay: allDay, Summary: g["name"],
-			Description: strings.TrimSpace(g["description"] + "\n\n" + link), Location: g["location"], URL: link,
+			Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: g["location"], URL: link,
 		})
 	}
 	return []byte(c.ICS()), true, nil

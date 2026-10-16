@@ -25,3 +25,13 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png")
 }
+
+func TestDescriptionsLoseTheirChipsAndCalloutMarkers(t *testing.T) {
+	description := "> [!chip] Parents & Kids\n\nA cozy evening of fondue.\n\n> [!note] 📣 Good to know\n> Drop-off is okay."
+	if got, want := withoutMarkers(description), "A cozy evening of fondue.\n\n> 📣 Good to know\n> Drop-off is okay."; got != want {
+		t.Errorf("withoutMarkers = %q, want %q", got, want)
+	}
+	if got, want := blurb(description), "A cozy evening of fondue. 📣 Good to know Drop-off is okay."; got != want {
+		t.Errorf("blurb = %q, want %q", got, want)
+	}
+}

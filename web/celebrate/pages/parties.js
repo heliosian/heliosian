@@ -1,4 +1,4 @@
-import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink} from '../state.js';
+import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf} from '../state.js';
 import {selectPill} from '../dom.js';
 import {el, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
@@ -27,14 +27,17 @@ export function celebrationBand(c) {
     words.append(el('div', 'gala-when', line));
   }
   band.append(words);
-  const href = c.buttonUrl === 'calendar' ? celebrationCalendarLink(c) : c.buttonUrl;
-  if (href && c.buttonText) {
+  const buttons = c.links.map(l => ({text: l.text, href: l.url}));
+  if (celebrationUpcoming(c)) {
+    buttons.push({text: 'Add to Calendar', href: celebrationCalendarLink(c), icon: 'calendar'});
+  }
+  for (const b of buttons) {
     const a = el('a', 'button button-small gala-button');
-    if (c.buttonUrl === 'calendar') {
-      a.append(svg('calendar'));
+    if (b.icon) {
+      a.append(svg(b.icon));
     }
-    a.append(el('span', '', c.buttonText));
-    a.href = href;
+    a.append(el('span', '', b.text));
+    a.href = b.href;
     a.target = '_blank';
     a.rel = 'noopener';
     band.append(a);
@@ -119,7 +122,7 @@ export function partiesPage(id) {
     filter.append(svg('list'));
     const sel = el('select');
     sel.append(new Option('All categories', ''));
-    for (const cat of state.model.categories) {
+    for (const cat of categoriesOf(state.celebration)) {
       const o = new Option(cat.title, cat.id);
       o.selected = state.category === cat.id;
       sel.append(o);

@@ -343,6 +343,24 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or no body.")}),
 			},
 		},
+		"/api/do/person-at": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Find who holds an address",
+				"description": "Answers the person whose address it is, someone in the directory before a guest, whether or not the caller may read them, so a guest named by address is used rather than made again; blank when nobody holds it.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+					"type":       "object",
+					"required":   []string{"address"},
+					"properties": schema{"address": schema{"type": "string", "format": "email"}},
+				}}}},
+				"responses": refusals(schema{
+					"200": schema{"description": "The person, or blank.", "content": schema{"application/json": schema{"schema": schema{
+						"type":       "object",
+						"properties": schema{"person": schema{"type": "string"}},
+					}}}},
+				}),
+			},
+		},
 		"/api/do/search": schema{
 			"post": schema{
 				"tags":        []string{"do"},

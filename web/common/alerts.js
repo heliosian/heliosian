@@ -283,17 +283,18 @@ export function initAlerts(viewer) {
   }
   Promise.all([batch({
     waiting: '/api/events?waiting',
-    parties: '/api/parties?status=pending&can=status',
     events: '/api/events?status=pending&can=approve',
     late: '/api/birthdays?late&include=person,assignee',
   }), queries({
     activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name slug start))',
+    parties: '(from GROUP @g (where (= kind "party") (= status "pending") (exists GROUP @u (= id @g.parent) (runs_list @u))) (columns name slug start))',
   }), viewer]).then(([read, data, me]) => {
     const all = name => read.result[name].map(read.get);
-    const activities = data.activities.result.map(id => data.activities.resources.GROUP[id])
-      .map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
+    const groups = name => data[name].result.map(id => data[name].resources.GROUP[id]);
+    const activities = groups('activities').map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
+    const parties = groups('parties').map(g => ({app: 'celebrate', title: g.name, start: g.start || '', path: '/p/' + encodeURIComponent(g.slug || g.id)}));
     showRSVP(user, all('waiting').sort(byStart).map(e => ({title: e.title, start: e.start, allDay: e.allDay, path: eventPath(e)})));
-    showApprovals(user, [...activities, ...[...all('parties'), ...all('events')].map(a => ({app: a.app, title: a.title, start: a.start, path: a.path}))].sort(byStart));
+    showApprovals(user, [...activities, ...parties, ...all('events').map(a => ({app: a.app, title: a.title, start: a.start, path: a.path}))].sort(byStart));
     const late = all('late').map(b => ({
       name: read.follow(b, 'person').fullName,
       step: b.late.step,
@@ -339,7 +340,7 @@ function showRSVP(user, waiting) {
   fitAlerts();
 }
 
-const approvalLists = {team: '/approvals', celebrate: '/approvals', when: '/admin'};
+const approvalLists = {team: '/approvals', celebrate: '/hosting?show=approvals', when: '/admin'};
 const approvalApps = {team: 'HCA-Team', celebrate: 'Helios Celebrate', when: 'Helios When'};
 
 function showApprovals(user, waiting) {

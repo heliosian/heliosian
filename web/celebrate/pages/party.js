@@ -1,10 +1,10 @@
 import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
-import {paragraphs} from '../dom.js';
 import {el, link, svg, button, toast} from '/elements.js';
+import {render as markdown} from '/markdown.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {appOrigin} from '/appswitch.js';
-import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, offerTickets, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
+import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, givePlace, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {detailHero} from '/heroimage.js';
@@ -34,9 +34,6 @@ function hero(p, save) {
 }
 
 function ticketWords(p, mine) {
-  if (p.offered && p.availability !== 'past') {
-    return 'A Place Opened Up - Get Your Tickets';
-  }
   switch (p.availability) {
     case 'available':
       return 'Tickets Available!';
@@ -65,12 +62,11 @@ function ticketBand(p) {
     band.append(personRow(a, {
       className: 'ticket-mine',
       open: true,
-      lines: [`${a.status === 'Offered' ? 'Offered' : 'Waiting for'} ${n} ${n === 1 ? 'ticket' : 'tickets'}`, a.note ? el('div', 'ticket-mine-note', `\u201c${a.note}\u201d`) : null],
+      lines: [`Waiting for ${n} ${n === 1 ? 'ticket' : 'tickets'}`, a.note ? el('div', 'ticket-mine-note', `\u201c${a.note}\u201d`) : null],
     }));
   }
   const actions = el('div', 'ticket-actions');
-  const offered = p.offered > 0 && p.availability !== 'past';
-  const selling = p.availability === 'available' || p.availability === 'waitlist' || offered;
+  const selling = p.availability === 'available' || p.availability === 'waitlist';
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status === 'Waitlist');
   if (!mayTake(p)) {
     if (selling && !mine.length) {
@@ -78,7 +74,7 @@ function ticketBand(p) {
     }
   } else if (selling || p.can.edit) {
     const label = !selling ? 'Add Attendee'
-      : offered || p.availability !== 'waitlist' ? 'Get Tickets'
+      : p.availability !== 'waitlist' ? 'Get Tickets'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
   }
@@ -198,13 +194,8 @@ function waitlistSection(p) {
   p.waitlisted.forEach((a, i) => {
     const n = a.quantity || 1;
     const after = a.mine ? [el('span', 'wait-mine', 'Your family')] : [];
-    const offered = a.status === 'Offered';
     if (p.can.edit) {
-      if (offered) {
-        after.push(button('Withdraw offer', 'close', 'button button-secondary button-small', () => removeTicket(p, a)));
-      } else {
-        after.push(button(`Offer ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => offerTickets(p, a)));
-      }
+      after.push(button(`Give ${n === 1 ? 'a ticket' : n + ' tickets'}`, 'ticket', 'button button-secondary button-small', () => givePlace(p, a)));
       after.push(button('', 'edit', 'edit-icon', () => openTicket(p, a)));
     } else if (a.mine && a.can.delete) {
       after.push(button('Leave waitlist', 'close', 'link-button', () => removeTicket(p, a)));
@@ -213,24 +204,12 @@ function waitlistSection(p) {
       className: 'wait-row',
       open: true,
       before: [el('span', 'wait-num', String(i + 1))],
-      lines: [`${offered ? 'Offered ' : ''}${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`],
+      lines: [`${n} ${n === 1 ? 'ticket' : 'tickets'}${a.line ? ` · ${a.line}` : ''}`],
       after,
     }));
   });
   section.append(list);
   return section;
-}
-
-function callout(p) {
-  if (!p.needToKnow) {
-    return null;
-  }
-  const card = el('div', 'highlight-card');
-  card.append(el('div', 'highlight-icon', p.noteEmoji || '📣'));
-  const body = el('div', 'highlight-body');
-  body.append(el('div', 'highlight-headline', p.noteTitle || 'Good to know'), el('p', 'highlight-text', p.needToKnow));
-  card.append(body);
-  return card;
 }
 
 function approvalButtons(actions, p) {
@@ -421,8 +400,8 @@ export function partyPage(p) {
   if (p.hosting) {
     marks.append(el('span', 'audience-chip hosting-chip', 'Hosting'));
   }
-  if (p.audience) {
-    marks.append(el('span', 'audience-chip', p.audience));
+  for (const chip of p.chips) {
+    marks.append(el('span', 'audience-chip', chip));
   }
   if (p.availability !== 'available') {
     marks.append(el('span', 'avail avail-' + p.availability, availabilityLabel(p)));
@@ -441,13 +420,9 @@ export function partyPage(p) {
     main.append(facts);
   }
   if (p.description) {
-    main.append(paragraphs(p.description, 'prose detail-text'));
-  } else if (p.summary) {
-    main.append(el('p', 'detail-text', p.summary));
-  }
-  const note = callout(p);
-  if (note) {
-    main.append(note);
+    const text = el('div', 'prose detail-text');
+    text.append(markdown(p.description));
+    main.append(text);
   }
   main.append(ticketBand(p));
   const mine = myTicketsSection(p);

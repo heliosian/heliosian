@@ -103,7 +103,7 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	g := c.group
 	day, hours := dayAndHours(g)
 	view := extView{
-		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: g["description"], Hosts: m.namesOf(m.hostsOf(g)),
+		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
 		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: g["join"] == "others", Brought: []extPerson{}, Family: []extPerson{},
 		Past: m.ended(g, time.Now()), Cancelled: g["status"] == "cancelled",
 	}

@@ -245,10 +245,10 @@ const PolicySource = `
            (exists GROUP @p (= kind "party") (in join "direct" "others") (visible @p)
              (or (not (blank price)) (not (blank waitlist)))))))
 
-; @p may hold a place the viewer buys at @g: someone in the viewer's household it admits, or a guest of the viewer's who holds no place anywhere yet
+; @p may hold a place the viewer buys at @g: someone in the viewer's household it admits, or any guest
 (define (buys_for @g @p)
   (or (and (self_or_household @p) (eligible_for @g @p))
-      (and (= @p.source "guest") (not (exists MEMBER (= person @p))))))
+      (= @p.source "guest")))
 
 ; the viewer's household holds a ticket, a sign-up or a yes for @e
 (define (going @e)
@@ -514,10 +514,10 @@ const PolicySource = `
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))
        (exists PAYMENT (= group @new.group) (= for @new.person) (blank status))))
-; ask for another place on a party's waitlist: a guest who holds no place yet, brought by the viewer or someone in their household
+; ask for another place on a party's waitlist: a guest, brought by the viewer or someone in their household
 (insert MEMBER
   (and (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
-       (= @new.person.source "guest") (not (exists MEMBER (= person @new.person))) (self_or_household @new.guest_of)))
+       (= @new.person.source "guest") (self_or_household @new.guest_of)))
 ; pass a party ticket to someone else: its holder, their household, whoever brought them, or the party's hosts
 (set MEMBER.person
   (and (= @old.group.kind "party") (= @old.member "yes")
@@ -870,6 +870,10 @@ const PolicySource = `
 (insert SETTING (and (admin_of "celebrate") (= @new.app "celebrate")))
 ; make a plain group to host parties
 (insert GROUP (and (admin_of "celebrate") (= @new.kind "group")))
+; add a celebration under the Celebrate category
+(insert GROUP
+  (and (admin_of "celebrate") (= @new.kind "celebration") (= @new.parent (slug "celebrate"))
+       (= @new.added_by @viewer) (blank @new.managed_by) (blank @new.url)))
 ; name the group that hosts a party, or what manages a party's hosts
 (set GROUP.managed_by (and (admin_of "celebrate") (or (= @old.kind "party") (managers_for @old "party"))))
 ; every party's hosts
@@ -948,6 +952,8 @@ const PolicySource = `
 (set GROUP.capacity (runs_list @old))
 ; a party's hosts set its price
 (set GROUP.price (and (runs_list @old) (= @old.kind "party")))
+; a party's hosts, and Celebrate admins for a celebration, give its street address
+(set GROUP.address_override (and (runs_list @old) (in @old.kind "party" "celebration")))
 ; a party's hosts bill a place they give at its price, owed and not yet invoiced
 (insert PAYMENT
   (and (= @new.group.kind "party") (runs_list @new.group) (= @new.amount @new.group.price)
@@ -1577,9 +1583,10 @@ func (r *run) redact(t *Table, row store.Row, columns []Column) store.Row {
 }
 
 type Change struct {
-	Table string
-	Old   store.Row
-	New   store.Row
+	Table  string
+	Old    store.Row
+	New    store.Row
+	Before []Change
 }
 
 func (m *Model) Authorize(env Env, c Change) error {

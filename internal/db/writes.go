@@ -236,6 +236,10 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 		if err := authorize(m, c); err != nil {
 			return "", Change{}, err
 		}
+		c.Before, err = beforeDelete(s, tx, c, where)
+		if err != nil {
+			return "", Change{}, err
+		}
 		return target, c, s.Stage(tx, t.Sheet, store.Delete(t.Name, store.Row{"id": target}))
 	}
 	return "", Change{}, access.Invalid("%s: a write is one of insert with row, set with cells, or delete", where)

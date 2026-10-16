@@ -62,10 +62,10 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
 		"SAVED_SEARCH":     {0, 0, 1, 1, 0},
-		"GROUP":            {0, 101, 107, 108, 0},
+		"GROUP":            {0, 103, 109, 111, 0},
 		"MEMBER":           {0, 333, 344, 344, 1},
-		"EFFECTIVE_MEMBER": {0, 483, 494, 495, 1},
-		"RULE":             {0, 0, 0, 22, 0},
+		"EFFECTIVE_MEMBER": {0, 545, 556, 557, 1},
+		"RULE":             {0, 0, 0, 24, 0},
 		"DOCUMENT":         {8, 8, 9, 9, 8},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
 		"CONTENT":          {6, 6, 6, 6, 6},
@@ -73,7 +73,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CHARITY":          {0, 0, 0, 1, 0},
-		"APP":              {0, 2, 2, 2, 0},
+		"APP":              {0, 3, 3, 3, 0},
 		"ALIAS":            {0, 1, 1, 1, 0},
 	} {
 		for i, viewer := range viewers {

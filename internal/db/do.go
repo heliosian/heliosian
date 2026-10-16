@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -179,6 +180,20 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		}
 		slog.InfoContext(r.Context(), "added a file", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"], "mime", mimeType)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
+	})
+	mux.HandleFunc("POST /api/do/person-at", func(w http.ResponseWriter, r *http.Request) {
+		m := s.Model()
+		if _, _, ok := caller(w, r, m, tokens, now()); !ok {
+			return
+		}
+		var ask struct {
+			Address string `json:"address"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&ask); err != nil {
+			serve.Error(w, r, access.Invalid("send the request as JSON: %v", err))
+			return
+		}
+		serve.Write(w, r, http.StatusOK, map[string]string{"person": m.personAt(ask.Address)})
 	})
 	mux.HandleFunc("POST /api/do/fetched", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
