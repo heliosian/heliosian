@@ -693,6 +693,21 @@ var Tables = []Table{
 		},
 	},
 	{
+		Name:        "BIRTHDAY",
+		Generated:   true,
+		Description: "A staff member's birthday in one school year of Staff Birthdays: one for each person with a birthday and each school year that has newsletter issues, with the issue that announces it and the days it is to be asked for and given by. A school year runs from the birthday Year Start setting to the next; the issue is the last one before the birthday that year, else the year's first.",
+		Columns: []Column{
+			ident(BirthdayPrefix),
+			ref("person", "PERSON").about("Whose birthday it is."),
+			col("year", Int).about("The school year, by the calendar year it starts in."),
+			col("day", Date).about("The birthday's date in that school year."),
+			ref("newsletter", "GROUP").about("The newsletter issue that announces it."),
+			col("ask_by", Date).about("The day to ask the staff member for a charity: the issue's day less the Request Lead Days setting."),
+			col("due_by", Date).about("The day the charity is due: the issue's day less the Due By Lead Days setting."),
+			ref("record", "BIRTHDAY_YEAR").about("The team's record of it that year, blank until someone writes one."),
+		},
+	},
+	{
 		Name:        "SEARCH",
 		Generated:   true,
 		Description: "A group's, person's or document extract's search entry: the input built from what every reader of it may read, and what Claude and Vertex made of it, kept in the media bucket under its object. Read from the searcher's index as it stands, so an entry made since the last commit shows at once.",

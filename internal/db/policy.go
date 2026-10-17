@@ -361,6 +361,10 @@ const PolicySource = `
   (id person year assigned_to assigned invite_day contacted contacted_by charity note recorded
    recorded_by published published_by)
   true)
+; the birthdays of people the viewer may see, each school year, to the Birthdays team
+(read BIRTHDAY (and (birthday_team) (person_visible person)))
+; every column of a birthday
+(read BIRTHDAY (id person year day newsletter ask_by due_by record) true)
 ; the viewer's own saved searches
 (read SAVED_SEARCH (= person @viewer))
 ; save a search of one's own

@@ -41,12 +41,18 @@ func newDerived() *derived {
 	return &derived{byGroup: map[string]effectiveEntry{}, sets: map[string]*generatedSet{}}
 }
 
+var generatedInputs = map[string][]string{"BIRTHDAY": {"PERSON", "GROUP", "SETTING", "BIRTHDAY_YEAR"}}
+
 func (d *derived) carry(was, is map[string]*View) *derived {
 	if d == nil || was == nil {
 		return newDerived()
 	}
 	changed := changedReads(was, is)
-	if len(changed) == 0 {
+	stale := map[string]bool{}
+	for name, tables := range generatedInputs {
+		stale[name] = slices.ContainsFunc(tables, func(t string) bool { return viewChanged(was[t], is[t]) })
+	}
+	if len(changed) == 0 && !slices.Contains(slices.Collect(maps.Values(stale)), true) {
 		return d
 	}
 	keys := slices.Collect(maps.Keys(changed))
@@ -59,11 +65,17 @@ func (d *derived) carry(was, is map[string]*View) *derived {
 		}
 	}
 	for name, set := range d.sets {
-		if name != "EFFECTIVE_MEMBER" {
+		if !stale[name] && (name != "EFFECTIVE_MEMBER" || len(changed) == 0) {
 			out.sets[name] = set
 		}
 	}
 	return out
+}
+
+func viewChanged(a, b *View) bool {
+	changed := false
+	viewChanges(a, b, func(store.Row, store.Row) { changed = true })
+	return changed
 }
 
 func changedReads(was, is map[string]*View) reads {
@@ -206,6 +218,8 @@ func (set *generatedSet) build(m *Model, t *Table) {
 		set.rows = m.effectiveAll()
 	case "INBOX":
 		set.rows = []store.Row{}
+	case "BIRTHDAY":
+		set.rows = m.birthdayRows()
 	case "SEARCH":
 		set.rows, _ = m.index.generatedRows()
 	default:
