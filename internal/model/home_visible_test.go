@@ -241,24 +241,6 @@ func TestVisibilityNarrowsAnApp(t *testing.T) {
 	}
 }
 
-func TestGrantAddsToAnAppsList(t *testing.T) {
-	c, dir := sampleHomeCache(t)
-	const email = "sam.whitfield@heliosschool.org"
-	if err := c.GrantApp(context.Background(), "celebrate", " Sam.Whitfield@heliosschool.org "); err != nil {
-		t.Fatal(err)
-	}
-	if got := c.Model().HiddenApps(email); !slices.Equal(got, []string{"birthday", "admin"}) {
-		t.Errorf("hidden from sam after the grant = %v, want [birthday admin]", got)
-	}
-	if err := c.GrantApp(context.Background(), "celebrate", email); err != nil {
-		t.Fatal(err)
-	}
-	log := dir.rows(t, store.ChangeLogTab)
-	if len(log) != 1 || log[0]["Actor"] != email || log[0]["Tab"] != homeVisibilityTab || log[0]["Column"] != "Emails" || log[0]["Previous"] != "jordan.whitfield@heliosschool.org, mia.torres@heliosschool.org" {
-		t.Errorf("change log = %v, want one row holding the list before", log)
-	}
-}
-
 func withEvents(tables store.Tables) store.Tables {
 	tables[homeCategoriesTab] = append([]store.Row{eventsRow("2")}, tables[homeCategoriesTab]...)
 	return tables

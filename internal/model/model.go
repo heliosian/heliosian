@@ -20,7 +20,6 @@ type Model struct {
 	Directory  *Directory
 	Calendar   *Calendar
 	Activities *Activities
-	Birthdays  *Birthdays
 	EmailLists *EmailLists
 	Home       *Home
 	Feedback   *Feedback
@@ -110,30 +109,6 @@ func parts(deps Deps, documents *documentObjects) []store.Part[Model] {
 			},
 		},
 		{
-			App: birthdaysAppName, Tabs: birthdaysTabs, Reads: []string{DirectoryApp},
-			Build: func(_ context.Context, tables store.Tables, m *Model) error {
-				birthdays, err := BuildBirthdays(tables, deps.IDKey)
-				if err != nil {
-					return err
-				}
-				birthdays.index(m.Directory)
-				m.Birthdays = birthdays
-				return nil
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				b := m.Birthdays
-				slog.Info("loaded birthday model", "birthdays", len(b.Birthdays), "charities", len(b.Charities),
-					"donations", len(b.Donations), "newsletters", len(b.NewsletterDates), "took", took(d))
-			},
-		},
-		{
-			App: sharedSheet, Tabs: sharedTabs,
-			Build: func(context.Context, store.Tables, *Model) error { return nil },
-			Loaded: func(_ *Model, d time.Duration) {
-				slog.Info("loaded shared newsletter", "took", took(d))
-			},
-		},
-		{
 			App: emailListsAppName, Tabs: emailListsTabs,
 			Build: func(_ context.Context, tables store.Tables, m *Model) (err error) {
 				m.EmailLists, err = BuildEmailLists(tables, deps.IDKey)
@@ -216,7 +191,6 @@ type adminApp struct {
 var adminApps = []adminApp{
 	{"who", DirectoryApp, WhoAdminAllowances, func(m *Model) []string { return m.Directory.admins }},
 	{"team", activitiesAppName, ActivitiesAdminAllowances, func(m *Model) []string { return m.Activities.admins }},
-	{"birthday", birthdaysAppName, BirthdaysAdminAllowances, func(m *Model) []string { return m.Birthdays.admins }},
 	{"when", CalendarApp, CalendarAdminAllowances, func(m *Model) []string { return m.Calendar.admins }},
 	{"home", homeAppName, HomeAdminAllowances, func(m *Model) []string { return m.Home.admins }},
 }

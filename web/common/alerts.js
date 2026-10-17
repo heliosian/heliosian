@@ -4,6 +4,7 @@ import {eventPath} from '/dayrows.js';
 import {el} from '/elements.js';
 import {appOrigin, hoverMenu, hoverClick} from '/appswitch.js';
 import {noteError} from '/feedback.js';
+import {birthdayWork} from '/birthdays.js';
 
 const alertBuilds = new WeakMap();
 
@@ -275,7 +276,7 @@ function byStart(a, b) {
   return (a.start || '').localeCompare(b.start || '');
 }
 
-export function initAlerts(viewer) {
+export function initAlerts() {
   bellStale();
   const user = document.querySelector('#user');
   if (!user || document.querySelector('.rsvp-alert, .approvals-alert, .late-alert')) {
@@ -284,25 +285,24 @@ export function initAlerts(viewer) {
   Promise.all([batch({
     waiting: '/api/events?waiting',
     events: '/api/events?status=pending&can=approve',
-    late: '/api/birthdays?late&include=person,assignee',
   }), queries({
     activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name slug start))',
     parties: '(from GROUP @g (where (= kind "party") (= status "pending") (exists GROUP @u (= id @g.parent) (runs_list @u))) (columns name slug start))',
-  }), viewer]).then(([read, data, me]) => {
+  }), birthdayWork()]).then(([read, data, work]) => {
     const all = name => read.result[name].map(read.get);
     const groups = name => data[name].result.map(id => data[name].resources.GROUP[id]);
     const activities = groups('activities').map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
     const parties = groups('parties').map(g => ({app: 'celebrate', title: g.name, start: g.start || '', path: '/p/' + encodeURIComponent(g.slug || g.id)}));
     showRSVP(user, all('waiting').sort(byStart).map(e => ({title: e.title, start: e.start, allDay: e.allDay, path: eventPath(e)})));
     showApprovals(user, [...activities, ...parties, ...all('events').map(a => ({app: a.app, title: a.title, start: a.start, path: a.path}))].sort(byStart));
-    const late = all('late').map(b => ({
-      name: read.follow(b, 'person').fullName,
-      step: b.late.step,
-      due: b.late.due,
-      assignee: (read.follow(b, 'assignee') || {}).fullName || b.assignedTo,
-      path: b.path,
+    const late = work.items.filter(sv => sv.late).map(sv => ({
+      name: sv.name,
+      step: sv.late.step,
+      due: sv.late.due,
+      assignee: sv.assignee,
+      path: sv.path,
     })).sort((a, b) => a.due.localeCompare(b.due));
-    showLate(user, late, me.allowances.includes('birthday.admins'));
+    showLate(user, late, work.admin);
   }).catch(err => noteError('alerts: ' + err.message));
 }
 

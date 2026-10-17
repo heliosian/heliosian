@@ -22,7 +22,6 @@ import (
 const (
 	mailFrom          = "HCA-Team <team@loop.heliosian.com>"
 	birthdayMailFrom  = "Helios Staff Birthdays <birthday@reply.heliosian.com>"
-	birthdayBase      = "https://birthday.heliosian.com"
 	feedbackBase      = "https://heliosian.com"
 	calendarMailFrom  = "Helios When <when@reply.heliosian.com>"
 	calendarReplyTo   = "Helios When <when@reply.heliosian.com>"

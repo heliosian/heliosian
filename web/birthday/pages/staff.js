@@ -1,7 +1,7 @@
 import {charity, charityName, longDate, mediumDate, emailLink, newsletterText} from '../state.js';
 import {el, link, svg, thumb, button, iconButton, copyText} from '/elements.js';
 import {setTitle} from '/shell.js';
-import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation, openNote, removeNote} from '../edit.js';
+import {openAssign, markContacted, markUsed, useDefault, reuseLast, openDonation, openBirthday, openParticipation} from '../edit.js';
 
 function crumb(sv) {
   const nav = el('div', 'crumb');
@@ -52,7 +52,7 @@ function facts(sv) {
   const row = el('div', 'facts');
   row.append(fact('cake', 'Birthday', longDate(sv.birthdayThisYear)));
   row.append(fact('doc', 'Request By', sv.requestBy ? mediumDate(sv.requestBy) : 'No newsletter date'));
-  row.append(fact('send', 'Newsletter Date', sv.newsletterDate ? longDate(sv.newsletterDate) + (sv.override ? ' (set by hand)' : '') : 'None this year'));
+  row.append(fact('send', 'Newsletter Date', sv.newsletterDate ? longDate(sv.newsletterDate) : 'None this year'));
   return row;
 }
 
@@ -110,7 +110,7 @@ function steps(sv) {
   card.append(head);
   const inner = el('div', 'workflow-steps');
   const assignActions = [sv.assignedTo ? outlined('Change', 'user', () => openAssign(sv)) : filled('Assign', 'user', () => openAssign(sv))];
-  inner.append(step(1, 'Assignment', sv.assignedTo ? `Assigned to ${sv.assignedToName} (${sv.assignedTo})` : 'Unassigned', assignActions, stepStatus(sv, 1)));
+  inner.append(step(1, 'Assignment', sv.assigned ? `Assigned to ${sv.assignedToName}${sv.assignedTo ? ` (${sv.assignedTo})` : ''}` : 'Unassigned', assignActions, stepStatus(sv, 1)));
   inner.append(step(2, 'Wait', sv.requestBy ? `Wait until ${mediumDate(sv.requestBy)} to request` : 'No newsletter falls in this birthday year yet',
     [outlined('Change', null, () => openBirthday(sv))], stepStatus(sv, 2), sv.requestBy ? `(for the ${longDate(sv.newsletterDate)} newsletter)` : ''));
   const mail = el('a', 'button button-secondary');
@@ -208,21 +208,10 @@ function donationBand(sv) {
   return cols;
 }
 
-function notes(sv) {
-  const wrap = el('div', 'notes');
-  for (const n of sv.notes) {
-    const row = el('div', 'note');
-    row.append(el('div', 'note-text', n.note), el('div', 'note-meta', `${n.addedBy} · ${mediumDate(n.added)}`));
-    if (n.can.delete) {
-      row.append(iconButton('trash', 'Remove note', '', () => removeNote(n)));
-    }
-    wrap.append(row);
-  }
+function preference(sv) {
   const actions = el('div', 'center-actions');
-  actions.append(button('Add Note', 'plus', 'button button-secondary', () => openNote(sv)));
   actions.append(button(sv.level ? 'Edit Preference' : 'Set Preference', 'warn', 'button button-secondary', () => openParticipation(sv)));
-  wrap.append(actions);
-  return wrap;
+  return actions;
 }
 
 export function staffPage(sv) {
@@ -233,7 +222,7 @@ export function staffPage(sv) {
     const band = el('div', 'ask-band');
     band.append(el('div', 'ask-icon', '🎂'));
     const body = el('div', 'row-body');
-    body.append(el('div', 'row-title', 'No birthday on file'), el('div', 'row-text', sv.level === 'Skip' ? `Opted out${sv.levelNote ? `: ${sv.levelNote}` : ''}.` : 'Add their birthday to bring them into the process.'));
+    body.append(el('div', 'row-title', 'No birthday on file'), el('div', 'row-text', sv.level === 'Skip' ? 'Opted out.' : 'Add their birthday to bring them into the process.'));
     band.append(body);
     const actions = el('div', 'row-actions');
     actions.append(filled('Add Birthday', 'plus', () => openBirthday(sv)));
@@ -247,7 +236,7 @@ export function staffPage(sv) {
     const band = el('div', 'ask-band');
     band.append(el('div', 'ask-icon', '🙅'));
     const body = el('div', 'row-body');
-    body.append(el('div', 'row-title', 'Opted out'), el('div', 'row-text', sv.levelNote || 'Asked not to take part.'));
+    body.append(el('div', 'row-title', 'Opted out'), el('div', 'row-text', 'Asked not to take part.'));
     band.append(body);
     const actions = el('div', 'row-actions');
     actions.append(outlined('Edit Preference', 'warn', () => openParticipation(sv)));
@@ -259,6 +248,6 @@ export function staffPage(sv) {
   if (!sv.donation) {
     page.append(askBand(sv));
   }
-  page.append(donationBand(sv), notes(sv));
+  page.append(donationBand(sv), preference(sv));
   return page;
 }

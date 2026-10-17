@@ -302,6 +302,57 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		slog.InfoContext(r.Context(), "described activity", "actor", actor.Email, "title", body.Title)
 		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
 	})
+	mux.HandleFunc("POST /api/do/describe-charity", func(w http.ResponseWriter, r *http.Request) {
+		m := s.Model()
+		env, actor, ok := caller(w, r, m, tokens, now())
+		if !ok {
+			return
+		}
+		var body charityDraft
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&body); err != nil {
+			serve.Error(w, r, access.Invalid("send the charity as JSON: %v", err))
+			return
+		}
+		name := strings.TrimSpace(body.Name)
+		if name == "" {
+			serve.Error(w, r, access.Invalid("give the charity's name first"))
+			return
+		}
+		team, err := Parse(`(from APP (where (= key "birthday") (birthday_team)))`)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		if len(m.Run(r.Context(), team, env).IDs) == 0 {
+			serve.Error(w, r, access.Forbidden("only the Birthdays team looks charities up"))
+			return
+		}
+		info, err := describer.Charity(r.Context(), actor.Email, name, body.URL)
+		if errors.Is(err, claude.ErrTooMany) {
+			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", err))
+			return
+		}
+		if errors.Is(err, describe.ErrTooLong) {
+			serve.Error(w, r, access.Invalid("%v", err))
+			return
+		}
+		if err != nil {
+			slog.ErrorContext(r.Context(), "describe charity", "actor", actor.Email, "name", name, "error", err)
+			serve.Error(w, r, access.Refuse(http.StatusBadGateway, "could not look this charity up right now"))
+			return
+		}
+		if info.Sentence == "" {
+			serve.Error(w, r, access.Missing("could not find this charity; please enter its information"))
+			return
+		}
+		slog.InfoContext(r.Context(), "described charity", "actor", actor.Email, "name", name, "url", info.DonationLink)
+		serve.Write(w, r, http.StatusOK, map[string]string{"description": info.Sentence, "url": info.DonationLink})
+	})
+}
+
+type charityDraft struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
 }
 
 type activityDraft struct {

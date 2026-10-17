@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"slices"
 	"strings"
 
@@ -158,13 +157,4 @@ func (m *Home) MissingVisibility() []App {
 		}
 	}
 	return out
-}
-
-func (s *Store) GrantApp(ctx context.Context, appKey, email string) error {
-	actor := access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}
-	ops, err := s.Model().Home.grant(actor, appKey)
-	if err != nil {
-		return err
-	}
-	return s.Commit(ctx, actor, homeAppName, ops...)
 }

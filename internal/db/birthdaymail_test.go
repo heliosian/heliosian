@@ -15,8 +15,15 @@ type sharedRows struct {
 }
 
 func (s *sharedRows) Insert(app, table string, rows []map[string]string) error {
-	if app != birthdaySheet || table != birthdaySharedTab {
+	if app != birthdaySheet || table != BirthdaySharedTab {
 		panic("the weekly copy wrote to " + app + "/" + table)
+	}
+	for _, row := range rows {
+		for column := range row {
+			if !slices.Contains(BirthdaySharedColumns, column) {
+				panic("the weekly copy wrote a column the shared tab does not have: " + column)
+			}
+		}
 	}
 	s.rows = append(s.rows, rows...)
 	return nil

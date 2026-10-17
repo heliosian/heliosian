@@ -63,8 +63,8 @@ Plain environment variables:
 - `PREFERENCES_SHEET` — the `Preferences` sheet in the same shared drive: the sharing-consent form's response spreadsheet.
 - `APPS_SHEET` — the `Apps` spreadsheet id: Heliosian's categories, links, and admins (`docs/home/data.md`).
 - `EVENTS_SHEET` — the `Events` spreadsheet id: the volunteer portal's activities, roles, sign-ups, and admins (`docs/team/data.md`).
-- `BIRTHDAY_SHEET` — the `Birthdays` spreadsheet id: the birthday team's staff birthdays, pipeline progress, charities, and admins (`docs/birthday/data.md`).
-- `BIRTHDAY_SHARED_SHEET` — the `Staff Birthday List (Shared)` spreadsheet id: the association's own list, whose Newsletter tab Birthday's weekly export writes each issue's birthdays to (`docs/birthday/birthday.md`, The weekly export). It sits outside the shared drive, shared with `directory@` as an editor.
+- `BIRTHDAY_SHEET` — the `Birthdays` spreadsheet id: the old Staff Birthdays sheet, which the server no longer loads and the sync in `local/migrate` still reads; Staff Birthdays reads the data model (`docs/datamodel.md`, Staff Birthdays).
+- `BIRTHDAY_SHARED_SHEET` — the `Staff Birthday List (Shared)` spreadsheet id: the association's own list, whose Newsletter tab Staff Birthdays' weekly copy writes each issue's birthdays to (`docs/birthday/birthday.md`, The weekly copy). It sits outside the shared drive, shared with `directory@` as an editor.
 - `CELEBRATE_SHEET` — the `Celebrate` spreadsheet id: the old Celebrate sheet, which the server no longer loads and the sync in `local/migrate` still reads; Celebrate's pages read the data model (`docs/celebrate/data.md`).
 - `CALENDAR_SHEET` — the `Calendar` spreadsheet id: Helios When's imported events, enrichment, overrides, day types, feeds, and admins (`docs/when/data.md`).
 - `CONFIG_SHEET` — the `Config` spreadsheet id: the platform super admins and settings (`docs/config.md`).

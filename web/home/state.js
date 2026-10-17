@@ -3,6 +3,7 @@ import {eventPath} from '/dayrows.js';
 import {queries} from '/rail.js';
 import {teamQueries, teamWidget} from './team.js';
 import {partyQueries, partiesWidget} from './parties.js';
+import {birthdayWork} from '/birthdays.js';
 
 export const state = {model: null};
 
@@ -118,16 +119,19 @@ export async function readToDos() {
   state.model.todos = read.result.map(read.get);
 }
 
-function birthdayItem(read, b) {
-  const person = read.follow(b, 'person') || {};
-  const assignee = read.follow(b, 'assignee');
-  const donation = read.follow(b, 'donation');
-  const chosen = donation && read.follow(donation, 'charity');
+function birthdayItem(sv) {
   return {
-    charity: chosen ? chosen.name : read.follow(b, 'fallback-charity').name, chosen: Boolean(chosen),
-    name: person.fullName || b.email, photo: person.photoUrl || '', path: b.path, stage: b.stage, next: b.next,
-    newsletter: b.newsletterDate, urgency: b.urgency ? b.urgency.when : '', assignee: assignee ? assignee.fullName : b.assignedTo || '',
+    charity: sv.charity, chosen: sv.donation, name: sv.name, photo: sv.photo, path: sv.path, stage: sv.stage, next: sv.next,
+    newsletter: sv.newsletterDate, urgency: sv.urgency ? sv.urgency.when : '', assignee: sv.assignee,
   };
+}
+
+function birthdayLists(work) {
+  const soon = new Set(work.issues);
+  const mine = work.items.filter(sv => sv.next && sv.next.day && sv.next.step !== 'newsletter' && sv.assignedToId === work.viewer && soon.has(sv.newsletterDate))
+    .sort((x, y) => x.next.day.localeCompare(y.next.day));
+  const all = work.admin ? work.items.filter(sv => soon.has(sv.newsletterDate)).sort((x, y) => x.newsletterDate.localeCompare(y.newsletterDate)) : [];
+  return {mine: mine.map(birthdayItem), all: all.map(birthdayItem)};
 }
 
 function options(read) {
@@ -142,7 +146,7 @@ function options(read) {
 }
 
 export async function loadModel() {
-  const [read, viewer, data] = await Promise.all([batch({
+  const [read, viewer, data, work] = await Promise.all([batch({
     settings: '/api/home-settings?include=viewer',
     categories: '/api/link-categories?include=links',
     apps: '/api/apps',
@@ -152,8 +156,7 @@ export async function loadModel() {
     waiting: '/api/events?waiting',
     school: '/api/school-emails',
     todos: '/api/to-dos',
-    birthday: '/api/birthday-settings?include=mine.person,mine.donation.charity,mine.fallback-charity,all.person,all.assignee,all.donation.charity,all.fallback-charity',
-  }), whoAmI(), queries({...teamQueries, ...partyQueries})]);
+  }), whoAmI(), queries({...teamQueries, ...partyQueries}), birthdayWork()]);
   const admin = viewer.allowances.includes('home.configure');
   const today = read.now.slice(0, 10);
   const calendars = read.result.feeds.map(read.get);
@@ -171,7 +174,6 @@ export async function loadModel() {
   const s = read.get(read.result.settings[0]);
   const person = read.follow(s, 'viewer') || {};
   const name = person.fullName || viewer.email;
-  const birthday = read.get(read.result.birthday[0]);
   state.model = {
     user: {email: viewer.email, name, initial: name[0].toUpperCase(), photoUrl: person.heroPhotoUrl},
     allowances: viewer.allowances,
@@ -197,11 +199,7 @@ export async function loadModel() {
     team: teamWidget(data, read.now),
     school: read.result.school.map(read.get),
     todos: read.result.todos.map(read.get),
-    birthday: {
-      admin: viewer.allowances.includes('birthday.configure'),
-      mine: read.follow(birthday, 'mine').map(b => birthdayItem(read, b)),
-      all: read.follow(birthday, 'all').map(b => birthdayItem(read, b)),
-    },
+    birthday: birthdayLists(work),
     options: admin ? {...options(later), roles: s.roles, relations: s.relations} : null,
   };
 }

@@ -22,13 +22,14 @@ import (
 const (
 	birthdayJob       = "birthday mail"
 	birthdaySheet     = "birthdayshared"
-	birthdaySharedTab = "Newsletter"
+	BirthdaySharedTab = "Newsletter"
 	lateAfterDays     = 2
 )
 
 var (
-	birthdayBrand = mail.Brand{Name: "Helios Staff Birthdays", Color: "#0e4d54", Tagline: "staff birthday donations"}
-	remindHours   = [2]int{7, 21}
+	birthdayBrand         = mail.Brand{Name: "Helios Staff Birthdays", Color: "#0e4d54", Tagline: "staff birthday donations"}
+	remindHours           = [2]int{7, 21}
+	BirthdaySharedColumns = []string{"Staff Name", "Staff Email", "Staff Birthday", "Target Newsletter Date", "Contacted On", "Charity Selected On", "Charity Name", "Charity Link", "Charity Blurb", "Note", "Preference"}
 )
 
 type BirthdayMailConfig struct {
@@ -561,7 +562,7 @@ func (bm *BirthdayMailer) weekly(ctx context.Context, now time.Time) {
 	if len(rows) == 0 {
 		return
 	}
-	if err := bm.config.Shared.Insert(birthdaySheet, birthdaySharedTab, rows); err != nil {
+	if err := bm.config.Shared.Insert(birthdaySheet, BirthdaySharedTab, rows); err != nil {
 		slog.ErrorContext(ctx, "birthday mail: weekly copy not written to the shared sheet", "issue", issue, "error", err)
 		return
 	}

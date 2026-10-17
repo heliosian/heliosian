@@ -68,7 +68,6 @@ type Config struct {
 	CelebrateMail *mail.Mailgun
 	CalendarMail  model.CalendarMail
 	BirthdayMail  *mail.Mailgun
-	BirthdayBase  string
 	FeedbackFiler *feedback.GitHubApp
 	FeedbackBase  string
 	Describer     *describe.Describer
@@ -99,6 +98,7 @@ type Core struct {
 	Queue     *store.Queue
 	ListMail  *db.ListMailer
 	Invites   *db.Invitations
+	Birthdays *db.BirthdayMailer
 	Spoof     *auth.Spoof
 	Settled   <-chan struct{}
 	apps      []appSpec
@@ -159,7 +159,7 @@ func NewCore(cfg Config) *Core {
 		}
 	}
 	whoAbout := directoryAbout(appName("who"), taglineOf("who"))
-	birthdayAbout := model.BirthdaysAbout(appName("birthday"), taglineOf("birthday"))
+	birthdayAbout := birthdaysAbout(appName("birthday"), taglineOf("birthday"))
 	loopAbout := listAbout(appName("loop"), taglineOf("loop"))
 	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
 	teamStyle := &sharecard.Style{
@@ -212,6 +212,12 @@ func NewCore(cfg Config) *Core {
 	activityPages := db.NewActivityPages(dataStore, cfg.Bucket, teamStyle)
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
+	birthdayMux.Handle("GET /open/share/about.png", birthdayAbout)
+	for _, page := range []string{"/{$}", "/jobs", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/newsletters/{date}", "/skipped", "/unassigned", "/admin", "/staff/{handle}"} {
+		birthdayMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/birthday/index.html")
+		})
+	}
 	celebrateMux := http.NewServeMux()
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
@@ -264,6 +270,7 @@ func NewCore(cfg Config) *Core {
 	invitations := db.RegisterInvitations(calendarMux, dataStore, queue, pictures, tokens, schoolNow, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: model.Origin(cfg.Domain),
 	})
+	birthdays := db.NewBirthdayMailer(dataStore, queue, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: model.Origin(cfg.Domain), Shared: cfg.Writer})
 	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: model.Origin(cfg.Domain), Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, mcp.Deps{
@@ -288,15 +295,6 @@ func NewCore(cfg Config) *Core {
 	}
 	registry := model.NewRegistry(models, queue, hooks, activities, home, feedbackAdmin)
 	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
-	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
-		Store:     models,
-		Queue:     queue,
-		Describer: cfg.Describer,
-		Mailer:    cfg.BirthdayMail,
-		Base:      cfg.BirthdayBase,
-		About:     birthdayAbout,
-		Taken:     registry.Taken,
-	})
 	notifier := model.FeedbackNotifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: func() []string { return models.Model().Config.SuperAdmins }}
 	feedbackIntake := model.NewFeedbackIntake(models, cfg.Bucket, notifier.Notify)
 	optIn := optInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
@@ -317,6 +315,7 @@ func NewCore(cfg Config) *Core {
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, tokens, schoolNow)
 	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterDrafts(teamMux, dataStore, cfg.Describer, tokens, schoolNow)
+	db.RegisterDrafts(birthdayMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, tokens, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
@@ -333,7 +332,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail, Invites: invitations,
+		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
@@ -415,7 +414,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		CelebrateMail: newMailer(celebrateMailFrom),
 		CalendarMail:  calendarMail(sessionKey),
 		BirthdayMail:  newMailer(birthdayMailFrom),
-		BirthdayBase:  birthdayBase,
 		FeedbackFiler: github,
 		FeedbackBase:  feedbackBase,
 		ListMail:      listMail(sessionKey),
@@ -450,6 +448,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			<-core.Settled
 			core.ListMail.Start()
 			core.Invites.Start()
+			core.Birthdays.Start()
 			db.StartConsent(core.Data, core.Queue, sheet)
 			core.Search.StartMaking(anthropicKey)
 			watcher.Start()

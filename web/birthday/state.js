@@ -1,78 +1,174 @@
-import {batch, me as whoAmI} from '/data.js';
+import {api} from '/api.js';
+import {queries} from '/rail.js';
+import {directory, emailOf, photoOf} from '/directory.js';
+import {birthdayTeam, birthdaySchoolYear, stageOf, urgencyOf, levels, staffPathOf} from '/birthdays.js';
 
 export const state = {model: null};
 
 const byHandle = new Map();
 
-function staffView(read, b) {
-  const person = read.follow(b, 'person') || {};
-  const assignee = read.follow(b, 'assignee');
-  return {
-    ...b,
-    name: person.fullName || b.email,
-    jobTitle: person.jobTitle || '',
-    department: person.department || '',
-    photoUrl: person.photoUrl || '',
-    assignedTo: assignee ? assignee.email || '' : b.assignedTo || '',
-    assignedToName: assignee ? assignee.fullName : b.assignedTo || '',
-    donation: read.follow(b, 'donation'),
-    lastDonation: read.follow(b, 'last-donation'),
-    fallback: {charity: read.follow(b, 'fallback-charity').id, note: b.fallbackNote || ''},
-    notes: read.follow(b, 'notes'),
-  };
+export function write(batch) {
+  return api('POST', '/api/q', {batch});
 }
 
-function teamMember(read, m) {
-  const person = read.follow(m, 'person');
-  return {...m, email: person ? person.email : m.email, name: person ? person.fullName : m.email};
+function rowsOf(answer, table) {
+  return answer.result.map(id => answer.resources[table][id]);
 }
 
-const byName = (a, b) => a.name.localeCompare(b.name);
+export const levelValues = {'Skip': 'skip', 'No Newsletter': 'no_newsletter'};
+
+const two = n => String(n).padStart(2, '0');
+
+export function nowMoment() {
+  const d = new Date();
+  return `${dateCell(d)} ${two(d.getHours())}:${two(d.getMinutes())}`;
+}
+
+function dayOf(moment) {
+  return (moment || '').slice(0, 10);
+}
 
 export async function loadModel() {
-  const [read, viewer] = await Promise.all([batch({
-    settings: '/api/birthday-settings?include=viewer',
-    birthdays: '/api/birthdays?include=person,assignee,donation,last-donation,fallback-charity,notes',
-    charities: '/api/charities',
-    newsletterDates: '/api/newsletter-dates',
-    team: '/api/birthday-team?include=person',
-    departments: '/api/departments',
-  }), whoAmI()]);
-  const s = read.get(read.result.settings[0]);
-  const person = read.follow(s, 'viewer') || {};
-  const name = person.fullName || viewer.email;
-  const everyone = read.result.birthdays.map(id => staffView(read, read.get(id)));
+  const [a, dir] = await Promise.all([queries({
+    viewer: '(from PERSON (where (= id @viewer)))',
+    admin: '(from APP (where (= key "birthday") (admin_of "birthday")) (columns key))',
+    team: '(from APP (where (= key "birthday") (birthday_team)) (columns key))',
+    settings: '(from SETTING (where (= app "birthday")))',
+    people: '(from PERSON (where (or (not (blank birthday)) (in id (members (slug "staff"))))) (columns name_show slug job_title department birthday birthday_participation))',
+    birthdays: '(from BIRTHDAY)',
+    years: '(from BIRTHDAY_YEAR)',
+    charities: '(from CHARITY (order name asc))',
+    issues: '(from GROUP (where (in parent (select GROUP.parent (in id (select BIRTHDAY.newsletter))))) (order start asc) (columns start))',
+    activity: `(from GROUP (where (= slug "${birthdayTeam}")) (columns leads))`,
+    members: `(from MEMBER (where (= member "yes") (or (in group (select GROUP.id (= slug "${birthdayTeam}"))) (in group (select GROUP.leads (= slug "${birthdayTeam}"))))) (columns group person))`,
+  }), directory()]);
+  const viewer = rowsOf(a.viewer, 'PERSON')[0];
+  const settings = {};
+  const settingIds = {};
+  for (const s of rowsOf(a.settings, 'SETTING')) {
+    settings[s.key] = s.value;
+    settingIds[s.key] = s.id;
+  }
+  const today = dateCell(new Date());
+  const start = settings['Year Start'];
+  const current = birthdaySchoolYear(today, start);
+  const end = parseDate(`${current + 1}-${start}`);
+  end.setDate(end.getDate() - 1);
+  const yearInfo = {number: current, current: `${current} - ${current + 1}`, start: `${current}-${start}`, end: dateCell(end)};
+  const charities = rowsOf(a.charities, 'CHARITY').map(c => ({...c, allowed: c.allowed === 'Yes', about: c.description || '', donationLink: c.url || '', whyNotAllowed: c.not_allowed_reason || '', addedOn: dayOf(c.added), path: `/charities/${encodeURIComponent(c.name)}`}));
+  const charityById = new Map(charities.map(c => [c.id, c]));
+  const issues = rowsOf(a.issues, 'GROUP').map(g => ({id: g.id, date: dayOf(g.start)}));
+  const issueDay = new Map(issues.map(n => [n.id, n.date]));
+  const records = new Map();
+  const named = new Set();
+  for (const y of rowsOf(a.years, 'BIRTHDAY_YEAR')) {
+    records.set(`${y.person}|${y.year}`, y);
+    if (y.charity) {
+      named.add(y.charity);
+    }
+  }
+  for (const c of charities) {
+    c.named = named.has(c.id);
+  }
+  const births = new Map();
+  for (const b of rowsOf(a.birthdays, 'BIRTHDAY')) {
+    if (Number(b.year) === current) {
+      births.set(b.person, b);
+    }
+  }
+  const nameOf = id => (dir.byId[id] && dir.byId[id].name_show) || '';
+  const groupName = id => (id && dir.groups[id] ? dir.groups[id].name : '');
+  const donationOf = r => r && r.charity ? {
+    record: r.id, charity: r.charity, note: r.note || '', recordedOn: dayOf(r.recorded), recordedBy: nameOf(r.recorded_by),
+    usedOn: dayOf(r.published), usedBy: r.published ? nameOf(r.published_by) || 'the weekly copy' : '',
+  } : null;
+  const defaultCharity = settings['Default Charity'] || '';
+  const everyone = [];
+  for (const p of rowsOf(a.people, 'PERSON')) {
+    const b = births.get(p.id);
+    const record = records.get(`${p.id}|${current}`) || null;
+    const last = records.get(`${p.id}|${current - 1}`) || null;
+    const lastAllowed = last && last.charity && charityById.get(last.charity) && charityById.get(last.charity).allowed;
+    const sv = {
+      id: p.id,
+      record: record ? record.id : '',
+      email: emailOf(p),
+      name: p.name_show,
+      jobTitle: p.job_title || '',
+      department: groupName(p.department),
+      photoUrl: photoOf(p),
+      birthday: p.birthday ? p.birthday.slice(5, 10) : '',
+      birthdayCell: p.birthday || '',
+      missing: !p.birthday,
+      level: levels[p.birthday_participation] || '',
+      birthdayThisYear: b ? b.day : '',
+      newsletterDate: b ? issueDay.get(b.newsletter) || '' : '',
+      requestBy: b ? b.ask_by : '',
+      dueBy: b ? b.due_by : '',
+      assigned: Boolean(record && record.assigned_to),
+      assignedTo: record && record.assigned_to ? emailOf({id: record.assigned_to}) : '',
+      assignedToId: record ? record.assigned_to || '' : '',
+      assignedToName: record && record.assigned_to ? nameOf(record.assigned_to) : '',
+      contactedOn: record ? dayOf(record.contacted) : '',
+      contactedBy: record && record.contacted_by ? nameOf(record.contacted_by) : '',
+      donation: donationOf(record),
+      lastDonation: donationOf(last),
+      fallback: lastAllowed ? {charity: last.charity, note: last.note || ''} : {charity: defaultCharity, note: ''},
+      path: staffPathOf(p),
+      me: {mine: Boolean(record && viewer && record.assigned_to === viewer.id)},
+    };
+    sv.stage = stageOf(sv, record, today);
+    sv.urgency = urgencyOf(sv, today);
+    everyone.push(sv);
+  }
   const staff = everyone.filter(sv => !sv.missing && sv.level !== 'Skip');
-  staff.sort((a, b) => (a.birthdayThisYear || '').localeCompare(b.birthdayThisYear || '') || byName(a, b));
+  staff.sort((x, y) => (x.birthdayThisYear || '').localeCompare(y.birthdayThisYear || '') || byName(x, y));
+  const activity = rowsOf(a.activity, 'GROUP')[0];
+  const memberRows = rowsOf(a.members, 'MEMBER');
+  const volunteers = memberRows.filter(m => m.group === activity.id).map(m => m.person);
+  const comms = memberRows.filter(m => m.group === activity.leads).map(m => m.person);
+  const admin = a.admin.result.length > 0;
+  const name = viewer ? viewer.name_show : '';
+  const viewerId = viewer ? viewer.id : '';
+  const holding = staff.some(sv => sv.assignedToId === viewerId);
   state.model = {
-    user: {email: viewer.email, name, initial: name[0].toUpperCase(), photoUrl: person.photoUrl},
-    allowances: viewer.allowances,
-    settingsId: s.id,
-    standing: s.me,
-    settings: s.settings,
-    year: s.year,
-    today: read.now.slice(0, 10),
+    user: {id: viewerId, email: viewer ? emailOf(viewer) : '', name, initial: (name[0] || '?').toUpperCase(), photoUrl: viewer ? photoOf(viewer) : ''},
+    admin,
+    standing: {team: a.team.result.length > 0, comms: comms.includes(viewerId), commsOnly: comms.includes(viewerId) && !admin && !holding},
+    settings: {
+      defaultCharity, yearStart: start, newsletter: settings['Newsletter'] || '',
+      emailSubject: settings['Email Subject'] || '', emailBody: settings['Email Body'] || '', noNewsletterNote: settings['No Newsletter Note'] || '',
+      outreachCC: settings['Outreach CC'] || '', requestLeadDays: Number(settings['Request Lead Days']), dueByLeadDays: Number(settings['Due By Lead Days']),
+    },
+    settingIds,
+    year: yearInfo,
+    today,
     staff,
     skipped: everyone.filter(sv => sv.level === 'Skip').sort(byName),
     missing: everyone.filter(sv => sv.missing && sv.level !== 'Skip').sort(byName),
-    charities: read.result.charities.map(read.get),
-    newsletterDates: read.result.newsletterDates.map(read.get),
-    team: read.result.team.map(id => teamMember(read, read.get(id))),
-    departments: read.result.departments.map(id => read.get(id).name),
+    charities,
+    newsletterDates: issues,
+    activity,
+    volunteers,
+    departments: Object.values(dir.groups).filter(g => g.kind === 'department').map(g => g.name).sort(),
+    nameOf,
   };
   byHandle.clear();
   for (const sv of everyone) {
-    byHandle.set(sv.path, sv);
-    byHandle.set(`/staff/${sv.email}`, sv);
+    for (const handle of [sv.path, `/staff/${sv.id}`, `/staff/${encodeURIComponent(sv.email)}`]) {
+      byHandle.set(handle, sv);
+    }
   }
 }
+
+const byName = (x, y) => x.name.localeCompare(y.name);
 
 export function me() {
   return state.model.user;
 }
 
 export function isAdmin() {
-  return state.model.allowances.includes('birthday.configure');
+  return state.model.admin;
 }
 
 export function year() {
@@ -84,7 +180,7 @@ export function settings() {
 }
 
 export function staff(handle) {
-  return byHandle.get(`/staff/${decodeURIComponent(handle)}`) || null;
+  return byHandle.get(`/staff/${encodeURIComponent(decodeURIComponent(handle))}`) || null;
 }
 
 export function charity(id) {
@@ -96,7 +192,8 @@ export function charityNamed(name) {
 }
 
 export function charityName(id) {
-  return charity(id).name;
+  const c = charity(id);
+  return c ? c.name : '';
 }
 
 export function issueDates() {
@@ -131,7 +228,7 @@ export function parseDate(s) {
 }
 
 export function dateCell(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
 }
 
 const longFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
@@ -197,19 +294,19 @@ export function commsOnly() {
 }
 
 export function team() {
-  const seen = new Map([[me().email, me().name]]);
-  for (const m of state.model.team) {
-    if (m.role === 'Volunteer' && !seen.has(m.email)) {
-      seen.set(m.email, m.name);
+  const seen = new Map([[me().id, me().name]]);
+  for (const id of state.model.volunteers) {
+    if (!seen.has(id)) {
+      seen.set(id, state.model.nameOf(id));
     }
   }
   for (const sv of [...state.model.staff, ...state.model.skipped, ...state.model.missing]) {
-    if (sv.assignedTo && !seen.has(sv.assignedTo)) {
-      seen.set(sv.assignedTo, sv.assignedToName || sv.assignedTo);
+    if (sv.assignedToId && !seen.has(sv.assignedToId)) {
+      seen.set(sv.assignedToId, sv.assignedToName);
     }
   }
-  const others = [...seen].slice(1).sort((a, b) => a[1].localeCompare(b[1]));
-  return [{email: me().email, name: 'Me'}, ...others.map(([email, name]) => ({email, name}))];
+  const others = [...seen].slice(1).sort((x, y) => x[1].localeCompare(y[1]));
+  return [{id: me().id, name: 'Me'}, ...others.map(([id, name]) => ({id, name}))];
 }
 
 export function inStage(list, stage) {
@@ -280,13 +377,6 @@ export function byDepartment(list) {
     const items = list.filter(sv => (sv.department || '') === name);
     if (items.length) {
       groups.push({name: name || 'Other', items});
-    }
-  }
-  const known = new Set([...state.model.departments, '']);
-  for (const sv of list) {
-    if (!known.has(sv.department || '')) {
-      known.add(sv.department);
-      groups.push({name: sv.department, items: list.filter(x => x.department === sv.department)});
     }
   }
   return groups;

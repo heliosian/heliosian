@@ -1,9 +1,9 @@
-import {state, isAdmin, year, staffFor, charity, issueDates, newsletterOn, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
+import {state, isAdmin, year, staffFor, charity, issueDates, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
 import {pageHead, menu, copyRich} from '../dom.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';
-import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed, toShare, shareIssue} from '../edit.js';
+import {openNewsletterDate, openChangeNewsletterDate, addNextWeek, removeNewsletterDate, clearFutureNewsletterDates, openCreateNewsletterDates, markUsed, markAllUsed} from '../edit.js';
 
 let query = '';
 
@@ -18,15 +18,13 @@ function setShowPast(on) {
 }
 
 function issueMenu(date) {
-  const {can} = newsletterOn(date);
-  const items = [];
-  if (can.move) {
-    items.push({icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)});
+  if (!isAdmin()) {
+    return null;
   }
-  if (can.delete) {
-    items.push({icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)});
-  }
-  return items.length ? menu(items) : null;
+  return menu([
+    {icon: 'edit', label: 'Change date', onClick: () => openChangeNewsletterDate(date)},
+    {icon: 'trash', label: 'Remove', danger: true, onClick: () => removeNewsletterDate(date)},
+  ]);
 }
 
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
@@ -143,11 +141,6 @@ function nextCard() {
   wrap.append(el('div', 'section-title', 'Next issue'));
   const panel = el('div', 'panel issues next-panel');
   const actions = [];
-  const waiting = newsletterOn(next).can.share && toShare(next).length;
-  const share = button('Copy to Shared Sheet', 'send', 'button button-small', () => shareIssue(next));
-  share.disabled = !waiting;
-  share.title = waiting ? 'Thursday night at 11:59 does this on its own' : 'Everyone in this issue is copied and done';
-  actions.push(share);
   const dates = thisYear();
   if (isAdmin() && next === dates[dates.length - 1]) {
     actions.push(button('Add Next Week', 'bolt', 'button button-secondary button-small', () => addNextWeek(next)));

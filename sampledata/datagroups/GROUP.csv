@@ -114,7 +114,7 @@ grp00000020078,,group,open,garden-club,Garden Club,,"Families who keep the schoo
 grp00000000700,,admins,open,birthday-admins,Birthdays Admins,,,,,,,,,,grp00000000700,grp00000000004,grp00000000005,,,,,,,,members,members
 grp00000000701,,activity,open,bday,Staff Birthdays,,Give to a charity on each staff member's birthday.,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,members,members,,direct,,,,,,,,,,,,,,,,,,,,,,grp00000000702
 grp00000000702,grp00000000701,group,open,,Staff Birthdays Leads,,,,,,,,,,grp00000000004,grp00000000004,,,,,,,,,none,none
-grp00000000703,,group,open,,Birthdays Viewers,,,,,,,Yes,,,,,,,,,,,,,members,members
+grp00000000703,,group,open,,Birthdays Viewers,,,,,,,Yes,,,grp00000000703,,,,,,,,,,members,members
 grp00000000704,,group,open,,Helios Weekly Newsletter Managers,,,,,,,Yes,,,grp00000000004,,grp00000000704,,,,,,,,members,members
 grp00000000710,,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,grp00000000704,,,,,,,,members,members
 grp00000000711,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2025-08-22,,Yes

@@ -648,8 +648,8 @@ const PolicySource = `
 (set PERSON.birthday (and (birthday_team) (in @old.id (members (slug "staff")))))
 ; the team keeps how a staff member takes part
 (set PERSON.birthday_participation (and (birthday_team) (in @old.id (members (slug "staff")))))
-; the team adds a charity; only a Birthdays admin adds one allowed
-(insert CHARITY (and (birthday_team) (or (not @new.allowed) (admin_of "birthday"))))
+; the team adds an allowed charity; a Birthdays admin also adds one that is not
+(insert CHARITY (and (birthday_team) (or @new.allowed (admin_of "birthday"))))
 ; the team names a charity
 (set CHARITY.name (birthday_team))
 ; the team writes the newsletter's sentence about a charity
@@ -668,6 +668,14 @@ const PolicySource = `
 (set SETTING.value (and (admin_of "birthday") (= @old.app "birthday")))
 ; a Birthdays admin adds a Staff Birthdays setting
 (insert SETTING (and (admin_of "birthday") (= @new.app "birthday")))
+; a Birthdays admin adds someone to a group whose members the Birthdays app is open to
+(insert MEMBER
+  (and (admin_of "birthday") (= @new.member "yes")
+       (in @new.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
+; a Birthdays admin takes someone out of a group whose members the Birthdays app is open to
+(delete MEMBER
+  (and (admin_of "birthday")
+       (in @old.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
 ; apps open to a group the viewer is in
 (read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of an app

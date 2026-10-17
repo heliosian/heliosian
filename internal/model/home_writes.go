@@ -104,18 +104,6 @@ func (m *Home) discover() ([]store.Op, []App) {
 	return ops, found
 }
 
-func (m *Home) grant(actor access.Actor, appKey string) ([]store.Op, error) {
-	app, ok := appByKey(appKey)
-	if !ok {
-		return nil, access.Invalid("no app %q", appKey)
-	}
-	v := appVisibilityOf(m, app)
-	if slices.Contains(v.Emails, actor.Email) {
-		return nil, nil
-	}
-	return []store.Op{store.Update(homeVisibilityTab, store.Row{"App": app.Key}, store.Row{"Emails": joinVisibilityEmails(mail.NormalizeAll(append(v.Emails, actor.Email)))})}, nil
-}
-
 func (m *Model) checkHomeRules(existing, rules []Rule, actor string) ([]Rule, error) {
 	sources := m.Audience(now())
 	options := sources.Options(actor)

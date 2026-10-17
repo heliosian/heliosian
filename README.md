@@ -79,7 +79,6 @@ HCA-Team, in `docs/team/`:
 Helios Staff Birthdays, in `docs/birthday/`:
 
 - [birthday.md](docs/birthday/birthday.md) — the birthday team app spec
-- [data.md](docs/birthday/data.md) — the Birthdays sheet and its rules
 
 Helios Celebrate, in `docs/celebrate/`:
 

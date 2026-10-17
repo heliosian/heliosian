@@ -22,9 +22,6 @@ function list() {
     const panel = el('div', 'panel');
     for (const sv of group.items) {
       const lines = [];
-      if (tab === 'skipped' && sv.levelNote) {
-        lines.push(sv.levelNote);
-      }
       if (tab === 'skipped' && sv.birthdayThisYear) {
         lines.push(`Birthday ${sv.birthdayThisYear}`);
       }

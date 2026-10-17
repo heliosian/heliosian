@@ -58,18 +58,21 @@ func TestTheBirthdaysTeamKeepsBirthdaysAndCharities(t *testing.T) {
 	if _, err := write(parent, Edit{Set: student, Cells: map[string]any{"birthday": "2000-06-01"}}); err == nil {
 		t.Error("the team set a birthday on someone who is not staff")
 	}
-	if _, err := write(parent, Edit{Insert: "CHARITY", Row: map[string]any{"name": "Coastside Hope", "allowed": true}}); err == nil {
-		t.Error("someone on the team who is not an admin added an allowed charity")
+	if _, err := write(parent, Edit{Insert: "CHARITY", Row: map[string]any{"name": "Coastside Hope", "allowed": false}}); err == nil {
+		t.Error("someone on the team who is not an admin added a charity that is not allowed")
 	}
-	made, err := write(parent, Edit{Insert: "CHARITY", Row: map[string]any{"name": "Coastside Hope", "url": "https://example.org/give"}})
+	made, err := write(parent, Edit{Insert: "CHARITY", Row: map[string]any{"name": "Coastside Hope", "url": "https://example.org/give", "allowed": true}})
 	if err != nil {
 		t.Fatalf("the team can't add a charity: %v", err)
 	}
-	if _, err := write(parent, Edit{Set: made[0], Cells: map[string]any{"allowed": true}}); err == nil {
-		t.Error("someone on the team who is not an admin allowed a charity")
+	if _, err := write(parent, Edit{Set: made[0], Cells: map[string]any{"allowed": false}}); err == nil {
+		t.Error("someone on the team who is not an admin stopped allowing a charity")
 	}
-	if _, err := write(birthdayAdmin, Edit{Set: made[0], Cells: map[string]any{"allowed": true}}); err != nil {
-		t.Errorf("a Birthdays admin can't allow a charity: %v", err)
+	if _, err := write(birthdayAdmin, Edit{Set: made[0], Cells: map[string]any{"allowed": false, "not_allowed_reason": "Not a non-profit"}}); err != nil {
+		t.Errorf("a Birthdays admin can't stop allowing a charity: %v", err)
+	}
+	if _, err := write(birthdayAdmin, Edit{Insert: "CHARITY", Row: map[string]any{"name": "Fogline Arts", "allowed": false}}); err != nil {
+		t.Errorf("a Birthdays admin can't add a charity that is not allowed: %v", err)
 	}
 	if _, err := write(birthdayAdmin, Edit{Delete: "chr00000000002"}); err == nil {
 		t.Error("a charity a birthday names was removed")
@@ -82,6 +85,44 @@ func TestTheBirthdaysTeamKeepsBirthdaysAndCharities(t *testing.T) {
 	}
 	if _, err := write(parent, Edit{Set: "set00000000009", Cells: map[string]any{"value": "12"}}); err == nil {
 		t.Error("someone on the team who is not an admin changed a setting")
+	}
+}
+
+func TestTheBirthdaysAppOpensToTheTeamAndItsAdmins(t *testing.T) {
+	s, _ := birthdaySample(t)
+	for text, want := range map[string][]bool{
+		`(from APP (where (= key "birthday") (birthday_team)))`:       {false, true, true},
+		`(from APP (where (= key "birthday") (admin_of "birthday")))`: {false, false, true},
+	} {
+		q, err := Parse(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, viewer := range []string{student, parent, birthdayAdmin} {
+			if got := len(s.Model().Run(context.Background(), q, Env{Viewer: viewer, Now: testNow}).IDs) == 1; got != want[i] {
+				t.Errorf("%s answers %s %v, want %v", text, viewer, got, want[i])
+			}
+		}
+	}
+}
+
+func TestBirthdaysAdminsKeepTheTeam(t *testing.T) {
+	_, write := birthdaySample(t)
+	join := func(group string) Edit {
+		return Edit{Insert: "MEMBER", Row: map[string]any{"group": group, "person": "per00000020006", "member": "yes", "added_by": birthdayAdmin}}
+	}
+	if _, err := write(parent, join("grp00000000702")); err == nil {
+		t.Error("someone on the team who is not an admin put a person on the comms team")
+	}
+	if _, err := write(birthdayAdmin, join("grp00000000004")); err == nil {
+		t.Error("a Birthdays admin added someone to a group the app is not open to")
+	}
+	made, err := write(birthdayAdmin, join("grp00000000702"))
+	if err != nil {
+		t.Fatalf("a Birthdays admin can't put a person on the comms team: %v", err)
+	}
+	if _, err := write(birthdayAdmin, Edit{Delete: made[0]}); err != nil {
+		t.Errorf("a Birthdays admin can't take a person off the comms team: %v", err)
 	}
 }
 

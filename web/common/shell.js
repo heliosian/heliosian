@@ -242,7 +242,7 @@ export function initTopbar(config) {
     onSlash(() => searchInput().focus());
   }
   const viewer = me();
-  initAlerts(viewer);
+  initAlerts();
   initUserMenu();
   initSpoof();
   viewer.then(m => {

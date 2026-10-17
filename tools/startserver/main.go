@@ -183,7 +183,6 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
 		CalendarMail:  model.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
-		BirthdayBase:  "https://birthday.heliosiandev.com:" + app.Port(),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
 		ListMail:      db.ListMailConfig{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},
 		Asker:         ask.NewClaude("sample"),

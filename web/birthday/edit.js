@@ -1,15 +1,16 @@
-import {state, me, team, isAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year} from './state.js';
+import {state, me, team, isAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year, write, nowMoment, levelValues} from './state.js';
 import {el, button, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
 import {api} from '/api.js';
-import {act, actAll, create, remove} from '/data.js';
 import {openModal} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, fillSelect, checkbox} from '/form.js';
+import {known} from '/directory.js';
+import {queries} from '/rail.js';
 
-export async function run(write, message) {
+export async function run(work, message) {
   try {
-    await write();
+    await work();
     await load();
     if (message) {
       toast(message);
@@ -19,62 +20,71 @@ export async function run(write, message) {
   }
 }
 
+function yearEdit(sv, cells) {
+  if (sv.record) {
+    return {set: sv.record, cells};
+  }
+  return {insert: 'BIRTHDAY_YEAR', row: {person: sv.id, year: year().number, ...cells}};
+}
+
+function assignTo(sv, person) {
+  return write([yearEdit(sv, {assigned_to: person, assigned: nowMoment()})]);
+}
+
+function unassignWrite(sv) {
+  return write([{set: sv.record, cells: {assigned_to: '', assigned: ''}}]);
+}
+
 export function assignToMe(sv) {
-  return run(() => act('birthdays', sv.id, 'assign'), `${sv.name} is yours`);
+  return run(() => assignTo(sv, me().id), `${sv.name} is yours`);
 }
 
 export function unassign(sv) {
-  return run(() => act('birthdays', sv.id, 'unassign'));
+  return run(() => unassignWrite(sv));
 }
 
 export function openAssign(sv) {
   const people = team();
-  if (sv.assignedTo && !people.some(p => p.email === sv.assignedTo)) {
-    people.push({email: sv.assignedTo, name: sv.assignedToName || sv.assignedTo});
+  if (sv.assignedToId && !people.some(p => p.id === sv.assignedToId)) {
+    people.push({id: sv.assignedToId, name: sv.assignedToName});
   }
-  const who = select(people.map(p => ({label: p.name, value: p.email})), sv.assignedTo || me().email);
+  const who = select(people.map(p => ({label: p.name, value: p.id})), sv.assignedToId || me().id);
   openModal(`Assign ${sv.name}`, [field('To', who)], {
     saveLabel: 'Assign',
-    submit: () => act('birthdays', sv.id, 'assign', {to: who.value === me().email ? '' : who.value}),
-    onDelete: sv.can.unassign ? () => act('birthdays', sv.id, 'unassign') : null,
+    submit: () => assignTo(sv, who.value),
+    onDelete: sv.assigned ? () => unassignWrite(sv) : null,
     deleteLabel: 'Unassign',
     confirmDelete: `Unassign ${sv.name}?`,
   });
 }
 
 export function markContacted(sv, contacted) {
-  return run(() => act('birthdays', sv.id, contacted ? 'contact' : 'uncontact'), contacted ? 'Marked as contacted' : 'Outreach reopened');
+  const cells = contacted ? {contacted: nowMoment(), contacted_by: me().id} : {contacted: '', contacted_by: ''};
+  return run(() => write([yearEdit(sv, cells)]), contacted ? 'Marked as contacted' : 'Outreach reopened');
+}
+
+function usedCells(used) {
+  return used ? {published: nowMoment(), published_by: me().id} : {published: '', published_by: ''};
 }
 
 export function markAllUsed(list) {
-  return run(() => actAll(list.map(sv => ({method: 'POST', path: `/api/donations/${sv.donation.id}/use`}))), `Marked ${list.length} as used`);
-}
-
-export function toShare(date) {
-  return state.model.staff.filter(sv => sv.newsletterDate === date && !(sv.donation && sv.donation.usedOn));
-}
-
-export function shareIssue(date) {
-  const list = toShare(date);
-  const bare = list.filter(sv => !sv.donation).map(sv => `${sv.name} gets ${charityName(sv.fallback.charity)}`);
-  const words = `Copy ${list.length} ${list.length === 1 ? 'birthday' : 'birthdays'} for ${longDate(date)} to the Staff Birthday List (Shared) and mark ${list.length === 1 ? 'it' : 'them'} done?` +
-    (bare.length ? ` With no charity recorded, ${bare.join(', ')}.` : '');
-  if (!confirm(words)) {
-    return;
-  }
-  return run(() => act('newsletter-dates', newsletterOn(date).id, 'share'), `Copied ${list.length} to the shared sheet`);
+  return run(() => write(list.map(sv => ({set: sv.record, cells: usedCells(true)}))), `Marked ${list.length} as used`);
 }
 
 export function markUsed(sv, used) {
-  return run(() => act('donations', sv.donation.id, used ? 'use' : 'unuse'), used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
+  return run(() => write([{set: sv.record, cells: usedCells(used)}]), used ? 'Marked as used in the newsletter' : 'Marked as not yet used');
+}
+
+function donate(sv, chosen, note) {
+  return write([yearEdit(sv, {charity: chosen, note, recorded: nowMoment(), recorded_by: me().id})]);
 }
 
 export function useDefault(sv) {
-  return run(() => act('birthdays', sv.id, 'donate', sv.fallback), `Recorded ${charityName(sv.fallback.charity)}`);
+  return run(() => donate(sv, sv.fallback.charity, sv.fallback.note), `Recorded ${charityName(sv.fallback.charity)}`);
 }
 
 export function reuseLast(sv) {
-  return run(() => act('birthdays', sv.id, 'donate', {charity: sv.lastDonation.charity, note: sv.lastDonation.note || ''}), `Recorded ${charityName(sv.lastDonation.charity)} again`);
+  return run(() => donate(sv, sv.lastDonation.charity, sv.lastDonation.note), `Recorded ${charityName(sv.lastDonation.charity)} again`);
 }
 
 function charityOptions(current) {
@@ -121,8 +131,8 @@ export function openDonation(sv) {
   pick.addEventListener('change', showBlurb);
   showBlurb();
   openModal(existing ? `Edit ${sv.name}'s donation` : `Record ${sv.name}'s donation`, [field('Charity', pick), add, blurb, field('Their note', note, 'Why they chose it, in their words, for the newsletter')], {
-    submit: () => act('birthdays', sv.id, 'donate', {charity: pick.value, note: note.value}),
-    onDelete: existing && existing.can.delete ? () => remove('donations', existing.id) : null,
+    submit: () => donate(sv, pick.value, note.value),
+    onDelete: existing && !existing.usedOn ? () => write([{set: sv.record, cells: {charity: '', note: '', recorded: '', recorded_by: ''}}]) : null,
     deleteLabel: 'Remove',
     confirmDelete: existing ? `Remove ${sv.name}'s donation this year?` : '',
   });
@@ -132,6 +142,17 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long'});
 const months = Array.from({length: 12}, (_, i) => ({label: monthFormat.format(new Date(2000, i, 1)), value: String(i + 1).padStart(2, '0')}));
 const days = Array.from({length: 31}, (_, i) => String(i + 1).padStart(2, '0'));
 
+function personOf(sv, email) {
+  if (sv.id) {
+    return sv.id;
+  }
+  const p = known(email.value.trim().toLowerCase());
+  if (!p) {
+    throw new Error(`${email.value} is not in the directory`);
+  }
+  return p.id;
+}
+
 export function openBirthday(sv) {
   const email = text(sv.email || '', {type: 'email', required: true, placeholder: 'name@heliosschool.org'});
   const [currentMonth, currentDay] = (sv.birthday || '').split('-');
@@ -139,20 +160,19 @@ export function openBirthday(sv) {
   const day = select(days, currentDay || '01');
   const birthday = el('div', 'field-pair');
   birthday.append(month, day);
-  const override = select([{label: 'The usual pick', value: ''}, ...state.model.newsletterDates.map(n => ({label: longDate(n.date), value: n.id}))], sv.override || '');
   const fields = [];
   if (!sv.id) {
     fields.push(field('Email', email));
   }
-  fields.push(field('Birthday', birthday), field('Newsletter', override, 'Which issue carries the birthday, when the first one on or after it is wrong'));
+  fields.push(field('Birthday', birthday));
   openModal(sv.birthday ? `Edit ${sv.name}'s birthday` : `Add ${sv.name ? `${sv.name}'s` : 'a'} birthday`, fields, {
     submit: () => {
-      const values = {birthday: `${month.value}-${day.value}`, override: override.value};
-      return sv.id ? act('birthdays', sv.id, 'set', values) : create('birthdays', {email: email.value, ...values});
+      const born = (sv.birthdayCell || '2000').slice(0, 4);
+      return write([{set: personOf(sv, email), cells: {birthday: `${born}-${month.value}-${day.value}`}}]);
     },
-    onDelete: sv.can && sv.can.delete ? () => remove('birthdays', sv.id) : null,
+    onDelete: sv.birthday ? () => write([{set: sv.id, cells: {birthday: ''}}]) : null,
     deleteLabel: 'Remove birthday',
-    confirmDelete: `Remove ${sv.name}'s birthday? Their assignments, outreach, donations, and notes must already be gone.`,
+    confirmDelete: `Remove ${sv.name}'s birthday?`,
     afterDelete: () => navigate('/skipped'),
   });
 }
@@ -163,51 +183,28 @@ export function openParticipation(sv) {
     {label: 'Skip: does not want to take part at all', value: 'Skip'},
     {label: 'No newsletter: ask and donate, but leave them out of the newsletter', value: 'No Newsletter'},
   ], sv.level || 'Skip');
-  const note = textarea(sv.levelNote || '', 3);
   const fields = [];
   if (!sv.id) {
     fields.push(field('Email', email));
   }
-  fields.push(field('Preference', level), field('Note', note, 'Who asked, when, anything the team should know'));
+  fields.push(field('Preference', level));
   openModal(sv.level ? `Edit ${sv.name}'s preference` : `Set ${sv.name ? `${sv.name}'s` : 'a'} preference`, fields, {
-    submit: () => {
-      const values = {level: level.value, note: note.value};
-      return sv.id ? act('birthdays', sv.id, 'participation', values) : create('birthdays', {email: email.value, ...values});
-    },
-    onDelete: sv.can && sv.can['clear-participation'] ? () => act('birthdays', sv.id, 'clear-participation') : null,
+    submit: () => write([{set: personOf(sv, email), cells: {birthday_participation: levelValues[level.value]}}]),
+    onDelete: sv.level ? () => write([{set: sv.id, cells: {birthday_participation: ''}}]) : null,
     deleteLabel: 'Clear preference',
     confirmDelete: `Clear ${sv.name}'s preference and treat them like everyone else?`,
   });
 }
 
-export function openNote(sv) {
-  const note = textarea('', 4);
-  openModal(`Note on ${sv.name}`, [field('Note', note)], {
-    saveLabel: 'Add Note',
-    submit: () => act('birthdays', sv.id, 'note', {note: note.value}),
-  });
-}
-
-export function removeNote(note) {
-  if (!confirm('Remove this note?')) {
-    return;
-  }
-  return run(() => remove('birthday-notes', note.id));
-}
-
-function describeCharity(name, donationLink) {
-  return api('POST', '/api/birthday/charity/describe', {name, donationLink});
+function describeCharity(name, url) {
+  return api('POST', '/api/do/describe-charity', {name, url});
 }
 
 export function openCharity(c, options) {
-  openCharityForm(c, {}, options);
-}
-
-function openCharityForm(c, start, options) {
-  const admin = c ? c.can.allow : isAdmin();
-  const name = text(c ? c.name : start.name || '', {required: true, maxLength: 120});
-  const linkInput = text(c ? c.donationLink : start.donationLink || '', {type: 'url', required: true, placeholder: 'https://'});
-  const about = textarea(c ? c.about : start.about || '', 4);
+  const admin = isAdmin();
+  const name = text(c ? c.name : '', {required: true, maxLength: 120});
+  const linkInput = text(c ? c.donationLink : '', {type: 'url', required: true, placeholder: 'https://'});
+  const about = textarea(c ? c.about : '', 4);
   const allowed = checkbox('Allowed', c ? c.allowed : true);
   const why = text(c ? c.whyNotAllowed : '', {placeholder: 'Not a non-profit'});
   const whyField = field('Why not', why);
@@ -229,13 +226,13 @@ function openCharityForm(c, start, options) {
     const box = el('div', 'compare');
     box.append(el('div', 'compare-title', `${label}: yours, or Claude's?`));
     const pair = el('div', 'compare-pair');
-    for (const [heading, value, pick] of [['Yours', have, have], ["Claude's", found, found]]) {
+    for (const [heading, value] of [['Yours', have], ["Claude's", found]]) {
       const side = el('div', 'compare-side');
       side.append(el('div', 'compare-heading', heading), el('div', 'compare-text', value));
       const use = el('button', 'button button-secondary button-small', `Use ${heading === 'Yours' ? 'mine' : "Claude's"}`);
       use.type = 'button';
       use.addEventListener('click', () => {
-        input.value = pick;
+        input.value = value;
         box.remove();
       });
       side.append(use);
@@ -245,6 +242,7 @@ function openCharityForm(c, start, options) {
     input.parentNode.after(box);
     compares.push(box);
   };
+  const suggestStatus = el('span', 'suggest-status');
   const suggest = button('Generate with Claude', 'sparkle', 'button button-secondary button-small', async () => {
     if (!name.value.trim()) {
       suggestStatus.textContent = 'Give the name first.';
@@ -257,8 +255,8 @@ function openCharityForm(c, start, options) {
     }
     try {
       const info = await describeCharity(name.value, linkInput.value);
-      offer(linkInput, info.donationLink, 'Donation link');
-      offer(about, info.sentence, 'About');
+      offer(linkInput, info.url, 'Donation link');
+      offer(about, info.description, 'About');
       suggestStatus.textContent = compares.length ? 'Choose below, then read it over.' : 'Read it over and change anything that is off.';
     } catch (err) {
       suggestStatus.textContent = err.message;
@@ -266,7 +264,6 @@ function openCharityForm(c, start, options) {
       suggest.disabled = false;
     }
   });
-  const suggestStatus = el('span', 'suggest-status');
   suggestRow.append(suggest, suggestStatus);
   const fields = [field('Name', name), suggestRow, field('Donation link', linkInput), field('About', about, 'A sentence for the newsletter')];
   if (admin) {
@@ -275,27 +272,44 @@ function openCharityForm(c, start, options) {
   openModal(c ? 'Edit Charity' : 'Add Charity', fields, {
     replace: !c,
     submit: async () => {
-      const edit = {name: name.value, donationLink: linkInput.value, about: about.value, ein: c ? c.ein : ''};
-      const allowance = {allowed: allowed.input.checked, whyNotAllowed: why.value};
+      const trimmed = name.value.trim();
+      const other = charityNamed(trimmed);
+      if (other && (!c || other.id !== c.id)) {
+        throw new Error(`“${trimmed}” is already on the list`);
+      }
+      const cells = {name: trimmed, url: linkInput.value.trim(), description: about.value.trim()};
+      if (admin) {
+        cells.allowed = allowed.input.checked;
+        cells.not_allowed_reason = allowed.input.checked ? '' : why.value.trim();
+      }
       if (!c) {
-        await create('charities', admin ? {...edit, ...allowance} : edit);
+        await write([{insert: 'CHARITY', row: {allowed: true, ...cells, added: nowMoment()}}]);
       } else {
-        const writes = [{method: 'POST', path: `/api/charities/${c.id}/edit`, body: edit}];
-        if (admin) {
-          writes.push({method: 'POST', path: `/api/charities/${c.id}/allow`, body: allowance});
-        }
-        await actAll(writes);
+        await write([{set: c.id, cells}]);
       }
-      if (c && c.name !== name.value.trim() && location.pathname.startsWith('/charities/')) {
-        navigate(`/charities/${encodeURIComponent(name.value.trim())}`);
+      if (c && c.name !== trimmed && location.pathname.startsWith('/charities/')) {
+        navigate(`/charities/${encodeURIComponent(trimmed)}`);
       }
-      return name.value.trim();
+      return trimmed;
     },
     afterSave: options && options.afterSave,
-    onDelete: c && c.can.delete ? () => remove('charities', c.id) : null,
+    onDelete: c && admin && !c.named && c.id !== settings().defaultCharity ? () => write([{delete: c.id}]) : null,
     confirmDelete: c ? `Delete “${c.name}”?` : '',
     afterDelete: () => navigate('/charities'),
   });
+}
+
+async function issueRows(dates) {
+  const answer = await queries({series: `(from GROUP (where (= id "${settings().newsletter}")) (columns name visible_to posting replying))`});
+  const series = answer.series.resources.GROUP[settings().newsletter];
+  return dates.map(start => ({insert: 'GROUP', row: {
+    kind: 'group', parent: series.id, name: series.name, status: 'open', listed: false, visible_to: series.visible_to,
+    posting: series.posting, replying: series.replying, added_by: me().id, start, all_day: true,
+  }}));
+}
+
+async function addIssues(dates) {
+  await write(await issueRows(dates));
 }
 
 export function openNewsletterDate() {
@@ -305,22 +319,27 @@ export function openNewsletterDate() {
   const date = text(dateCell(last), {type: 'date', required: true});
   openModal('Add Newsletter Date', [field('Date', date)], {
     saveLabel: 'Add',
-    submit: () => create('newsletter-dates', {date: date.value}),
+    submit: () => {
+      if (newsletterOn(date.value)) {
+        throw new Error(`${longDate(date.value)} is already on the list.`);
+      }
+      return addIssues([date.value]);
+    },
   });
 }
 
 export function openChangeNewsletterDate(original) {
   const {id} = newsletterOn(original);
   const date = text(original, {type: 'date', required: true});
-  openModal('Change Newsletter Date', [field('Date', date, 'Anyone pinned to this issue moves with it')], {
-    submit: () => act('newsletter-dates', id, 'move', {date: date.value}),
+  openModal('Change Newsletter Date', [field('Date', date, 'Everyone announced in this issue moves with it')], {
+    submit: () => write([{set: id, cells: {start: date.value}}]),
   });
 }
 
 export function addNextWeek(after) {
   const next = parseDate(after);
   next.setDate(next.getDate() + 7);
-  return run(() => create('newsletter-dates', {date: dateCell(next)}), `Added ${longDate(dateCell(next))}`);
+  return run(() => addIssues([dateCell(next)]), `Added ${longDate(dateCell(next))}`);
 }
 
 function weekly(weekday, from, to) {
@@ -354,7 +373,7 @@ export function openCreateNewsletterDates() {
       if (!added.length) {
         throw new Error('Every one of those dates is already on the list.');
       }
-      await actAll(added.map(date => ({method: 'POST', path: '/api/newsletter-dates', body: {date}})));
+      await addIssues(added);
       toast(`Added ${added.length} ${added.length === 1 ? 'date' : 'dates'}`);
     },
   });
@@ -364,14 +383,14 @@ export function clearFutureNewsletterDates(future) {
   if (!confirm(`Remove the ${future.length} newsletter ${future.length === 1 ? 'date' : 'dates'} from today on? The ones already out stay.`)) {
     return;
   }
-  return run(() => actAll(future.map(n => ({method: 'DELETE', path: `/api/newsletter-dates/${n.id}`}))), `Removed ${future.length} ${future.length === 1 ? 'date' : 'dates'}`);
+  return run(() => write(future.map(n => ({delete: n.id}))), `Removed ${future.length} ${future.length === 1 ? 'date' : 'dates'}`);
 }
 
 export function removeNewsletterDate(date) {
   if (!confirm(`Remove the ${longDate(date)} newsletter?`)) {
     return;
   }
-  return run(() => remove('newsletter-dates', newsletterOn(date).id));
+  return run(() => write([{delete: newsletterOn(date).id}]));
 }
 
 export function offerTeam() {
@@ -385,7 +404,7 @@ export function offerTeam() {
   );
   openModal('Join the Birthday Team?', [blurb], {
     saveLabel: 'Join the Team',
-    submit: () => create('birthday-team', {}),
+    submit: () => write([{insert: 'MEMBER', row: {group: state.model.activity.id, person: me().id, member: 'yes', added_by: me().id}}]),
     afterSave: () => toast('Welcome to the team!'),
     alternate: {label: 'No thanks', onClick: () => {
       location.href = appOrigin('home');
@@ -394,6 +413,11 @@ export function offerTeam() {
     required: true,
   });
 }
+
+const settingKeys = {
+  defaultCharity: 'Default Charity', yearStart: 'Year Start', emailSubject: 'Email Subject', emailBody: 'Email Body', noNewsletterNote: 'No Newsletter Note',
+  outreachCC: 'Outreach CC', requestLeadDays: 'Request Lead Days', dueByLeadDays: 'Due By Lead Days',
+};
 
 export function openSettings() {
   const s = settings();
@@ -419,8 +443,24 @@ export function openSettings() {
     field('No-newsletter note', note, 'Put where {no newsletter note} sits in the body, or at the end, for anyone who asked to stay out of the newsletter'),
     field('CC on outreach', cc, 'Copied on the outreach email a reminder hands over; blank for nobody'),
   ], {
-    submit: () => act('birthday-settings', state.model.settingsId, 'edit', {
-      defaultCharity: defaultCharity.value, yearStart: yearStart.value, emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value, outreachCC: cc.value, requestLeadDays: Number(lead.value), dueByLeadDays: Number(dueBy.value),
-    }),
+    submit: () => {
+      if (!/^\d{2}-\d{2}$/.test(yearStart.value.trim())) {
+        throw new Error('Give the year start as a month and day, like 08-14.');
+      }
+      const values = {
+        defaultCharity: defaultCharity.value, yearStart: yearStart.value.trim(), emailSubject: subject.value, emailBody: body.value, noNewsletterNote: note.value,
+        outreachCC: cc.value.trim(), requestLeadDays: String(Number(lead.value)), dueByLeadDays: String(Number(dueBy.value)),
+      };
+      const edits = [];
+      for (const [field, key] of Object.entries(settingKeys)) {
+        const value = values[field];
+        if (String(s[field]) === value) {
+          continue;
+        }
+        const id = state.model.settingIds[key];
+        edits.push(id ? {set: id, cells: {value}} : {insert: 'SETTING', row: {app: 'birthday', key, value}});
+      }
+      return edits.length ? write(edits) : Promise.resolve();
+    },
   });
 }
