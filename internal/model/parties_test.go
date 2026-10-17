@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -276,13 +275,6 @@ func TestOldIDsReachTheirPartyAndTicket(t *testing.T) {
 	}
 	if !keys["Ticket ID=tkt0000000005"] || !keys["Party ID=pty0000000002"] || len(keys) != 2 {
 		t.Fatalf("the writes matched %v", keys)
-	}
-	rec := testkit.Call(t, mux, jordan, "GET", "/parties/P001", nil)
-	if rec.Code != http.StatusMovedPermanently || rec.Header().Get("Location") != "/parties/pty0000000001" {
-		t.Fatalf("an old party address: %d %v", rec.Code, rec.Header())
-	}
-	if rec := testkit.Call(t, mux, jordan, "GET", "/parties/pty0000000001", nil); rec.Code != http.StatusOK {
-		t.Fatalf("a party address: %d", rec.Code)
 	}
 }
 
@@ -909,20 +901,8 @@ func TestCategoriesAndCelebrations(t *testing.T) {
 			t.Fatalf("a rename or code change rewrote %v", row)
 		}
 	}
-	rec = testkit.Call(t, mux, partiesAdmin, "GET", "/api/celebrate/invoices.csv?celebration=cbn0000002025", nil)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Wines of the Southern Hemisphere!,SC-2025B,") || strings.Contains(rec.Body.String(), "Fondue") {
-		t.Fatalf("invoices: %d %s", rec.Code, rec.Body)
-	}
 	if rec := testkit.Call(t, mux, partiesAdmin, "DELETE", "/api/celebrations/"+next.ID, nil); rec.Code != http.StatusNoContent || cache.Model().Parties.CelebrationByID(next.ID) != nil {
 		t.Fatalf("delete an empty celebration: %d %s", rec.Code, rec.Body)
-	}
-	for _, code := range []string{"SC-2025B", `x"; filename*=UTF-8''invoice.html`} {
-		if rec := testkit.Call(t, mux, partiesAdmin, "GET", "/api/celebrate/invoices.csv?celebration="+url.QueryEscape(code), nil); rec.Code != http.StatusNotFound {
-			t.Fatalf("invoices for %q: %d", code, rec.Code)
-		}
-	}
-	if rec := testkit.Call(t, mux, elena, "GET", "/api/celebrate/invoices.csv", nil); rec.Code != http.StatusForbidden {
-		t.Fatalf("a parent read the invoices: %d", rec.Code)
 	}
 }
 
@@ -984,24 +964,6 @@ func TestPastAndPrices(t *testing.T) {
 	}
 	if PriceCell(65) != "65" || PriceCell(12.5) != "12.50" {
 		t.Errorf("PriceCell: %s %s", PriceCell(65), PriceCell(12.5))
-	}
-}
-
-func TestCSVCell(t *testing.T) {
-	for cell, want := range map[string]string{
-		"":                "",
-		"Ann Lee":         "Ann Lee",
-		"-40":             "-40",
-		"+12.50":          "+12.50",
-		`=HYPERLINK("x")`: `'=HYPERLINK("x")`,
-		"@SUM(A1)":        "'@SUM(A1)",
-		"-2+3":            "'-2+3",
-		"\t=1+1":          "'\t=1+1",
-		"a=b":             "a=b",
-	} {
-		if got := csvCell(cell); got != want {
-			t.Errorf("csvCell(%q) = %q, want %q", cell, got, want)
-		}
 	}
 }
 

@@ -25,14 +25,18 @@ func (a *ActivityPages) Redirected(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if strings.HasPrefix(to, "/") {
-			to = "https://" + r.Host + to
-		}
-		if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
-			to += "?" + r.URL.RawQuery
-		}
-		http.Redirect(w, r, to, status)
+		redirectTo(w, r, to, status)
 	})
+}
+
+func redirectTo(w http.ResponseWriter, r *http.Request, to string, status int) {
+	if strings.HasPrefix(to, "/") {
+		to = "https://" + r.Host + to
+	}
+	if r.URL.RawQuery != "" && !strings.Contains(to, "?") {
+		to += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, to, status)
 }
 
 func (t activityTree) canonical(path string) string {

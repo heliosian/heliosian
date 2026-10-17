@@ -2,6 +2,8 @@ package db
 
 import (
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"heliosian/internal/blob"
@@ -24,6 +26,57 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 			`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png")
+}
+
+func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{
+		{Insert: "ALIAS", Row: map[string]any{"alias": "P001", "target": tacoNight, "hidden": true}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "celebrate", "old": "/parties/ha725m8r", "new": "/p/taco-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/parties/teamonly", "new": "/p/taco-night"}},
+	})
+	pages := NewPartyPages(s, blob.NewMemoryBucket(), PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	handler := pages.Redirected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
+	for _, c := range []struct {
+		path   string
+		status int
+		to     string
+	}{
+		{"/parties/P001", http.StatusMovedPermanently, "https://example.com/p/taco-night"},
+		{"/p/P001?x=1", http.StatusMovedPermanently, "https://example.com/p/taco-night?x=1"},
+		{"/parties/" + tacoNight, http.StatusMovedPermanently, "https://example.com/p/taco-night"},
+		{"/p/" + tacoNight, http.StatusMovedPermanently, "https://example.com/p/taco-night"},
+		{"/p/Taco-Night/", http.StatusMovedPermanently, "https://example.com/p/taco-night"},
+		{"/parties/ha725m8r", http.StatusFound, "https://example.com/p/taco-night"},
+		{"/parties/HA725M8R/", http.StatusFound, "https://example.com/p/taco-night"},
+		{"/p/taco-night", http.StatusTeapot, ""},
+		{"/parties/teamonly", http.StatusTeapot, ""},
+		{"/p/" + celebration, http.StatusTeapot, ""},
+		{"/p/nothing", http.StatusTeapot, ""},
+		{"/celebrations/sc-2026", http.StatusTeapot, ""},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest("GET", c.path, nil))
+		if rec.Code != c.status || rec.Header().Get("Location") != c.to {
+			t.Errorf("%s: %d %q, want %d %q", c.path, rec.Code, rec.Header().Get("Location"), c.status, c.to)
+		}
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("POST", "/parties/P001", nil))
+	if rec.Code != http.StatusTeapot {
+		t.Errorf("a POST is redirected: %d", rec.Code)
+	}
+
+	mux := http.NewServeMux()
+	pages.Register(mux)
+	t.Chdir("../..")
+	for _, path := range []string{"/", "/p/taco-night", "/parties/" + tacoNight, "/celebrations/sc-2026", "/my", "/my/rowan", "/hosting", "/admin"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<html") {
+			t.Errorf("%s: %d, not the page", path, rec.Code)
+		}
+	}
 }
 
 func TestDescriptionsLoseTheirChipsAndCalloutMarkers(t *testing.T) {

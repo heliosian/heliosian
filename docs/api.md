@@ -103,7 +103,7 @@ Group preview, the rule editor's options and image search read drafts and stay W
 - **`celebrate-settings`**: one resource for everyone: the viewer's `user` and household, `today`, the settings, the `current` and `banner` celebrations, `billable` (whom the viewer may bill a ticket to), `imageSearch`, and `invoicing` for admins. Actions: `host` posts a party (anyone while hosting is open, else an admin; a party posted by someone who is not an admin waits as Pending), `settings`, `order-categories` and `move-address` (an admin moves an address the directory does not hold on every party, and on its guest lists on Helios When).
 - **`celebrate-addresses`**: the Addresses panel, `problems` and `moved`, for an admin who may move addresses.
 
-The invoicing CSV (`GET /api/celebrate/invoices.csv`) and image search stay Celebrate's own routes.
+Image search (`/api/celebrate`) stays Celebrate's own route.
 
 ## HCA-Team
 

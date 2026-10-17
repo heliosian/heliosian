@@ -282,7 +282,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
 		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
-		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead},
+		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead, Wrap: partyPages.Redirected},
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: whenPages.PreviewHead},
 		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},

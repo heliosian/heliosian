@@ -4,12 +4,14 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/store"
 )
@@ -17,7 +19,10 @@ import (
 const (
 	partiesAbout  = "Fun(d)raiser parties for the Helios community. New parties are on the way."
 	partiesListed = 3
+	partiesShell  = "web/celebrate/index.html"
 )
+
+var partiesPages = []string{"/{$}", "/p/{key}", "/parties/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin"}
 
 func PartyCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{
@@ -38,8 +43,61 @@ func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style) *Party
 }
 
 func (p *PartyPages) Register(mux *http.ServeMux) {
+	for _, page := range partiesPages {
+		mux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, partiesShell)
+		})
+	}
 	mux.HandleFunc("GET /open/share/upcoming.png", p.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", p.shareCard)
+}
+
+func (p *PartyPages) Redirected(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		m := p.s.Model()
+		to, status := m.partyCanonical(r.URL), http.StatusMovedPermanently
+		if to == "" {
+			to, status = m.partyRedirect(r.URL.Path), http.StatusFound
+		}
+		if to == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		redirectTo(w, r, to, status)
+	})
+}
+
+func (m *Model) partyCanonical(u *url.URL) string {
+	kind, key, ok := strings.Cut(strings.Trim(u.Path, "/"), "/")
+	if !ok || (kind != "p" && kind != "parties") || strings.Contains(key, "/") {
+		return ""
+	}
+	g := m.party(key)
+	if g == nil {
+		return ""
+	}
+	if to := m.Link("GROUP", g, func(string) string { return "" }); to != u.EscapedPath() {
+		return to
+	}
+	return ""
+}
+
+func (m *Model) partyRedirect(path string) string {
+	at := strings.TrimRight(path, "/")
+	for _, row := range m.Table("REDIRECT").All() {
+		old, to := strings.TrimRight(strings.TrimSpace(row["old"]), "/"), strings.TrimSpace(row["new"])
+		if row["app"] != "celebrate" || old == "" || !strings.EqualFold(old, at) {
+			continue
+		}
+		if isURL(to) || onSite(to) {
+			return to
+		}
+	}
+	return ""
 }
 
 func (m *Model) party(key string) store.Row {
