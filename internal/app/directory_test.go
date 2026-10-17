@@ -16,7 +16,7 @@ func TestATeamAdminMakesAnEmailListFromAnyActivity(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
 	images := testkit.Images(func(string) bool { return true })
-	s, err := model.NewStore(dir, dir, queue, model.Deps{IDKey: []byte("sample"), Static: testkit.None, Activities: images, Parties: images, Home: images})
+	s, err := model.NewStore(dir, dir, queue, model.Deps{IDKey: []byte("sample"), Static: testkit.None, Activities: images, Home: images})
 	if err != nil {
 		t.Fatal(err)
 	}

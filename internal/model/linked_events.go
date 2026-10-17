@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 	"unicode"
 
 	"heliosian/internal/mail"
@@ -61,12 +60,12 @@ func tagRole(key string) string {
 	return builtinTags[key]
 }
 
-func (m *Model) LinkedEvents(email string, at time.Time) []Linked {
+func (m *Model) LinkedEvents(email string) []Linked {
 	family := m.Directory.HouseholdOf(email)
-	return append(m.Parties.Linked(family, at), m.Activities.Linked(family)...)
+	return m.Activities.Linked(family)
 }
 
-var tagBySource = map[string]string{SourceCelebrate: TagCelebrate, SourceTeam: TagHCA}
+var tagBySource = map[string]string{SourceTeam: TagHCA}
 
 var tagByMine = map[string]string{MineGoing: TagGoing, MineWaitlisted: TagWaitlisted}
 
@@ -196,7 +195,7 @@ func withLinked(events []*Event, linked []Linked) []*Event {
 			continue
 		}
 		if l.Source == SourceTeam {
-			i := slices.IndexFunc(out, func(o *Event) bool { return o.Link == "" && o.Source != SourceCelebrate && sameEvent(o, e) })
+			i := slices.IndexFunc(out, func(o *Event) bool { return o.Link == "" && sameEvent(o, e) })
 			if i >= 0 {
 				out[i] = folded(out[i], e)
 				continue

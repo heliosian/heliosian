@@ -25,7 +25,7 @@ func audienceSample(t *testing.T) (AudienceSources, *Directory) {
 			if owner != jordan {
 				return nil
 			}
-			return []MagicTag{{Key: "party:p1", Name: "Pizza Night", Kind: MagicTagParty, People: []string{abena, colin}}}
+			return []MagicTag{{Key: "room:p1", Name: "Pizza Night", Kind: MagicTagRoom, People: []string{abena, colin}}}
 		},
 		EmailLists: &EmailLists{},
 	}, d
@@ -62,10 +62,10 @@ func TestTagsReadForTheEditors(t *testing.T) {
 	if got, want := audienceMembers(s, []string{colin, jordan}, include(bookClubKey)), tagPeople(t, d, bookClub); !slices.Equal(got, want) {
 		t.Errorf("a manager among several editors: got %v, want %v", got, want)
 	}
-	if got := audienceMembers(s, []string{jordan}, include("party:p1")); !slices.Equal(got, []string{abena, colin}) {
+	if got := audienceMembers(s, []string{jordan}, include("room:p1")); !slices.Equal(got, []string{abena, colin}) {
 		t.Errorf("a Magic Tag of an editor's: %v", got)
 	}
-	if got := audienceMembers(s, []string{asha}, include("party:p1")); len(got) != 0 {
+	if got := audienceMembers(s, []string{asha}, include("room:p1")); len(got) != 0 {
 		t.Errorf("a Magic Tag none of the editors has: %v", got)
 	}
 	if got := audienceMembers(s, []string{jordan}, include(goneKey)); len(got) != 0 {
@@ -88,7 +88,7 @@ func TestAnAdditionFromTheDirectory(t *testing.T) {
 
 func TestTagLabels(t *testing.T) {
 	s, _ := audienceSample(t)
-	r := include(carpoolKey, bookClubKey, "party:p1", goneKey, "activity:abc")
+	r := include(carpoolKey, bookClubKey, "room:p1", goneKey, "activity:abc")
 	want := []string{
 		"Carpool",
 		"Book Club (Abena Osei's)",
@@ -110,7 +110,7 @@ func TestTagLabels(t *testing.T) {
 func TestWritable(t *testing.T) {
 	s, _ := audienceSample(t)
 	editors := []string{jordan}
-	if err := s.Writable(jordan, editors, nil, []Rule{include(carpoolKey, "party:p1")}); err != nil {
+	if err := s.Writable(jordan, editors, nil, []Rule{include(carpoolKey, "room:p1")}); err != nil {
 		t.Errorf("the owner's own: %v", err)
 	}
 	if err := s.Writable(jordan, editors, nil, []Rule{include(bookClubKey)}); err != nil {
@@ -124,7 +124,7 @@ func TestWritable(t *testing.T) {
 	if err := s.Writable(jordan, editors, nil, []Rule{include(goneKey)}); err == nil {
 		t.Error("a new rule naming a tag that does not exist passed")
 	}
-	if err := s.Writable(colin, editors, nil, []Rule{include("party:p1")}); err == nil || err.Error() != theirs.Error() {
+	if err := s.Writable(colin, editors, nil, []Rule{include("room:p1")}); err == nil || err.Error() != theirs.Error() {
 		t.Errorf("someone else's Magic Tag: %v", err)
 	}
 	existing := []Rule{include(carpoolKey), include(goneKey)}
@@ -145,8 +145,8 @@ func TestWritable(t *testing.T) {
 }
 
 func TestCleanAndCheckTagReferences(t *testing.T) {
-	got := Rule{Kind: "Include", Tags: []string{" tag:" + strings.ToUpper(soccerTeam) + " ", "party:p1"}}.Clean()
-	if !slices.Equal(got.Tags, []string{soccerTeamKey, "party:p1"}) {
+	got := Rule{Kind: "Include", Tags: []string{" tag:" + strings.ToUpper(soccerTeam) + " ", "room:p1"}}.Clean()
+	if !slices.Equal(got.Tags, []string{soccerTeamKey, "room:p1"}) {
 		t.Errorf("cleaned tags = %q", got.Tags)
 	}
 	for _, bad := range []string{"Carpool", ":Carpool", "tag:", "tag:Carpool", "tag:dtg000000000i", jordan + ":Carpool"} {

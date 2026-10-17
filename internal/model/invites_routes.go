@@ -2,8 +2,6 @@ package model
 
 import (
 	"cmp"
-	"context"
-	"log/slog"
 	"net/http"
 	"slices"
 	"sort"
@@ -14,7 +12,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 type GuestRow struct {
@@ -32,7 +29,6 @@ type GuestRow struct {
 	Opened       string   `json:"opened,omitempty"`
 	InvitedBy    string   `json:"invitedBy,omitempty"`
 	InvitedAt    string   `json:"invitedAt,omitempty"`
-	Ticket       string   `json:"ticket,omitempty"`
 	Outside      bool     `json:"outside,omitempty"`
 	Mine         bool     `json:"mine,omitempty"`
 	Household    string   `json:"household,omitempty"`
@@ -107,38 +103,33 @@ type EventWords struct {
 }
 
 type GuestCounts struct {
-	Invited        int `json:"invited"`
-	Yes            int `json:"yes"`
-	Maybe          int `json:"maybe"`
-	No             int `json:"no"`
-	Waiting        int `json:"waiting"`
-	Guests         int `json:"guests"`
-	Tickets        int `json:"tickets,omitempty"`
-	TicketsWaiting int `json:"ticketsWaiting,omitempty"`
+	Invited int `json:"invited"`
+	Yes     int `json:"yes"`
+	Maybe   int `json:"maybe"`
+	No      int `json:"no"`
+	Waiting int `json:"waiting"`
+	Guests  int `json:"guests"`
 }
 
 type InviteView struct {
-	Host           bool             `json:"host"`
-	MoveEverywhere bool             `json:"moveEverywhere,omitempty"`
-	Poster         string           `json:"poster,omitempty"`
-	MayInvite      bool             `json:"mayInvite,omitempty"`
-	NotifyMe       bool             `json:"notifyMe,omitempty"`
-	Linked         bool             `json:"linked,omitempty"`
-	Party          bool             `json:"party,omitempty"`
-	Settings       *Invitation      `json:"settings,omitempty"`
-	Guests         bool             `json:"guests"`
-	Sent           string           `json:"sent,omitempty"`
-	Flyer          string           `json:"flyer,omitempty"`
-	HostsHidden    bool             `json:"hostsHidden,omitempty"`
-	ListPrivate    bool             `json:"listPrivate,omitempty"`
-	Hosts          []CalendarPerson `json:"hosts"`
-	Original       *EventWords      `json:"original,omitempty"`
-	Mine           []GuestRow       `json:"mine"`
-	Coming         []GuestRow       `json:"coming"`
-	List           []GuestRow       `json:"list"`
-	TicketHolders  []GuestRow       `json:"ticketHolders,omitempty"`
-	Groups         []InviteGroup    `json:"groups,omitempty"`
-	Counts         GuestCounts      `json:"counts"`
+	Host        bool             `json:"host"`
+	Poster      string           `json:"poster,omitempty"`
+	MayInvite   bool             `json:"mayInvite,omitempty"`
+	NotifyMe    bool             `json:"notifyMe,omitempty"`
+	Linked      bool             `json:"linked,omitempty"`
+	Settings    *Invitation      `json:"settings,omitempty"`
+	Guests      bool             `json:"guests"`
+	Sent        string           `json:"sent,omitempty"`
+	Flyer       string           `json:"flyer,omitempty"`
+	HostsHidden bool             `json:"hostsHidden,omitempty"`
+	ListPrivate bool             `json:"listPrivate,omitempty"`
+	Hosts       []CalendarPerson `json:"hosts"`
+	Original    *EventWords      `json:"original,omitempty"`
+	Mine        []GuestRow       `json:"mine"`
+	Coming      []GuestRow       `json:"coming"`
+	List        []GuestRow       `json:"list"`
+	Groups      []InviteGroup    `json:"groups,omitempty"`
+	Counts      GuestCounts      `json:"counts"`
 }
 
 func (a calendarApp) personOf(email, name string) (CalendarPerson, *Person) {
@@ -172,10 +163,10 @@ func (a calendarApp) householdKey(e *Event, email string) string {
 	return members[0]
 }
 
-func (a calendarApp) guestRow(viewer access.Actor, e *Event, email, name string, invited, host bool, ticket string) GuestRow {
+func (a calendarApp) guestRow(viewer access.Actor, e *Event, email, name string, invited, host bool) GuestRow {
 	model := a.model()
 	p, known := a.personOf(email, name)
-	g := GuestRow{CalendarPerson: p, Key: email, Invited: invited, Outside: known == nil, Ticket: ticket, Mine: host || a.speaksFor(viewer, email, e), Household: a.householdKey(e, email)}
+	g := GuestRow{CalendarPerson: p, Key: email, Invited: invited, Outside: known == nil, Mine: host || a.speaksFor(viewer, email, e), Household: a.householdKey(e, email)}
 	if known != nil {
 		g.Grades, g.Classrooms = a.facetsOf(known)
 	}
@@ -196,14 +187,6 @@ func (a calendarApp) guestRow(viewer access.Actor, e *Event, email, name string,
 
 func (a calendarApp) rows(viewer access.Actor, e *Event) []GuestRow {
 	model := a.model()
-	tickets := map[string]string{}
-	if p := a.party(e); p != nil {
-		for _, t := range p.Attendees {
-			if t.Email != "" {
-				tickets[mail.Normalize(t.Email)] = t.Status
-			}
-		}
-	}
 	nameOf := func(email string) string {
 		return a.nameOn(e, email)
 	}
@@ -214,7 +197,7 @@ func (a calendarApp) rows(viewer access.Actor, e *Event) []GuestRow {
 	seen := map[string]bool{}
 	host := a.isHost(viewer, e)
 	row := func(email, name string, invited bool) GuestRow {
-		return a.guestRow(viewer, e, email, name, invited, host, tickets[email])
+		return a.guestRow(viewer, e, email, name, invited, host)
 	}
 	for _, inv := range model.Invites[e.ID] {
 		g := row(inv.Email, inv.Name, true)
@@ -258,8 +241,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		poster = a.directory().Resolve(mail.Normalize(e.AddedBy))
 	}
 	guests := model.othersInvite(e.ID)
-	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Party: e.Source == SourceCelebrate, Linked: e.linked(), Guests: guests, Hosts: []CalendarPerson{}, Mine: []GuestRow{}}
-	view.MoveEverywhere = host && view.Party && a.all().AdminList("celebrate").IsAdmin(viewer)
+	view := InviteView{Host: host, Poster: poster, MayInvite: host || guests && (e.Sharing == SharingPublic || model.Invited(a.directory(), viewer, e.ID)), Linked: e.linked(), Guests: guests, Hosts: []CalendarPerson{}, Mine: []GuestRow{}}
 	if inv != nil && inv.Flyer != "" {
 		view.Flyer = flyerPath(e.ID)
 	}
@@ -308,10 +290,6 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		default:
 			view.Counts.Waiting++
 		}
-		if g.Ticket == "ticket" || g.Ticket == "free" {
-			view.Counts.Tickets++
-			view.Counts.TicketsWaiting += b2i(g.Answer == "")
-		}
 	}
 	if e.openToAll() && len(actor.Household) > 0 {
 		family := []string{}
@@ -332,7 +310,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 				view.Mine = append(view.Mine, rows[i])
 				continue
 			}
-			view.Mine = append(view.Mine, a.guestRow(actor, e, email, "", false, host, ""))
+			view.Mine = append(view.Mine, a.guestRow(actor, e, email, "", false, host))
 		}
 	}
 	sort.SliceStable(view.Mine, func(i, j int) bool { return view.Mine[i].Email == viewer && view.Mine[j].Email != viewer })
@@ -347,7 +325,7 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 				continue
 			}
 			if !host {
-				g.Ticket, g.Sent, g.Via, g.Warning, g.WarningWords = "", "", "", "", ""
+				g.Sent, g.Via, g.Warning, g.WarningWords = "", "", "", ""
 				g.AnsweredBy, g.AnsweredAt, g.AnsweredVia, g.Link, g.Opened = "", "", "", "", ""
 			}
 			view.Coming = append(view.Coming, g)
@@ -358,7 +336,6 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 	}
 	if host {
 		view.List = rows
-		view.TicketHolders = a.ticketHolderRows(actor, e, rows)
 		view.Groups = []InviteGroup{}
 		all := a.all()
 		for _, g := range model.Groups[e.ID] {
@@ -378,30 +355,6 @@ func (a calendarApp) inviteView(actor access.Actor, e *Event) InviteView {
 		}
 	}
 	return view
-}
-
-func (a calendarApp) ticketHolderRows(viewer access.Actor, e *Event, rows []GuestRow) []GuestRow {
-	p := a.party(e)
-	if p == nil {
-		return nil
-	}
-	out := []GuestRow{}
-	seen := map[string]bool{}
-	for _, t := range p.Attendees {
-		email := a.directory().Resolve(mail.Normalize(t.Email))
-		if email == "" || t.Status == "waitlist" || seen[email] {
-			continue
-		}
-		seen[email] = true
-		if i := slices.IndexFunc(rows, func(g GuestRow) bool { return g.Key == email }); i >= 0 {
-			g := rows[i]
-			g.Ticket = t.Status
-			out = append(out, g)
-			continue
-		}
-		out = append(out, a.guestRow(viewer, e, email, t.Name, false, true, t.Status))
-	}
-	return out
 }
 
 func b2i(b bool) int {
@@ -454,21 +407,6 @@ type guestBody struct {
 	Invite *bool   `json:"invite"`
 }
 
-type guestKey struct {
-	Email string `json:"email"`
-}
-
-func (a calendarApp) bringGuest(ctx context.Context, actor access.Actor, ops []store.Op, g broughtGuest) error {
-	if g.invite && !isGuestKey(g.key) {
-		ops = append(ops, a.requestOps(actor, g.event, []string{g.key}, actor.Email, "")...)
-	}
-	if err := a.commit(ctx, actor, ops...); err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, "calendar: guest brought", "actor", actor.Email, "event", g.event.ID, "of", g.of, "guest", g.key, "answer", g.answer, "invite", g.invite)
-	return nil
-}
-
 type answerForBody struct {
 	ID     string `json:"id"`
 	Email  string `json:"email"`
@@ -480,16 +418,6 @@ type sendBody struct {
 	To     string   `json:"to"`
 	Emails []string `json:"emails"`
 	Update bool     `json:"update"`
-}
-
-func (a calendarApp) noteOpened(ctx context.Context, actor access.Actor, e *Event) {
-	ops := a.openedOps(actor, e)
-	if len(ops) == 0 {
-		return
-	}
-	if err := a.commit(ctx, actor, ops...); err != nil {
-		slog.ErrorContext(ctx, "calendar: note opened", "event", e.ID, "error", err)
-	}
 }
 
 type skipBody struct {

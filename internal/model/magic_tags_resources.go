@@ -69,9 +69,6 @@ func sourceOf(kind string) func(m *Model, q api.Query, key string) []string {
 			return nil
 		}
 		_, rest, _ := strings.Cut(t.Key, ":")
-		if kind == MagicTagParty {
-			return []string{id.Of(m.EmailLists.idKey, kindParty, rest)}
-		}
 		return []string{rest}
 	}
 }
@@ -131,7 +128,6 @@ func MagicTagResources() []api.Type[*Model] {
 				}
 				return []string{m.magicTagID(t.Parent)}
 			}},
-			"party":    {Type: "parties", List: sourceOf(MagicTagParty)},
 			"activity": {Type: "activities", List: sourceOf(MagicTagActivity)},
 		},
 	}}

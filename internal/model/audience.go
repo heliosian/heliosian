@@ -55,7 +55,7 @@ const (
 	deletedTag = "Deleted tag"
 )
 
-var magicTagKinds = []string{MagicTagParty, MagicTagActivity, MagicTagRoom, MagicTagGroup}
+var magicTagKinds = []string{MagicTagActivity, MagicTagRoom, MagicTagGroup}
 
 func TagKey(key string) string {
 	return tagPrefix + key

@@ -86,20 +86,6 @@ var layouts = map[string][]tab{
 	"Staff Birthday List (Shared)": {
 		{"Newsletter", model.SharedNewsletterColumns},
 	},
-	"Celebrate": {
-		{"Celebrations", model.CelebrationColumns},
-		{"Categories", model.PartyCategoryColumns},
-		{"Parties", model.PartyColumns},
-		{"Hosts", model.HostColumns},
-		{"Tickets", model.TicketColumns},
-		{"Settings", model.KeyValueColumns},
-		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Redirects", model.RedirectColumns},
-		{"INVOICING", model.InvoicingColumns},
-		{"Former Addresses", model.FormerColumns},
-		{id.AliasesTab, id.AliasColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
 	"Calendar": {
 		{model.GoogleTab, model.GoogleColumns},
 		{model.PDFTab, model.PDFColumns},

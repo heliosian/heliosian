@@ -20,7 +20,7 @@ func sample(t *testing.T) (AudienceSources, *Directory) {
 		MagicTags: func(owner string) []MagicTag {
 			lists := directory.RoomParentTags(owner)
 			if owner == jordan {
-				lists = append(lists, MagicTag{Key: "party:p1", Name: "Pizza Night", Kind: MagicTagParty, People: []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}})
+				lists = append(lists, MagicTag{Key: "room:p1", Name: "Pizza Night", Kind: MagicTagRoom, People: []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}})
 			}
 			return lists
 		},
@@ -237,7 +237,7 @@ func TestTagsReadTheOwnersOwn(t *testing.T) {
 
 func TestMagicTagsMatchByKey(t *testing.T) {
 	s, _ := sample(t)
-	got := listMembers(t, s, rule(RuleInclude, func(r *Rule) { r.Tags = []string{"party:p1"} }))
+	got := listMembers(t, s, rule(RuleInclude, func(r *Rule) { r.Tags = []string{"room:p1"} }))
 	if !slices.Equal(got, []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org"}) {
 		t.Fatalf("party: %v", got)
 	}
@@ -375,9 +375,9 @@ func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 	s, _ := sample(t)
 	lists := s.MagicTags
 	s.MagicTags = func(owner string) []MagicTag {
-		return append(lists(owner), MagicTag{Key: "party:p2", Name: "Movie Night", Kind: MagicTagParty, People: []string{"abena.osei@heliosschool.org", "harper.quinn@heliosschool.org"}})
+		return append(lists(owner), MagicTag{Key: "room:p2", Name: "Movie Night", Kind: MagicTagRoom, People: []string{"abena.osei@heliosschool.org", "harper.quinn@heliosschool.org"}})
 	}
-	got := listMembers(t, s, rule(RuleInclude, func(r *Rule) { r.Tags = []string{"party:p2"}; r.Family = []string{"Parents"} }))
+	got := listMembers(t, s, rule(RuleInclude, func(r *Rule) { r.Tags = []string{"room:p2"}; r.Family = []string{"Parents"} }))
 	want := []string{"abena.osei@heliosschool.org", "colin.quinn@heliosschool.org", "dana.hawkins@heliosschool.org", "harper.quinn@heliosschool.org"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("movie night: got %v, want %v", got, want)
@@ -387,7 +387,7 @@ func TestSuggestedGroupRuleIsTheListPlusStudentsParents(t *testing.T) {
 func TestRuleCountsSayWhoEachRuleTouches(t *testing.T) {
 	s, _ := sample(t)
 	g := NormalizeList(EmailList{Name: "test", Title: "Test", Managers: []string{jordan}, Rules: []Rule{
-		rule(RuleInclude, func(r *Rule) { r.Tags = []string{"party:p1"} }),
+		rule(RuleInclude, func(r *Rule) { r.Tags = []string{"room:p1"} }),
 		rule(RuleExclude, func(r *Rule) { r.Search = "osei" }),
 		rule(RuleExclude, func(r *Rule) { r.Search = "torres" }),
 	}})

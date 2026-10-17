@@ -238,6 +238,16 @@ var nameForm = regexp.MustCompile(`^(.+?) \((.+?)\) (.+)$`)
 
 var emailForm = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
+func checkEmail(email string) error {
+	if !emailForm.MatchString(email) {
+		return fmt.Errorf("%q is not an email address", email)
+	}
+	if email != strings.ToLower(email) {
+		return fmt.Errorf("email %q is not lowercase", email)
+	}
+	return nil
+}
+
 var leadingDigit = regexp.MustCompile(`^\s*\d`)
 
 const (

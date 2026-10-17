@@ -16,8 +16,6 @@ const ViaGroup = "group:"
 
 const ViaInvited = "invited"
 
-const sweepActor = "invite sweep"
-
 type InviteGroup struct {
 	ID      string `json:"id"`
 	Rule    Rule   `json:"rule"`
@@ -74,28 +72,11 @@ func (m *Calendar) GroupOf(id, gid string) *InviteGroup {
 func (a calendarApp) members(e *Event, g InviteGroup) []string {
 	matched := g.Rule
 	matched.Kind = RuleInclude
-	holds := a.ticketHolders(g)
-	if holds != nil {
-		matched.Family = nil
-	}
 	d := a.directory()
 	out := []string{}
 	for _, m := range (Audience{Rules: []Rule{matched}, Editors: a.hostsOf(e)}).Members(a.sources()) {
-		if m = d.Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) && (holds == nil || holds[m]) {
+		if m = d.Resolve(mail.Normalize(m)); m != "" && !slices.Contains(out, m) {
 			out = append(out, m)
-		}
-	}
-	if holds == nil {
-		return out
-	}
-	d.relatives(slices.Clone(out), g.Rule.Family, func(email, _, _ string) {
-		if p := d.Person(email); p != nil && !p.EmailMasked && inRole(p, g.Rule.Roles) && !slices.Contains(out, email) {
-			out = append(out, email)
-		}
-	})
-	for email := range a.ticketGuests(g) {
-		if !slices.Contains(out, email) {
-			out = append(out, email)
 		}
 	}
 	return out
@@ -109,50 +90,6 @@ func (a calendarApp) excluded(e *Event, groups []InviteGroup) map[string]bool {
 		}
 		for _, m := range a.members(e, g) {
 			out[m] = true
-		}
-	}
-	return out
-}
-
-func (a calendarApp) ticketHolders(g InviteGroup) map[string]bool {
-	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
-		return nil
-	}
-	p := a.parties().PartyPeople(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
-	if p == nil {
-		return nil
-	}
-	keep := map[string]bool{}
-	for _, host := range p.Hosts {
-		keep[a.directory().Resolve(mail.Normalize(host))] = true
-	}
-	for _, t := range p.Attendees {
-		if t.Email != "" {
-			keep[a.directory().Resolve(mail.Normalize(t.Email))] = true
-		}
-	}
-	return keep
-}
-
-func (a calendarApp) ticketGuests(g InviteGroup) map[string]string {
-	out := map[string]string{}
-	if len(g.Rule.Tags) != 1 || !strings.HasPrefix(g.Rule.Tags[0], "party:") {
-		return out
-	}
-	p := a.parties().PartyPeople(strings.TrimPrefix(g.Rule.Tags[0], "party:"))
-	if p == nil {
-		return out
-	}
-	for _, t := range p.Attendees {
-		email := a.directory().Resolve(mail.Normalize(t.Email))
-		if email == "" || t.Status == "waitlist" || !emailForm.MatchString(email) {
-			continue
-		}
-		if a.directory().Person(email) != nil {
-			continue
-		}
-		if out[email] == "" {
-			out[email] = strings.TrimSpace(t.Name)
 		}
 	}
 	return out

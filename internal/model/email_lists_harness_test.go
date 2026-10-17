@@ -30,7 +30,7 @@ func loopHarness(t *testing.T, team store.Tables) *harness {
 	dir := &data.Dir{Root: "../../sampledata"}
 	sheet, queue = dir, store.NewQueue()
 	outsideSuperAdmin(t, dir)
-	linkRows(t, nil, team)
+	linkRows(t, team)
 	deps := sampleDeps(sampleKey)
 	deps.Static = testkit.Files("../../web/who")
 	deps.Objects = blob.NewMemoryBucket()

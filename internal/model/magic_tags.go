@@ -29,14 +29,13 @@ type Guest struct {
 }
 
 const (
-	MagicTagParty    = "party"
 	MagicTagActivity = "activity"
 	MagicTagRoom     = "room"
 	MagicTagGroup    = "group"
 )
 
 func (m *Model) heldMagicTags(holder string, now time.Time) []MagicTag {
-	tags := append(m.Directory.RoomParentTags(holder), m.Parties.MagicTags(m.Directory, holder, now)...)
+	tags := m.Directory.RoomParentTags(holder)
 	if m.AdminList("team").IsAdmin(holder) {
 		return append(tags, m.Activities.AllMagicTags(m.Directory, now)...)
 	}
@@ -56,8 +55,6 @@ func (m *Model) MagicTagsOf(holder string, now time.Time) []MagicTag {
 func (m *Model) magicTagExists(key string) bool {
 	kind, rest, _ := strings.Cut(key, ":")
 	switch kind {
-	case MagicTagParty:
-		return m.Parties.byParty[rest] != nil
 	case MagicTagActivity:
 		return m.Activities.byID[rest] != nil
 	case MagicTagRoom:
@@ -72,10 +69,6 @@ func (m *Model) magicTagExists(key string) bool {
 func (m *Model) tagName(key string) string {
 	kind, rest, _ := strings.Cut(key, ":")
 	switch kind {
-	case MagicTagParty:
-		if p := m.Parties.Party(rest); p != nil {
-			return p.Title
-		}
 	case MagicTagActivity:
 		if a := m.Activities.Activity(rest); a != nil {
 			return a.Title
@@ -95,9 +88,6 @@ func (m *Model) tagName(key string) string {
 
 func (m *Model) magicTagKeys() []string {
 	out := []string{}
-	for _, p := range m.Parties.Parties {
-		out = append(out, MagicTagParty+":"+p.ID)
-	}
 	for key := range m.Activities.byID {
 		out = append(out, MagicTagActivity+":"+key)
 	}

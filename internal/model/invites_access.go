@@ -11,11 +11,11 @@ import (
 const notOnCalendar = "that event is not on the calendar"
 
 func (e *Event) guestsWithoutInvite() bool {
-	return (e.Sharing == SharingPublic || e.Sharing == SharingLink) && e.Source != SourceCelebrate
+	return e.Sharing == SharingPublic || e.Sharing == SharingLink
 }
 
 func (e *Event) openToAll() bool {
-	return e.Sharing == SharingPublic && e.Source != SourceCelebrate && !e.Cancelled
+	return e.Sharing == SharingPublic && !e.Cancelled
 }
 
 func (e *Event) asks(p *Person) bool {
@@ -38,13 +38,6 @@ func (a calendarApp) findEvent(actor access.Actor, id string) (*Event, error) {
 		return nil, access.Missing(notOnCalendar)
 	}
 	return e, nil
-}
-
-func (a calendarApp) party(e *Event) *PartyPeople {
-	if e == nil || e.Source != SourceCelebrate {
-		return nil
-	}
-	return a.parties().PartyPeople(e.linkedID())
 }
 
 func isAdult(p *Person) bool {

@@ -127,17 +127,3 @@ func TestActivityFiltersReadThePastAgainstTheQuery(t *testing.T) {
 		t.Fatal("no activity names its category")
 	}
 }
-
-func TestPartyFiltersReadThePastAgainstTheQuery(t *testing.T) {
-	_, mux := partiesServer(t)
-	all := keysOf(t, read(t, mux, jordan, "/api/parties"))
-	upcoming := keysOf(t, read(t, mux, jordan, "/api/parties?past=false"))
-	past := keysOf(t, read(t, mux, jordan, "/api/parties?past=true"))
-	if len(upcoming) == 0 || len(past) == 0 || len(upcoming)+len(past) != len(all) {
-		t.Fatalf("%d upcoming and %d past of %d", len(upcoming), len(past), len(all))
-	}
-	social := read(t, mux, jordan, "/api/parties?q=children+social")
-	if titles := namesOf(social, "parties", "title", keysOf(t, social)); len(titles) != 1 || titles[0] != "Nerf Blaster Bash" {
-		t.Fatalf("parties by category: %v", titles)
-	}
-}

@@ -19,7 +19,6 @@ type Model struct {
 	Config     *Config
 	Directory  *Directory
 	Calendar   *Calendar
-	Parties    *Parties
 	Activities *Activities
 	Birthdays  *Birthdays
 	EmailLists *EmailLists
@@ -34,7 +33,6 @@ type Deps struct {
 	Photos     blob.Checker
 	Static     blob.Checker
 	Calendar   blob.Checker
-	Parties    blob.Checker
 	Activities blob.Checker
 	Home       blob.Checker
 	Objects    *blob.Bucket
@@ -91,21 +89,6 @@ func parts(deps Deps, documents *documentObjects) []store.Part[Model] {
 				c := m.Calendar
 				slog.Info("loaded calendar model", "events", len(c.Events), "hidden", c.Hidden, "days", len(c.Days),
 					"feeds", len(c.Feeds), "skipped", c.Skipped, "took", took(d))
-			},
-		},
-		{
-			App: partiesAppName, Tabs: partiesTabs,
-			Build: func(ctx context.Context, tables store.Tables, m *Model) (err error) {
-				m.Parties, err = BuildParties(ctx, tables, deps.Parties)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				tickets := 0
-				for _, p := range m.Parties.Parties {
-					tickets += len(p.Tickets)
-				}
-				slog.Info("loaded celebrate model", "celebrations", len(m.Parties.Celebrations), "parties", len(m.Parties.Parties),
-					"tickets", tickets, "skipped", m.Parties.Skipped, "took", took(d))
 			},
 		},
 		{
@@ -234,7 +217,6 @@ var adminApps = []adminApp{
 	{"who", DirectoryApp, WhoAdminAllowances, func(m *Model) []string { return m.Directory.admins }},
 	{"team", activitiesAppName, ActivitiesAdminAllowances, func(m *Model) []string { return m.Activities.admins }},
 	{"birthday", birthdaysAppName, BirthdaysAdminAllowances, func(m *Model) []string { return m.Birthdays.admins }},
-	{"celebrate", partiesAppName, PartiesAdminAllowances, func(m *Model) []string { return m.Parties.admins }},
 	{"when", CalendarApp, CalendarAdminAllowances, func(m *Model) []string { return m.Calendar.admins }},
 	{"home", homeAppName, HomeAdminAllowances, func(m *Model) []string { return m.Home.admins }},
 }
@@ -269,10 +251,6 @@ func (m *Model) Held(email string) []access.Allowance {
 
 func (m *Model) actor(r *http.Request, app string) access.Actor {
 	return m.Directory.Actor(r, m.AdminList(app).Held)
-}
-
-func (m *Model) actorOf(email, app string) access.Actor {
-	return m.Directory.ActorOf(email, m.AdminList(app).Held(email))
 }
 
 func (s *Store) Held(email string) []access.Allowance {

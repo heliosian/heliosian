@@ -743,23 +743,6 @@ func (a calendarApp) bringGuestOps(actor access.Actor, body guestBody) ([]store.
 	return a.guestOps(actor, g, body.Name, body.Email)
 }
 
-func (a calendarApp) extGuestOps(actor access.Actor, e *Event, name, email string) ([]store.Op, broughtGuest, error) {
-	g := broughtGuest{event: e, of: actor.Email, answer: AnswerYes, invite: true}
-	if settings := a.model().Invitations[e.ID]; settings == nil || !settings.Guests {
-		return nil, g, access.Forbidden("this event is not taking guests")
-	}
-	return a.guestOps(actor, g, name, email)
-}
-
-func (a calendarApp) extRemoveGuestOps(actor access.Actor, e *Event, key string) ([]store.Op, string, error) {
-	key = mail.Normalize(key)
-	guest := a.model().InviteOf(e.ID, key)
-	if guest == nil || guest.GuestOf != actor.Email {
-		return nil, "", access.Missing("that is not a guest of yours")
-	}
-	return []store.Op{store.Delete(InvitesTab, store.Row{"Event ID": e.ID, "Email": key})}, key, nil
-}
-
 func (a calendarApp) answerOps(actor access.Actor, email, id, answer, via string, invite bool) ([]store.Op, *Event, error) {
 	email = mail.Normalize(email)
 	answer = strings.ToLower(strings.TrimSpace(answer))
@@ -804,20 +787,6 @@ func (a calendarApp) answerSubject(actor access.Actor, id, email, answer string)
 		return nil, "", access.Invalid("hiding is a person's own")
 	}
 	return e, subject, nil
-}
-
-func (a calendarApp) extSubject(actor access.Actor, e *Event, key, answer string) (string, error) {
-	if strings.ToLower(strings.TrimSpace(answer)) == AnswerHidden {
-		return "", access.Invalid("an answer is yes, no, maybe, or blank")
-	}
-	key = mail.Normalize(key)
-	if key == "" || key == actor.Email {
-		return actor.Email, nil
-	}
-	if !slices.Contains(a.householdOn(e, actor.Email), key) {
-		return "", access.Forbidden("that is not someone in your family")
-	}
-	return key, nil
 }
 
 func (a calendarApp) cancelWith(actor access.Actor, e *Event, body cancelBody) ([]store.Op, error) {
@@ -993,28 +962,8 @@ func eventCellsOp(id string, cells store.Row) store.Op {
 	return store.Update(EventsTab, store.Row{"Event ID": id}, cells)
 }
 
-func resendOp(e *Event, to, host string) store.Op {
-	return store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": to}, store.Row{"Sent": "", "Requested": now().Format(DateTimeFormat), "Requested By": host})
-}
-
 func inviteSentOp(id, email, stamp string) store.Op {
 	return store.Update(InvitesTab, store.Row{"Event ID": id, "Email": email}, store.Row{"Sent": stamp})
-}
-
-func messageSentOp(m EventMessage, sent []string) store.Op {
-	return store.Update(MessagesTab, store.Row{"Message ID": m.ID}, store.Row{"Sent To": strings.Join(sent, ", ")})
-}
-
-func answerToldOp(id, email string, told store.Row) store.Op {
-	return store.Update(RSVPsTab, store.Row{"Event ID": id, "Email": email}, told)
-}
-
-func hostsToTellOp(id string, left []string) store.Op {
-	return store.Update(InvitationsTab, store.Row{"Event ID": id}, store.Row{"Hosts To Tell": strings.Join(left, ", ")})
-}
-
-func adminsToldOp(id string) store.Op {
-	return store.Update(EventsTab, store.Row{"Event ID": id}, store.Row{"Admins Told": now().Format(DateTimeFormat)})
 }
 
 func (a calendarApp) openedOps(actor access.Actor, e *Event) []store.Op {
@@ -1115,18 +1064,15 @@ func (a calendarApp) removeGroupOps(actor access.Actor, id, gid string) ([]store
 	return ops, e, g, nil
 }
 
-func (a calendarApp) startPartyOps(actor access.Actor, id string) ([]store.Op, *Event, InviteGroup, error) {
+func (a calendarApp) startListOps(actor access.Actor, id string) ([]store.Op, *Event, InviteGroup, error) {
 	e, err := a.hostedEvent(actor, id)
 	if err != nil {
 		return nil, nil, InviteGroup{}, err
 	}
 	if !e.linked() {
-		return nil, nil, InviteGroup{}, access.Invalid("only a party or an HCA event starts this way")
+		return nil, nil, InviteGroup{}, access.Invalid("only an HCA event starts this way")
 	}
-	key := "party:" + e.linkedID()
-	if e.Source != SourceCelebrate {
-		key = "activity:" + e.linkedID()
-	}
+	key := "activity:" + e.linkedID()
 	for _, g := range a.model().Groups[e.ID] {
 		if g.Rule.Kind == RuleInclude && slices.Contains(g.Rule.Tags, key) {
 			return nil, e, g, nil
@@ -1144,22 +1090,16 @@ func (a calendarApp) fillOps(actor access.Actor, e *Event, g InviteGroup, skip m
 	if g.Rule.Kind == RuleExclude {
 		return ops, emails
 	}
-	guests := a.ticketGuests(g)
 	for _, email := range a.members(e, g) {
 		if skip[email] || model.InviteOf(e.ID, email) != nil {
 			continue
 		}
 		skip[email] = true
-		name, token := email, ""
+		name := email
 		if p := a.directory().Person(email); p != nil {
 			name = p.FullName
-		} else if guest, ok := guests[email]; ok {
-			name, token = guest, id.Token()
-			if name == "" {
-				name = cells.DisplayName(email)
-			}
 		}
-		row := store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp, "Token": token}
+		row := store.Row{"Event ID": e.ID, "Email": email, "Name": name, "Via": ViaGroup + g.ID, "Added By": g.AddedBy, "Added": stamp}
 		if g.Auto && g.Sent != "" {
 			row["Requested"], row["Requested By"] = stamp, g.AddedBy
 		}
@@ -1169,26 +1109,12 @@ func (a calendarApp) fillOps(actor access.Actor, e *Event, g InviteGroup, skip m
 	return ops, emails
 }
 
-func (a calendarApp) sweptEvent(adder access.Actor, id string) *Event {
-	e := a.eventFor(access.Actor{Email: adder.Email}, id)
-	if e == nil || !a.isHost(adder, e) {
-		return nil
-	}
-	return e
-}
-
-func bounceOps(actor access.Actor, email, reason string) []store.Op {
-	return []store.Op{store.Insert(BouncesTab, store.Row{"Email": email, "When": now().Format(DateTimeFormat), "Reason": reason})}
-}
-
 type addressChange struct {
-	event      *Event
-	from, to   string
-	name       string
-	everywhere bool
+	event    *Event
+	from, to string
 }
 
-func (a calendarApp) changeAddressOps(actor access.Actor, id, email, to string, everywhere bool) ([]store.Op, addressChange, error) {
+func (a calendarApp) changeAddressOps(actor access.Actor, id, email, to string) ([]store.Op, addressChange, error) {
 	e, err := a.hostedEvent(actor, id)
 	if err != nil {
 		return nil, addressChange{}, err
@@ -1205,66 +1131,13 @@ func (a calendarApp) changeAddressOps(actor access.Actor, id, email, to string, 
 		return nil, c, access.Invalid("that is not an email address")
 	case c.to == c.from:
 		return nil, c, nil
-	case model.InviteOf(e.ID, c.to) != nil && !everywhere:
+	case model.InviteOf(e.ID, c.to) != nil:
 		return nil, c, access.Invalid("that address is on the list already")
 	}
 	if a.directory().Person(c.from) != nil {
 		return nil, c, access.Invalid("their address is the directory's to change")
 	}
-	c.name = inv.Name
-	if everywhere {
-		if e.Source != SourceCelebrate || !a.all().AdminList("celebrate").IsAdmin(actor.Email) {
-			return nil, c, access.Forbidden("only Celebrate's admins move an address on every party")
-		}
-		c.everywhere = true
-		return nil, c, nil
-	}
 	return []store.Op{store.Update(InvitesTab, store.Row{"Event ID": e.ID, "Email": c.from}, store.Row{"Email": c.to})}, c, nil
-}
-
-func (a calendarApp) moveAddressOps(actor access.Actor, old, to, name string) ([]store.Op, []string) {
-	model := a.model()
-	person := a.directory().Person(to)
-	ops := []store.Op{}
-	resend := []string{}
-	for key := range model.Invites {
-		if a.parties().PartyPeople(key) == nil {
-			continue
-		}
-		row := model.InviteOf(key, old)
-		if row == nil {
-			continue
-		}
-		match := store.Row{"Event ID": key, "Email": old}
-		if model.InviteOf(key, to) != nil {
-			ops = append(ops, store.Delete(InvitesTab, match))
-		} else {
-			cells := store.Row{"Email": to, "Token": "", "Household": ""}
-			switch {
-			case person != nil:
-				cells["Name"] = person.FullName
-			default:
-				cells["Token"], cells["Household"] = row.Token, row.Household
-				if cells["Token"] == "" {
-					cells["Token"] = id.Token()
-				}
-				if name != "" {
-					cells["Name"] = name
-				}
-			}
-			ops = append(ops, store.Update(InvitesTab, match, cells))
-			if row.Sent != "" {
-				if inv := model.Invitations[key]; inv != nil && inv.Sent != "" {
-					resend = append(resend, key)
-				}
-			}
-		}
-		ops = append(ops,
-			store.Update(InvitesTab, store.Row{"Event ID": key, "Household": old}, store.Row{"Household": to}),
-			store.Update(InvitesTab, store.Row{"Event ID": key, "Guest Of": old}, store.Row{"Guest Of": to}),
-		)
-	}
-	return ops, resend
 }
 
 func (a calendarApp) deleteInvitationOps(actor access.Actor, id string) ([]store.Op, *Event, bool, error) {

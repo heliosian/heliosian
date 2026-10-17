@@ -118,7 +118,7 @@ func NewCore(cfg Config) *Core {
 	whenImages := blob.NewImages(cfg.Store, "when", "celebrate", "team")
 	models, err := model.NewStore(cfg.Source, cfg.Writer, queue, model.Deps{
 		IDKey: cfg.IDKey, Photos: cfg.Store, Static: static.Files{Root: "web/who"},
-		Calendar: whenImages, Parties: celebrateImages, Activities: teamImages, Home: homeImages,
+		Calendar: whenImages, Activities: teamImages, Home: homeImages,
 		Objects: cfg.Bucket, Embedder: cfg.Embedder,
 	})
 	if err != nil {
@@ -213,13 +213,9 @@ func NewCore(cfg Config) *Core {
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
 	celebrateMux := http.NewServeMux()
-	parties := model.RegisterParties(celebrateMux, model.PartiesDeps{
-		Store:    models,
-		Images:   celebrateImages,
-		Calendar: hooks,
-		Search:   cfg.ImageSearch,
-		Mailer:   cfg.CelebrateMail,
-	})
+	celebrateSearch := cfg.ImageSearch
+	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
+	celebrateSearch.Register(celebrateMux, "/api/celebrate", celebrateImages.Folder(), imagesearch.Members)
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
@@ -290,7 +286,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
-	registry := model.NewRegistry(models, queue, hooks, parties, activities, home, feedbackAdmin)
+	registry := model.NewRegistry(models, queue, hooks, activities, home, feedbackAdmin)
 	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	model.RegisterBirthdays(birthdayMux, model.BirthdaysDeps{
 		Store:     models,

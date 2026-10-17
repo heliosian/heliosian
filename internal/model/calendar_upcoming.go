@@ -9,12 +9,11 @@ import (
 )
 
 const (
-	appCalendar  = "when"
-	appCelebrate = "celebrate"
-	appTeam      = "team"
+	appCalendar = "when"
+	appTeam     = "team"
 )
 
-var callWords = map[string]string{"available": "Get tickets", "waitlist": "Join the waitlist", "sold-out": "Sold out", "open": "Join", "full": "Full"}
+var callWords = map[string]string{"open": "Join", "full": "Full"}
 
 func standing(e *Event) {
 	e.MineWords = mineWords(e)
@@ -28,28 +27,13 @@ func mineWords(e *Event) string {
 	if names == "You" {
 		names = ""
 	}
-	switch e.Mine {
-	case MineWaitlisted:
-		if names != "" {
-			return names + " " + isAre(e.MineWho) + " waitlisted"
-		}
-		return "Waitlisted"
-	case MineGoing:
-		if e.Source == SourceCelebrate {
-			switch {
-			case len(e.MineWho) > 1:
-				return names + " have tickets"
-			case names != "":
-				return names + " has a ticket"
-			}
-			return "You have a ticket"
-		}
-		if names != "" {
-			return names + " signed up"
-		}
-		return "Signed up"
+	if e.Mine != MineGoing {
+		return ""
 	}
-	return ""
+	if names != "" {
+		return names + " signed up"
+	}
+	return "Signed up"
 }
 
 func joinNames(names []string) string {
@@ -69,13 +53,6 @@ func isAre(names []string) string {
 	return "is"
 }
 
-func linkedApp(e *Event) string {
-	if e.Source == SourceCelebrate {
-		return appCelebrate
-	}
-	return appTeam
-}
-
 func EventPath(e *Event) string {
 	if e.Address != "" {
 		return "/e/" + url.PathEscape(e.Address)
@@ -89,7 +66,7 @@ func EventPath(e *Event) string {
 
 func EventPage(e *Event) (app, path string) {
 	if e.Link != "" {
-		return linkedApp(e), e.Link
+		return appTeam, e.Link
 	}
 	return appCalendar, EventPath(e)
 }

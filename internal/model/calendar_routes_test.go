@@ -58,11 +58,11 @@ func sampleSheet(t *testing.T) {
 	queue = store.NewQueue()
 }
 
-func calendarStore(t *testing.T, celebrate, team, groups store.Tables) *Store {
+func calendarStore(t *testing.T, team, groups store.Tables) *Store {
 	t.Helper()
 	sampleSheet(t)
 	outsideSuperAdmin(t, sheet)
-	linkRows(t, celebrate, team)
+	linkRows(t, team)
 	listRows(t, groups)
 	return sampleStore(t, sheet, queue, sampleDeps(sampleKey))
 }
@@ -73,7 +73,7 @@ func calendarDeps(s *Store, m CalendarMail) CalendarDeps {
 
 func testApp(t *testing.T) (http.Handler, *Store) {
 	t.Helper()
-	cache := calendarStore(t, nil, nil, nil)
+	cache := calendarStore(t, nil, nil)
 	mux := http.NewServeMux()
 	hooks := RegisterCalendar(mux, calendarDeps(cache, CalendarMail{Sender: keptMail().Mailgun}))
 	return served(mux, cache, hooks), cache
@@ -83,16 +83,10 @@ func memoryImages() blob.Images {
 	return blob.NewImages(blob.New(blob.NewMemoryBucket()), "when", "celebrate", "team")
 }
 
-var (
-	celebrateLinkedTabs = []string{partiesTab, hostsTab, ticketsTab, AdminsTab.Name, id.AliasesTab}
-	teamLinkedTabs      = []string{activitiesTab, volunteersTab, id.AliasesTab}
-)
+var teamLinkedTabs = []string{activitiesTab, volunteersTab, id.AliasesTab}
 
-func linkRows(t *testing.T, celebrate, team store.Tables) {
+func linkRows(t *testing.T, team store.Tables) {
 	t.Helper()
-	for _, tab := range celebrateLinkedTabs {
-		replaceRows(t, partiesAppName, tab, celebrate[tab])
-	}
 	for _, tab := range teamLinkedTabs {
 		replaceRows(t, activitiesAppName, tab, team[tab])
 	}

@@ -56,17 +56,6 @@ type Invite struct {
 	RequestedBy string `json:"-"`
 }
 
-type PartyPeople struct {
-	Hosts     []string
-	Attendees []Attendee
-}
-
-type Attendee struct {
-	Email  string `json:"email,omitempty"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
-}
-
 func (b *builder) invitations(settings, rows []store.Row) {
 	for _, row := range settings {
 		id := strings.TrimSpace(row["Event ID"])

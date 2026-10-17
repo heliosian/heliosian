@@ -1,8 +1,6 @@
 package model
 
 import (
-	"context"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -70,19 +68,11 @@ func (a calendarApp) settings() *Config {
 	return a.all().Config
 }
 
-func (a calendarApp) parties() *Parties {
-	return a.all().Parties
-}
-
 func (a calendarApp) clock() time.Time {
 	if a.pinned != nil && a.pinned.scope != nil {
 		return a.pinned.scope.now
 	}
 	return now()
-}
-
-func (a calendarApp) commit(ctx context.Context, actor access.Actor, ops ...store.Op) error {
-	return a.store.Commit(ctx, actor, CalendarApp, ops...)
 }
 
 func (a calendarApp) sources() AudienceSources {
@@ -130,10 +120,6 @@ func (a calendarApp) eventPage(w http.ResponseWriter, r *http.Request) {
 
 var now = func() time.Time {
 	return time.Now().In(Location)
-}
-
-func (a calendarApp) as(email string) access.Actor {
-	return a.all().actorOf(email, "when")
 }
 
 func (a calendarApp) actor(r *http.Request) access.Actor {
@@ -213,47 +199,6 @@ type eventBody struct {
 	RepeatTimes int      `json:"repeatTimes"`
 }
 
-func (a calendarApp) tellAdmins(ctx context.Context, by string, e *Event) error {
-	admins := a.all().AdminList("when").Admins()
-	if len(admins) == 0 {
-		return nil
-	}
-	who := by
-	if p := a.directory().Person(by); p != nil && p.FullName != "" {
-		who = p.FullName + " (" + by + ")"
-	}
-	day, _ := whenLines(e)
-	lead := who + " shared an event on Helios When that is waiting for approval."
-	closing := "Approve and Decline are at the top of its page. Until then it is shared by link: anyone with its link can open it."
-	subject := "Event to approve: "
-	if e.Sharing == SharingLink {
-		lead = who + " added an event shared by link on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite and of those they send the link to who answer it."
-		closing = "Nothing is needed from you; this is so the admins know what is being shared."
-		subject = "Link event added: "
-	}
-	if e.Sharing == SharingInvited {
-		lead = who + " added an invite-only event on Helios When. It needs no approval: it is not on the calendar, only on the calendars of the people they invite."
-		closing = "Nothing is needed from you; this is so the admins know what is being shared."
-		subject = "Invite-only event added: "
-	}
-	l := a.letterFor(e, EventPath(e))
-	l.Heading = strings.TrimSuffix(subject, ": ")
-	l.Intro = lead
-	if e.Description != "" {
-		l.Rows = [][2]string{{"Details", e.Description}}
-	}
-	l.Button = "See the event"
-	if e.Sharing == SharingPublic {
-		l.Button = "Review the event"
-	}
-	l.Footnote = closing
-	if err := a.mail.Sender.Send(ctx, l.Message(subject+e.Title+" · "+day, admins, nil, nil)); err != nil {
-		return err
-	}
-	slog.InfoContext(ctx, "calendar: admins told", "event", e.ID, "to", len(admins))
-	return nil
-}
-
 type moveBody struct {
 	ID    string `json:"id"`
 	Start string `json:"start"`
@@ -279,14 +224,5 @@ type tagsBody struct {
 }
 
 func (a calendarApp) linked(email string) []Linked {
-	return a.all().LinkedEvents(email, a.clock())
-}
-
-func (a calendarApp) moveEverywhere(ctx context.Context, actor access.Actor, old, to, name string) error {
-	as := a.all().actorOf(actor.Email, "celebrate")
-	if err := a.store.movePartyAddress(ctx, as, old, to, name); err != nil {
-		return err
-	}
-	a.moveAddress(ctx, actor, old, to, name)
-	return nil
+	return a.all().LinkedEvents(email)
 }

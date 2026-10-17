@@ -120,21 +120,6 @@ func pickerOf(t *testing.T, h http.Handler, key string) guestListResource {
 	return v
 }
 
-func settingsOf(t *testing.T, h http.Handler) settingsResource {
-	t.Helper()
-	out := decoded[envelope](t, call(t, h, "GET", "/api/when-settings/"+settingsKey(), ""))
-	var s settingsResource
-	if err := json.Unmarshal(out.Resources["when-settings"][settingsKey()], &s); err != nil {
-		t.Fatalf("no settings: %v", err)
-	}
-	return s
-}
-
-func opened(t *testing.T, h http.Handler, eventID string) *httptest.ResponseRecorder {
-	t.Helper()
-	return call(t, h, "POST", "/api/guest-lists/"+id.Of(sampleKey, kindGuestList, eventID)+"/opened", "")
-}
-
 func act(t *testing.T, h http.Handler, key, action, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	return call(t, h, "POST", "/api/events/"+key+"/"+action, body)

@@ -2,7 +2,6 @@ package model
 
 import (
 	"encoding/json"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -148,8 +147,7 @@ type settingsResource struct {
 
 type guestListResource struct {
 	InviteView
-	Attendees []Attendee `json:"attendees,omitempty"`
-	OnList    []string   `json:"onList"`
+	OnList []string `json:"onList"`
 }
 
 type feedResource struct {
@@ -587,18 +585,9 @@ func (r calendarResources) events() api.Type[*Model] {
 				return stage(wr, CalendarApp, []store.Op{op}, nil)
 			}),
 			"change-email": action(r, hosts, func(wr api.Write[*Model], e *Event, body addressBody) error {
-				ops, c, err := r.app.at(wr.S).changeAddressOps(wr.Query.Actor, e.ID, body.Email, body.To, body.Everywhere)
+				ops, c, err := r.app.at(wr.S).changeAddressOps(wr.Query.Actor, e.ID, body.Email, body.To)
 				if err != nil {
 					return err
-				}
-				if c.everywhere {
-					actor, ctx, move := wr.Query.Actor, wr.Request.Context(), r.app.moveEverywhere
-					wr.Tx.After(func() {
-						if err := move(ctx, actor, c.from, c.to, c.name); err != nil {
-							slog.ErrorContext(ctx, "calendar: move address everywhere", "from", c.from, "to", c.to, "error", err)
-						}
-					})
-					return nil
 				}
 				logAfter(wr, "calendar: invite address changed", "event", e.ID, "from", c.from, "to", c.to)
 				return stage(wr, CalendarApp, ops, nil)
@@ -613,12 +602,12 @@ func (r calendarResources) events() api.Type[*Model] {
 			}),
 			"start": action(r, func(a calendarApp, q api.Query, e *Event) bool { return hosts(a, q, e) && e.linked() }, func(wr api.Write[*Model], e *Event, _ serve.None) error {
 				a := r.app.at(wr.S)
-				ops, _, g, err := a.startPartyOps(wr.Query.Actor, e.ID)
+				ops, _, g, err := a.startListOps(wr.Query.Actor, e.ID)
 				if err != nil || len(ops) == 0 {
 					return err
 				}
 				filled, emails := a.fillOps(wr.Query.Actor, e, g, a.excluded(e, a.model().Groups[e.ID]))
-				logAfter(wr, "calendar: party list started", "event", e.ID, "group", g.ID, "added", len(emails))
+				logAfter(wr, "calendar: activity list started", "event", e.ID, "group", g.ID, "added", len(emails))
 				return stage(wr, CalendarApp, append(ops, filled...), nil)
 			}),
 		},
@@ -651,9 +640,6 @@ func (r calendarResources) guestLists() api.Type[*Model] {
 			}
 			out := guestListResource{InviteView: a.inviteView(q.Actor, e), OnList: []string{}}
 			if a.inviter(q, e) {
-				if p := a.party(e); p != nil {
-					out.Attendees = p.Attendees
-				}
 				for _, inv := range a.model().Invites[e.ID] {
 					out.OnList = append(out.OnList, inv.Email)
 				}

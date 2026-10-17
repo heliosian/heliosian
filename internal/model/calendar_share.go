@@ -1,46 +1,8 @@
 package model
 
-import (
-	"strings"
-
-	"heliosian/internal/sharecard"
-)
+import "strings"
 
 const defaultHeader = "brand/default-header.jpg"
-
-func whenLines(e *Event) (string, string) {
-	if e.AllDay || spansDays(e) {
-		if e.start.Equal(e.end) || e.start.Format(DateFormat) == e.end.Format(DateFormat) {
-			return e.start.Format("Monday, January 2"), ""
-		}
-		return e.start.Format("Monday, January 2") + " – " + e.end.Format("Monday, January 2"), ""
-	}
-	return e.start.Format("Monday, January 2"), sharecard.Hours(e.start, e.end)
-}
-
-func spansDays(e *Event) bool {
-	return e.start.Format(DateFormat) != e.end.Format(DateFormat) && !e.AllDay
-}
-
-func when(e *Event) string {
-	day, hours := whenLines(e)
-	if hours != "" {
-		return day + " · " + hours
-	}
-	return day
-}
-
-func blurb(e *Event) string {
-	text := strings.Join(strings.Fields(e.Description), " ")
-	if len(text) > 200 {
-		cut := strings.LastIndex(text[:200], " ")
-		if cut < 120 {
-			cut = 200
-		}
-		text = text[:cut] + "…"
-	}
-	return text
-}
 
 func (a calendarApp) events() []*Event {
 	return withLinked(a.model().Events, a.linked(""))

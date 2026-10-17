@@ -10,7 +10,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties PartiesHooks, activities ActivitiesHooks, home HomeHooks, feedback FeedbackHooks) *api.Registry[*Model] {
+func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, activities ActivitiesHooks, home HomeHooks, feedback FeedbackHooks) *api.Registry[*Model] {
 	reg := api.New(api.Config[*Model]{
 		Actor:  func(r *http.Request, m *Model) access.Actor { return m.Directory.Actor(r, m.Held) },
 		Held:   s.Held,
@@ -19,7 +19,7 @@ func NewRegistry(s *Store, queue *store.Queue, calendar CalendarHooks, parties P
 		Staged: s.In,
 		Scope:  (*Model).at,
 	})
-	types := slices.Concat(DirectoryResources(), BirthdayResources(s), calendar.Resources(), parties.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources())
+	types := slices.Concat(DirectoryResources(), BirthdayResources(s), calendar.Resources(), activities.Resources(), home.Resources(), feedback.Resources(), MagicTagResources())
 	for _, t := range types {
 		reg.Add(t)
 	}
@@ -45,6 +45,10 @@ func (s *Store) stage(wr api.Write[*Model], sheet string, ops []store.Op, err er
 		return err
 	}
 	return s.Stage(wr.Tx, sheet, ops...)
+}
+
+func may(allowance access.Allowance) func(*Model, api.Query, string) bool {
+	return func(_ *Model, q api.Query, _ string) bool { return q.Actor.May(allowance) }
 }
 
 func permitted(err error) bool {

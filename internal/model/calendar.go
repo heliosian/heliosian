@@ -39,25 +39,24 @@ const (
 )
 
 const (
-	DateFormat      = "2006-01-02"
-	DateTimeFormat  = "2006-01-02 15:04"
-	TimeFormat      = "15:04"
-	Clear           = "-"
-	SourceGoogle    = "google"
-	SourcePDF       = "pdf"
-	SourceSheet     = "sheet"
-	SourceCelebrate = "celebrate"
-	SourceTeam      = "team"
-	MineGoing       = "going"
-	MineWaitlisted  = "waitlisted"
-	AnswerYes       = "yes"
-	AnswerNo        = "no"
-	AnswerMaybe     = "maybe"
-	AnswerHidden    = "hidden"
-	MarkerFirstDay  = "First Day"
-	MarkerLastDay   = "Last Day"
-	maxTitleLength  = 200
-	maxTextLength   = 6000
+	DateFormat     = "2006-01-02"
+	DateTimeFormat = "2006-01-02 15:04"
+	TimeFormat     = "15:04"
+	Clear          = "-"
+	SourceGoogle   = "google"
+	SourcePDF      = "pdf"
+	SourceSheet    = "sheet"
+	SourceTeam     = "team"
+	MineGoing      = "going"
+	MineWaitlisted = "waitlisted"
+	AnswerYes      = "yes"
+	AnswerNo       = "no"
+	AnswerMaybe    = "maybe"
+	AnswerHidden   = "hidden"
+	MarkerFirstDay = "First Day"
+	MarkerLastDay  = "Last Day"
+	maxTitleLength = 200
+	maxTextLength  = 6000
 )
 
 var (
@@ -343,7 +342,28 @@ const (
 	StatusApproved  = "Approved"
 	StatusDeclined  = "Declined"
 	StatusCancelled = "Cancelled"
+	StatusOpen      = "Open"
+	StatusHidden    = "Hidden"
 )
+
+var (
+	KeyValueColumns = []string{"Key", "Value"}
+	RedirectColumns = []string{"Type", "Old", "New", "Date"}
+)
+
+func todayLocal() string {
+	return now().Format(DateFormat)
+}
+
+func except(list []string, drop string) []string {
+	out := []string{}
+	for _, e := range list {
+		if e != drop {
+			out = append(out, e)
+		}
+	}
+	return out
+}
 
 const (
 	MyHeliosianToken = "my-heliosian"

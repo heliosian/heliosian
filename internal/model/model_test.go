@@ -37,7 +37,7 @@ const (
 var testKey = []byte("test")
 
 func sampleDeps(key []byte) Deps {
-	return Deps{IDKey: key, Static: testkit.None, Parties: testkit.All, Activities: testkit.All, Home: testkit.All}
+	return Deps{IDKey: key, Static: testkit.None, Activities: testkit.All, Home: testkit.All}
 }
 
 func sampleStore(t *testing.T, dir *data.Dir, queue *store.Queue, deps Deps) *Store {

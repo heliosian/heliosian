@@ -22,9 +22,6 @@ type scope struct {
 	mailOnce     sync.Once
 	mailReadable map[string]bool
 
-	partiesOnce sync.Once
-	partyKeys   map[string]*Party
-
 	volunteersOnce sync.Once
 	volunteerKeys  map[string]volunteerKey
 	linkedOnce     sync.Once

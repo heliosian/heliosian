@@ -519,28 +519,25 @@ func TestRenderLinked(t *testing.T) {
 	d := calendarDirectory(t, "../../sampledata")
 	at, _ := time.ParseInLocation(DateTimeFormat, "2026-09-08 08:00", Location)
 	linked := []Linked{
-		{Source: SourceCelebrate, ID: "pty0000000001", EventID: "pty0000000001", Title: "Fondue & Fort Night", Summary: "A cozy evening of fondue", Description: "Join us.", Location: "The Parks' House", Start: "2026-09-19 17:00", End: "2026-09-19 21:00", Path: "/p/fondue", Availability: "available", Mine: MineWaitlisted},
 		{Source: SourceTeam, ID: "act0000000006", EventID: "tev0000000006", Title: "Book Fair", Start: "2027-03-30", End: "2027-04-02", Path: "/activities/act0000000006", Availability: "open"},
 		{Source: SourceTeam, ID: "act0000000001", EventID: "tev0000000001", Title: "HCA International Night 2026", Description: "Booths wanted.", Start: "2026-09-24 15:30", End: "2026-09-24 18:30", Path: "/v/international-night", Availability: "open", Mine: MineGoing},
 		{Source: SourceTeam, ID: "act0000000005", EventID: "tev0000000005", Title: "Back to School Social", Start: "2026-08-27 15:00", End: "2026-08-27 17:00", Path: "/activities/act0000000005", Availability: "done"},
 	}
 	v := RenderCalendar(m, d, &Config{}, access.Actor{Email: "nobody@x.org"}, at, linked)
-	if len(v.Events) != 23 {
+	if len(v.Events) != 22 {
 		t.Fatalf("events = %d", len(v.Events))
 	}
 	if len(v.Tags) != 20 || v.Tags[15].ID != TagCelebrate || v.Tags[16].ID != TagHCA || v.Tags[17].ID != TagMisc || v.Tags[18].ID != TagGoing || v.Tags[19].ID != TagWaitlisted || v.Tags[18].Name != "Going" || v.Tags[18].Role != "going" || len(m.Tags) != 20 {
 		t.Errorf("tags = %+v", v.Tags)
 	}
-	var fondue, fair, night, social *Event
+	var fair, night, social *Event
 	for i, e := range v.Events {
-		if e.Source == SourceCelebrate || e.Source == SourceTeam {
+		if e.Source == SourceTeam {
 			if i == 0 || v.Events[i-1].start.After(e.start) {
 				t.Errorf("linked event out of order at %d", i)
 			}
 		}
 		switch e.ID {
-		case "pty0000000001":
-			fondue = e
 		case "tev0000000006":
 			fair = e
 		case "gev0000000007":
@@ -551,7 +548,7 @@ func TestRenderLinked(t *testing.T) {
 			t.Errorf("international night listed twice")
 		}
 	}
-	if fondue == nil || fair == nil || night == nil || social == nil {
+	if fair == nil || night == nil || social == nil {
 		t.Fatal("linked events missing")
 	}
 	if night.Link != "/v/international-night" || night.Availability != "open" || night.Mine != MineGoing || night.Source != SourceGoogle || !slices.Contains(night.Tags, TagHCA) || !slices.Contains(night.Tags, TagGoing) || !slices.Contains(night.Tags, calendarIDs(t, "Community")) || night.Description != "Booths from every classroom." {
@@ -562,12 +559,6 @@ func TestRenderLinked(t *testing.T) {
 	}
 	if social.Link != "/activities/act0000000005" || social.Mine != "" || strings.Join(social.Tags, ",") != TagHCA {
 		t.Errorf("social folded into back to school night: %+v", social)
-	}
-	if fondue.Source != SourceCelebrate || fondue.Link != "/p/fondue" || fondue.Availability != "available" || fondue.Mine != MineWaitlisted || fondue.AllDay || strings.Join(fondue.Tags, ",") != TagCelebrate+","+TagWaitlisted || len(fondue.Classrooms) != 0 {
-		t.Errorf("party = %+v", fondue)
-	}
-	if fondue.Description != "A cozy evening of fondue\n\nJoin us." || fondue.End != "2026-09-19 21:00" || strings.Join(fondue.Dates, ",") != "2026-09-19" {
-		t.Errorf("party text or dates = %+v", fondue)
 	}
 	if !fair.AllDay || strings.Join(fair.Tags, ",") != TagHCA || fair.Link != "/activities/act0000000006" || len(fair.Dates) != 4 {
 		t.Errorf("hca event = %+v", fair)
@@ -626,12 +617,8 @@ func TestUpcoming(t *testing.T) {
 	if len(got) == 0 || got[0]["title"] != "Jays and Ravens Camping" || got[0]["path"] != "/e/gev0000000005" || got[0]["app"] != "when" || got[0]["link"] != nil || got[0]["call"] != nil {
 		t.Fatalf("first = %+v", got)
 	}
-	party := eventTitled(got, "Fondue & Fort Night")
-	if party == nil || party["id"] != "pty0000000001" || party["path"] != "/p/fondue" || party["link"] != "/p/fondue" || party["app"] != "celebrate" || party["mine"] != MineGoing || party["availability"] != "available" || party["image"] == nil || party["start"] != "2026-09-19 17:00" {
-		t.Errorf("party = %+v", party)
-	}
-	if call, _ := party["call"].(string); call != "You, Robin, Sam and Ella have tickets" {
-		t.Errorf("the family's call on the party = %q", call)
+	if eventTitled(got, "Fondue & Fort Night") != nil {
+		t.Errorf("a party from the old Celebrate sheet reached the calendar: %v", titles)
 	}
 	night := eventTitled(got, "International Night")
 	if night == nil || night["id"] != "gev0000000007" || night["path"] != "/v/international-night" || night["link"] != "/v/international-night" || night["app"] != "team" || night["start"] != "2026-09-24 16:00" || night["end"] != "2026-09-24 18:00" {
@@ -822,37 +809,10 @@ func TestSharingWords(t *testing.T) {
 	}
 }
 
-func TestPartiesFor(t *testing.T) {
+func TestEventsByApp(t *testing.T) {
 	_, h := sampleEventsServer(t)
-	parties := func(email string) []map[string]any {
-		return listOf(t, h, email, "/api/events?app=celebrate&from="+now().Format(DateFormat))
-	}
-	got := parties(sam)
-	titles := titlesOf(got)
-	if len(got) == 0 || got[0]["title"] != "Fondue & Fort Night" || !slices.Contains(titles, "Wurst Helios Party") {
-		t.Fatalf("parties: %v", titles)
-	}
-	for i, p := range got {
-		if p["app"] != "celebrate" || p["source"] != SourceCelebrate || p["end"].(string)[:10] < now().Format(DateFormat) {
-			t.Errorf("not an upcoming party: %+v", p)
-		}
-		if i > 0 && got[i-1]["start"].(string) > p["start"].(string) {
-			t.Errorf("out of order: %s after %s", p["title"], got[i-1]["title"])
-		}
-	}
-	if slices.Contains(titles, "Baegels and Meimosas") || slices.Contains(titles, "International Night") || slices.Contains(titles, "Jays and Ravens Camping") {
-		t.Errorf("the parties list a past party, an HCA event or a school event: %v", titles)
-	}
-	if f := got[0]; f["mine"] != MineGoing || f["call"] == nil || f["link"] != "/p/fondue" {
-		t.Errorf("fondue: %+v", f)
-	}
-	if w := eventTitled(got, "Wurst Helios Party"); w["mine"] != nil || w["call"] != "Get tickets" || w["start"] != "2026-10-03 15:30" {
-		t.Errorf("wurst: %+v", w)
-	}
-	for _, p := range got {
-		if p["hosted"] == true {
-			t.Errorf("a party sam does not host is marked hosted: %+v", p)
-		}
+	if got := listOf(t, h, sam, "/api/events?app=celebrate"); len(got) != 0 {
+		t.Errorf("app=celebrate lists %v", titlesOf(got))
 	}
 	for _, other := range []string{"when", "team"} {
 		for _, e := range listOf(t, h, sam, "/api/events?app="+other) {
@@ -860,18 +820,5 @@ func TestPartiesFor(t *testing.T) {
 				t.Errorf("app=%s lists %s from %s", other, e["title"], e["app"])
 			}
 		}
-	}
-}
-
-func TestCardsMarkHosted(t *testing.T) {
-	_, h := sampleEventsServer(t)
-	hosted := func(email string) any {
-		return eventTitled(listOf(t, h, email, "/api/events?app=celebrate"), "Tees & Teas")["hosted"]
-	}
-	if got := hosted("jordan.whitfield@heliosschool.org"); got != true {
-		t.Errorf("the host's own party: hosted %v", got)
-	}
-	if got := hosted(mia); got != nil {
-		t.Errorf("someone else's party: hosted %v", got)
 	}
 }

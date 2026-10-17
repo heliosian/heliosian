@@ -53,7 +53,7 @@ func TestMonth(t *testing.T) {
 			t.Errorf("event carries no days to sit on: %+v", e)
 		}
 	}
-	for _, want := range []string{"Labor Day - No School", "Jays and Ravens Camping", "Fondue & Fort Night", "Returning Grade ILP Conference, half days"} {
+	for _, want := range []string{"Labor Day - No School", "Jays and Ravens Camping", "Returning Grade ILP Conference, half days"} {
 		if !slices.Contains(titles, want) {
 			t.Errorf("month lacks %q: %v", want, titles)
 		}

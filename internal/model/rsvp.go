@@ -1,67 +1,11 @@
 package model
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"strings"
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
 )
-
-var errNotRecorded = errors.New("the answer was not recorded")
-
-func (a calendarApp) recordBy(ctx context.Context, actor access.Actor, email, id, answer, via string, invite bool) error {
-	email = mail.Normalize(email)
-	answer = strings.ToLower(strings.TrimSpace(answer))
-	ops, _, err := a.answerOps(actor, email, id, answer, via, invite)
-	if err != nil {
-		return err
-	}
-	if err := a.store.Commit(ctx, actor, CalendarApp, ops...); err != nil {
-		return fmt.Errorf("%w: %w", errNotRecorded, err)
-	}
-	return nil
-}
-
-func (a calendarApp) sendAnswerNote(ctx context.Context, to, actor, email, answer string, e *Event) error {
-	model := a.model()
-	name := email
-	if p := a.directory().Person(email); p != nil && p.FullName != "" {
-		name = p.FullName
-	} else if inv := model.InviteOf(e.ID, email); inv != nil && inv.Name != "" {
-		name = inv.Name
-	}
-	by := ""
-	if actor != email {
-		who := actor
-		if p := a.directory().Person(actor); p != nil && p.FullName != "" {
-			who = p.FullName
-		}
-		by = " (answered by " + who + ")"
-	}
-	yes, maybe, no, waiting := 0, 0, 0, 0
-	for _, row := range model.Invites[e.ID] {
-		switch model.AnswerOf(row.Email, e.ID) {
-		case AnswerYes:
-			yes++
-		case AnswerMaybe:
-			maybe++
-		case AnswerNo:
-			no++
-		default:
-			waiting++
-		}
-	}
-	l := a.letterFor(e, EventPath(e))
-	l.Heading = name + " said " + answerWord(answer)
-	l.Intro = fmt.Sprintf("%s said %s to %s%s.", name, answerWord(answer), e.Title, by)
-	l.Rows = [][2]string{{"So far", fmt.Sprintf("%d yes, %d maybe, %d no, %d still to answer", yes, maybe, no, waiting)}}
-	l.Button = "See the guest list"
-	l.Footnote = "You asked to hear as answers come in; turn it off under Who's coming on the event's page."
-	return a.mail.Sender.Send(ctx, l.Message("["+e.Title+"] "+name+" said "+answerWord(answer), []string{to}, nil, nil))
-}
 
 func (a calendarApp) eventFor(actor access.Actor, id string) *Event {
 	return a.lookup(actor.Email, id, func(e *Event) bool { return a.sees(actor, e) })
@@ -105,26 +49,10 @@ type rsvpBody struct {
 	Answer string `json:"answer"`
 }
 
-func (a calendarApp) sendInvite(ctx context.Context, email string, e *Event) error {
-	day, _ := whenLines(e)
-	l := a.letterFor(e, EventPath(e))
-	l.Heading = "You said yes"
-	l.Intro = "You said yes to " + e.Title + "."
-	l.Button = "Open the event"
-	l.Footnote = "The invite attached puts it on your calendar."
-	msg := l.Message("Invitation: "+e.Title+" · "+day, []string{email}, nil, a.replyTo(e, email))
-	msg.Attachments = []mail.Attachment{a.invite(e, email, l.Path, mail.MethodRequest)}
-	return a.mail.Sender.Send(ctx, msg)
-}
-
 func (a calendarApp) organizer(id, email string) string {
 	address := mail.AddressOf(a.mail.ReplyTo)
 	local, domain, _ := strings.Cut(address, "@")
 	return strings.Replace(a.mail.ReplyTo, address, local+"+"+a.replyToken(id, email)+"@"+domain, 1)
-}
-
-func (a calendarApp) letterFor(e *Event, path string) mail.Letter {
-	return mail.Letter{Brand: brand, Base: a.mail.Base, Title: e.Title, When: when(e), Where: e.Location, Path: a.mail.Base + path}
 }
 
 func (e *Event) mailEvent(link string) mail.Event {
