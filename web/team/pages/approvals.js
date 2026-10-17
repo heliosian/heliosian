@@ -1,4 +1,5 @@
-import {pendingItems, rootOf, longDate, plain} from '../state.js';
+import {pendingItems, rootOf, longDate} from '../state.js';
+import {plain} from '/markdown.js';
 import {el, link, svg, imageThumb, button, toast} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {approve} from '../writes.js';

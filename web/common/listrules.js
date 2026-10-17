@@ -134,11 +134,13 @@ function ruleLine(rule, {onChange, onRemove, count}) {
   const n = count(rule);
   chip.textContent = n === undefined ? '' : `${n} ${rule.exclude ? 'left out' : 'match'}`;
   chip.hidden = n === undefined;
-  row.append(kind, targetInput(rule, onChange), who, only, chip);
+  row.append(kind, targetInput(rule, onChange), who, only);
   if (onRemove) {
     row.append(iconButton('close', 'Remove the rule', 'compact-remove', onRemove));
   }
-  return row;
+  const line = el('div', 'rule-edit');
+  line.append(row, chip);
+  return line;
 }
 
 export function ruleEditor(rule, onChange) {

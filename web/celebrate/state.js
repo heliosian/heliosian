@@ -2,7 +2,7 @@ import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {api} from '/api.js';
 import {queries} from '/rail.js';
 import {directory, emailOf, photoOf, isStudent, isParent, isStaff, gradeOf, relativesOf} from '/directory.js';
-import {chipsOf, withoutChips} from '/markdown.js';
+import {chipsOf, withoutChips, plain} from '/markdown.js';
 
 export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
@@ -34,15 +34,6 @@ function statusOf(g) {
 export function summaryOf(description) {
   const first = withoutChips(description).split(/\n\s*\n/).map(s => s.trim()).find(s => s && !s.startsWith('>')) || '';
   return plain(first);
-}
-
-export function plain(markdown) {
-  return (markdown || '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`#>]+/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function linksOf(markdown) {

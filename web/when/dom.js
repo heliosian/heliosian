@@ -1,51 +1,5 @@
 import {el, svg} from '/elements.js';
 
-const urlForm = /https?:\/\/[^\s<>"']+/g;
-
-const listItem = /^\s*([-•*]|\d+[.)])\s/;
-
-export function paragraphs(text, className, {lines = false} = {}) {
-  const wrap = el('div', className || 'prose');
-  const chunks = [];
-  for (const chunk of (text || '').split(/\n\s*\n/)) {
-    if (!lines) {
-      chunks.push(chunk);
-      continue;
-    }
-    for (const line of chunk.split('\n')) {
-      if (listItem.test(line) && chunks.length) {
-        chunks[chunks.length - 1] += '\n' + line;
-      } else {
-        chunks.push(line);
-      }
-    }
-  }
-  for (const chunk of chunks) {
-    if (!chunk.trim()) {
-      continue;
-    }
-    const p = el('p');
-    chunk.split('\n').forEach((line, i) => {
-      if (i > 0) {
-        p.append(el('br'));
-      }
-      let last = 0;
-      for (const m of line.matchAll(urlForm)) {
-        p.append(line.slice(last, m.index));
-        const a = el('a', 'prose-link', m[0]);
-        a.href = m[0];
-        a.target = '_blank';
-        a.rel = 'noopener';
-        p.append(a);
-        last = m.index + m[0].length;
-      }
-      p.append(line.slice(last));
-    });
-    wrap.append(p);
-  }
-  return wrap;
-}
-
 export function peopleLine(list, icon) {
   const line = el('div', 'side-people');
   line.append(svg(icon));

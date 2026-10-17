@@ -1,3 +1,29 @@
+.markdown { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
+
+.markdown > :first-child { margin-top: 0; }
+
+.markdown h2 { margin: 28px 0 8px; font-size: 24px; color: var(--brand); }
+
+.markdown h3 { margin: 24px 0 6px; font-size: 19px; color: var(--brand); }
+
+.markdown h4, .markdown h5, .markdown h6 { margin: 20px 0 4px; font-size: 16px; color: var(--brand); }
+
+.markdown a { color: var(--brand); font-weight: 600; }
+
+.markdown pre { padding: 12px 14px; border-radius: 8px; background: var(--input); overflow-x: auto; font-size: 14px; }
+
+.markdown code { padding: 1px 5px; border-radius: 5px; background: var(--input); font-size: 0.92em; }
+
+.markdown blockquote { margin: 12px 0; padding: 4px 16px; border-left: 4px solid var(--line); color: var(--muted); }
+
+.markdown .table-wrap { overflow-x: auto; }
+
+.markdown table { border-collapse: collapse; margin: 12px 0; }
+
+.markdown th, .markdown td { padding: 6px 12px; border: 1px solid var(--line); text-align: left; }
+
+.markdown .md-image { display: block; max-width: 100%; height: auto; margin: 8px 0; border-radius: 10px; }
+
 .callout { margin: 12px 0; padding: 10px 16px; border-left: 4px solid var(--callout); border-radius: 0 8px 8px 0; background: var(--callout-wash); }
 
 .callout > :last-child, blockquote > :last-child { margin-bottom: 0; }

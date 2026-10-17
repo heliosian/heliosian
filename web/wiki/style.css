@@ -107,7 +107,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-outline-item:hover { border-left-color: var(--accent); color: var(--brand); }
 
-.wiki-body :is(h2, h3, h4) { scroll-margin-top: 16px; }
+.markdown :is(h2, h3, h4) { scroll-margin-top: 16px; }
 
 .wiki-outline-item.depth-1 { padding-left: 24px; }
 
@@ -125,13 +125,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-step-next { margin-left: auto; }
 
-.wiki-body .wiki-section { margin: 4px 0 16px; font-size: 24px; color: var(--brand); }
+.markdown .wiki-section { margin: 4px 0 16px; font-size: 24px; color: var(--brand); }
 
 .wiki-list { display: flex; flex-direction: column; gap: 12px; }
 
-.wiki-body .wiki-card { display: flex; align-items: center; gap: 18px; padding: 20px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--brand); text-decoration: none; }
+.markdown .wiki-card { display: flex; align-items: center; gap: 18px; padding: 20px 24px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--brand); text-decoration: none; }
 
-.wiki-body .wiki-card:hover { border-color: var(--accent); }
+.markdown .wiki-card:hover { border-color: var(--accent); }
 
 .wiki-card-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 52px; height: 52px; border-radius: 12px; background: var(--input); color: var(--brand); }
 
@@ -232,31 +232,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-parent { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
 
-/* A page as it reads. */
-.wiki-body { font-size: 16px; line-height: 1.6; overflow-wrap: anywhere; }
-
-.wiki-body > :first-child { margin-top: 0; }
-
-.wiki-body h2 { margin: 28px 0 8px; font-size: 24px; color: var(--brand); }
-
-.wiki-body h3 { margin: 24px 0 6px; font-size: 19px; color: var(--brand); }
-
-.wiki-body h4, .wiki-body h5, .wiki-body h6 { margin: 20px 0 4px; font-size: 16px; color: var(--brand); }
-
-.wiki-body a { color: var(--brand); font-weight: 600; }
-
-.wiki-body pre { padding: 12px 14px; border-radius: 8px; background: var(--input); overflow-x: auto; font-size: 14px; }
-
-.wiki-body code { padding: 1px 5px; border-radius: 5px; background: var(--input); font-size: 0.92em; }
-
-.wiki-body blockquote { margin: 12px 0; padding: 4px 16px; border-left: 4px solid var(--line); color: var(--muted); }
-
-.wiki-body .table-wrap { overflow-x: auto; }
-
-.wiki-body table { border-collapse: collapse; margin: 12px 0; }
-
-.wiki-body th, .wiki-body td { padding: 6px 12px; border: 1px solid var(--line); text-align: left; }
-
 /* The editor: the title, the text, and Save. */
 /* The editor, laid out as the page is: what goes in the page on the left, its side cards on the right. */
 .wiki-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
@@ -328,9 +303,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .wiki-card-edit-tools .wiki-insert .icon-button { width: 28px; height: 28px; }
 
 .wiki-card-edit-tools .wiki-insert .icon-button svg { width: 16px; height: 16px; }
-
-/* A picture in a page or card: as wide as the text, never wider. */
-.wiki-body .md-image { display: block; max-width: 100%; height: auto; margin: 8px 0; border-radius: 10px; }
 
 /* The editor's side cards: each a title and its Markdown, with buttons to move or remove it. */
 .wiki-cards { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }

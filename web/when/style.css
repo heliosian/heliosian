@@ -1855,10 +1855,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .detail-when { margin: 0 0 16px; font-size: 16px; font-weight: 600; color: var(--muted); }
 
-.prose p { margin: 0 0 12px; }
-
-.prose-link { color: var(--accent); word-break: break-all; }
-
 .detail-side { display: flex; flex-direction: column; gap: 16px; }
 
 

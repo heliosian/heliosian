@@ -563,16 +563,6 @@ export function listedIn(year) {
     (state.showPrevious || (!a.past && !a.full)) && revealed(a));
 }
 
-export function plain(markdown) {
-  return (markdown || '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[*_`#>]+/g, '')
-    .replace(/^\s*[-+]\s+/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function matches(node, query) {
   if (!query) {
     return true;

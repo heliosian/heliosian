@@ -420,7 +420,7 @@ export function partyPage(p) {
     main.append(facts);
   }
   if (p.description) {
-    const text = el('div', 'prose detail-text');
+    const text = el('div', 'markdown');
     text.append(markdown(p.description));
     main.append(text);
   }

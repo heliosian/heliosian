@@ -220,6 +220,16 @@ export function withoutChips(text) {
   return (text || '').replace(/\r/g, '').split('\n').filter(l => !chipMarker.test(l)).join('\n').trim();
 }
 
+export function plain(text) {
+  return (text || '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`#>]+/g, '')
+    .replace(/^\s*[-+]\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function chips(lines, i) {
   const row = el('p', 'md-chips');
   while (i < lines.length && chipMarker.test(lines[i])) {

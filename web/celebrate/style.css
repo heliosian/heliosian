@@ -445,8 +445,6 @@ main {
 
 .detail-subtitle { margin: 0 0 14px; font-size: 17px; font-weight: 600; color: var(--subtitle); }
 
-.detail-text { margin: 0 0 12px; font-size: 15px; }
-
 /* The need-to-know callout, in HCA-Team's highlight card. */
 .highlight-card { display: flex; align-items: flex-start; gap: 18px; padding: 20px 24px; margin: 18px 0 20px; background: var(--hollow, #fbf7e6); border-radius: 16px; }
 
@@ -610,8 +608,6 @@ main {
 .my-ticket { padding: 8px 0; }
 
 .my-ticket + .my-ticket { border-top: 1px solid var(--line); }
-
-.prose p { margin: 0 0 12px; }
 
 .need-to-know { font-weight: 700; font-style: italic; margin: 0 0 20px; }
 

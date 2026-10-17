@@ -18,21 +18,3 @@ export function selectPill(icon, options, value, onPick) {
   wrap.append(select, svg('chevron-down'));
   return wrap;
 }
-
-export function paragraphs(text, className) {
-  const wrap = el('div', className || 'prose');
-  for (const chunk of (text || '').split(/\n\s*\n/)) {
-    if (!chunk.trim()) {
-      continue;
-    }
-    const p = el('p');
-    chunk.split('\n').forEach((line, i) => {
-      if (i > 0) {
-        p.append(el('br'));
-      }
-      p.append(line);
-    });
-    wrap.append(p);
-  }
-  return wrap;
-}

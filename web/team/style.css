@@ -950,8 +950,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .detail-title { font-size: 34px; margin: 0 0 12px; color: var(--brand); }
 
-.detail-text { margin: 0 0 12px; font-size: 15px; }
-
 .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 6px; }
 
 .detail-note { margin: 10px 0; font-weight: 600; color: var(--muted); }

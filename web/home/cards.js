@@ -2,6 +2,7 @@ import {state, isAdmin, linkCategories, holdsApps} from './state.js';
 import {categoryMarkOf} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
+import {plain} from '/markdown.js';
 import {answerEvent} from '/calendar.js';
 import {load} from '/router.js';
 
@@ -41,7 +42,7 @@ function featureCard(link, category) {
   title.append(...badges(link));
   card.append(title);
   if (link.description) {
-    card.append(el('div', 'chip-description', link.description));
+    card.append(el('div', 'chip-description', plain(link.description)));
   }
   const go = el('span', 'button chip-open');
   go.append(el('span', '', 'Open App'), svg('arrow'));
@@ -66,7 +67,7 @@ function tile(link, category) {
   title.append(...badges(link));
   body.append(title);
   if (link.description) {
-    body.append(el('div', 'tile-description', link.description));
+    body.append(el('div', 'tile-description', plain(link.description)));
   }
   open.append(body);
   card.append(open);

@@ -20,6 +20,8 @@ A page's or a card's Markdown may show pictures, `![words](/api/wiki/picture/<sh
 
 A list item indented further than the one above it starts a list inside that item, bulleted or numbered by its own mark, so lists nest to any depth. A quote, lines starting `> `, holds Markdown of its own - paragraphs split by a bare `>` line, lists, line breaks - drawn by `markdown.js` inside the quote. Markdown may hold callouts, GitHub's alert syntax: a blockquote whose first line is `> [!NOTE]`, `> [!TIP]`, `> [!IMPORTANT]`, `> [!WARNING]` or `> [!CAUTION]` alone, its following `>` lines the callout's own Markdown, drawn by `markdown.js` as a box with the kind's icon and name, in the kind's colour (`web/common/markdown.css`, its colours `--callout-<kind>` in the palette and `dark.css`). A wiki page and an Ask answer both draw them.
 
+A wiki page, a side card, and a description on When's event page, Celebrate's party page and HCA-Team's activity page are all drawn by `render` in `markdown.js` inside a `.markdown` element, whose look - headings in the brand colour, bold brand links, code, quotes, tables, pictures - is in `web/common/markdown.css`. Loop's list cards and the line under a list's title, and Heliosian's link chips and tiles, show a description as one short line, mostly inside a card that is itself a link, so there it is shown as `plain` from `markdown.js` instead: its words with the Markdown marks taken out and its lines run together.
+
 ```markdown
 > [!WARNING]
 > The trail closes at dusk.

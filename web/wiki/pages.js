@@ -248,13 +248,13 @@ export function viewPage(id) {
   side.append(section);
   for (const card of sidesOf(p)) {
     const box = el('div', 'side-card');
-    const text = el('div', 'wiki-body side-card-body');
+    const text = el('div', 'markdown side-card-body');
     box.append(el('div', 'side-card-title', card.name), text);
     side.append(box);
     body(card).then(md => text.replaceChildren(render(md))).catch(err => text.replaceChildren(el('p', 'panel-empty', err.message)));
   }
   main.append(el('h1', 'detail-title', p.name));
-  const content = el('article', 'wiki-body');
+  const content = el('article', 'markdown');
   content.append(el('p', 'panel-empty', 'Loading…'));
   main.append(content, pageSteps(p));
   const hero = el('div');

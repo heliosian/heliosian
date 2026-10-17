@@ -4,6 +4,7 @@ import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from 
 import {pageHead} from '../dom.js';
 import {visibilityWords} from './groups.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
+import {plain} from '/markdown.js';
 import {setTitle} from '/shell.js';
 import {api} from '/api.js';
 import {load, navigate} from '/router.js';
@@ -917,7 +918,7 @@ function overview(g) {
     wrap.append(el('div', 'subject-note', 'You unsubscribed and get no mail from it. Resubscribe to get its mail again.'));
   }
   if (g.description) {
-    wrap.append(el('p', 'page-lead', g.description));
+    wrap.append(el('p', 'page-lead', plain(g.description)));
   }
   return wrap;
 }

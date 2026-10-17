@@ -1,6 +1,6 @@
 import {state, me, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
-import {paragraphs} from '../dom.js';
+import {render as markdown} from '/markdown.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
@@ -102,7 +102,9 @@ export function eventPage(e) {
   main.append(marks);
   main.append(el('h1', 'detail-title', e.title));
   if (e.description) {
-    main.append(paragraphs(e.description, 'prose detail-text', {lines: true}));
+    const text = el('div', 'markdown');
+    text.append(markdown(e.description));
+    main.append(text);
   }
   const type = e.dayType ? dayType(e.dayType) : null;
   if (type && e.allDay) {

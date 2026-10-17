@@ -2,6 +2,7 @@ import {state, groupPath, domain} from '../state.js';
 import {pageHead} from '../dom.js';
 import {shown, groupFilters} from '../filters.js';
 import {el, svg, link, button, iconButton, copyText} from '/elements.js';
+import {plain} from '/markdown.js';
 import {setTitle} from '/shell.js';
 import {navigate} from '/router.js';
 
@@ -23,7 +24,7 @@ function groupCard(g) {
   head.append(icon, words);
   card.append(head);
   if (g.description) {
-    card.append(el('div', 'group-desc', g.description));
+    card.append(el('div', 'group-desc', plain(g.description)));
   }
   const meta = el('div', 'group-meta');
   const count = g.count;

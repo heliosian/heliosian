@@ -66,6 +66,12 @@
 
 .rule-edit-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 
+.rule-edit { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+.rule-edit > .rule-edit-row { align-self: stretch; }
+
+.rule-edit > .rule-count { margin-left: 0; }
+
 .rule-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
 .rule-edit-rows .rule-edit-row input[type="text"], .rule-edit-rows .rule-edit-row select { box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 15px; }
