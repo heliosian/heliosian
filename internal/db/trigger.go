@@ -82,6 +82,10 @@ var committedTriggers = []committedTrigger{
 	{table: "PERSON", to: inviteInbox},
 	{table: "MESSAGE", to: inviteInbox},
 	{table: "RECIPIENT", to: inviteInbox},
+	{table: "BIRTHDAY_YEAR", to: birthdayInbox},
+	{table: "PERSON", to: birthdayInbox},
+	{table: "GROUP", to: birthdayInbox},
+	{table: "SETTING", to: birthdayInbox},
 }
 
 func committedInboxes(s *Store, table string) []*inbox {

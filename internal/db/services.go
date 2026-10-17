@@ -21,6 +21,7 @@ const (
 	geocodeInbox
 	sweepInbox
 	inviteInbox
+	birthdayInbox
 	inboxCount
 )
 
