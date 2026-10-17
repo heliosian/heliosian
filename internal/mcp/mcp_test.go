@@ -83,7 +83,7 @@ func setup(t *testing.T) fixture {
 	signed := &sessions{out: map[string]time.Time{}}
 	search := db.NewSearcher(s, queue, bucket, vertex, hosts.Origin("heliosian.com"))
 	mux := http.NewServeMux()
-	Register(mux, Deps{
+	Register(mux, mux, Deps{
 		Data:     s,
 		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Origin: hosts.Origin("heliosian.com"), Now: time.Now}),
 		Key:      []byte("test"),

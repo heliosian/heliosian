@@ -48,10 +48,10 @@ type Invitations struct {
 	started atomic.Bool
 }
 
-func RegisterInvitations(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time, config InvitationConfig) *Invitations {
+func RegisterInvitations(mux, api *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time, config InvitationConfig) *Invitations {
 	iv := &Invitations{s: s, queue: queue, pics: pics, config: config, in: s.Model().services.inbox(inviteInbox), kick: newWake()}
 	asked := func(path string, ask func() any, run func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error)) {
-		mux.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
+		api.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
 			m := s.Model()
 			env, actor, ok := caller(w, r, m, tokens, now())
 			if !ok {

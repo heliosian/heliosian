@@ -20,7 +20,7 @@ import (
 
 type counts struct {
 	things, uses, report, reportBuilds int
-	consents, reportAtConsent                   int
+	consents, reportAtConsent          int
 }
 
 func consent(_ context.Context, _, m *counts) error {

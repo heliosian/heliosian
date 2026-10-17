@@ -277,7 +277,7 @@ func TestChatTellsOfNewMailOnce(t *testing.T) {
 	t.Parallel()
 	s := sampleSources(t)
 	mux := http.NewServeMux()
-	Register(mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
 	handler := auth.Fixed(rowan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
@@ -328,7 +328,7 @@ func TestTheCarriedPromptIsCheckedAndTheNewDayTold(t *testing.T) {
 		return clock
 	}
 	mux := http.NewServeMux()
-	Register(mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
 	handler := auth.Fixed(rowan, mux)
 	chat := &transcript{}
 	chat.keep(t, post(t, handler, chat.body(t, "Hello")))
@@ -423,7 +423,7 @@ func anyStrings(list any) []string {
 func serveApp(t *testing.T) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t).sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, mux, sampleSources(t).sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
 	return auth.Fixed(rowan, mux)
 }
 
@@ -454,7 +454,7 @@ func TestChatKeyIsTheSameEachLoadAndGoesWithTheServerKey(t *testing.T) {
 		t.Fatalf("a second load gave %q, not %q", again, first)
 	}
 	mux := http.NewServeMux()
-	Register(mux, sampleSources(t).sources, NewClaude("test"), claude.NewLimiter(), []byte("other"), About(func() string { return "Ask" }, func() string { return "" }))
+	Register(mux, mux, sampleSources(t).sources, NewClaude("test"), claude.NewLimiter(), []byte("other"), About(func() string { return "Ask" }, func() string { return "" }))
 	if other := chatKey(t, auth.Fixed(rowan, mux)); other == first {
 		t.Fatalf("a different server key gave the same chat key")
 	}

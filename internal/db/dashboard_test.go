@@ -19,7 +19,7 @@ import (
 func dashboardAs(t *testing.T, s *Store, queue *store.Queue, board *ops.Board, as, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterDashboard(mux, s, queue, board)
+	RegisterDashboard(mux, mux, s, queue, board)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	rec := httptest.NewRecorder()

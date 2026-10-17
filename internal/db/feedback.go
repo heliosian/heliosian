@@ -20,6 +20,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/feedback"
+	"heliosian/internal/hosts"
 	"heliosian/internal/mail"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
@@ -79,9 +80,14 @@ type screenshot struct {
 	content        []byte
 }
 
-func (f *Feedback) Register(mux *http.ServeMux, app string, appName func() string) {
+func (f *Feedback) Register(mux *http.ServeMux, domain string, appName func(key string) string) {
 	mux.HandleFunc("POST /api/feedback", func(w http.ResponseWriter, r *http.Request) {
-		f.file(w, r, app, appName())
+		app, ok := hosts.AppOf(domain, r.Host)
+		if !ok {
+			serve.Error(w, r, access.Invalid("no app answers at %s", r.Host))
+			return
+		}
+		f.file(w, r, app, appName(app))
 	})
 }
 

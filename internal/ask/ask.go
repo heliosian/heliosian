@@ -52,13 +52,13 @@ type app struct {
 	chatKey []byte
 }
 
-func Register(mux *http.ServeMux, sources Sources, claude *Claude, recent *ratelimit.Limiter, chatKey []byte, about *sharecard.About) {
+func Register(pages, api *http.ServeMux, sources Sources, claude *Claude, recent *ratelimit.Limiter, chatKey []byte, about *sharecard.About) {
 	a := app{sources: sources, claude: claude, recent: recent, chatKey: chatKey}
-	mux.HandleFunc("GET /{$}", a.page)
-	mux.Handle("GET /open/share/about.png", about)
-	mux.HandleFunc("GET /api/ask/model", serve.JSON(a.model))
-	mux.HandleFunc("GET /api/ask/key", a.key)
-	mux.HandleFunc("POST /api/ask/chat", a.chat)
+	pages.HandleFunc("GET /{$}", a.page)
+	pages.Handle("GET /open/share/about.png", about)
+	api.HandleFunc("GET /api/ask/model", serve.JSON(a.model))
+	api.HandleFunc("GET /api/ask/key", a.key)
+	api.HandleFunc("POST /api/ask/chat", a.chat)
 }
 
 func (a app) page(w http.ResponseWriter, r *http.Request) {

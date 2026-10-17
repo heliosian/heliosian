@@ -51,7 +51,7 @@ type board struct {
 	queues []queueCount
 }
 
-func RegisterDashboard(mux *http.ServeMux, s *Store, queue *store.Queue, external *ops.Board) {
+func RegisterDashboard(mux, api *http.ServeMux, s *Store, queue *store.Queue, external *ops.Board) {
 	b := &board{store: s, queue: queue, ops: external}
 	queue.OnSwap(vitals.Poke)
 	allowed := func(r *http.Request) bool {
@@ -64,10 +64,10 @@ func RegisterDashboard(mux *http.ServeMux, s *Store, queue *store.Queue, externa
 		}
 		serve.File(w, r, "web/admin/dashboard/index.html")
 	})
-	mux.HandleFunc("GET /api/system", func(w http.ResponseWriter, r *http.Request) {
+	api.HandleFunc("GET /api/system", func(w http.ResponseWriter, r *http.Request) {
 		serve.Write(w, r, http.StatusOK, map[string]bool{"allowed": allowed(r)})
 	})
-	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
+	api.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		if !allowed(r) {
 			http.Error(w, "super admins only", http.StatusForbidden)
 			return

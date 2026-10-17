@@ -26,6 +26,17 @@ func Qualify(label, domain string) string {
 	return label + "." + domain
 }
 
+func AppOf(domain, host string) (string, bool) {
+	for _, a := range Apps {
+		for _, label := range a.Hosts {
+			if Qualify(label, domain) == host {
+				return a.Key, true
+			}
+		}
+	}
+	return "", false
+}
+
 func Origin(domain string) func(app string) string {
 	return func(app string) string {
 		for _, a := range Apps {

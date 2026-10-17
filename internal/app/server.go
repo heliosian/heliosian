@@ -104,6 +104,16 @@ func Files(app string, next http.Handler) http.Handler {
 	return serveFrom([]string{"web/" + app, "web/common"}, next)
 }
 
+func withAPI(api, site http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			api.ServeHTTP(w, r)
+			return
+		}
+		site.ServeHTTP(w, r)
+	})
+}
+
 func Logged(app string, next http.Handler) http.Handler {
 	return logging.Requests(app, blob.Media, next)
 }

@@ -62,6 +62,29 @@ func TestPublic(t *testing.T) {
 	}
 }
 
+func TestAPIIsTheSameOnEverySite(t *testing.T) {
+	api := http.NewServeMux()
+	api.HandleFunc("GET /api/q", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+	site := http.NewServeMux()
+	site.HandleFunc("GET /api/q", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+	site.HandleFunc("GET /api/mine", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+	site.HandleFunc("GET /people", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	})
+	handler := withAPI(api, site)
+	for path, want := range map[string]int{"/api/q": http.StatusAccepted, "/api/mine": http.StatusNotFound, "/people": http.StatusTeapot} {
+		if rec := get(t, handler, "who.heliosiandev.com", path); rec.Code != want {
+			t.Errorf("%s: got %d, want %d", path, rec.Code, want)
+		}
+	}
+}
+
 func TestTheOldServiceWorkerIsReplacedEverywhere(t *testing.T) {
 	t.Chdir("../..")
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

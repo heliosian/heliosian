@@ -38,7 +38,7 @@ Start with helios_search or helios_whoami. For anything structured, helios_descr
 
 ` + db.Language
 
-func Register(mux *http.ServeMux, deps Deps) {
+func Register(mux, api *http.ServeMux, deps Deps) {
 	s := &Server{deps: deps, tools: deps.Tools}
 	s.server = sdk.NewServer(&sdk.Implementation{Name: "helios-school", Title: "Helios School", Description: about, Version: "1"}, &sdk.ServerOptions{Instructions: instructions})
 	s.addTools()
@@ -54,9 +54,9 @@ func Register(mux *http.ServeMux, deps Deps) {
 	mux.HandleFunc("GET "+authServerPath, s.authServer)
 	mux.HandleFunc("POST /oauth/register", s.register)
 	mux.HandleFunc("POST /oauth/token", s.token)
-	mux.HandleFunc("POST /api/mcp/request", serve.JSON(s.describe))
-	mux.HandleFunc("POST /api/mcp/approve", serve.JSON(s.approve))
-	mux.HandleFunc("POST /api/mcp/deny", serve.JSON(s.deny))
+	api.HandleFunc("POST /api/mcp/request", serve.JSON(s.describe))
+	api.HandleFunc("POST /api/mcp/approve", serve.JSON(s.approve))
+	api.HandleFunc("POST /api/mcp/deny", serve.JSON(s.deny))
 	mux.HandleFunc("POST /{$}", s.guarded(""))
 	mux.HandleFunc("/mcp", s.guarded("/mcp"))
 }
