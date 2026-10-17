@@ -68,11 +68,15 @@
 
 .rule-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
+.rule-edit-rows .rule-edit-row input[type="text"], .rule-edit-rows .rule-edit-row select { box-sizing: border-box; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 15px; }
+
+.rule-edit-row input[type="text"]:focus, .rule-edit-row select:focus { outline: none; border-color: var(--accent); }
+
 .rule-edit-row input[type="text"] { flex: 1 1 240px; min-width: 0; }
 
 .rule-edit-row input.is-wanted { border-color: var(--alert); }
 
-.rule-edit-row select { flex: 0 0 auto; }
+.rule-edit-rows .rule-edit-row select { flex: 0 0 auto; appearance: none; padding-right: 38px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 15px) 50%; background-size: 5px 5px; background-repeat: no-repeat; cursor: pointer; }
 
 .add-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
 

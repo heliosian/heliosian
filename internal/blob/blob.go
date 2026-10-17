@@ -37,7 +37,6 @@ import (
 
 const (
 	MediaBucket  = "heliosian-media"
-	MailBucket   = "heliosian-mail"
 	thumbWidth   = 480
 	thumbSuffix  = "-thumb"
 	thumbExt     = ".jpg"

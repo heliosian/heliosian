@@ -87,7 +87,7 @@ function label(g) {
 }
 
 function targetInput(rule, onChange) {
-  const input = textInput(rule.target ? label(choices.byId[rule.target] || {name: groupName(rule.target), kind: ''}) : '', {placeholder: 'A group, class, grade, activity, party or event'});
+  const input = textInput(rule.target ? label(choices.byId[rule.target] || {name: groupName(rule.target), kind: ''}) : '', {placeholder: 'Pick a group, class, activity…'});
   const listId = 'rule-groups';
   if (!document.getElementById(listId)) {
     const list = el('datalist');
