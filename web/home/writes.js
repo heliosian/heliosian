@@ -172,12 +172,18 @@ const styles = {cards: 'grid', 'apps-grid': 'grid', tiles: 'list', apps: 'list'}
 
 export async function saveCategory(category, fields) {
   const style = styles[fields.style];
+  const picture = fields.emoji.startsWith('image:') ? fields.emoji.slice('image:'.length) : '';
+  const icon = fields.emoji.startsWith('image:') ? '' : fields.emoji;
   if (!category) {
     const widgets = state.model.widgets;
-    await write([
+    const made = await write([
       {insert: 'GROUP', as: 'section', row: {kind: 'group', name: fields.title, status: 'open', listed: false, posting: 'none', replying: 'none', visible_to: state.model.everyone, added_by: state.model.user.id}},
-      {insert: 'WIDGET', as: 'widget', row: {key: 'links', group: '@section', name: fields.title, icon: fields.emoji, style, descriptions: fields.descriptions, sidebar: fields.sidebar, visible_to: state.model.everyone, order: lastOrder(widgets)}},
-    ]).then(made => write(audienceEdits({id: made.result[1], visibleTo: state.model.everyone}, fields.title, {rules: fields.rules})));
+      {insert: 'WIDGET', as: 'widget', row: {key: 'links', group: '@section', name: fields.title, icon, style, descriptions: fields.descriptions, sidebar: fields.sidebar, visible_to: state.model.everyone, order: lastOrder(widgets)}},
+    ]);
+    await write(audienceEdits({id: made.result[1], visibleTo: state.model.everyone}, fields.title, {rules: fields.rules}));
+    if (picture) {
+      await setPicture(made.result[0], picture, '');
+    }
     return;
   }
   const widget = state.model.widgets.find(w => w.id === category.id);
@@ -185,8 +191,8 @@ export async function saveCategory(category, fields) {
   if (fields.title !== category.title) {
     cells.name = fields.title;
   }
-  if (fields.emoji !== category.emoji) {
-    cells.icon = fields.emoji;
+  if (icon !== category.icon) {
+    cells.icon = icon;
   }
   if (style !== styles[category.style]) {
     cells.style = style;
@@ -202,11 +208,19 @@ export async function saveCategory(category, fields) {
     edits.push({set: category.group, cells: {name: fields.title}});
   }
   await write([...edits, ...audienceEdits(widget, fields.title, {rules: fields.rules})]);
+  if (picture) {
+    await setPicture(category.group, picture, category.photo);
+  } else if (!fields.emoji.startsWith('image:') && category.photo) {
+    await write([{delete: category.photo}]);
+  }
 }
 
 export async function deleteCategory(category) {
   const widget = state.model.widgets.find(w => w.id === category.id);
   const edits = dedicated(widget.visibleTo) ? clearAudience(widget.visibleTo) : [];
+  if (category.photo) {
+    edits.push({delete: category.photo});
+  }
   edits.push({delete: category.id}, {delete: category.group});
   if (deletable(widget.visibleTo)) {
     edits.push({delete: widget.visibleTo});

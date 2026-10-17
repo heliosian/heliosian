@@ -37,6 +37,21 @@ func TestHeliosianAdminsKeepTheFrontPage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a Heliosian admin adds a link: %v", err)
 	}
+	pictures := []Edit{}
+	for _, group := range []string{sectionGroup, link[0]} {
+		picture := Edit{Insert: "PHOTO", Row: map[string]any{"group": group, "original": "photos/mark.png", "order": "m"}}
+		if _, err := write(parent, picture); err == nil {
+			t.Errorf("a parent gave %s a picture", group)
+		}
+		made, err := write(student, picture)
+		if err != nil {
+			t.Fatalf("a Heliosian admin gives %s a picture: %v", group, err)
+		}
+		pictures = append(pictures, Edit{Delete: made[0]})
+	}
+	if _, err := write(student, Edit{Insert: "PHOTO", Row: map[string]any{"group": "grp00000000030", "original": "photos/mark.png", "order": "m"}}); err == nil {
+		t.Error("a Heliosian admin gave a parents list a picture")
+	}
 	audience := []Edit{
 		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "name": "Chess Viewers", "status": "open", "listed": false, "posting": "none", "replying": "none", "added_by": student}},
 		{Set: link[0], Cells: map[string]any{"visible_to": "@audience"}},
@@ -84,7 +99,7 @@ func TestHeliosianAdminsKeepTheFrontPage(t *testing.T) {
 	if _, err := write(student, cleared...); err != nil {
 		t.Fatalf("a Heliosian admin opens the link to everyone again and drops its viewers group: %v", err)
 	}
-	if _, err := write(student, Edit{Delete: link[0]}, Edit{Set: schoolLink, Cells: map[string]any{"parent": "grp00000000532"}}, Edit{Delete: widget}, Edit{Delete: sectionGroup}); err != nil {
+	if _, err := write(student, append(pictures, Edit{Delete: link[0]}, Edit{Set: schoolLink, Cells: map[string]any{"parent": "grp00000000532"}}, Edit{Delete: widget}, Edit{Delete: sectionGroup})...); err != nil {
 		t.Fatalf("a Heliosian admin takes the section away: %v", err)
 	}
 	if _, err := write(student, Edit{Delete: "grp00000000030"}); err == nil {

@@ -144,7 +144,7 @@ const homeQueries = since => ({
   widgetsShown: '(from WIDGET @w (where (exists EFFECTIVE_MEMBER (= group @w.visible_to) (= person @viewer))) (columns key))',
   links: '(from GROUP (where (in parent (select WIDGET.group))) (order order asc) (columns parent name description url visible_to order))',
   linksShown: '(from GROUP @l (where (in parent (select WIDGET.group)) (exists EFFECTIVE_MEMBER (= group @l.visible_to) (= person @viewer))) (columns parent))',
-  linkPhotos: '(from PHOTO (where ready (in group (select GROUP.id (in parent (select WIDGET.group))))) (order order asc) (columns group))',
+  photos: '(from PHOTO (where ready (or (in group (select WIDGET.group)) (in group (select GROUP.id (in parent (select WIDGET.group)))))) (order order asc) (columns group))',
   audiences: '(from GROUP (where (or (in id (select WIDGET.visible_to)) (in id (select APP.visible_to)) (in id (select GROUP.visible_to (in parent (select WIDGET.group)))))) (columns name slug kind listed added_by))',
   audienceMembers: '(from MEMBER (where (= member "yes") (or (in group (select WIDGET.visible_to)) (in group (select APP.visible_to)) (in group (select GROUP.visible_to (in parent (select WIDGET.group)))))) (include person) (columns group person))',
   audienceRules: '(from RULE (where (or (in group (select WIDGET.visible_to)) (in group (select APP.visible_to)) (in group (select GROUP.visible_to (in parent (select WIDGET.group)))))) (order order asc) (columns group order exclude target replace_with within person search))',
@@ -172,22 +172,22 @@ function homeModel(h, cal, everyone) {
   const apps = rowsOf(h.apps, 'APP').filter(a => a.key !== 'home').map(a => ({
     id: a.id, key: a.key, name: a.name, tagline: a.subtitle || '', order: a.order || '', forMe: appsShown.has(a.id), mark: '', ...audience(a.visible_to),
   }));
-  const linkPhotos = {};
-  for (const p of rowsOf(h.linkPhotos, 'PHOTO')) {
-    linkPhotos[p.group] = linkPhotos[p.group] || p.id;
+  const photos = {};
+  for (const p of rowsOf(h.photos, 'PHOTO')) {
+    photos[p.group] = photos[p.group] || p.id;
   }
   const linksShown = new Set(h.linksShown.result);
   const links = by(rowsOf(h.links, 'GROUP'), 'parent');
   const widgetsShown = new Set(h.widgetsShown.result);
   const widgetRows = rowsOf(h.widgets, 'WIDGET');
   const categories = widgetRows.filter(linkSection).map(w => {
-    const icon = w.icon || '';
+    const photo = photos[w.group] || '';
     return {
-      id: w.id, group: w.group || '', title: w.name || '', emoji: icon, imageUrl: icon.startsWith('image:') ? '/' + icon.slice('image:'.length) : '',
+      id: w.id, group: w.group || '', title: w.name || '', emoji: photo ? 'image:' : w.icon || '', icon: w.icon || '', photo, imageUrl: photo ? `/api/blob/${photo}/image` : '',
       style: styleOf(w), descriptions: w.descriptions === 'Yes', ...audience(w.visible_to),
       links: (links[w.group] || []).map(g => ({
         id: g.id, category: w.id, title: g.name, description: g.description || '', url: g.url || '', order: g.order || '',
-        photo: linkPhotos[g.id] || '', imageUrl: linkPhotos[g.id] ? `/api/blob/${linkPhotos[g.id]}/image` : '',
+        photo: photos[g.id] || '', imageUrl: photos[g.id] ? `/api/blob/${photos[g.id]}/image` : '',
         visible: Boolean(g.visible_to), forMe: g.visible_to ? linksShown.has(g.id) : true, ...audience(g.visible_to),
       })),
     };

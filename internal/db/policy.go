@@ -1235,10 +1235,10 @@ const PolicySource = `
 (insert MEMBER (and (admin_of "home") (home_audience @new.group) (= @new.member "yes")))
 ; and take them off
 (delete MEMBER (and (admin_of "home") (home_audience @old.group)))
-; a link's picture
-(insert PHOTO (and (admin_of "home") (home_section @new.group.parent)))
+; a section's or a link's picture
+(insert PHOTO (and (admin_of "home") (or (home_section @new.group) (home_section @new.group.parent))))
 ; take it away
-(delete PHOTO (and (admin_of "home") (home_section @old.group.parent)))
+(delete PHOTO (and (admin_of "home") (or (home_section @old.group) (home_section @old.group.parent))))
 
 ;; Wiki admins
 

@@ -8,5 +8,5 @@ wdg00000000007,birthday,,,,,,No,grp00000000703,9
 wdg00000000008,links,grp00000000532,School,icon:school,grid,No,No,grp00000000004,a
 wdg00000000009,links,grp00000000533,Chats,icon:chat,list,Yes,No,grp00000000008,b
 wdg00000000010,links,grp00000000534,Events,icon:calendar,list,Yes,Yes,grp00000000004,c
-wdg00000000011,apps,,Helios Community Apps,icon:heliosian,grid,Yes,No,grp00000000004,d
+wdg00000000011,apps,grp00000000535,Helios Community Apps,icon:heliosian,grid,Yes,No,grp00000000004,d
 wdg00000000001,links,grp00000000530,Quick Links,icon:link,list,Yes,No,grp00000000004,e

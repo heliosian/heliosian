@@ -249,7 +249,7 @@ function wireEmojiPicker() {
   customTile = el('button', 'icon-choice icon-choice-custom');
   customTile.type = 'button';
   customTile.addEventListener('click', () => {
-    if (!categoryImage.value()) {
+    if (!categoryImage.value() && !(editingCategory && editingCategory.photo)) {
       categoryImage.wrap.querySelector('input[type=file]').click();
       return;
     }
