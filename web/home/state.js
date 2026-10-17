@@ -168,9 +168,12 @@ function styleOf(w) {
 function homeModel(h, cal, everyone) {
   const ruleRows = by(rowsOf(h.audienceRules, 'RULE'), 'group');
   const audience = group => ({visibleTo: group || '', rules: group && group !== everyone ? ruleRows[group] || [] : []});
+  // Only Heliosian's admins read rows not shown to them; anyone else reads an audience group they can't see as blank.
+  const admin = h.homeAdmin.result.length > 0;
+  const shown = (set, id) => !admin || set.has(id);
   const appsShown = new Set(h.appsShown.result);
   const apps = rowsOf(h.apps, 'APP').filter(a => a.key !== 'home').map(a => ({
-    id: a.id, key: a.key, name: a.name, tagline: a.subtitle || '', order: a.order || '', forMe: appsShown.has(a.id), mark: '', ...audience(a.visible_to),
+    id: a.id, key: a.key, name: a.name, tagline: a.subtitle || '', order: a.order || '', forMe: shown(appsShown, a.id), mark: '', ...audience(a.visible_to),
   }));
   const photos = {};
   for (const p of rowsOf(h.photos, 'PHOTO')) {
@@ -188,13 +191,13 @@ function homeModel(h, cal, everyone) {
       links: (links[w.group] || []).map(g => ({
         id: g.id, category: w.id, title: g.name, description: g.description || '', url: g.url || '', order: g.order || '',
         photo: photos[g.id] || '', imageUrl: photos[g.id] ? `/api/blob/${photos[g.id]}/image` : '',
-        visible: Boolean(g.visible_to), forMe: g.visible_to ? linksShown.has(g.id) : true, ...audience(g.visible_to),
+        visible: !admin || Boolean(g.visible_to), forMe: !g.visible_to || shown(linksShown, g.id), ...audience(g.visible_to),
       })),
     };
   });
   const widgets = widgetRows.map(w => ({
     id: w.id, key: linkSection(w) ? 'category:' + w.id : w.key, kind: w.key, sidebar: w.sidebar === 'Yes', order: w.order || '',
-    me: {shown: widgetsShown.has(w.id)}, ...audience(w.visible_to),
+    me: {shown: shown(widgetsShown, w.id)}, ...audience(w.visible_to),
   }));
   const layoutRow = rowsOf(h.layout, 'SETTING')[0];
   const audiences = Object.fromEntries(rowsOf(h.audiences, 'GROUP').map(g => [g.id, g]));

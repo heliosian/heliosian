@@ -273,6 +273,7 @@ func NewCore(cfg Config) *Core {
 	db.RegisterDrafts(teamMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterDrafts(birthdayMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterDrafts(homeMux, dataStore, cfg.Describer, tokens, schoolNow)
+	db.RegisterDrafts(calendarMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, tokens, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)

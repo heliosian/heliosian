@@ -64,6 +64,16 @@
 
 .rule-empty { color: var(--muted); font-size: 14px; padding: 6px 0; }
 
+.rule-edit-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+
+.rule-edit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.rule-edit-row input[type="text"] { flex: 1 1 240px; min-width: 0; }
+
+.rule-edit-row input.is-wanted { border-color: var(--alert); }
+
+.rule-edit-row select { flex: 0 0 auto; }
+
 .add-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
 
 .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }

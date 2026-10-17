@@ -25,9 +25,11 @@ async function switchList() {
   const a = await queries({
     apps: '(from APP (where (!= key "home")) (order order asc) (columns key name subtitle))',
     shown: '(from APP @a (where (exists EFFECTIVE_MEMBER (= group @a.visible_to) (= person @viewer))) (columns key))',
+    admin: '(from APP (where (= key "home") (admin_of "home")) (columns key))',
   });
   const shown = new Set(a.shown.result);
-  return a.apps.result.map(id => a.apps.resources.APP[id]).map(x => ({key: x.key, name: x.name, tagline: x.subtitle || '', me: {listed: shown.has(x.id)}}));
+  const admin = a.admin.result.length > 0;
+  return a.apps.result.map(id => a.apps.resources.APP[id]).map(x => ({key: x.key, name: x.name, tagline: x.subtitle || '', me: {listed: !admin || shown.has(x.id)}}));
 }
 
 const hoverGrace = 150;
