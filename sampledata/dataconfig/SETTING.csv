@@ -4,6 +4,24 @@ set00000000002,team,Expense Form URL,https://example.com/expenses
 set00000000003,celebrate,Current,grp00000000520
 set00000000004,celebrate,Parties Intro,Every party raises money for the school.
 set00000000005,celebrate,Ticket Note,You'll be invoiced after signing up.
+set00000000006,birthday,Year Start,08-14
+set00000000007,birthday,Newsletter,grp00000000710
+set00000000008,birthday,Default Charity,chr00000000001
+set00000000009,birthday,Request Lead Days,8
+set00000000010,birthday,Due By Lead Days,2
+set00000000011,birthday,Outreach CC,hca@example.org
+set00000000012,birthday,Email Subject,"Happy Birthday {first name}, from the HCA (+ charity request)"
+set00000000013,birthday,Email Body,"Hi {first name},
+
+Your birthday is coming up ({birthday}, if my sources are correct), and the HCA would love to celebrate you with a donation to a charity of your choice. {no newsletter note}
+
+Some staff members choose a charity that is personally meaningful to them, while others choose a local organization such as {default charity}.
+
+Thank you, and happy birthday!
+{sender}
+
+{last year}"
+set00000000014,birthday,No Newsletter Note,"We have a note that you'd rather not be mentioned in the newsletter, so we'll make the donation quietly and leave you out of it."
 set00000020001,platform,Photo Stale Years,0.75
 set00000020002,platform,Facts Stale Years,0.6
 set00000020003,platform,Family Photo Stale Years,1.5

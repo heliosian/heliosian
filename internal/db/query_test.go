@@ -262,7 +262,7 @@ func TestRun(t *testing.T) {
 			"grp00000020062", "grp00000020064", "grp00000020065", "grp00000020068", "grp00000020074", "grp00000020076",
 			"grp00000020078",
 		}},
-		{"", `(from GROUP (where (>= start today)))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
+		{"", `(from GROUP (where (>= start today) (!= kind "group")))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521"}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002", "per00000020018", "per00000020019"}},
 		{"", `(from SAVED_SEARCH (where (contains search "community")))`, "token", []string{"fed00000000002"}},
@@ -306,7 +306,7 @@ func TestRun(t *testing.T) {
 		}},
 		{"", `(from PERSON (where (= (length vc_name) 0)))`, "id", []string{"per00000000004"}},
 		{"", `(from MEMBER (where (= (length guest_of.name_short) 5)))`, "person", []string{"per00000000004"}},
-		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001"}},
+		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001", "bdy00000000003"}},
 		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{"grp00000000040"}},
 		{"per00000000003", `(from PERSON (where (= @viewer id)))`, "id", []string{"per00000000003"}},
 		{"", `(from PERSON (where (= @viewer id)))`, "id", nil},
@@ -438,7 +438,7 @@ func TestInclude(t *testing.T) {
 		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from RULE (include target))`)
-	if len(r.Resources["GROUP"]) != 21 {
+	if len(r.Resources["GROUP"]) != 23 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
@@ -475,7 +475,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000020073", "grp00000020075", "grp00000020078"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000000701", "grp00000000703", "grp00000020073", "grp00000020075", "grp00000020078"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": "per00000000002", "member": "excluded"}}})

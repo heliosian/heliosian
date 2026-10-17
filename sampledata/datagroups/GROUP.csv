@@ -111,3 +111,34 @@ grp00000020075,,group,open,,Soccer Team Managers,,,,,,,Yes,,,,,grp00000020075,,,
 grp00000020076,,group,open,,Soccer Team,,,,,,,Yes,,,,,grp00000020075,,,,,,,,members,members,,,,,,,,,,,,,,,,,,,,per00000020088,,,,,,,
 grp00000020077,,group,open,,Garden Club Managers,,,,,,,Yes,,,grp00000000004,grp00000000004,grp00000020077,,,,,,,,members,members,,,,,,,,,,,,,,,,,,,,per00000020031,,,,,,,
 grp00000020078,,group,open,garden-club,Garden Club,,"Families who keep the school garden growing, one Saturday a month.",,,,,Yes,,,grp00000000004,grp00000000004,grp00000020077,,,,,,,,members,members,,,,,,,,,,,,,,,,,,,,per00000020031,,,,,,,
+grp00000000700,,admins,open,birthday-admins,Birthdays Admins,,,,,,,,,,grp00000000700,grp00000000004,grp00000000005,,,,,,,,members,members
+grp00000000701,,activity,open,bday,Staff Birthdays,,Give to a charity on each staff member's birthday.,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,members,members,,direct,,,,,,,,,,,,,,,,,,,,,,grp00000000702
+grp00000000702,grp00000000701,group,open,,Staff Birthdays Leads,,,,,,,,,,grp00000000004,grp00000000004,,,,,,,,,none,none
+grp00000000703,,group,open,,Birthdays Viewers,,,,,,,Yes,,,,,,,,,,,,,members,members
+grp00000000710,,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members
+grp00000000711,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2025-08-22,,Yes
+grp00000000712,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2025-09-05,,Yes
+grp00000000713,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2025-10-03,,Yes
+grp00000000714,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2025-12-05,,Yes
+grp00000000715,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-02-06,,Yes
+grp00000000716,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-05-08,,Yes
+grp00000000721,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-08-21,,Yes
+grp00000000722,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-08-28,,Yes
+grp00000000723,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-09-04,,Yes
+grp00000000724,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-09-11,,Yes
+grp00000000725,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-09-18,,Yes
+grp00000000726,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-09-25,,Yes
+grp00000000727,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-10-02,,Yes
+grp00000000728,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-10-09,,Yes
+grp00000000729,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-10-16,,Yes
+grp00000000730,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-10-23,,Yes
+grp00000000731,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-10-30,,Yes
+grp00000000732,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-11-06,,Yes
+grp00000000733,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-11-20,,Yes
+grp00000000734,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2026-12-18,,Yes
+grp00000000735,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-01-15,,Yes
+grp00000000736,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-02-26,,Yes
+grp00000000737,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-03-12,,Yes
+grp00000000738,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-04-16,,Yes
+grp00000000739,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-05-28,,Yes
+grp00000000740,grp00000000710,group,open,,Helios Weekly Newsletter,,,,,,,No,,,grp00000000004,,,,,,,,,,members,members,,,,,,,,,,,,,,,2027-06-04,,Yes

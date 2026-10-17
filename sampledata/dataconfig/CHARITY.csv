@@ -1,2 +1,6 @@
 id,name,description,url,ein,allowed,not_allowed_reason,added
-chr00000000001,Second Harvest,,https://www.shfb.org,,Yes,,
+chr00000000001,Second Harvest,"Second Harvest provides free groceries and fresh meals to families, seniors and individuals facing food insecurity.",https://www.shfb.org,94-2614101,Yes,,2025-08-01
+chr00000000002,Rocket Dog Rescue,"Rocket Dog Rescue saves abandoned dogs from overcrowded shelters and places them in loving, permanent homes.",https://www.rocketdogrescue.org/,80-0000407,Yes,,2025-08-01
+chr00000000003,Birthfund,"Birthfund provides grants for midwifery care, lactation support and postpartum resources to families facing hardship.",https://www.thebirthfund.com/,85-3173347,Yes,,2025-08-01
+chr00000000004,Sunday Friends,"Sunday Friends helps low-income families break the cycle of poverty with education, financial literacy and basic necessities.",https://www.sundayfriends.org/,77-0518937,Yes,,2025-08-01
+chr00000000005,Sierra Club,"The Sierra Club protects wild places and fights for clean air, clean water and solutions to the climate crisis.",https://www.sierraclub.org/,94-1153307,No,Not a non-profit,2025-08-01

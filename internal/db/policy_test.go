@@ -60,20 +60,20 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON":           {96, 97, 97, 97, 97},
 		"PERSON_EMAIL":     {80, 80, 80, 80, 80},
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
-		"BIRTHDAY_YEAR":    {0, 0, 0, 1, 0},
+		"BIRTHDAY_YEAR":    {0, 0, 7, 7, 0},
 		"SAVED_SEARCH":     {0, 0, 1, 1, 0},
-		"GROUP":            {0, 103, 109, 111, 0},
-		"MEMBER":           {0, 333, 344, 344, 1},
-		"EFFECTIVE_MEMBER": {0, 545, 556, 557, 1},
-		"RULE":             {0, 0, 0, 24, 0},
+		"GROUP":            {0, 132, 138, 142, 0},
+		"MEMBER":           {0, 334, 345, 345, 1},
+		"EFFECTIVE_MEMBER": {0, 547, 558, 560, 1},
+		"RULE":             {0, 0, 0, 27, 0},
 		"DOCUMENT":         {8, 8, 9, 9, 8},
 		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
 		"CONTENT":          {6, 6, 6, 6, 6},
 		"INBOX":            {0, 0, 0, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
-		"CHARITY":          {0, 0, 0, 1, 0},
-		"APP":              {0, 3, 3, 3, 0},
+		"CHARITY":          {0, 0, 5, 5, 0},
+		"APP":              {0, 3, 4, 4, 0},
 		"ALIAS":            {0, 1, 1, 1, 0},
 	} {
 		for i, viewer := range viewers {
@@ -86,15 +86,19 @@ func TestWhoSeesWhichRows(t *testing.T) {
 
 func TestBirthdaysShowToTheGroupTheAppIsOpenTo(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "APP", Row: map[string]any{"key": "birthday", "name": "Helios Birthday Team", "visible_to": "grp00000000020", "admins": "grp00000000003"}}})
-	for i, viewer := range []string{nobody, student, parent, staff, guest} {
-		want := []int{0, 1, 1, 1, 0}[i]
-		for _, table := range []string{"BIRTHDAY_YEAR", "CHARITY"} {
-			if got := len(as(t, s, viewer, "(from "+table+")")); got != want {
-				t.Errorf("%s as %q: %d rows, want %d", table, viewer, got, want)
+	check := func(when string, years, charities []int) {
+		t.Helper()
+		for i, viewer := range []string{nobody, student, parent, staff, guest} {
+			for table, want := range map[string]int{"BIRTHDAY_YEAR": years[i], "CHARITY": charities[i]} {
+				if got := len(as(t, s, viewer, "(from "+table+")")); got != want {
+					t.Errorf("%s: %s as %q: %d rows, want %d", when, table, viewer, got, want)
+				}
 			}
 		}
 	}
+	check("open to the Staff Birthdays team", []int{0, 0, 7, 7, 0}, []int{0, 0, 5, 5, 0})
+	apply(t, s, queue, []Edit{{Set: "app00000000003", Cells: map[string]any{"visible_to": "grp00000000020"}}})
+	check("open to the Ashdown family", []int{0, 7, 7, 7, 0}, []int{0, 5, 5, 5, 0})
 }
 
 func TestSuperAdminsReadEveryReport(t *testing.T) {
