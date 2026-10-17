@@ -69,6 +69,11 @@ const PolicySource = `
   (or (admin_of "birthday")
       (exists EFFECTIVE_MEMBER (in group (select APP.visible_to (= key "birthday"))) (= person @viewer))))
 
+; @p is in effect a member of the group the Birthdays app is open to, or of its admins group
+(define (birthday_helper @p)
+  (or (exists EFFECTIVE_MEMBER (in group (select APP.visible_to (= key "birthday"))) (= person @p))
+      (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key "birthday"))) (= person @p))))
+
 ; the viewer is in effect a member of super-admins
 (define (super_admin)
   (exists EFFECTIVE_MEMBER (= group.slug "super-admins") (= person @viewer)))
@@ -610,6 +615,59 @@ const PolicySource = `
 (read CHARITY (birthday_team))
 ; every column of a charity
 (read CHARITY (id name description url ein allowed not_allowed_reason added) true)
+; the team gives a staff member's birthday its record of a school year, unless they asked to be left out, assigned to someone on the team, giving only to an allowed charity
+(insert BIRTHDAY_YEAR
+  (and (birthday_team) (person_visible @new.person) (!= @new.person.birthday_participation "skip")
+       (or (blank @new.assigned_to) (birthday_helper @new.assigned_to))
+       (or (blank @new.charity) @new.charity.allowed)))
+; the team assigns a birthday to someone on the team, or takes it back
+(set BIRTHDAY_YEAR.assigned_to
+  (and (birthday_team) (!= @old.person.birthday_participation "skip")
+       (or (blank @new.assigned_to) (birthday_helper @new.assigned_to))))
+; the team says when it was assigned
+(set BIRTHDAY_YEAR.assigned (birthday_team))
+; the team says when the staff member was asked
+(set BIRTHDAY_YEAR.contacted (birthday_team))
+; the team says who asked
+(set BIRTHDAY_YEAR.contacted_by (birthday_team))
+; the team records the charity, an allowed one
+(set BIRTHDAY_YEAR.charity (and (birthday_team) (or (blank @new.charity) @new.charity.allowed)))
+; the team records the staff member's own words
+(set BIRTHDAY_YEAR.note (birthday_team))
+; the team says when the charity was recorded
+(set BIRTHDAY_YEAR.recorded (birthday_team))
+; the team says who recorded it
+(set BIRTHDAY_YEAR.recorded_by (birthday_team))
+; the team says when it went to the newsletter
+(set BIRTHDAY_YEAR.published (birthday_team))
+; the team says who sent it to the newsletter
+(set BIRTHDAY_YEAR.published_by (birthday_team))
+; a Birthdays admin removes a year's record
+(delete BIRTHDAY_YEAR (admin_of "birthday"))
+; the team keeps a staff member's birthday
+(set PERSON.birthday (and (birthday_team) (in @old.id (members (slug "staff")))))
+; the team keeps how a staff member takes part
+(set PERSON.birthday_participation (and (birthday_team) (in @old.id (members (slug "staff")))))
+; the team adds a charity; only a Birthdays admin adds one allowed
+(insert CHARITY (and (birthday_team) (or (not @new.allowed) (admin_of "birthday"))))
+; the team names a charity
+(set CHARITY.name (birthday_team))
+; the team writes the newsletter's sentence about a charity
+(set CHARITY.description (birthday_team))
+; the team keeps the page where a donation to a charity is made
+(set CHARITY.url (birthday_team))
+; the team keeps a charity's tax number
+(set CHARITY.ein (birthday_team))
+; a Birthdays admin allows a charity, or stops allowing it
+(set CHARITY.allowed (admin_of "birthday"))
+; a Birthdays admin says why a charity is not allowed
+(set CHARITY.not_allowed_reason (admin_of "birthday"))
+; a Birthdays admin removes a charity no birthday names
+(delete CHARITY (and (admin_of "birthday") (not (exists BIRTHDAY_YEAR (= charity @old)))))
+; a Birthdays admin changes Staff Birthdays' settings
+(set SETTING.value (and (admin_of "birthday") (= @old.app "birthday")))
+; a Birthdays admin adds a Staff Birthdays setting
+(insert SETTING (and (admin_of "birthday") (= @new.app "birthday")))
 ; apps open to a group the viewer is in
 (read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
 ; every column of an app

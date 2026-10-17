@@ -35,7 +35,7 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 	tech, techManagers, viewers, sciOly := made[0], made[1], made[4], made[6]
 	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
 	slices.Sort(got)
-	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000020073", "grp00000020075", "grp00000020077", viewers}
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000000704", "grp00000020073", "grp00000020075", "grp00000020077", viewers}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("implementation only: %v, want %v", got, want)
@@ -66,7 +66,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 		queries = append(queries, mustParse(t, src))
 	}
 	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
-	if len(results[3].IDs) != 10 {
+	if len(results[3].IDs) != 11 {
 		t.Fatalf("the fourth query found %v", results[3].IDs)
 	}
 	passes := map[string]int{}
@@ -438,7 +438,7 @@ func TestInclude(t *testing.T) {
 		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from RULE (include target))`)
-	if len(r.Resources["GROUP"]) != 23 {
+	if len(r.Resources["GROUP"]) != 24 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
