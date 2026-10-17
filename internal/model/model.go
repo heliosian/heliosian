@@ -208,9 +208,13 @@ func noConsentStep(context.Context, *Model, *Model) error {
 	return nil
 }
 
+func noChecks(context.Context, *Model, *Model) error {
+	return nil
+}
+
 func NewStore(source data.Source, writer data.Writer, queue *store.Queue, deps Deps) (*Store, error) {
 	documents := &documentObjects{objects: deps.Objects, embedder: deps.Embedder, idKey: deps.IDKey, held: map[string]*Document{}}
-	s, err := store.New(parts(deps, documents), noConsentStep, source, writer, queue)
+	s, err := store.New(parts(deps, documents), noConsentStep, noChecks, source, writer, queue)
 	if err != nil {
 		return nil, err
 	}

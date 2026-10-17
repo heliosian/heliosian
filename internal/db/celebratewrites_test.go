@@ -49,6 +49,9 @@ func TestBuyingTicketsIsJoiningTheParty(t *testing.T) {
 	if _, err := write(parent, ticket(avery)); err == nil {
 		t.Error("someone took a paid place without paying for it")
 	}
+	if _, err := write(parent, ticket(avery), paid(avery)); err == nil {
+		t.Error("someone took a paid place before the write paid for it")
+	}
 	if _, err := write(parent, Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "1", "added": "2026-10-15 09:00"}}); err == nil {
 		t.Error("someone paid less than the party's price")
 	}

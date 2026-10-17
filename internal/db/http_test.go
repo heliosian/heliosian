@@ -375,7 +375,7 @@ func TestServeWriteTrace(t *testing.T) {
 	}
 	child(t, &root, "lock")
 	child(t, &root, "commit")
-	for _, name := range []string{"authorize", "stage", "fire"} {
+	for _, name := range []string{"authorize", "stage", "fire", "check"} {
 		if tally := child(t, &root, name); tally.Count != 2 {
 			t.Errorf("%s ran %d times, want once per write", name, tally.Count)
 		}

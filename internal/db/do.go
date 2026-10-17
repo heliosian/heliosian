@@ -265,25 +265,11 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 		}
 	}
 	whole := m.whole(env)
-	authorize := func(m *Model, c Change) error {
-		return m.Authorize(env, c)
-	}
 	_, err = queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
-		stage := func(e Edit) (string, error) {
-			written, c, err := stageWrite(s, tx, e, "fetched", nil, whole, authorize)
-			if err != nil {
-				return "", err
-			}
-			if err := fire(s, tx, c, env, "fetched"); err != nil {
-				return "", err
-			}
-			return written, nil
-		}
-		held, err := stageContent(s, tx, stage, map[string]string{}, hash, mimeType, len(content))
-		if err != nil {
-			return err
-		}
-		_, err = stage(Edit{Set: id, Cells: map[string]any{"fetch": "", "content": held}})
+		w := &pendingWrites{}
+		held := stageContent(s.In(tx), w, map[string]string{}, hash, mimeType, len(content))
+		w.add(Edit{Set: id, Cells: map[string]any{"fetch": "", "content": held}})
+		_, err := stageEdits(s, tx, env, w.edits, "fetched", whole)
 		return err
 	})
 	if err != nil {

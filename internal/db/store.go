@@ -21,18 +21,18 @@ func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index 
 			in.deliver(delivery{change: Change{Table: tab, Old: before, New: after}, env: Env{System: refreshSystem, Now: time.Now()}})
 		}
 	}
-	s, err := store.New(parts(index, newServices(index), refreshed), finishModel, source, writer, queue)
+	s, err := store.New(parts(index, newServices(index), refreshed), finishModel, checkModel, source, writer, queue)
 	return s, err
 }
 
-func finishModel(ctx context.Context, base, m *Model) error {
-	referenced := tallied(ctx, "check references")
-	err := m.checkReferences(base)
-	referenced()
-	if err != nil {
-		return err
-	}
+func finishModel(ctx context.Context, _, m *Model) error {
 	return consentStep(ctx, m)
+}
+
+func checkModel(ctx context.Context, base, m *Model) error {
+	referenced := tallied(ctx, "check references")
+	defer referenced()
+	return m.checkReferences(base)
 }
 
 const ChangesTab = "CHANGES"

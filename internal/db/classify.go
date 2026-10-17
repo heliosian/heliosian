@@ -207,16 +207,12 @@ func (c *Classifier) classify(id string) (string, error) {
 		if slices.ContainsFunc(c.s.In(tx).Table("DOCUMENT_GROUP").Referencing("document", id), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
 			return nil
 		}
+		w := &pendingWrites{}
 		for _, group := range sentTo {
-			_, ch, err := stageWrite(c.s, tx, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": id, "group": group, "relation": "sent_to"}}, classifyActor, nil, true, unchecked)
-			if err != nil {
-				return err
-			}
-			if err := fire(c.s, tx, ch, Env{System: classifyActor}, classifyActor); err != nil {
-				return err
-			}
+			w.add(Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": id, "group": group, "relation": "sent_to"}})
 		}
-		return nil
+		_, err := stageEdits(c.s, tx, Env{System: classifyActor}, w.edits, classifyActor, true)
+		return err
 	})
 	return strings.Join(sentTo, " "), err
 }
@@ -233,16 +229,12 @@ func (c *Classifier) discard(id string) error {
 			order = append(order, node)
 		}
 		walk(id)
+		w := &pendingWrites{}
 		for _, node := range order {
-			_, ch, err := stageWrite(c.s, tx, Edit{Delete: node}, classifyActor, nil, true, unchecked)
-			if err != nil {
-				return err
-			}
-			if err := fire(c.s, tx, ch, Env{System: classifyActor}, classifyActor); err != nil {
-				return err
-			}
+			w.add(Edit{Delete: node})
 		}
-		return nil
+		_, err := stageEdits(c.s, tx, Env{System: classifyActor}, w.edits, classifyActor, true)
+		return err
 	})
 	return err
 }

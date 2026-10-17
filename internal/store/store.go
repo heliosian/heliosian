@@ -34,6 +34,7 @@ type Part[M any] struct {
 type Store[M any] struct {
 	parts  []Part[M]
 	finish func(ctx context.Context, base, m *M) error
+	check  func(ctx context.Context, base, m *M) error
 	books  map[string]*Book
 	queue  *Queue
 	mu     sync.RWMutex
@@ -41,12 +42,12 @@ type Store[M any] struct {
 	model  *M
 }
 
-func New[M any](parts []Part[M], finish func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
+func New[M any](parts []Part[M], finish, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
 	ordered, err := order(parts)
 	if err != nil {
 		return nil, err
 	}
-	s := &Store[M]{parts: ordered, finish: finish, books: map[string]*Book{}, queue: queue}
+	s := &Store[M]{parts: ordered, finish: finish, check: check, books: map[string]*Book{}, queue: queue}
 	for _, p := range ordered {
 		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer, queue)
 		if err != nil {
@@ -134,10 +135,16 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := s.check(ctx, nil, built); err != nil {
+			return nil, err
+		}
 		model = built
 	} else if len(stale) > 0 {
 		built, err := s.build(ctx, tables, base, stale, took)
 		if err != nil {
+			return nil, err
+		}
+		if err := s.check(ctx, base, built); err != nil {
 			return nil, err
 		}
 		model = built
@@ -156,6 +163,9 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 		if len(changed) > 0 {
 			rebuilt, err := s.build(ctx, next, model, changed, nil)
 			if err != nil {
+				return nil, err
+			}
+			if err := s.check(ctx, model, rebuilt); err != nil {
 				return nil, err
 			}
 			final = rebuilt
@@ -317,54 +327,73 @@ func (s *Store[M]) Stage(tx *Tx, app string, ops ...Op) error {
 		return fmt.Errorf("no sheet %s", app)
 	}
 	st := tx.stageOf(s)
-	tables, base := map[string]Tables(nil), (*M)(nil)
-	if st != nil {
-		tables, base = st.tables, st.model.(*M)
-	} else {
-		tables, base = s.current()
+	if st == nil {
+		tables, model := s.current()
+		st = &stage{owner: s, start: model, tables: tables, model: model, dirty: map[string]bool{}, plans: map[string]Plan{}}
+		st.settle = func() error {
+			final, err := s.Built(tx)
+			if err != nil {
+				return err
+			}
+			return s.check(tx.ctx, st.start.(*M), final)
+		}
+		st.swap = func() {
+			s.mu.Lock()
+			s.tables, s.model = st.tables, st.model.(*M)
+			s.mu.Unlock()
+		}
+		st.write = func() <-chan struct{} {
+			var done <-chan struct{}
+			for _, app := range st.order {
+				done = s.books[app].Write(st.plans[app])
+			}
+			return done
+		}
+		tx.staged = append(tx.staged, st)
 	}
 	start := time.Now()
-	plan, err := book.Plan(tx.ctx, tables[app], tx.actor.Email, ops)
+	plan, err := book.Plan(tx.ctx, st.tables[app], tx.actor.Email, ops)
 	trace.From(tx.ctx).Tally("plan").Add(time.Since(start))
 	if err != nil || plan.Empty() {
 		return err
 	}
-	next := maps.Clone(tables)
+	next := maps.Clone(st.tables)
 	next[app] = plan.Tables
-	model, err := s.build(tx.ctx, next, base, map[string]bool{app: true}, nil)
-	if err != nil {
-		return access.Invalid("%v", err)
-	}
-	if st == nil {
-		st = &stage{owner: s, plans: map[string]Plan{}}
-		tx.staged = append(tx.staged, st)
-	}
 	if _, ok := st.plans[app]; !ok {
 		st.order = append(st.order, app)
 	}
 	was := st.plans[app]
 	st.plans[app] = Plan{Tables: plan.Tables, writes: append(was.writes, plan.writes...), log: append(was.log, plan.log...)}
-	st.tables, st.model = next, model
-	st.swap = func() {
-		s.mu.Lock()
-		s.tables, s.model = next, model
-		s.mu.Unlock()
-	}
-	st.write = func() <-chan struct{} {
-		var done <-chan struct{}
-		for _, app := range st.order {
-			done = s.books[app].Write(st.plans[app])
-		}
-		return done
-	}
+	st.tables = next
+	st.dirty[app] = true
 	return nil
 }
 
-func (s *Store[M]) In(tx *Tx) *M {
-	if tx != nil {
-		if st := tx.stageOf(s); st != nil {
-			return st.model.(*M)
-		}
+func (s *Store[M]) Built(tx *Tx) (*M, error) {
+	st := tx.stageOf(s)
+	if st == nil {
+		return s.Model(), nil
 	}
-	return s.Model()
+	if st.err != nil {
+		return nil, st.err
+	}
+	if len(st.dirty) > 0 {
+		model, err := s.build(tx.ctx, st.tables, st.model.(*M), st.dirty, nil)
+		if err != nil {
+			st.err = access.Invalid("%v", err)
+			return nil, st.err
+		}
+		st.model, st.dirty = model, map[string]bool{}
+	}
+	return st.model.(*M), nil
+}
+
+func (s *Store[M]) In(tx *Tx) *M {
+	if tx == nil {
+		return s.Model()
+	}
+	if m, err := s.Built(tx); err == nil {
+		return m
+	}
+	return tx.stageOf(s).model.(*M)
 }

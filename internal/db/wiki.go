@@ -171,20 +171,15 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		if err := m.wikiParentFits(page.Document, page.Parent); err != nil {
 			return err
 		}
+		w := &pendingWrites{}
 		contents := map[string]string{}
-		contentOf := func(md markdown) (string, error) {
-			return stageContent(s, tx, stager(s, tx, env, wikiWhere), contents, md.hash, wikiMime, md.size)
+		contentOf := func(md markdown) string {
+			return stageContent(m, w, contents, md.hash, wikiMime, md.size)
 		}
-		apply := func(e Edit) (string, error) {
-			written, c, err := stageWrite(s, tx, e, wikiWhere, nil, false, func(m *Model, c Change) error { return m.Authorize(env, c) })
-			if err != nil {
-				return "", err
-			}
-			return written, fire(s, tx, c, env, wikiWhere)
-		}
-		contentID, err := contentOf(main)
-		if err != nil {
-			return err
+		contentID := contentOf(main)
+		sideContents := make([]string, len(page.Sides))
+		for i := range page.Sides {
+			sideContents[i] = contentOf(sides[i])
 		}
 		segment := wikiSegment(store.Row{"id": page.Document, "name": name, "slug": slug})
 		if segment != "" && m.wikiSibling(page.Document, page.Parent, segment) != "" {
@@ -202,30 +197,33 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 				edit.Cells["slug"] = slug
 			}
 		}
-		if id, err = apply(edit); err != nil {
-			return err
-		}
-		if page.Sides == nil {
+		at := len(w.edits)
+		written := w.add(edit)
+		commit := func() error {
+			ids, err := stageEdits(s, tx, env, w.edits, wikiWhere, false)
+			if err != nil {
+				return err
+			}
+			id = ids[at]
 			return nil
 		}
+		if page.Sides == nil {
+			return commit()
+		}
 		existing := map[string]store.Row{}
-		for _, row := range s.In(tx).Table("DOCUMENT").Referencing("parent", id) {
-			if row["relation"] == "side" {
-				existing[row["id"]] = row
+		if page.Document != "" {
+			for _, row := range m.Table("DOCUMENT").Referencing("parent", page.Document) {
+				if row["relation"] == "side" {
+					existing[row["id"]] = row
+				}
 			}
 		}
 		orders := store.Order(make([]string, len(page.Sides)))
 		for i, side := range page.Sides {
-			cardContent, err := contentOf(sides[i])
-			if err != nil {
-				return err
-			}
-			cells := map[string]any{"name": strings.TrimSpace(side.Name), "content": cardContent, "order": orders[i]}
+			cells := map[string]any{"name": strings.TrimSpace(side.Name), "content": sideContents[i], "order": orders[i]}
 			if side.ID == "" {
-				cells["parent"], cells["relation"] = id, "side"
-				if _, err := apply(Edit{Insert: "DOCUMENT", Row: cells}); err != nil {
-					return err
-				}
+				cells["parent"], cells["relation"] = written, "side"
+				w.add(Edit{Insert: "DOCUMENT", Row: cells})
 				continue
 			}
 			old, ok := existing[side.ID]
@@ -241,16 +239,12 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 			if len(cells) == 0 {
 				continue
 			}
-			if _, err := apply(Edit{Set: side.ID, Cells: cells}); err != nil {
-				return err
-			}
+			w.add(Edit{Set: side.ID, Cells: cells})
 		}
 		for _, gone := range slices.Sorted(maps.Keys(existing)) {
-			if _, err := apply(Edit{Delete: gone}); err != nil {
-				return err
-			}
+			w.add(Edit{Delete: gone})
 		}
-		return nil
+		return commit()
 	})
 	if err != nil {
 		dropUnheld(s, pics.bucket, stored)

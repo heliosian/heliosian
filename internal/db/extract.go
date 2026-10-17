@@ -213,31 +213,18 @@ func (m *Model) htmlAlongside(doc store.Row) bool {
 	})
 }
 
-func stager(s *Store, tx *store.Tx, env Env, actor string) func(Edit) (string, error) {
-	return func(e Edit) (string, error) {
-		written, c, err := stageWrite(s, tx, e, actor, nil, true, unchecked)
-		if err != nil {
-			return "", err
-		}
-		return written, fire(s, tx, c, env, actor)
-	}
-}
-
-func stageContent(s *Store, tx *store.Tx, stage func(Edit) (string, error), held map[string]string, hash, mimeType string, size int) (string, error) {
+func stageContent(m *Model, w *pendingWrites, held map[string]string, hash, mimeType string, size int) string {
 	key := hash + "\x00" + mimeType
 	if id, ok := held[key]; ok {
-		return id, nil
+		return id
 	}
-	if row, ok := s.In(tx).Table("CONTENT").Find(hash, mimeType); ok {
+	if row, ok := m.Table("CONTENT").Find(hash, mimeType); ok {
 		held[key] = row["id"]
-		return row["id"], nil
+		return row["id"]
 	}
-	id, err := stage(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
-	if err != nil {
-		return "", err
-	}
+	id := w.server(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
 	held[key] = id
-	return id, nil
+	return id
 }
 
 func (x *Extractor) extract(id string) (int, error) {
@@ -299,20 +286,17 @@ func (x *Extractor) extract(id string) (int, error) {
 	orders := store.Order(make([]string, len(children)))
 	committed := false
 	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
-		stage := stager(x.s, tx, Env{System: extractActor}, extractActor)
-		now, ok := x.s.In(tx).Table("DOCUMENT").Get(id)
+		m := x.s.In(tx)
+		now, ok := m.Table("DOCUMENT").Get(id)
 		if !ok || now["extracted"] != "" {
 			return nil
 		}
+		w := &pendingWrites{}
 		contents := map[string]string{}
 		for i, child := range children {
 			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i]}
 			if child.body != nil {
-				content, err := stageContent(x.s, tx, stage, contents, hashes[i], child.mime, len(child.body))
-				if err != nil {
-					return err
-				}
-				row["content"] = content
+				row["content"] = stageContent(m, w, contents, hashes[i], child.mime, len(child.body))
 			}
 			if child.name != "" {
 				row["filename"] = child.name
@@ -329,11 +313,10 @@ func (x *Extractor) extract(id string) (int, error) {
 			if child.skip != "" {
 				row["fetch"], row["link"] = "skipped", child.skip
 			}
-			if _, err := stage(Edit{Insert: "DOCUMENT", Row: row}); err != nil {
-				return err
-			}
+			w.add(Edit{Insert: "DOCUMENT", Row: row})
 		}
-		_, err := stage(Edit{Set: id, Cells: map[string]any{"extracted": time.Now().In(School).Format(cells.StampFormat)}})
+		w.add(Edit{Set: id, Cells: map[string]any{"extracted": time.Now().In(School).Format(cells.StampFormat)}})
+		_, err := stageEdits(x.s, tx, Env{System: extractActor}, w.edits, extractActor, true)
 		committed = err == nil
 		return err
 	})

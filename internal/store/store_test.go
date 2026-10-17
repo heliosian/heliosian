@@ -29,6 +29,10 @@ func consent(_ context.Context, _, m *counts) error {
 	return nil
 }
 
+func noCheck(context.Context, *counts, *counts) error {
+	return nil
+}
+
 type fixture struct {
 	dir   *data.Dir
 	queue *Queue
@@ -99,7 +103,7 @@ func newFixture(t *testing.T) fixture {
 	write(t, root, "report", ChangeLogTab, strings.Join(ChangeLogColumns, ",")+"\n")
 	dir := &data.Dir{Root: root}
 	queue := NewQueue()
-	s, err := New([]Part[counts]{part()}, consent, dir, dir, queue)
+	s, err := New([]Part[counts]{part()}, consent, noCheck, dir, dir, queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +219,7 @@ func TestAnotherSheetsTabIsReadNotWritten(t *testing.T) {
 		m.answers = len(tables["Answers"])
 		return nil
 	}
-	s, err := New([]Part[counts]{withAnswers}, consent, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{withAnswers}, consent, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,10 +377,40 @@ func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 	equal(t, "change log", f.log(t), []string{"ann||insert|Things|Name=cap||", "ann||set|Things|Name=cap|Color|"})
 }
 
+func TestATransactionIsCheckedWhole(t *testing.T) {
+	f := newFixture(t)
+	atMostTwo := func(_ context.Context, _, m *counts) error {
+		if m.things > 2 {
+			return errors.New("three things")
+		}
+		return nil
+	}
+	s, err := New([]Part[counts]{part()}, consent, atMostTwo, f.dir, f.dir, f.queue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, err := f.queue.Transact(context.Background(), access.Actor{Email: "ann"}, func(tx *Tx) error {
+		if err := s.Stage(tx, "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+			return err
+		}
+		return s.Stage(tx, "app", Delete("Things", Row{"Name": "boot"}))
+	})
+	if err != nil {
+		t.Fatalf("a transaction that ends within the check was refused for a state between its stages: %v", err)
+	}
+	<-done
+	if s.Model().things != 2 || s.Count("app", "Things", Row{"Name": "cap"}) != 1 {
+		t.Fatalf("after the transaction: %+v", *s.Model())
+	}
+	if err := s.Commit(context.Background(), access.Actor{Email: "ann"}, "app", Insert("Things", Row{"Name": "sock"})); err == nil || !strings.Contains(err.Error(), "three things") {
+		t.Fatalf("a transaction ending outside the check: %v", err)
+	}
+}
+
 func reportFixture(t *testing.T) (fixture, *Store[counts]) {
 	t.Helper()
 	f := newFixture(t)
-	s, err := New([]Part[counts]{reportPart(), part()}, consent, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{reportPart(), part()}, consent, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +460,7 @@ func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 		}
 		return nil
 	}
-	s, err := New([]Part[counts]{part()}, refusing, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{part()}, refusing, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -449,12 +483,12 @@ func TestAPartThatRefusesRefusesTheWriteItReads(t *testing.T) {
 
 func TestPartsReadingNothingThereAreRefused(t *testing.T) {
 	f := newFixture(t)
-	if _, err := New([]Part[counts]{reportPart()}, consent, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "no part app") {
+	if _, err := New([]Part[counts]{reportPart()}, consent, noCheck, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "no part app") {
 		t.Fatalf("a part reading a missing part was taken: %v", err)
 	}
 	loop := part()
 	loop.Reads = []string{"report"}
-	if _, err := New([]Part[counts]{reportPart(), loop}, consent, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "reads itself") {
+	if _, err := New([]Part[counts]{reportPart(), loop}, consent, noCheck, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "reads itself") {
 		t.Fatalf("parts reading each other were taken: %v", err)
 	}
 }
@@ -497,7 +531,7 @@ func (w *countingWriter) DeleteMany(app, table, keyColumn string, keys []string)
 func TestConsecutiveDeletesAreOneCall(t *testing.T) {
 	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}
-	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+	s, err := New([]Part[counts]{part()}, consent, noCheck, f.dir, writer, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -517,7 +551,7 @@ func TestConsecutiveDeletesAreOneCall(t *testing.T) {
 func TestWritesToOneTabAreBatched(t *testing.T) {
 	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}
-	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+	s, err := New([]Part[counts]{part()}, consent, noCheck, f.dir, writer, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +578,7 @@ func TestWritesToOneTabAreBatched(t *testing.T) {
 func TestWaitingCommitsAreWrittenTogether(t *testing.T) {
 	f := newFixture(t)
 	writer := &countingWriter{Dir: f.dir}
-	s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+	s, err := New([]Part[counts]{part()}, consent, noCheck, f.dir, writer, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -619,7 +653,7 @@ func TestBatchingReachesPastOtherTabs(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFixture(t)
 			writer := &countingWriter{Dir: f.dir}
-			s, err := New([]Part[counts]{part()}, consent, f.dir, writer, f.queue)
+			s, err := New([]Part[counts]{part()}, consent, noCheck, f.dir, writer, f.queue)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -658,7 +692,7 @@ func (p pausedSource) Tabs(ctx context.Context, app string, tables, headers []st
 func TestACommitDuringARefreshIsKeptAndTheRefreshSwaps(t *testing.T) {
 	f := newFixture(t)
 	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
-	other, err := New([]Part[counts]{part()}, consent, paused, f.dir, f.queue)
+	other, err := New([]Part[counts]{part()}, consent, noCheck, paused, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +725,7 @@ func TestARefreshReportsTheRowsTheSheetChanged(t *testing.T) {
 	p.Refreshed = func(tab string, before, after Row) {
 		seen = append(seen, tab+" "+before["Name"]+before["Thing"]+before["By"]+" -> "+after["Name"]+after["Thing"]+after["By"])
 	}
-	s, err := New([]Part[counts]{p}, consent, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{p}, consent, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -719,7 +753,7 @@ func TestARefreshRebuildsOnlyThePartsWhoseSheetsChanged(t *testing.T) {
 		return build(ctx, tables, m)
 	}
 	app.Incremental, report.Incremental = true, true
-	s, err := New([]Part[counts]{app, report}, consent, f.dir, f.dir, f.queue)
+	s, err := New([]Part[counts]{app, report}, consent, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -750,7 +784,7 @@ func TestARefreshRebuildsOnlyThePartsWhoseSheetsChanged(t *testing.T) {
 func TestARefreshThatCannotTakeACommitKeepsTheModel(t *testing.T) {
 	f := newFixture(t)
 	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
-	s, err := New([]Part[counts]{reportPart(), part()}, consent, paused, f.dir, f.queue)
+	s, err := New([]Part[counts]{reportPart(), part()}, consent, noCheck, paused, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -187,7 +187,7 @@ func (p *Pictures) make(id string) error {
 		if len(set) == 0 {
 			return nil
 		}
-		_, _, err := stageWrite(p.s, tx, Edit{Set: id, Cells: set}, "pictures", nil, true, unchecked)
+		_, err := stageEdits(p.s, tx, Env{System: "pictures"}, []Edit{{Set: id, Cells: set}}, "pictures", true)
 		return err
 	})
 	return err

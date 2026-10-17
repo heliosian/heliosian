@@ -22,6 +22,7 @@ type Edit struct {
 	Set    string         `json:"set,omitempty"`
 	Cells  map[string]any `json:"cells,omitempty"`
 	Delete string         `json:"delete,omitempty"`
+	server bool
 }
 
 type Batch struct {
@@ -96,10 +97,51 @@ func resolve(text string, names map[string]string) (string, error) {
 }
 
 func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
-	written := []string{}
 	whole := s.Model().whole(env)
 	span := trace.From(ctx)
-	authorizing, staging, firing := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire")
+	waiting := span.Start("lock")
+	var written []string
+	var committing *trace.Span
+	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
+		waiting.End()
+		defer func() { committing = span.Start("commit") }()
+		ids, err := stageEdits(s, tx, env, b.Batch, "batch", whole)
+		written = ids
+		return err
+	})
+	committing.End()
+	if err != nil {
+		return nil, err
+	}
+	return written, nil
+}
+
+type pendingWrites struct {
+	edits []Edit
+}
+
+func (w *pendingWrites) add(e Edit) string {
+	if e.Insert != "" && e.As == "" {
+		e.As = fmt.Sprintf("w%d", len(w.edits))
+	}
+	w.edits = append(w.edits, e)
+	switch {
+	case e.Insert != "":
+		return "@" + e.As
+	case e.Set != "":
+		return e.Set
+	}
+	return e.Delete
+}
+
+func (w *pendingWrites) server(e Edit) string {
+	e.server = true
+	return w.add(e)
+}
+
+func stageEdits(s *Store, tx *store.Tx, env Env, edits []Edit, label string, whole bool) ([]string, error) {
+	span := trace.From(tx.Context())
+	authorizing, staging, firing, checking := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire"), span.Tally("check")
 	var authorized time.Duration
 	authorize := func(m *Model, c Change) error {
 		start := time.Now()
@@ -109,44 +151,51 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 		return err
 	}
 	names := map[string]string{}
-	waiting := span.Start("lock")
-	var committing *trace.Span
-	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
-		waiting.End()
-		defer func() { committing = span.Start("commit") }()
-		for i, w := range b.Batch {
-			where := fmt.Sprintf("batch[%d]", i)
-			if w.As != "" {
-				if w.Insert == "" || strings.HasPrefix(w.As, "@") {
-					return access.Invalid("%s: as names an insert's row, without the @", where)
-				}
-				if _, dup := names[w.As]; dup {
-					return access.Invalid("%s: the batch names two rows %s", where, w.As)
-				}
+	written := []string{}
+	for i, w := range edits {
+		where := fmt.Sprintf("%s[%d]", label, i)
+		if w.As != "" {
+			if w.Insert == "" || strings.HasPrefix(w.As, "@") {
+				return nil, access.Invalid("%s: as names an insert's row, without the @", where)
 			}
-			authorized = 0
-			start := time.Now()
-			id, c, err := stageWrite(s, tx, w, where, names, whole, authorize)
-			staging.Add(time.Since(start) - authorized)
-			if err != nil {
-				return err
+			if _, dup := names[w.As]; dup {
+				return nil, access.Invalid("%s: the batch names two rows %s", where, w.As)
 			}
-			if w.As != "" {
-				names[w.As] = id
-			}
-			start = time.Now()
-			err = fire(s, tx, c, env, where)
-			firing.Add(time.Since(start))
-			if err != nil {
-				return err
-			}
-			written = append(written, id)
 		}
-		return nil
-	})
-	committing.End()
-	if err != nil {
-		return nil, err
+		before, err := s.Built(tx)
+		if err != nil {
+			return nil, err
+		}
+		allowed := authorize
+		if w.server {
+			allowed = unchecked
+		}
+		authorized = 0
+		start := time.Now()
+		id, c, err := stageWrite(s, tx, w, where, names, whole, allowed)
+		staging.Add(time.Since(start) - authorized)
+		if err != nil {
+			return nil, err
+		}
+		if w.As != "" {
+			names[w.As] = id
+		}
+		start = time.Now()
+		err = fire(s, tx, c, env, where)
+		firing.Add(time.Since(start))
+		if err != nil {
+			return nil, err
+		}
+		start = time.Now()
+		after, err := s.Built(tx)
+		if err == nil {
+			err = checkModel(tx.Context(), before, after)
+		}
+		checking.Add(time.Since(start))
+		if err != nil {
+			return nil, access.Invalid("%s: %v", where, err)
+		}
+		written = append(written, id)
 	}
 	return written, nil
 }
@@ -200,9 +249,7 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 			return "", Change{}, err
 		}
 		updated := maps.Clone(old)
-		for k, v := range set {
-			updated[k] = v
-		}
+		maps.Copy(updated, set)
 		if err := t.Check(updated); err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}

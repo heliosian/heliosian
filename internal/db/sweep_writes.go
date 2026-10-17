@@ -3,17 +3,10 @@ package db
 import "heliosian/internal/store"
 
 func stageContentSweep(s *Store, tx *store.Tx, gone []store.Row) error {
-	ops := []store.Op{}
+	w := &pendingWrites{}
 	for _, row := range gone {
-		ops = append(ops, store.Delete("CONTENT", store.Row{"id": row["id"]}))
+		w.add(Edit{Delete: row["id"]})
 	}
-	if err := s.Stage(tx, DocumentsSheet, ops...); err != nil {
-		return err
-	}
-	for _, row := range gone {
-		if err := fire(s, tx, Change{Table: "CONTENT", Old: row}, Env{System: sweepActor}, sweepActor); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := stageEdits(s, tx, Env{System: sweepActor}, w.edits, sweepActor, true)
+	return err
 }

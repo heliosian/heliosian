@@ -19,16 +19,24 @@ type Tx struct {
 
 type stage struct {
 	owner  any
+	start  any
 	tables map[string]Tables
 	model  any
+	dirty  map[string]bool
+	err    error
 	plans  map[string]Plan
 	order  []string
+	settle func() error
 	swap   func()
 	write  func() <-chan struct{}
 }
 
 func (tx *Tx) Actor() access.Actor {
 	return tx.actor
+}
+
+func (tx *Tx) Context() context.Context {
+	return tx.ctx
 }
 
 func (tx *Tx) After(run func()) {
@@ -80,6 +88,11 @@ func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *T
 	}
 	if len(tx.staged) == 0 {
 		return nil, tx.after, nil
+	}
+	for _, st := range tx.staged {
+		if err := st.settle(); err != nil {
+			return nil, nil, err
+		}
 	}
 	for _, st := range tx.staged {
 		st.swap()

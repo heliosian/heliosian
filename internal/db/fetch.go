@@ -303,13 +303,12 @@ func (f *Fetcher) still(tx *store.Tx, ids []string) []string {
 
 func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
 	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
-		stage := stager(f.s, tx, Env{System: fetchActor}, fetchActor)
+		w := &pendingWrites{}
 		for _, id := range f.still(tx, ids) {
-			if _, err := stage(Edit{Set: id, Cells: map[string]any{"fetch": why}}); err != nil {
-				return err
-			}
+			w.add(Edit{Set: id, Cells: map[string]any{"fetch": why}})
 		}
-		return nil
+		_, err := stageEdits(f.s, tx, Env{System: fetchActor}, w.edits, fetchActor, true)
+		return err
 	})
 	return err
 }
@@ -331,18 +330,14 @@ func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 		if len(open) == 0 {
 			return nil
 		}
-		stage := stager(f.s, tx, Env{System: fetchActor}, fetchActor)
-		content, err := stageContent(f.s, tx, stage, map[string]string{}, hash, got.mime, len(got.body))
-		if err != nil {
-			return err
-		}
+		w := &pendingWrites{}
+		content := stageContent(f.s.In(tx), w, map[string]string{}, hash, got.mime, len(got.body))
 		for _, id := range open {
-			if _, err := stage(Edit{Set: id, Cells: map[string]any{"content": content}}); err != nil {
-				return err
-			}
+			w.add(Edit{Set: id, Cells: map[string]any{"content": content}})
 		}
-		committed = true
-		return nil
+		_, err := stageEdits(f.s, tx, Env{System: fetchActor}, w.edits, fetchActor, true)
+		committed = err == nil
+		return err
 	})
 	if stored && (err != nil || !committed) {
 		dropUnheld(f.s, f.bucket, []string{name})
