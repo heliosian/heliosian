@@ -261,15 +261,16 @@ function volunteersBox(node) {
   const people = shownVolunteers(node, editing).filter(v => v.position !== 'Co-Chair');
   const chairs = coChairs(node);
   const revealed = listRevealed(node, editing);
+  const showPeople = revealed ? people : [];
   const view = {
     node,
     editing,
     people,
     chairs,
     revealed,
-    showPeople: node.directSignUp && revealed ? people : [],
+    showPeople,
     somethingBelow: node.children.some(c => c.status !== 'Hidden' && c.status !== 'Pending'),
-    quiet: !node.directSignUp && !chairs.length,
+    quiet: !node.directSignUp && !chairs.length && !showPeople.length,
     listing: el('div', 'vol-listing'),
     filter: null,
   };
@@ -378,7 +379,7 @@ function paintVolunteers(view) {
 }
 
 function ownVolunteers(view, labelled) {
-  const {node, listing, editing, chairs, people, showPeople} = view;
+  const {node, listing, chairs, people, showPeople} = view;
   if (chairs.length || showPeople.length) {
     const grid = el('div', 'person-tiles vol-people');
     for (const v of chairs) {
@@ -399,11 +400,6 @@ function ownVolunteers(view, labelled) {
   if (!node.directSignUp) {
     if (!view.quiet && view.somethingBelow) {
       listing.append(el('div', 'vol-note', 'Sign up for something below.'));
-    }
-    if (editing && people.length) {
-      const n = people.length;
-      listing.append(el('div', 'vol-note vol-held',
-        `${n} ${n === 1 ? 'person' : 'people'} signed up here before volunteers were turned off. Check Allow volunteers for this itself to show them again.`));
     }
     return;
   }
