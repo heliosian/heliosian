@@ -1,55 +1,13 @@
-import {api} from '/api.js';
+import {queries} from '/rail.js';
 
-function result(reply) {
-  const byType = reply.resources;
-  const byId = {};
-  for (const resources of Object.values(byType)) {
-    Object.assign(byId, resources);
-  }
-  const get = id => byId[id];
-  return {
-    result: reply.result,
-    now: reply.now,
-    get,
-    all: type => Object.values(byType[type] || {}),
-    follow(resource, relation) {
-      const target = resource[relation];
-      if (Array.isArray(target)) {
-        return target.map(get);
-      }
-      return target ? get(target) : null;
-    },
-  };
-}
+const adminApps = ['who', 'team', 'when', 'home'];
 
-export async function query(path) {
-  return result(await api('GET', path));
-}
-
-export async function batch(paths) {
-  const body = {};
-  for (const [name, path] of Object.entries(paths)) {
-    body[name] = {path};
-  }
-  return result(await api('POST', '/api/query', body));
-}
-
-export function act(type, id, action, body) {
-  return api('POST', `/api/${type}/${encodeURIComponent(id)}/${action}`, body);
-}
-
-export function create(type, body) {
-  return api('POST', `/api/${type}`, body);
-}
-
-export function remove(type, id) {
-  return api('DELETE', `/api/${type}/${encodeURIComponent(id)}`);
-}
-
-export function actAll(writes) {
-  return api('POST', '/api/act', writes);
-}
-
-export function me() {
-  return api('GET', '/api/me');
+export async function me() {
+  const a = await queries({
+    meEmail: '(from PERSON_EMAIL (where (= person @viewer) primary) (columns address))',
+    meAdmin: `(from APP @a (where (in key ${adminApps.map(k => JSON.stringify(k)).join(' ')}) (or (super_admin) (exists EFFECTIVE_MEMBER (= group @a.admins) (= person @viewer)))) (columns key))`,
+  });
+  const email = (Object.values(a.meEmail.resources.PERSON_EMAIL || {})[0] || {}).address || '';
+  const keys = a.meAdmin.result.map(id => a.meAdmin.resources.APP[id].key);
+  return {email, allowances: keys.map(k => k + '.admins')};
 }

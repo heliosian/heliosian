@@ -15,7 +15,6 @@ import (
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/ops"
 )
 
@@ -25,7 +24,6 @@ const (
 	feedbackBase      = "https://heliosian.com"
 	calendarMailFrom  = "Helios When <when@reply.heliosian.com>"
 	calendarReplyTo   = "Helios When <when@reply.heliosian.com>"
-	calendarBase      = "https://when.heliosian.com"
 	celebrateMailFrom = "Helios Celebrate <celebrate@reply.heliosian.com>"
 )
 
@@ -51,8 +49,14 @@ func OpsDeps(github *feedback.GitHubApp, adminKey string) ops.Deps {
 	return ops.Deps{GitHub: github, Builds: builds, Run: runs, AdminKey: adminKey}
 }
 
-func calendarMail(sessionKey string) model.CalendarMail {
-	return model.CalendarMail{Sender: newMailer(calendarMailFrom), ReplyTo: calendarReplyTo, Base: calendarBase, SigningKey: mailgunSigningKey(), Key: []byte(sessionKey)}
+type CalendarMail struct {
+	Sender     *mail.Mailgun
+	ReplyTo    string
+	SigningKey string
+}
+
+func calendarMail() CalendarMail {
+	return CalendarMail{Sender: newMailer(calendarMailFrom), ReplyTo: calendarReplyTo, SigningKey: mailgunSigningKey()}
 }
 
 func mailgunKey() string {

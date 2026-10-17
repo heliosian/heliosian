@@ -1,4 +1,4 @@
-import {query} from '/data.js';
+import {queries} from '/rail.js';
 import {noteError, openFeedback} from '/feedback.js';
 
 function tierLabels() {
@@ -22,8 +22,12 @@ export function whoLink(email) {
 }
 
 async function switchList() {
-  const read = await query('/api/apps');
-  return read.result.map(read.get);
+  const a = await queries({
+    apps: '(from APP (where (!= key "home")) (order order asc) (columns key name subtitle))',
+    shown: '(from APP @a (where (exists EFFECTIVE_MEMBER (= group @a.visible_to) (= person @viewer))) (columns key))',
+  });
+  const shown = new Set(a.shown.result);
+  return a.apps.result.map(id => a.apps.resources.APP[id]).map(x => ({key: x.key, name: x.name, tagline: x.subtitle || '', me: {listed: shown.has(x.id)}}));
 }
 
 const hoverGrace = 150;

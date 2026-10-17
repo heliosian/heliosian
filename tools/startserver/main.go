@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/app"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/ask"
@@ -30,14 +29,12 @@ import (
 	"heliosian/internal/describe"
 	"heliosian/internal/devcache"
 	"heliosian/internal/devtls"
-	"heliosian/internal/digest"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
 	"heliosian/internal/intercept"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
-	"heliosian/internal/model"
 	"heliosian/internal/ops"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
@@ -124,15 +121,6 @@ func sampleServer(user string) (*http.Server, *store.Queue) {
 	bucket := blob.NewMemoryBucket()
 	fillSampleBucket(bucket)
 	core := localCore(&data.Dir{Root: "sampledata"}, bucket, []byte("sample"))
-	saved, err := filepath.Glob("sampledata/artifacts/*.json")
-	if err != nil {
-		logging.Fatal("list the sample documents", "error", err)
-	}
-	for _, path := range saved {
-		if err := core.Documents.FileSaved(context.Background(), access.System("sample"), path); err != nil {
-			logging.Fatal("file a sample document", "path", path, "error", err)
-		}
-	}
 	slog.Info("serving sample data", "as", user)
 	return localServer(core, user)
 }
@@ -181,14 +169,13 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		Describer:     describe.New("sample", claude.NewLimiter()),
 		Mail:          mail.NewMailgun("sample", "HCA-Team <hca@example.org>"),
 		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
-		CalendarMail:  model.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>", Key: []byte("sample")},
+		CalendarMail:  app.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>"},
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
 		ListMail:      db.ListMailConfig{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},
 		Asker:         ask.NewClaude("sample"),
 		Embedder:      embedder,
 		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
-		Digest:        digest.New("sample"),
 		Composer:      db.NewComposer("sample", claude.NewLimiter()),
 		Ops:           app.OpsDeps(&feedback.GitHubApp{ID: "sample", PrivateKey: githubKey}, "sample"),
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},

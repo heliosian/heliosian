@@ -216,8 +216,6 @@ func (set *generatedSet) build(m *Model, t *Table) {
 	switch t.Name {
 	case "EFFECTIVE_MEMBER":
 		set.rows = m.effectiveAll()
-	case "INBOX":
-		set.rows = []store.Row{}
 	case "BIRTHDAY":
 		set.rows = m.birthdayRows()
 	case "SEARCH":

@@ -281,12 +281,13 @@ func TestChatTellsOfNewMailOnce(t *testing.T) {
 	handler := auth.Fixed(rowan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
-	if !slices.Equal(anyStrings(first["known"]), []string{"doc00000000001"}) {
+	already := []string{"doc00000000001", "doc00000000201", "doc00000000202", "doc00000000203", "doc00000000204"}
+	if !slices.Equal(anyStrings(first["known"]), already) {
 		t.Fatalf("the first turn knew %v", first["known"])
 	}
 	arrived := s.mail(t, "Picture Day moves to Friday", "2026-09-28 08:00:00")
 	second := chat.keep(t, post(t, handler, chat.body(t, "And now?")))
-	if !slices.Contains(anyStrings(second["known"]), arrived) || len(anyStrings(second["known"])) != 2 {
+	if !slices.Contains(anyStrings(second["known"]), arrived) || len(anyStrings(second["known"])) != len(already)+1 {
 		t.Fatalf("the arrival was not kept as known: %v", second["known"])
 	}
 	chat.keep(t, post(t, handler, chat.body(t, "Still?")))

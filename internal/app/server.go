@@ -13,8 +13,8 @@ import (
 	"syscall"
 
 	"heliosian/internal/blob"
+	"heliosian/internal/hosts"
 	"heliosian/internal/logging"
-	"heliosian/internal/model"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
@@ -31,10 +31,10 @@ type destination struct {
 
 func hostsFor(domain string) map[string]destination {
 	out := map[string]destination{}
-	for _, a := range append([]model.App{model.HomeApp}, model.Apps...) {
-		out[model.Qualify(a.Hosts[0], domain)] = destination{app: a.Key}
+	for _, a := range hosts.Apps {
+		out[hosts.Qualify(a.Hosts[0], domain)] = destination{app: a.Key}
 		for _, alias := range a.Hosts[1:] {
-			out[model.Qualify(alias, domain)] = destination{app: a.Key, canonical: model.Qualify(a.Hosts[0], domain)}
+			out[hosts.Qualify(alias, domain)] = destination{app: a.Key, canonical: hosts.Qualify(a.Hosts[0], domain)}
 		}
 	}
 	return out

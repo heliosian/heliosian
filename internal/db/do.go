@@ -320,24 +320,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 			if row["parent"] != "" || row["kind"] != root["kind"] {
 				continue
 			}
-			held := map[string]bool{}
-			for _, link := range m.Table("DOCUMENT_GROUP").Referencing("document", row["id"]) {
-				if link["relation"] == "sent_to" {
-					held[link["group"]] = true
-				}
-			}
-			edits := []Edit{}
-			for _, group := range sentTo {
-				if !held[group] {
-					edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": row["id"], "group": group, "relation": "sent_to"}})
-				}
-			}
-			if len(edits) > 0 {
-				if _, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits}); err != nil {
-					return "", "", err
-				}
-			}
-			return row["id"], hash, nil
+			return row["id"], hash, addSentTo(ctx, s, queue, actor, env, row["id"], sentTo)
 		}
 	}
 	edits := []Edit{}
@@ -368,8 +351,27 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	return ids[at], hash, nil
 }
 
+func addSentTo(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, document string, sentTo []string) error {
+	held := map[string]bool{}
+	for _, group := range s.Model().sentTo(document) {
+		held[group] = true
+	}
+	edits := []Edit{}
+	for _, group := range sentTo {
+		if !held[group] {
+			edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": document, "group": group, "relation": "sent_to"}})
+		}
+	}
+	if len(edits) == 0 {
+		return nil
+	}
+	_, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits})
+	return err
+}
+
 func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, raw []byte) (string, error) {
-	root, sentTo, err := s.Model().mailRoot(raw)
+	m := s.Model()
+	root, sentTo, err := m.mailRoot(raw)
 	if errors.Is(err, errLoopMail) {
 		return "", nil
 	}
@@ -377,6 +379,18 @@ func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		return "", err
 	}
 	env := Env{System: "mail", Now: time.Now()}
+	sender, err := senderOf(raw)
+	if err != nil {
+		return "", err
+	}
+	copied, err := m.copyOf(ctx, pics.bucket, root["name"].(string), root["published"].(string), sender)
+	if err != nil {
+		return "", err
+	}
+	if copied != "" {
+		slog.InfoContext(ctx, "filed mail: a copy of mail already filed", "document", copied, "groups", len(sentTo))
+		return copied, addSentTo(ctx, s, queue, access.System(env.System), env, copied, sentTo)
+	}
 	document, hash, err := storeRoot(ctx, s, queue, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo)
 	if err != nil {
 		return "", err

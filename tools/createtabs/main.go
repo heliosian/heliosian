@@ -9,7 +9,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/env"
-	"heliosian/internal/id"
 	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
 	"heliosian/internal/store"
@@ -28,84 +27,16 @@ func withChangeLog(tabs []store.Tab) []tab {
 	return append(out, tab{store.ChangeLogTab, store.ChangeLogColumns})
 }
 
-var seeds = map[string]map[string]map[string]string{
-	"Apps": {"Categories": {"Category ID": model.EventsCategoryID, "Title": model.EventsCategoryTitle, "Emoji": model.EventsCategoryEmoji, "Style": model.StyleEvents, store.OrderColumn: "i"}},
-}
-
 var layouts = map[string][]tab{
 	"Artifacts": {
 		{"Documents", model.DocumentColumns},
-		{"To Dos", model.ToDoColumns},
-		{"Reads", model.ReadColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
-	"Feedback": {
-		{"Reports", model.ReportColumns},
-		{id.AliasesTab, id.AliasColumns},
 		{store.ChangeLogTab, store.ChangeLogColumns},
 	},
 	"Directory": withChangeLog(model.DirectoryTabs),
-	"Apps": {
-		{"Categories", model.HomeCategoryColumns},
-		{"Links", model.HomeLinkColumns},
-		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Visibility", model.HomeVisibilityColumns},
-		{"Audience", model.HomeAudienceColumns},
-		{"Widgets", model.HomeWidgetColumns},
-		{"Layout", model.HomeLayoutColumns},
-		{"To Dos", model.HomeToDoColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
-	"Events": {
-		{"Categories", model.ActivityCategoryColumns},
-		{"Activities", model.ActivityColumns},
-		{"Volunteers", model.VolunteerColumns},
-		{"Links", model.LinkColumns},
-		{"Settings", model.KeyValueColumns},
-		{"Notifications", model.NotificationColumns},
-		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Redirects", model.RedirectColumns},
-		{id.AliasesTab, id.AliasColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
 	"Staff Birthday List (Shared)": {
 		{db.BirthdaySharedTab, db.BirthdaySharedColumns},
 	},
-	"Calendar": {
-		{model.GoogleTab, model.GoogleColumns},
-		{model.PDFTab, model.PDFColumns},
-		{model.EventsTab, model.EventColumns},
-		{model.EnrichmentTab, model.EnrichmentColumns},
-		{model.OverridesTab, model.OverrideColumns},
-		{model.DayTypesTab, model.DayTypeColumns},
-		{model.DayOverridesTab, model.DayOverrideColumns},
-		{model.TagsTab, model.TagColumns},
-		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{model.FeedsTab, model.FeedColumns},
-		{model.SettingsTab, model.SettingColumns},
-		{model.RSVPsTab, model.RSVPColumns},
-		{model.InvitationsTab, model.InvitationColumns},
-		{model.InvitesTab, model.InviteColumns},
-		{model.InviteGroupsTab, model.InviteGroupColumns},
-		{model.BouncesTab, model.BounceColumns},
-		{model.MessagesTab, model.MessageColumns},
-		{id.AliasesTab, id.AliasColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
 	"Config": withChangeLog(model.ConfigTabs),
-	"Groups": {
-		{"Groups", model.GroupColumns},
-		{"Managers", model.ManagerColumns},
-		{"Rules", model.ListRuleColumns},
-		{"Additions", model.AdditionColumns},
-		{"Excluded", model.ExcludedColumns},
-		{id.AliasesTab, id.AliasColumns},
-		{"Messages", model.ListMessageColumns},
-		{"Deliveries", model.DeliveryColumns},
-		{model.AdminsTab.Name, model.AdminsTab.Columns},
-		{"Archived", model.ArchivedColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
 }
 
 func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err error) {
@@ -159,11 +90,6 @@ func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err erro
 		}
 		if err := source.AddTab(layout, t.title, t.header); err != nil {
 			return 0, 0, err
-		}
-		if seed := seeds[layout][t.title]; seed != nil {
-			if err := source.Insert(layout, t.title, []map[string]string{seed}); err != nil {
-				return 0, 0, err
-			}
 		}
 		log.Printf("created tab %q in %q with %d columns", t.title, layout, len(t.header))
 		tabs++

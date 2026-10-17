@@ -3,28 +3,18 @@ package model
 import (
 	"context"
 	"maps"
-	"net/http"
-	"net/http/httptest"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
-	"heliosian/internal/api"
-	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
-func sampleConfig(t *testing.T, whoAdmins ...string) (*data.Dir, *store.Queue, *Store) {
+func sampleConfig(t *testing.T) (*data.Dir, *store.Queue, *Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	for _, email := range whoAdmins {
-		if err := dir.Insert(DirectoryApp, adminsTabName, []map[string]string{{"Email": email}}); err != nil {
-			t.Fatal(err)
-		}
-	}
 	queue := store.NewQueue()
 	return dir, queue, sampleDirectory(t, dir, queue)
 }
@@ -122,46 +112,5 @@ func TestSignOutIsRecordedOncePerAddress(t *testing.T) {
 	}
 	if !slices.Equal(log, want) {
 		t.Errorf("change log %q, want %q", log, want)
-	}
-}
-
-func configMux(cache *Store, queue *store.Queue) *http.ServeMux {
-	mux := http.NewServeMux()
-	typedRegistry(cache, queue, []api.Type[*Model]{adminListResources(cache)}).Register(mux)
-	return mux
-}
-
-func TestAdminEditsAreCommits(t *testing.T) {
-	dir, queue, cache := sampleConfig(t)
-	const jordan = "jordan.whitfield@heliosschool.org"
-	mux := configMux(cache, queue)
-	post := func(path, body string, want int) {
-		t.Helper()
-		rec := httptest.NewRecorder()
-		auth.Fixed(jordan, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
-		if rec.Code != want {
-			t.Fatalf("%s: %d %s", path, rec.Code, rec.Body)
-		}
-	}
-	post("/api/admin-lists/super/edit", `{"admins":["`+jordan+`","asha.chandra@heliosschool.org"]}`, http.StatusNoContent)
-	if !cache.IsSuperAdmin("asha.chandra@heliosschool.org") {
-		t.Fatalf("super admins after the edit: %v", cache.Model().Config.SuperAdmins)
-	}
-	log := testkit.ChangeLines(t, dir, queue, ConfigApp)
-	if line := jordan + "|insert|Super Admins|Email=asha.chandra@heliosschool.org||"; !slices.Contains(log, line) {
-		t.Errorf("the change log lacks %q:\n%s", line, strings.Join(log, "\n"))
-	}
-}
-
-func TestEditsNeedTheirAdmin(t *testing.T) {
-	const asha = "asha.chandra@heliosschool.org"
-	_, queue, cache := sampleConfig(t, asha)
-	mux := configMux(cache, queue)
-	for _, who := range []string{"robin.whitfield@heliosschool.org", asha} {
-		rec := httptest.NewRecorder()
-		auth.Fixed(who, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/admin-lists/super/edit", strings.NewReader(`{"admins":["`+asha+`"]}`)))
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("super admin edit by %s: %d %s, want %d", who, rec.Code, rec.Body, http.StatusNotFound)
-		}
 	}
 }

@@ -2,6 +2,7 @@ package db
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"mime"
@@ -9,8 +10,10 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 )
@@ -28,13 +31,15 @@ var listGroups = map[string][]string{
 	"newstudentfamilies":  {"parents"},
 	"parentsandstudents":  {"parents", "students"},
 	"community":           {"everyone"},
-	"chat":                {"everyone"},
-	"chat2":               {"everyone"},
+	"chat":                {"chat"},
+	"chat2":               {"chat"},
 }
 
 var bandLists = map[string]string{"hawksandfalcons": "halcons-parents", "jaysandravens": "jayvens-parents", "condorsandospreys": "cospreys-parents"}
 
 var schoolYear = regexp.MustCompile(`^\d{4}-\d{2}\.`)
+
+const sameMailWithin = 10 * time.Minute
 
 func (m *Model) mailRoot(raw []byte) (map[string]any, []string, error) {
 	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
@@ -66,6 +71,60 @@ func (m *Model) mailRoot(raw []byte) (map[string]any, []string, error) {
 		row["author"] = author
 	}
 	return row, sentTo, nil
+}
+
+type mailSender struct {
+	from, id, to, list string
+}
+
+func senderOf(raw []byte) (mailSender, error) {
+	msg, err := netmail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		return mailSender{}, fmt.Errorf("not a mail message: %w", err)
+	}
+	h := func(name string) string { return strings.ToLower(strings.TrimSpace(msg.Header.Get(name))) }
+	return mailSender{from: h("From"), id: h("Message-Id"), to: h("To"), list: h("List-Id")}, nil
+}
+
+// A copy of one email is the same message reaching another mailbox (its Message-ID), or, as the school's mailer
+// sends each family its own off any list, the same subject from the same sender to someone else within minutes.
+func (s mailSender) copies(other mailSender) bool {
+	if s.from != other.from {
+		return false
+	}
+	if s.id == other.id {
+		return true
+	}
+	return s.list == "" && other.list == "" && s.to != other.to
+}
+
+func (m *Model) copyOf(ctx context.Context, bucket *blob.Bucket, name, published string, sender mailSender) (string, error) {
+	at, err := time.ParseInLocation(cells.StampFormat, published, School)
+	if err != nil {
+		return "", err
+	}
+	contents := m.Table("CONTENT")
+	for _, row := range m.Table("DOCUMENT").All() {
+		if row["parent"] != "" || row["kind"] != "mail" || row["message"] != "" || row["name"] != name {
+			continue
+		}
+		other, err := time.ParseInLocation(cells.StampFormat, row["published"], School)
+		if err != nil || other.Sub(at).Abs() > sameMailWithin {
+			continue
+		}
+		content, ok := contents.Get(row["content"])
+		if !ok {
+			continue
+		}
+		raw, _, err := bucket.Get(ctx, content["blob"])
+		if err != nil {
+			return "", err
+		}
+		if theirs, err := senderOf(raw); err == nil && sender.copies(theirs) {
+			return row["id"], nil
+		}
+	}
+	return "", nil
 }
 
 func listName(listID string) string {

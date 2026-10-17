@@ -3,7 +3,6 @@ package model
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"slices"
 	"time"
 
@@ -16,26 +15,17 @@ import (
 )
 
 type Model struct {
-	Config     *Config
-	Directory  *Directory
-	Calendar   *Calendar
-	Activities *Activities
-	EmailLists *EmailLists
-	Home       *Home
-	Feedback   *Feedback
-	Documents  *Documents
-	scope      *scope
+	Config    *Config
+	Directory *Directory
+	Documents *Documents
 }
 
 type Deps struct {
-	IDKey      []byte
-	Photos     blob.Checker
-	Static     blob.Checker
-	Calendar   blob.Checker
-	Activities blob.Checker
-	Home       blob.Checker
-	Objects    *blob.Bucket
-	Embedder   *artifacts.Vertex
+	IDKey    []byte
+	Photos   blob.Checker
+	Static   blob.Checker
+	Objects  *blob.Bucket
+	Embedder *artifacts.Vertex
 }
 
 type Store struct {
@@ -74,79 +64,6 @@ func parts(deps Deps, documents *documentObjects) []store.Part[Model] {
 			},
 		},
 		{
-			App: CalendarApp, Tabs: calendarTabs, Reads: []string{DirectoryApp},
-			Build: func(ctx context.Context, tables store.Tables, m *Model) error {
-				calendar, err := BuildCalendar(tables, m.Directory.Roster())
-				if err != nil {
-					return err
-				}
-				resolveImages(ctx, deps.Calendar, calendar)
-				m.Calendar = calendar
-				return nil
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				c := m.Calendar
-				slog.Info("loaded calendar model", "events", len(c.Events), "hidden", c.Hidden, "days", len(c.Days),
-					"feeds", len(c.Feeds), "skipped", c.Skipped, "took", took(d))
-			},
-		},
-		{
-			App: activitiesAppName, Tabs: activitiesTabs,
-			Build: func(ctx context.Context, tables store.Tables, m *Model) (err error) {
-				m.Activities, err = BuildActivities(ctx, tables, deps.Activities)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				children, volunteers := 0, 0
-				for _, a := range m.Activities.Activities {
-					children += len(a.Descendants())
-					for _, n := range append([]*Activity{a}, a.Descendants()...) {
-						volunteers += len(n.Volunteers)
-					}
-				}
-				slog.Info("loaded events model", "categories", len(m.Activities.Categories), "roots", len(m.Activities.Activities),
-					"children", children, "volunteers", volunteers, "skipped", m.Activities.Skipped, "took", took(d))
-			},
-		},
-		{
-			App: emailListsAppName, Tabs: emailListsTabs,
-			Build: func(_ context.Context, tables store.Tables, m *Model) (err error) {
-				m.EmailLists, err = BuildEmailLists(tables, deps.IDKey)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				rules := 0
-				for _, g := range m.EmailLists.Groups {
-					rules += len(g.Rules)
-				}
-				slog.Info("loaded groups model", "groups", len(m.EmailLists.Groups), "rules", rules, "messages", len(m.EmailLists.Messages), "deliveries", len(m.EmailLists.Deliveries), "took", took(d))
-			},
-		},
-		{
-			App: homeAppName, Tabs: homeTabs,
-			Build: func(ctx context.Context, tables store.Tables, m *Model) (err error) {
-				m.Home, err = BuildHome(ctx, tables, deps.Home)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				links := 0
-				for _, category := range m.Home.Categories {
-					links += len(category.Links)
-				}
-				slog.Info("loaded apps model", "categories", len(m.Home.Categories), "links", links, "took", took(d))
-			},
-		},
-		{
-			App: feedbackAppName, Tabs: feedbackTabs,
-			Build: func(ctx context.Context, tables store.Tables, m *Model) (err error) {
-				m.Feedback, err = buildFeedback(ctx, tables)
-				return err
-			},
-			Loaded: func(m *Model, d time.Duration) {
-				slog.Info("loaded feedback model", "reports", len(m.Feedback.reports), "took", took(d))
-			},
-		},
-		{
 			App: DocumentsApp, Tabs: documentsTabs,
 			Build: func(ctx context.Context, tables store.Tables, m *Model) (err error) {
 				m.Documents, err = documents.build(ctx, tables)
@@ -181,58 +98,8 @@ func NewStore(source data.Source, writer data.Writer, queue *store.Queue, deps D
 	return out, nil
 }
 
-type adminApp struct {
-	key        string
-	sheet      string
-	allowances []access.Allowance
-	listed     func(m *Model) []string
-}
-
-var adminApps = []adminApp{
-	{"who", DirectoryApp, WhoAdminAllowances, func(m *Model) []string { return m.Directory.admins }},
-	{"team", activitiesAppName, ActivitiesAdminAllowances, func(m *Model) []string { return m.Activities.admins }},
-	{"when", CalendarApp, CalendarAdminAllowances, func(m *Model) []string { return m.Calendar.admins }},
-	{"home", homeAppName, HomeAdminAllowances, func(m *Model) []string { return m.Home.admins }},
-}
-
-func (m *Model) AdminList(app string) AdminList {
-	for _, a := range adminApps {
-		if a.key == app {
-			return AdminList{app: a.key, sheet: a.sheet, allowances: append(slices.Clone(a.allowances), ManageAdmins(a.key)), listed: a.listed(m), superAdmins: m.Config.SuperAdmins}
-		}
-	}
-	panic("model: no admin list for " + app)
-}
-
 func (m *Model) IsSuperAdmin(email string) bool {
 	return slices.Contains(m.Config.SuperAdmins, mail.Normalize(email))
-}
-
-func (m *Model) SuperHeld(email string) []access.Allowance {
-	if !m.IsSuperAdmin(email) {
-		return nil
-	}
-	return SuperAllowances
-}
-
-func (m *Model) Held(email string) []access.Allowance {
-	out := []access.Allowance{}
-	for _, a := range adminApps {
-		out = append(out, m.AdminList(a.key).Held(email)...)
-	}
-	return append(out, m.SuperHeld(email)...)
-}
-
-func (m *Model) actor(r *http.Request, app string) access.Actor {
-	return m.Directory.Actor(r, m.AdminList(app).Held)
-}
-
-func (s *Store) Held(email string) []access.Allowance {
-	return s.Model().Held(email)
-}
-
-func (s *Store) IsSuperAdmin(email string) bool {
-	return s.Model().IsSuperAdmin(email)
 }
 
 func (s *Store) SignedOut(email string) (time.Time, bool) {

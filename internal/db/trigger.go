@@ -41,6 +41,8 @@ var stagedTriggers = []stagedTrigger{
 // Staged before the row's own delete; a blank table is every table.
 var deleteTriggers = []stagedTrigger{
 	{fire: aliasesGone},
+	{table: "DOCUMENT", fire: toDosGone},
+	{table: "TODO", fire: marksGone},
 }
 
 var committedTriggers = []committedTrigger{
@@ -57,6 +59,8 @@ var committedTriggers = []committedTrigger{
 	{table: "DOCUMENT", to: fetchInbox},
 	{table: "DOCUMENT", to: classifyInbox},
 	{table: "DOCUMENT_GROUP", to: classifyInbox},
+	{table: "DOCUMENT", to: digestInbox},
+	{table: "DOCUMENT_GROUP", to: digestInbox},
 	{table: "DOCUMENT", to: extractInbox},
 	{table: "CONTENT", to: extractInbox},
 	{table: "GROUP", to: geocodeInbox},
@@ -253,6 +257,22 @@ func hiddenGone(m *Model, c Change) ([]Edit, error) {
 		writes = append(writes, Edit{Delete: row["id"]})
 	}
 	return append(writes, Edit{Delete: c.Old["hidden_for"]}), nil
+}
+
+func toDosGone(m *Model, c Change) ([]Edit, error) {
+	writes := []Edit{}
+	for _, row := range m.Table("TODO").Referencing("document", c.Old["id"]) {
+		writes = append(writes, Edit{Delete: row["id"]})
+	}
+	return writes, nil
+}
+
+func marksGone(m *Model, c Change) ([]Edit, error) {
+	writes := []Edit{}
+	for _, row := range m.Table("TODO_MARK").Referencing("todo", c.Old["id"]) {
+		writes = append(writes, Edit{Delete: row["id"]})
+	}
+	return writes, nil
 }
 
 func aliasesGone(m *Model, c Change) ([]Edit, error) {

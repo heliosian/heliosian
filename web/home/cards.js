@@ -1,8 +1,9 @@
-import {state, isAdmin, tagLabelsOf, linkCategories, holdsApps} from './state.js';
+import {state, isAdmin, linkCategories, holdsApps} from './state.js';
 import {categoryMarkOf} from './dom.js';
 import {el, svg, toast} from '/elements.js';
 import {appOrigin} from '/appswitch.js';
-import {act} from '/data.js';
+import {answerEvent} from '/calendar.js';
+import {load} from '/router.js';
 
 function categoryGlyph(category, className) {
   const wrap = el('span', className);
@@ -89,27 +90,18 @@ function matches(link, query) {
   return `${link.title} ${link.description || ''} ${link.url}`.toLowerCase().includes(query);
 }
 
-export function audienceWords(rules) {
-  const parts = (rules || []).map(r => {
-    const bits = [...(r.roles || []), ...(r.grades || []), ...(r.classrooms || []), ...tagLabelsOf(r)];
-    if (r.search) {
-      bits.push(`“${r.search}”`);
-    }
-    return (r.kind === 'exclude' ? 'not ' : '') + bits.join(' · ');
-  });
-  const words = parts.join(' / ');
-  return words.length > 40 ? `${rules.length} ${rules.length === 1 ? 'rule' : 'rules'}` : words;
-}
-
-export function shownTo(rules, emails = []) {
-  const who = [];
-  if ((rules || []).length) {
-    who.push(audienceWords(rules));
+export function shownTo(thing) {
+  if (!thing.visibleTo) {
+    return 'Hidden';
   }
-  if (emails.length) {
-    who.push(emails.length === 1 ? '1 person' : `${emails.length} people`);
+  if (thing.visibleTo === state.model.everyone) {
+    return 'Shown to everyone';
   }
-  return who.length ? `Shown to ${who.join(' · ')}` : 'Shown to everyone';
+  const g = state.model.audiences[thing.visibleTo];
+  const rules = (thing.rules || []).length;
+  const people = (state.model.audienceMembers[thing.visibleTo] || []).length;
+  const counts = [rules ? `${rules} ${rules === 1 ? 'rule' : 'rules'}` : '', people ? `${people} ${people === 1 ? 'person' : 'people'}` : ''].filter(Boolean).join(', ');
+  return `Shown to ${g ? g.name : 'a group'}` + (counts ? ` (${counts})` : '');
 }
 
 function badges(link) {
@@ -149,24 +141,8 @@ export function renderCategories(query = '') {
 export function rsvpButtons(event) {
   const rsvp = el('div', 'event-rsvp');
   if (event.linkApp === 'celebrate') {
-    const held = (event.people || []).some(p => p.note !== 'waitlisted');
-    if (held) {
-      const send = el('button', 'event-invite');
-      send.type = 'button';
-      const label = () => {
-        send.replaceChildren(svg(event.answer === 'yes' ? 'check' : 'calendar-plus'), el('span', '', event.answer === 'yes' ? 'Invite sent' : 'Add to My Calendar'));
-        send.classList.toggle('is-sent', event.answer === 'yes');
-        send.title = event.answer === 'yes' ? 'Sent to your email - click to send it again' : 'Email me a calendar invite';
-      };
-      label();
-      send.addEventListener('click', async () => {
-        if (await answer(event, 'yes')) {
-          event.answer = 'yes';
-          label();
-          toast('A calendar invite is on its way to your email');
-        }
-      });
-      rsvp.append(send);
+    if (event.mine) {
+      rsvp.append(el('div', 'event-said', event.call));
     } else {
       const live = event.availability === 'available';
       const add = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
@@ -263,11 +239,12 @@ export function dropdown(toggle, menu) {
 
 async function answer(event, word) {
   try {
-    await act('events', event.id, 'answer', {answer: word});
+    await answerEvent(event.event, word, state.model.user.id);
   } catch (err) {
     toast(err.message);
     return false;
   }
+  load();
   return true;
 }
 

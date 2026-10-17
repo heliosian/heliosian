@@ -25,7 +25,6 @@ var DirectoryTabs = []store.Tab{
 	{Name: managersTable, Columns: managerColumns, Key: managerColumns},
 	{Name: photosTab, Columns: photoColumns, Key: []string{"Email", "Photo Name"}},
 	{Name: imagesTab, Columns: imageColumns, Key: []string{imageKind, imageName}},
-	AdminsTab,
 	{Name: geocodeTable, Columns: geocodeColumns, Key: []string{geocodeAddress}, AppendOnly: true},
 }
 

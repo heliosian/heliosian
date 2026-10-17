@@ -1,6 +1,6 @@
 # Helios Wiki
 
-Helios Wiki, at `wiki.heliosian.com`, is parent-to-parent info: a tree of pages anyone in the community writes and anyone signed in reads. It is an app like any other in `model.Apps`, so its place on Heliosian and the app switch follows its row on the Apps sheet's `Visibility` tab, and a new deployment finds no row and adds one listing nobody (`docs/home/data.md`).
+Helios Wiki, at `wiki.heliosian.com`, is parent-to-parent info: a tree of pages anyone in the community writes and anyone signed in reads. It is an app like any other, in `hosts.Apps` with an `APP` row of its own, so whom Heliosian and the app switch show it to is that row's `visible_to` (`docs/home/data.md`).
 
 It is built on the data model alone (`docs/datamodel.md`): it reads through `QUERY /api/q` and writes through `/api/do/wiki` and `POST /api/q`, as the signed-in person, so the policies decide everything it shows and allows.
 

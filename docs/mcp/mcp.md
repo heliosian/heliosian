@@ -1,6 +1,6 @@
 # Helios MCP
 
-Helios MCP, at `mcp.heliosian.com`, serves the data model (`docs/datamodel.md`) to Claude and any other client that speaks the Model Context Protocol, read as the person who connected it. The package is `internal/mcp`. It is an app in `model.Apps` like any other, so its place in the app switch follows its row on the Apps sheet's `Visibility` tab. That row only decides who is shown the app: anyone the directory admits can sign in on any host and use the query API, which is everything the tools read, so the row is no gate on the data.
+Helios MCP, at `mcp.heliosian.com`, serves the data model (`docs/datamodel.md`) to Claude and any other client that speaks the Model Context Protocol, read as the person who connected it. The package is `internal/mcp`. It is an app like any other, in `hosts.Apps` with an `APP` row of its own, so whom the app switch shows it to is that row's `visible_to` (`docs/home/data.md`). That row only decides who is shown the app: anyone the directory admits can sign in on any host and use the query API, which is everything the tools read, so the row is no gate on the data.
 
 ## Connecting
 

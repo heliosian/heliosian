@@ -399,7 +399,6 @@ func BuildDirectory(ctx context.Context, tables store.Tables, blobs, static blob
 		excluded:         map[string]bool{},
 		model: &Directory{
 			Families: map[string]Family{}, RoomParents: map[string][]string{},
-			admins: ReadAdmins(tables),
 		},
 	}
 	steps := []func() error{

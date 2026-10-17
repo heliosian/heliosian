@@ -1,5 +1,0 @@
-Group,Kind,Roles,Search,Classrooms,Grades,Tags,Family
-grp0000000001,include,,,,,tag:dtg0000000002,Parents
-grp0000000002,include,Parent,,,"Grade 5, Grade 6, Grade 7, Grade 8",,
-grp0000000002,exclude,,haddad,,,,
-grp0000000003,include,,,Hummingbirds,,,"Parents, Siblings"

@@ -1,5 +1,4 @@
 import {el} from '/elements.js';
-import {query, act} from '/data.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, emailOf, known, directory} from '/directory.js';
 import {api} from '/api.js';
@@ -95,16 +94,6 @@ export function adminPage({appName, allowed, email, sections}) {
   layout.append(rail, body);
   page.append(header(appName, email), layout);
   return page;
-}
-
-export function appAdmins(app) {
-  return {
-    load: async () => {
-      const read = await query('/api/admin-lists/' + encodeURIComponent(app));
-      return read.get(read.result).admins;
-    },
-    save: admins => act('admin-lists', app, 'edit', {admins}),
-  };
 }
 
 export function groupMembers(group) {

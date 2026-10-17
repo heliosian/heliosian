@@ -311,39 +311,6 @@ func everyPassage(*Document, int) bool {
 	return true
 }
 
-func TestSearchRanksTheMatchingChunkFirst(t *testing.T) {
-	m := sampleDocuments(t)
-	if len(m.Documents) != 12 || m.Documents[0].Date != "2026-10-02" {
-		t.Fatalf("documents: %d, first %s", len(m.Documents), m.Documents[0].Date)
-	}
-	if oldest, newest := m.Span(); oldest != "2026-08-30" || newest != "2026-10-02" {
-		t.Fatalf("span: %s to %s", oldest, newest)
-	}
-	embedder := vertex(t)
-	first := func(query string) DocumentHit {
-		t.Helper()
-		vectors, err := embedder.Embed(context.Background(), []string{query}, true, artifacts.AskDims)
-		if err != nil {
-			t.Fatal(err)
-		}
-		hits := m.Search(vectors[0], query, 3, everyPassage)
-		if len(hits) == 0 {
-			t.Fatalf("nothing found for %q", query)
-		}
-		return hits[0]
-	}
-	hit := first("picture day order forms")
-	if hit.Document.Chunks[hit.Index].Section != "ANNOUNCEMENTS & REMINDERS › Picture Day: Tuesday, 9/22" {
-		t.Fatalf("picture day: %+v", hit.Document.Chunks[hit.Index])
-	}
-	if hit = first("are nuts allowed at the bake sale"); hit.Document.Channel != "chat" {
-		t.Fatalf("nuts: %s %q", hit.Document.Channel, hit.Document.Title)
-	}
-	if hit = first("what to bring for family camping tents"); hit.Document.Kind != DocumentKindPage {
-		t.Fatalf("camping: %s %q", hit.Document.Kind, hit.Document.Title)
-	}
-}
-
 func TestAQuotedPassageIsReturnedOnce(t *testing.T) {
 	original := "The bake sale is on Friday in the courtyard and every plate needs its ingredients written on it so families with allergies can read them before their children choose."
 	embeddingModel := artifacts.Vertex{}.Model()

@@ -1,13 +1,8 @@
 package model
 
 import (
-	"net/http"
-	"slices"
 	"testing"
-	"time"
 
-	"heliosian/internal/access"
-	"heliosian/internal/api"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -36,8 +31,10 @@ const (
 
 var testKey = []byte("test")
 
+var sampleKey = []byte("sample")
+
 func sampleDeps(key []byte) Deps {
-	return Deps{IDKey: key, Static: testkit.None, Activities: testkit.All, Home: testkit.All}
+	return Deps{IDKey: key, Static: testkit.None}
 }
 
 func sampleStore(t *testing.T, dir *data.Dir, queue *store.Queue, deps Deps) *Store {
@@ -49,36 +46,11 @@ func sampleStore(t *testing.T, dir *data.Dir, queue *store.Queue, deps Deps) *St
 	return s
 }
 
-const outsider = "outsider@example.org"
-
-func outsideSuperAdmin(t *testing.T, dir *data.Dir) {
-	t.Helper()
-	if err := dir.Update(ConfigApp, superAdminsTab, map[string]string{configEmailColumn: jordan}, map[string]string{configEmailColumn: outsider}); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func sampleDirectory(t *testing.T, dir *data.Dir, queue *store.Queue) *Store {
 	t.Helper()
 	deps := sampleDeps(sampleKey)
 	deps.Photos = testkit.All
 	return sampleStore(t, dir, queue, deps)
-}
-
-func typedRegistry(s *Store, queue *store.Queue, types ...[]api.Type[*Model]) *api.Registry[*Model] {
-	reg := api.New(api.Config[*Model]{
-		Actor:  func(r *http.Request, m *Model) access.Actor { return m.Directory.Actor(r, m.Held) },
-		Held:   s.Held,
-		Now:    func() time.Time { return now() },
-		Queue:  queue,
-		Staged: s.In,
-		Scope:  (*Model).at,
-	})
-	for _, t := range slices.Concat(types...) {
-		reg.Add(t)
-	}
-	queue.OnSwap(func() { reg.Publish(s.Model()) })
-	return reg
 }
 
 func loadDirectory(t *testing.T, dir *data.Dir, photos, static blob.Checker, key []byte) *Directory {

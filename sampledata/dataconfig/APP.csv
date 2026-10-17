@@ -1,5 +1,12 @@
 id,key,name,subtitle,admins,visible_to,order
-app00000000001,who,Helios Who?,,grp00000000006,grp00000000004,i
-app00000000009,wiki,Helios Wiki,,grp00000000007,grp00000000004,j
-app00000000002,celebrate,Helios Celebrate,,grp00000000009,grp00000000004,k
+app00000000001,who,Helios Who?,A Visual Directory,grp00000000006,grp00000000004,i
+app00000000005,team,HCA-Team,HCA Volunteer Portal,,grp00000000004,ii
+app00000000002,celebrate,Helios Celebrate,Fun(d)raiser Party Tickets,grp00000000009,grp00000000004,k
+app00000000006,when,Helios When,Helios Calendar of Everything,,grp00000000004,kk
 app00000000003,birthday,Staff Birthdays,Staff Birthday Donations,grp00000000700,grp00000000703,l
+app00000000007,loop,Helios Loop,Email lists for events & more,,grp00000000008,m
+app00000000008,ask,Helios Ask,Ask about the school and what's on,,grp00000000004,n
+app00000000009,wiki,Helios Wiki,Parent-to-Parent Info & Support,grp00000000007,grp00000000004,o
+app00000000010,admin,Helios Admin,The data behind the apps,,grp00000000005,s
+app00000000011,mcp,Helios MCP,Helios's data for Claude and other AI tools,,grp00000000005,y
+app00000000004,home,Heliosian,,grp00000000015,grp00000000004,

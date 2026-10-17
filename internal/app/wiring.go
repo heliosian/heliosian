@@ -24,10 +24,10 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/describe"
-	"heliosian/internal/digest"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
 	"heliosian/internal/geocode"
+	"heliosian/internal/hosts"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/intercept"
 	"heliosian/internal/logging"
@@ -66,7 +66,7 @@ type Config struct {
 	ImageSearch   imagesearch.Search
 	Mail          *mail.Mailgun
 	CelebrateMail *mail.Mailgun
-	CalendarMail  model.CalendarMail
+	CalendarMail  CalendarMail
 	BirthdayMail  *mail.Mailgun
 	FeedbackFiler *feedback.GitHubApp
 	FeedbackBase  string
@@ -75,7 +75,6 @@ type Config struct {
 	Asker         *ask.Claude
 	Embedder      *artifacts.Vertex
 	ArtifactsMail artifacts.Inbox
-	Digest        *digest.Claude
 	Composer      *db.Composer
 	Ops           ops.Deps
 	Hooks         ops.Hooks
@@ -94,7 +93,6 @@ type Core struct {
 	Data      *db.Store
 	Pictures  *db.Pictures
 	Search    *db.Searcher
-	Documents *model.DocumentFiler
 	Queue     *store.Queue
 	ListMail  *db.ListMailer
 	Invites   *db.Invitations
@@ -118,7 +116,6 @@ func NewCore(cfg Config) *Core {
 	whenImages := blob.NewImages(cfg.Store, "when", "celebrate", "team")
 	models, err := model.NewStore(cfg.Source, cfg.Writer, queue, model.Deps{
 		IDKey: cfg.IDKey, Photos: cfg.Store, Static: static.Files{Root: "web/who"},
-		Calendar: whenImages, Activities: teamImages, Home: homeImages,
 		Objects: cfg.Bucket, Embedder: cfg.Embedder,
 	})
 	if err != nil {
@@ -129,39 +126,23 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
-	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: model.Origin(cfg.Domain)})
-	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, model.Origin(cfg.Domain))
+	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
+	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, hosts.Origin(cfg.Domain))
 	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
 		return func() string {
-			if key == "home" {
-				return model.HomeApp.Tagline
-			}
-			for _, a := range models.Model().Home.AppList() {
-				if a.Key == key {
-					return a.Tagline
-				}
-			}
-			return ""
+			return dataStore.Model().App(key)["subtitle"]
 		}
 	}
 	appName := func(key string) func() string {
 		return func() string {
-			if key == "home" {
-				return model.HomeApp.Name
-			}
-			for _, a := range models.Model().Home.AppList() {
-				if a.Key == key {
-					return a.Name
-				}
-			}
-			return key
+			return dataStore.Model().App(key)["name"]
 		}
 	}
 	whoAbout := directoryAbout(appName("who"), taglineOf("who"))
 	birthdayAbout := birthdaysAbout(appName("birthday"), taglineOf("birthday"))
 	loopAbout := listAbout(appName("loop"), taglineOf("loop"))
-	homeStyle := model.HomeCardStyle(appName("home"), taglineOf("home"))
+	homeStyle := db.HomeCardStyle(appName("home"), taglineOf("home"))
 	teamStyle := &sharecard.Style{
 		Palette: sharecard.Palette{
 			Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
@@ -172,35 +153,26 @@ func NewCore(cfg Config) *Core {
 	}
 	celebrateStyle := db.PartyCardStyle(appName("celebrate"), taglineOf("celebrate"))
 	calendarStyle := db.WhenCardStyle(appName("when"), taglineOf("when"))
-	digest.Start(models, queue, cfg.Digest)
 	mux := http.NewServeMux()
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
 	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
-	hooks := model.RegisterCalendar(calendarMux, model.CalendarDeps{
-		Store:  models,
-		Images: whenImages,
-		Search: cfg.ImageSearch,
-		Mail:   cfg.CalendarMail,
-		Queue:  queue,
-		IDKey:  cfg.IDKey,
-	})
+	for _, page := range []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/e/{id...}", "/events/{id...}"} {
+		calendarMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
+			serve.File(w, r, "web/when/index.html")
+		})
+	}
+	whenSearch := cfg.ImageSearch
+	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
+	whenSearch.Register(calendarMux, "/api/when", whenImages.Folder(), imagesearch.Members)
 	homeMux := http.NewServeMux()
-	home := model.RegisterHome(homeMux, model.HomeDeps{
-		Store:  models,
-		Images: homeImages,
-		Search: cfg.ImageSearch,
-		Style:  homeStyle,
-	})
-	feedbackAdmin := model.RegisterFeedbackAdmin(homeMux, models, cfg.Bucket, cfg.FeedbackFiler)
+	homePages := db.NewHomePages(dataStore, homeStyle)
+	homePages.Register(homeMux)
+	homeSearch := cfg.ImageSearch
+	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
+	homeSearch.Register(homeMux, "/api/home", homeImages.Folder(), imagesearch.Members)
 	teamMux := http.NewServeMux()
-	activities := model.NewActivities(model.ActivitiesDeps{
-		Store:    models,
-		Images:   teamImages,
-		Calendar: hooks,
-		Mailer:   cfg.Mail,
-	})
 	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}"} {
 		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/team/index.html")
@@ -225,10 +197,7 @@ func NewCore(cfg Config) *Core {
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
-	documents := model.RegisterDocuments(askMux, models, cfg.Embedder, queue, cfg.ArtifactsMail, func(ctx context.Context, raw []byte) error {
-		_, err := db.FileMail(ctx, dataStore, queue, pictures, raw)
-		return err
-	})
+	db.RegisterMailHook(askMux, dataStore, queue, pictures, cfg.ArtifactsMail.SigningKey)
 	loopMux := http.NewServeMux()
 	loopMux.Handle("GET /open/share/about.png", loopAbout)
 	for _, page := range []string{"/{$}", "/new", "/groups/{key}"} {
@@ -268,10 +237,10 @@ func NewCore(cfg Config) *Core {
 	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle)
 	whenPages.Register(calendarMux)
 	invitations := db.RegisterInvitations(calendarMux, dataStore, queue, pictures, tokens, schoolNow, db.InvitationConfig{
-		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: model.Origin(cfg.Domain),
+		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
-	birthdays := db.NewBirthdayMailer(dataStore, queue, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: model.Origin(cfg.Domain), Shared: cfg.Writer})
-	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: model.Origin(cfg.Domain), Now: schoolNow})
+	birthdays := db.NewBirthdayMailer(dataStore, queue, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
+	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: hosts.Origin(cfg.Domain), Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, mcp.Deps{
 		Data:     dataStore,
@@ -282,7 +251,7 @@ func NewCore(cfg Config) *Core {
 	})
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
-		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: model.HomePreviewHead(models, homeStyle)},
+		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: homePages.PreviewHead},
 		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead, Wrap: partyPages.Redirected},
@@ -293,18 +262,16 @@ func NewCore(cfg Config) *Core {
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
-	registry := model.NewRegistry(models, queue, hooks, activities, home, feedbackAdmin)
-	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: model.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
-	notifier := model.FeedbackNotifier{Sender: cfg.Mail, Base: cfg.FeedbackBase, SuperAdmins: func() []string { return models.Model().Config.SuperAdmins }}
-	feedbackIntake := model.NewFeedbackIntake(models, cfg.Bucket, notifier.Notify)
+	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: hosts.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
+	feedback := db.NewFeedback(dataStore, queue, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
+	feedback.RegisterTriage(homeMux, func(key string) string { return appName(key)() })
 	optIn := optInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
-		registry.Register(a.Mux)
 		db.Register(a.Mux, dataStore, queue, pictures, tokens, schoolNow)
 		db.RegisterSearch(a.Mux, dataStore, search, tokens, schoolNow)
 		a.Mux.Handle("GET "+OptInPath, optIn)
-		model.RegisterFeedback(a.Mux, a.Key, appName(a.Key), feedbackIntake)
+		feedback.Register(a.Mux, a.Key, appName(a.Key))
 		suggestions.Register(a.Mux)
 		folders := []string{"photos"}
 		if folder, ok := blob.ImageFolder(a.Key); ok {
@@ -316,6 +283,7 @@ func NewCore(cfg Config) *Core {
 	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterDrafts(teamMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterDrafts(birthdayMux, dataStore, cfg.Describer, tokens, schoolNow)
+	db.RegisterDrafts(homeMux, dataStore, cfg.Describer, tokens, schoolNow)
 	db.RegisterQueues(adminMux, dataStore, queue, tokens, schoolNow)
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
@@ -332,7 +300,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Search: search, Documents: documents, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
+		Store: models, Data: dataStore, Pictures: pictures, Search: search, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
@@ -412,13 +380,12 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Describer:     describe.New(anthropicKey, spend),
 		Mail:          newMailer(mailFrom),
 		CelebrateMail: newMailer(celebrateMailFrom),
-		CalendarMail:  calendarMail(sessionKey),
+		CalendarMail:  calendarMail(),
 		BirthdayMail:  newMailer(birthdayMailFrom),
 		FeedbackFiler: github,
 		FeedbackBase:  feedbackBase,
 		ListMail:      listMail(sessionKey),
 		Asker:         ask.NewClaude(anthropicKey),
-		Digest:        digest.New(anthropicKey),
 		Composer:      db.NewComposer(anthropicKey, spend),
 		Embedder:      embedder,
 		ArtifactsMail: artifactsMail(bucket),
@@ -454,6 +421,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			watcher.Start()
 			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
+			db.StartDigest(core.Data, core.Queue, bucket, anthropicKey, time.Now)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
 			db.StartGeocoder(core.Data, core.Queue, geocoder)

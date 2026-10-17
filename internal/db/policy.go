@@ -222,6 +222,21 @@ const PolicySource = `
       (and (not (exists DOCUMENT (in id (ancestors @d)) (= kind "mail")))
            (not (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to"))))))
 
+; @g is the group a section of links on the front page holds its links under
+(define (home_section @g)
+  (exists WIDGET (= group @g)))
+
+; @g is a section of links on the front page, or a link in one
+(define (home_thing @g)
+  (and (= @g.kind "group") (or (home_section @g) (home_section @g.parent))))
+
+; @g is a plain group with no slug that something on the front page shows to: an app, a widget, or a link
+(define (home_audience @g)
+  (and (= @g.kind "group") (blank @g.slug)
+       (or (exists WIDGET (= visible_to @g))
+           (exists APP (= visible_to @g))
+           (exists GROUP @l (= visible_to @g) (home_section @l.parent)))))
+
 ; @c is Markdown that no document but a wiki page or one of its side cards holds
 (define (wiki_content @c)
   (and (= @c.mime "text/markdown")
@@ -545,8 +560,24 @@ const PolicySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   key_points extracted slug hidden source terminal)
+   summary key_points repeats digest extracted slug hidden source terminal)
   true)
+; what the mail the viewer may read asks of its readers
+(read TODO (document_visible document))
+; every column of a to-do
+(read TODO (id document point title summary details link due order) true)
+; the viewer's own marks on to-dos
+(read TODO_MARK (= person @viewer))
+; every column of a mark
+(read TODO_MARK (id person todo state changed) true)
+; the viewer marks a to-do of mail they may read done or saved
+(insert TODO_MARK (and (= @new.person @viewer) (document_visible @new.todo.document)))
+; the viewer changes their own mark
+(set TODO_MARK.state (= @old.person @viewer))
+; and when they set it
+(set TODO_MARK.changed (= @old.person @viewer))
+; the viewer takes their own mark away
+(delete TODO_MARK (= @old.person @viewer))
 ; the bytes of documents and mail the viewer may see
 (read CONTENT
   (or (exists DOCUMENT @d (= content @row) (document_visible @d))
@@ -585,10 +616,6 @@ const PolicySource = `
 (set DOCUMENT.hidden (and (= @old.kind "wiki") (not (blank @old.author)) (= @old.author @viewer)))
 ; a wiki page's author deletes it once it has no sub-pages
 (delete DOCUMENT (and (= @old.kind "wiki") (= @old.author @viewer) (not (exists DOCUMENT (= parent @old) (= kind "wiki")))))
-; the viewer's own inbox
-(read INBOX (= person @viewer))
-; every column of an inbox entry
-(read INBOX (id person document) true)
 
 ; mail the viewer sent or received, and mail to groups they manage
 (read MESSAGE (message_visible @row))
@@ -1152,6 +1179,66 @@ const PolicySource = `
 (read APP (admin_of "home"))
 ; every front-page widget, whoever it is open to
 (read WIDGET (admin_of "home"))
+; rename an app, change its subtitle, its place, or whom it is open to
+(set APP.name (admin_of "home"))
+; and its subtitle
+(set APP.subtitle (admin_of "home"))
+; and its place in the app switch
+(set APP.order (admin_of "home"))
+; and whom it is open to
+(set APP.visible_to (admin_of "home"))
+; add a section of links
+(insert WIDGET (and (admin_of "home") (= @new.key "links")))
+; take a section of links away
+(delete WIDGET (and (admin_of "home") (= @old.key "links")))
+; a widget's heading
+(set WIDGET.name (admin_of "home"))
+; its mark
+(set WIDGET.icon (admin_of "home"))
+; how its links or apps are laid out
+(set WIDGET.style (admin_of "home"))
+; whether descriptions show
+(set WIDGET.descriptions (admin_of "home"))
+; whether it shows in the rail
+(set WIDGET.sidebar (admin_of "home"))
+; whom it shows to
+(set WIDGET.visible_to (admin_of "home"))
+; its place on the page
+(set WIDGET.order (admin_of "home"))
+; the front page's row layout
+(insert SETTING (and (admin_of "home") (= @new.app "home") (= @new.key "layout")))
+; and change it
+(set SETTING.value (and (admin_of "home") (= @old.app "home") (= @old.key "layout")))
+; start a plain group: a section's group, a link in a section, or the group a thing on the page shows to
+(insert GROUP (and (admin_of "home") (= @new.kind "group") (blank @new.slug) (or (blank @new.parent) (home_section @new.parent))))
+; a section's or a link's name
+(set GROUP.name (and (admin_of "home") (home_thing @old)))
+; a link's description
+(set GROUP.description (and (admin_of "home") (home_thing @old)))
+; a link's address
+(set GROUP.url (and (admin_of "home") (home_thing @old)))
+; whom a section or a link shows to
+(set GROUP.visible_to (and (admin_of "home") (home_thing @old)))
+; a link's place in its section
+(set GROUP.order (and (admin_of "home") (home_thing @old)))
+; move a link into another section
+(set GROUP.parent (and (admin_of "home") (home_section @old.parent) (home_section @new.parent)))
+; take a link away
+(delete GROUP (and (admin_of "home") (= @old.kind "group") (home_section @old.parent)))
+; take away a plain group nothing names any longer: a section after its widget, or the group a thing on the page showed to
+(delete GROUP (and (admin_of "home") (= @old.kind "group") (blank @old.parent) (blank @old.slug) (not @old.listed) (blank @old.managed_by)))
+; a rule of the group a thing on the page shows to
+(insert RULE (and (admin_of "home") (home_audience @new.group)))
+; and take it away
+(delete RULE (and (admin_of "home") (home_audience @old.group)))
+; someone named by hand in the group a thing on the page shows to
+(insert MEMBER (and (admin_of "home") (home_audience @new.group) (= @new.member "yes")))
+; and take them off
+(delete MEMBER (and (admin_of "home") (home_audience @old.group)))
+; a link's picture
+(insert PHOTO (and (admin_of "home") (home_section @new.group.parent)))
+; take it away
+(delete PHOTO (and (admin_of "home") (home_section @old.group.parent)))
 
 ;; Wiki admins
 

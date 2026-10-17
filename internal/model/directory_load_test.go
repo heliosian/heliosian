@@ -8,7 +8,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"heliosian/internal/data"
 	"heliosian/internal/store"
@@ -763,17 +762,5 @@ func TestFacetsReadOneWay(t *testing.T) {
 	}
 	if got := m.Facets(m.Person("jordan.whitfield@heliosschool.org"), false); len(got) != 2 {
 		t.Errorf("grades of a parent of two = %v", got)
-	}
-}
-
-func TestAlertsMatchTheDirectoryPage(t *testing.T) {
-	m := sampleModel(t)
-	years := StaleYears{Photo: 0.75, Facts: 0.6, FamilyPhoto: 1.5}
-	got := m.Alerts("jordan.whitfield@heliosschool.org", years, time.Now())
-	if len(got.Stale) != 4 || len(got.Privacy) != 1 {
-		t.Errorf("alerts for the sample parent = %+v, want 4 stale and one detail mismatched", got)
-	}
-	if got := m.Alerts("nobody@example.org", years, time.Now()); len(got.Stale) != 0 || len(got.Privacy) != 0 {
-		t.Errorf("alerts for a stranger = %+v, want none", got)
 	}
 }

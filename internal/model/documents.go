@@ -152,14 +152,7 @@ func (d *Document) normalize() error {
 type Documents struct {
 	Documents []*Document
 	Fetched   int
-	Summary   map[string]string
-	Points    map[string][]string
-	Audience  map[string]string
-	Read      map[string]string
-	Repeats   map[string]map[int]string
-	ToDos     []*ToDo
 	byKey     map[string]*Document
-	toDoIDs   map[string]*ToDo
 }
 
 type documentObjects struct {
@@ -192,9 +185,6 @@ func (d *documentObjects) build(ctx context.Context, tables store.Tables) (*Docu
 	held := maps.Clone(d.held)
 	d.mu.Unlock()
 	m := &Documents{Documents: make([]*Document, len(rows))}
-	if err := buildReads(tables, m); err != nil {
-		return nil, err
-	}
 	wanted := []int{}
 	for i, row := range rows {
 		if doc, ok := held[row["Object"]]; ok && doc.Key == row["Key"] {
@@ -236,7 +226,10 @@ func (d *documentObjects) build(ctx context.Context, tables store.Tables) (*Docu
 	d.mu.Unlock()
 	m.Fetched = len(wanted)
 	m.sort()
-	m.index(d.idKey)
+	m.byKey = map[string]*Document{}
+	for _, doc := range m.Documents {
+		m.byKey[doc.Key] = doc
+	}
 	return m, nil
 }
 
@@ -375,32 +368,7 @@ func quotes(words string, taken []string) bool {
 }
 
 var documentsTabs = []store.Tab{
-	{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}, Cascade: dropDocumentReading},
-	{Name: toDosTab, Columns: ToDoColumns, Key: []string{"Document", "Title"}},
-	{Name: readsTab, Columns: ReadColumns, Key: []string{"Document"}},
-}
-
-func splitPoints(cell string) []string {
-	out := []string{}
-	for _, line := range strings.Split(cell, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
-			out = append(out, line)
-		}
-	}
-	return out
-}
-
-func AudienceClassrooms(audience string) []string {
-	out := []string{}
-	if audience == DocumentForEveryone {
-		return out
-	}
-	for _, name := range strings.Split(audience, ",") {
-		if name = strings.TrimSpace(name); name != "" {
-			out = append(out, name)
-		}
-	}
-	return out
+	{Name: documentsTab, Columns: DocumentColumns, Key: []string{"Key"}},
 }
 
 func (d *Document) School() bool {

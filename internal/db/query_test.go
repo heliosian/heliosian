@@ -288,7 +288,8 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= vc_classroom.name "Hummingbirds")))`, "id", []string{"per00000000001", "per00000000003", "per00000020036", "per00000020043", "per00000020081", "per00000020090"}},
 		{"", `(from MEMBER (where (= guest_of.name_short "Rowan")))`, "person", []string{"per00000000004"}},
 		{"", `(from GROUP (where (or (= kind "family") (= replying "everyone"))))`, "id", []string{
-			"grp00000000020", "grp00000000030", "grp00000000503", "grp00000020043", "grp00000020044", "grp00000020045",
+			"grp00000000020", "grp00000000030", "grp00000000031", "grp00000000032", "grp00000000033", "grp00000000034", "grp00000000035", "grp00000000036", "grp00000000037", "grp00000000038",
+			"grp00000000503", "grp00000020043", "grp00000020044", "grp00000020045",
 			"grp00000020046", "grp00000020047", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051",
 			"grp00000020052", "grp00000020053", "grp00000020054", "grp00000020055", "grp00000020056", "grp00000020057",
 			"grp00000020058", "grp00000020059", "grp00000020061", "grp00000020062", "grp00000020063", "grp00000020064",
@@ -438,7 +439,7 @@ func TestInclude(t *testing.T) {
 		t.Fatalf("resources %v", r.Resources)
 	}
 	r = runAs(t, m, "", `(from RULE (include target))`)
-	if len(r.Resources["GROUP"]) != 24 {
+	if len(r.Resources["GROUP"]) != 25 {
 		t.Fatalf("resources %v", r.Resources)
 	}
 }
@@ -475,7 +476,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000020", "grp00000000030", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000000701", "grp00000000703", "grp00000020073", "grp00000020075", "grp00000020078"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000014", "grp00000000020", "grp00000000030", "grp00000000036", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000000701", "grp00000000703", "grp00000020073", "grp00000020075", "grp00000020078"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": "per00000000002", "member": "excluded"}}})

@@ -22,10 +22,11 @@ const (
 	sweepInbox
 	inviteInbox
 	birthdayInbox
+	digestInbox
 	inboxCount
 )
 
-var idleInboxes = []inboxName{consentInbox, fetchInbox, classifyInbox, extractInbox, geocodeInbox, sweepInbox}
+var idleInboxes = []inboxName{consentInbox, fetchInbox, classifyInbox, extractInbox, geocodeInbox, sweepInbox, digestInbox}
 
 type services struct {
 	inboxes [inboxCount]*inbox

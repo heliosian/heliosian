@@ -1,6 +1,6 @@
 # Helios When
 
-Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse - the school's events, the HCA's activities, Celebrate's parties and what the community adds, one data model under all of them (`docs/datamodel.md`: Calendar import, Saved searches, Guest lists). It lives at the first of its `Hosts` in `internal/model/home.go`; the others there only send their root to it and answer 404 for anything else (`route` in `internal/app/server.go`). The pages are `web/when/`: they read everything in one `/api/q` batch (`loadModel` in `web/when/state.js`) and write through `/api/q` batches (`web/when/writes.js`) and `/api/do/photo`, under the policies, so the server holds no When-only rules for them. Its host also serves the page shell for each address (`RegisterCalendar` in `internal/model/calendar_routes.go`), the feeds (`RegisterFeeds`), the share cards and previews (`WhenPages`), the guest lists' mail and outside pages (`RegisterInvitations`), and the delivery reports of its mail (`Deliveries`), all in `internal/db`.
+Helios When is the school year as one family sees it: what kind of day today is for their students' classrooms, what is coming up, and the whole year to browse - the school's events, the HCA's activities, Celebrate's parties and what the community adds, one data model under all of them (`docs/datamodel.md`: Calendar import, Saved searches, Guest lists). It lives at the first of its `Hosts` in `hosts.Apps` (`internal/hosts/hosts.go`); the others there only send their root to it and answer 404 for anything else (`route` in `internal/app/server.go`). The pages are `web/when/`: they read everything in one `/api/q` batch (`loadModel` in `web/when/state.js`) and write through `/api/q` batches (`web/when/writes.js`) and `/api/do/photo`, under the policies, so the server holds no When-only rules for them. Its host also serves the page shell for each address (`calendarMux` in `internal/app/wiring.go`), and from `internal/db` the feeds (`RegisterFeeds`), the share cards and previews (`WhenPages`), the guest lists' mail and outside pages (`RegisterInvitations`), and the delivery reports of its mail (`Deliveries`).
 
 ## What a viewer sees
 
@@ -31,7 +31,7 @@ Search is the top bar's box, as in the other apps; `/` puts the cursor in it. It
 
 ## The front page
 
-Heliosian's Upcoming widget and the calendar in its rail are read from old When's sheet through the resource API (`docs/api.md`, Helios When; `docs/home/home.md`), not from the data model, and so are their answer buttons and the pictures they show (`/open/banner/{id}`).
+Heliosian's Upcoming widget and the calendar in its rail read the same events, saved searches and school days as this page, through the same code (`web/common/calendar.js`: `calendarQueries`, `buildCalendar`, `matchingQuery`, `roomsOn`), and their RSVP buttons answer as this page's do (`answerEvent`); `docs/home/home.md` describes them.
 
 ## Sharing an event
 

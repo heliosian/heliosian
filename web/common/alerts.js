@@ -1,4 +1,3 @@
-import {batch} from '/data.js';
 import {queries} from '/rail.js';
 import {eventPath} from '/dayrows.js';
 import {el} from '/elements.js';
@@ -282,19 +281,20 @@ export function initAlerts() {
   if (!user || document.querySelector('.rsvp-alert, .approvals-alert, .late-alert')) {
     return;
   }
-  Promise.all([batch({
-    waiting: '/api/events?waiting',
-    events: '/api/events?status=pending&can=approve',
-  }), queries({
+  Promise.all([queries({
+    waiting: `(from GROUP @e (where (= kind "event") (not (in status "closed" "cancelled")) (or (>= start today) (>= end today)) (not (manages @e))
+      (exists MESSAGE @m (= kind "invitation") (= group @e) (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer)))))
+      (not (exists MEMBER (= person @viewer) (or (= group @e.rsvp_yes) (= group @e.rsvp_no) (= group @e.hidden_for))))) (order start asc) (columns name slug start all_day))`,
+    events: '(from GROUP @g (where (= kind "event") (= status "pending") (admin_of "when")) (columns name slug start))',
     activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name slug start))',
     parties: '(from GROUP @g (where (= kind "party") (= status "pending") (exists GROUP @u (= id @g.parent) (runs_list @u))) (columns name slug start))',
-  }), birthdayWork()]).then(([read, data, work]) => {
-    const all = name => read.result[name].map(read.get);
+  }), birthdayWork()]).then(([data, work]) => {
     const groups = name => data[name].result.map(id => data[name].resources.GROUP[id]);
     const activities = groups('activities').map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
     const parties = groups('parties').map(g => ({app: 'celebrate', title: g.name, start: g.start || '', path: '/p/' + encodeURIComponent(g.slug || g.id)}));
-    showRSVP(user, all('waiting').sort(byStart).map(e => ({title: e.title, start: e.start, allDay: e.allDay, path: eventPath(e)})));
-    showApprovals(user, [...activities, ...parties, ...all('events').map(a => ({app: a.app, title: a.title, start: a.start, path: a.path}))].sort(byStart));
+    const events = groups('events').map(g => ({app: 'when', title: g.name, start: g.start || '', path: eventPath({id: g.id, address: g.slug || ''})}));
+    showRSVP(user, groups('waiting').map(g => ({title: g.name, start: g.start, allDay: g.all_day === 'Yes', path: eventPath({id: g.id, address: g.slug || ''})})));
+    showApprovals(user, [...activities, ...parties, ...events].sort(byStart));
     const late = work.items.filter(sv => sv.late).map(sv => ({
       name: sv.name,
       step: sv.late.step,

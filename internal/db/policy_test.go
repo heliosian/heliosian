@@ -16,6 +16,7 @@ const (
 	parent  = "per00000000002"
 	staff   = "per00000000003"
 	guest   = "per00000000004"
+	whenApp = "app00000000006"
 )
 
 func as(t *testing.T, s *Store, viewer, src string) []store.Row {
@@ -62,18 +63,18 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"PERSON_SETTING":   {0, 0, 0, 1, 0},
 		"BIRTHDAY_YEAR":    {0, 0, 7, 7, 0},
 		"SAVED_SEARCH":     {0, 0, 1, 1, 0},
-		"GROUP":            {0, 133, 140, 143, 0},
+		"GROUP":            {0, 150, 158, 165, 0},
 		"MEMBER":           {0, 334, 345, 345, 1},
-		"EFFECTIVE_MEMBER": {0, 548, 559, 562, 1},
-		"RULE":             {0, 0, 0, 29, 0},
-		"DOCUMENT":         {8, 8, 9, 9, 8},
-		"DOCUMENT_GROUP":   {0, 0, 1, 1, 0},
+		"EFFECTIVE_MEMBER": {0, 694, 705, 708, 1},
+		"RULE":             {0, 0, 0, 38, 0},
+		"DOCUMENT":         {8, 9, 13, 13, 8},
+		"DOCUMENT_GROUP":   {0, 1, 7, 7, 0},
+		"TODO":             {0, 0, 4, 4, 0},
 		"CONTENT":          {6, 6, 6, 6, 6},
-		"INBOX":            {0, 0, 0, 0, 0},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CHARITY":          {0, 0, 5, 5, 0},
-		"APP":              {0, 3, 4, 4, 0},
+		"APP":              {0, 7, 9, 11, 0},
 		"ALIAS":            {0, 1, 1, 1, 0},
 	} {
 		for i, viewer := range viewers {
@@ -216,7 +217,7 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 		{Insert: "GROUP", As: "admins", Row: map[string]any{"posting": "members", "replying": "members", "kind": "admins", "name": "When Admins", "status": "open"}},
 		{Set: "@admins", Cells: map[string]any{"visible_to": "@admins"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@admins", "person": student, "member": "yes"}},
-		{Insert: "APP", Row: map[string]any{"key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "@admins"}},
+		{Set: whenApp, Cells: map[string]any{"admins": "@admins"}},
 		{Insert: "CONTENT", As: "reply", Row: map[string]any{"hash": "e5", "blob": "content/e5", "mime": "message/rfc822", "size": "50"}},
 		{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "reply", "group": "grp00000000040", "content": "@reply", "created": "2026-09-27 10:00"}},
 	})[4]
@@ -298,7 +299,7 @@ func TestAnAppsAdminsAppointManagers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	apply(t, s, queue, []Edit{
 		{Delete: memberRow(t, s, "grp00000000005", staff)},
-		{Insert: "APP", Row: map[string]any{"key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"}},
+		{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}},
 	})
 	write := func(viewer string, edits ...Edit) error {
 		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
@@ -630,7 +631,7 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 0 {
 		t.Fatal("a pending event is visible to someone neither host nor When admin")
 	}
-	apply(t, s, queue, []Edit{{Insert: "APP", Row: map[string]any{"key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"}}})
+	apply(t, s, queue, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a When admin can't see a pending event")
 	}
@@ -715,7 +716,7 @@ func TestAuthorize(t *testing.T) {
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
 		t.Fatal("someone neither super admin nor When admin may change an event's status")
 	}
-	apply(t, s, queue, []Edit{{Insert: "APP", Row: map[string]any{"key": "when", "name": "Helios Calendar", "visible_to": "grp00000000004", "admins": "grp00000000003"}}})
+	apply(t, s, queue, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err != nil {
 		t.Fatalf("a When admin may not change an event's status: %v", err)
 	}

@@ -472,6 +472,69 @@ func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
 	}
 }
 
+func TestEachFamilysCopyOfOneEmailIsFiledOnce(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	mail := func(from, to, id, date, list, subject string) []byte {
+		header := "From: " + from + "\r\nTo: " + to + "\r\nDate: " + date + "\r\nSubject: " + subject + "\r\nMessage-Id: <" + id + ">\r\n"
+		if list != "" {
+			header += "List-Id: <" + list + ">\r\n"
+		}
+		return []byte(header + "\r\nRead it here: https://example.org/n?for=" + to + "\r\n")
+	}
+	newsletter := "Helios Weekly Newsletter 2026 Oct 16"
+	copyTo := func(from, to, date string) []byte {
+		return mail(from, to, to+"@mail3.veracross.com", date, "", newsletter)
+	}
+	school := "Helios School <m@mail3.veracross.com>"
+	file := func(eml []byte) string {
+		t.Helper()
+		id, err := FileMail(context.Background(), s, queue, pics, eml)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	first := file(copyTo(school, "rowan@example.org", "Fri, 16 Oct 2026 20:04:26 +0000"))
+	if second := file(copyTo(school, "maya@example.org", "Fri, 16 Oct 2026 20:04:28 +0000")); second != first {
+		t.Fatalf("a second family's copy two seconds later was filed apart: %s and %s", first, second)
+	}
+	for name, eml := range map[string][]byte{
+		"another sender":                      copyTo("Maya Lindqvist <maya.lindqvist@example.org>", "rowan@example.org", "Fri, 16 Oct 2026 20:04:27 +0000"),
+		"an hour later":                       copyTo(school, "juni@example.org", "Fri, 16 Oct 2026 21:04:26 +0000"),
+		"the week before":                     copyTo(school, "rowan@example.org", "Fri, 09 Oct 2026 20:04:26 +0000"),
+		"another message to the same address": mail(school, "rowan@example.org", "rowan-again@mail3.veracross.com", "Fri, 16 Oct 2026 20:05:26 +0000", "", newsletter),
+	} {
+		if id := file(eml); id == first {
+			t.Errorf("%s: filed as the same email", name)
+		}
+	}
+
+	parent := "Patti Wilczek <patti@example.org>"
+	posted := file(mail(parent, "Parents <parentsonly@heliosschool.org>", "fair@example.org", "Fri, 16 Oct 2026 20:10:00 +0000", "parentsonly.heliosschool.org", "Spring Fair"))
+	if again := file(mail(parent, "Parents and Staff <parentsandstaff@heliosschool.org>", "fair@example.org", "Fri, 16 Oct 2026 20:10:00 +0000", "parentsandstaff.heliosschool.org", "Spring Fair")); again != posted {
+		t.Fatalf("one message through two lists was filed apart: %s and %s", posted, again)
+	}
+	if got := strings.Join(sentToSorted(s, posted), " "); got != "grp00000000002 grp00000000003" {
+		t.Errorf("the email is sent to %s, want the parents of the first list and the staff of the second", got)
+	}
+	reply := file(mail(parent, "annemarie@example.org", "reply-1@example.org", "Fri, 16 Oct 2026 20:20:00 +0000", "parentsonly.heliosschool.org", "Re: Annual Fund"))
+	for name, eml := range map[string][]byte{
+		"a reply on the list to someone else":   mail(parent, "kristine@example.org", "reply-2@example.org", "Fri, 16 Oct 2026 20:26:40 +0000", "parentsonly.heliosschool.org", "Re: Annual Fund"),
+		"the same announcement to another list": mail(parent, "Parents and Staff <parentsandstaff@heliosschool.org>", "reply-3@example.org", "Fri, 16 Oct 2026 20:21:00 +0000", "parentsandstaff.heliosschool.org", "Re: Annual Fund"),
+	} {
+		if id := file(eml); id == reply {
+			t.Errorf("%s: filed as the same email", name)
+		}
+	}
+}
+
+func sentToSorted(s *Store, document string) []string {
+	out := s.Model().sentTo(document)
+	slices.Sort(out)
+	return out
+}
+
 func TestMailIsSentToItsListsGroups(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	jayvens := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"}}})[0]
@@ -485,8 +548,8 @@ func TestMailIsSentToItsListsGroups(t *testing.T) {
 		"<2020-21.hummingbirds.parents.heliosns.org>":              "mail grp00000000030",
 		"<hummingbirds.students.heliosns.org>":                     "mail grp00000000010",
 		"<jaysandravens.heliosns.org>":                             "mail " + jayvens,
-		"<chat.heliosschool.org>":                                  "mail grp00000000004",
-		"<chat2.heliosschool.org>":                                 "mail grp00000000004",
+		"<chat.heliosschool.org>":                                  "mail grp00000000014",
+		"<chat2.heliosschool.org>":                                 "mail grp00000000014",
 	} {
 		root, sentTo, err := m.mailRoot([]byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: " + listID + "\r\n\r\nhello\r\n"))
 		if err != nil {

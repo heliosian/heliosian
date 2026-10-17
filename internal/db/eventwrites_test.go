@@ -14,7 +14,7 @@ func TestEventsAreAddedAnsweredAndApproved(t *testing.T) {
 		{Set: community, Cells: map[string]any{"adding": "approval"}},
 		{Insert: "GROUP", As: "admins", Row: map[string]any{"kind": "admins", "name": "When Admins", "status": "open", "managed_by": "grp00000000005"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@admins", "person": student, "member": "yes"}},
-		{Insert: "APP", Row: map[string]any{"key": "when", "name": "Helios When", "admins": "@admins", "visible_to": "grp00000000004"}},
+		{Set: whenApp, Cells: map[string]any{"admins": "@admins"}},
 	})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
 		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})

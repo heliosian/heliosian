@@ -124,7 +124,6 @@ type Directory struct {
 	familyKeysByEmail map[string][]string
 	aliases           EmailAliases
 	tags              map[string]*tagRecord
-	admins            []string
 	unlocated         []string
 }
 

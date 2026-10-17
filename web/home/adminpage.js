@@ -1,17 +1,24 @@
 import {state, isAdmin} from './state.js';
 import {el} from '/elements.js';
-import {adminPage as buildAdminPage, adminsCard, appAdmins} from '/admin.js';
-import {query, act} from '/data.js';
+import {adminPage as buildAdminPage, adminsCard, groupMembers} from '/admin.js';
+import {queries} from '/rail.js';
+import {api} from '/api.js';
 import {render} from '/router.js';
 
-const feedback = {rows: [], filter: 'New', open: new URLSearchParams(location.search).get('report') || ''};
+const feedback = {rows: [], people: {}, apps: {}, filter: 'new', open: new URLSearchParams(location.search).get('report') || ''};
+
+const statusWords = {new: 'New', filed: 'Filed', dismissed: 'Dismissed'};
+
+function nameOf(id) {
+  return (feedback.people[id] || {}).name_show || 'someone';
+}
 
 function describe(report) {
-  const parts = [report.appName || report.app, report.received].filter(Boolean);
-  if (report.status === 'Filed') {
-    parts.push(`filed by ${report.handledBy}`);
-  } else if (report.status === 'Dismissed') {
-    parts.push(`dismissed by ${report.handledBy}`);
+  const parts = [feedback.apps[report.app] || report.app, (report.added || '').slice(0, 16)].filter(Boolean);
+  if (report.status === 'filed') {
+    parts.push(`filed by ${nameOf(report.handled_by)}`);
+  } else if (report.status === 'dismissed') {
+    parts.push(`dismissed by ${nameOf(report.handled_by)}`);
   }
   return parts.join(' · ');
 }
@@ -34,31 +41,33 @@ function field(tag, label, value, attrs = {}) {
 }
 
 async function loadFeedback() {
-  const read = await query('/api/feedback-reports');
-  feedback.rows = read.result.map(read.get);
+  const a = await queries({
+    reports: '(from REPORT (order added desc) (include added_by handled_by) (columns app kind summary details url page browser viewport screen language time_zone errors screenshot status issue handled handled_by added_by added))',
+    reportApps: '(from APP (columns key name))',
+  });
+  feedback.rows = a.reports.result.map(id => a.reports.resources.REPORT[id]);
+  feedback.people = a.reports.resources.PERSON || {};
+  feedback.apps = Object.fromEntries(Object.values(a.reportApps.resources.APP || {}).map(x => [x.key, x.name]));
 }
 
 async function fillReport(card, id, redraw) {
   card.hidden = false;
   card.replaceChildren();
-  let report;
-  try {
-    const read = await query('/api/feedback-reports/' + encodeURIComponent(id));
-    report = read.get(read.result);
-  } catch (err) {
-    card.textContent = `Could not open that report: ${err.message}`;
+  const report = feedback.rows.find(r => r.id === id);
+  if (!report) {
+    card.textContent = 'Could not open that report.';
     return;
   }
   const facts = el('dl');
   const rows = [
-    ['Reporter', `${report.email} (${report.role})`],
-    ['App', report.appName],
+    ['Reporter', nameOf(report.added_by)],
+    ['App', feedback.apps[report.app] || report.app],
     ['Page', report.page],
     ['Address', report.url],
     ['Browser', report.browser],
     ['Viewport', [report.viewport, report.screen].filter(Boolean).join(' of ')],
-    ['Language', [report.language, report.timezone].filter(Boolean).join(' · ')],
-    ['Errors', (report.errors || []).join('\n')],
+    ['Language', [report.language, report.time_zone].filter(Boolean).join(' · ')],
+    ['Errors', report.errors],
   ];
   for (const [name, value] of rows) {
     if (value) {
@@ -68,7 +77,7 @@ async function fillReport(card, id, redraw) {
   card.append(el('h3', '', report.summary), el('div', 'said', report.details || 'No details given.'), facts);
   if (report.screenshot) {
     const link = el('a', 'shot');
-    link.href = `/api/admin/feedback/${encodeURIComponent(report.id)}/screenshot`;
+    link.href = `/api/blob/${encodeURIComponent(report.id)}/screenshot`;
     link.target = '_blank';
     link.rel = 'noopener';
     const img = el('img');
@@ -77,8 +86,8 @@ async function fillReport(card, id, redraw) {
     link.append(img);
     card.append(link);
   }
-  if (report.status !== 'New') {
-    card.append(el('div', 'hint', `${report.status === 'Filed' ? 'Filed' : 'Dismissed'} by ${report.handledBy}.`));
+  if (report.status !== 'new') {
+    card.append(el('div', 'hint', `${statusWords[report.status]} by ${nameOf(report.handled_by)}.`));
     if (report.issue) {
       const actions = el('div', 'card-actions');
       actions.append(issueLink(report, 'button', 'Open the issue'));
@@ -86,43 +95,57 @@ async function fillReport(card, id, redraw) {
     }
     return;
   }
-  const hint = report.can.file
-    ? `This is what ${report.draft.repo} will get, with the reporter's address already taken out. Edit it into an issue worth keeping, then file it.`
+  let draft;
+  try {
+    draft = await api('POST', '/api/do/report-draft', {report: report.id});
+  } catch (err) {
+    card.append(el('div', 'hint', `Could not draft the issue: ${err.message}`));
+    return;
+  }
+  const hint = draft.filer
+    ? `This is what ${draft.repo} will get, with the reporter's address already taken out. Edit it into an issue worth keeping, then file it.`
     : 'Filing on GitHub is not set up on this server, so this report can only be dismissed.';
-  const title = field('input', 'Title', report.draft.title, {type: 'text', maxLength: 200});
-  const body = field('textarea', 'Body', report.draft.body);
-  const issueType = field('input', 'Type', report.draft.type, {type: 'text'});
-  const labels = field('input', 'Labels', (report.draft.labels || []).join(', '), {type: 'text'});
+  const title = field('input', 'Title', draft.title, {type: 'text', maxLength: 200});
+  const body = field('textarea', 'Body', draft.body);
+  const issueType = field('input', 'Type', draft.type, {type: 'text'});
+  const labels = field('input', 'Labels', (draft.labels || []).join(', '), {type: 'text'});
   const status = el('span', 'save-status');
-  const run = async (action, working, body) => {
+  const run = async (working, work) => {
     status.classList.remove('error');
     status.textContent = working;
     try {
-      await act('feedback-reports', report.id, action, body);
+      await work();
     } catch (err) {
       status.classList.add('error');
       status.textContent = err.message;
       return false;
     }
+    await loadFeedback();
     await redraw();
     return true;
   };
   const fileButton = el('button', 'button', 'File on GitHub');
   fileButton.type = 'button';
-  fileButton.disabled = !report.can.file;
+  fileButton.disabled = !draft.filer;
   fileButton.addEventListener('click', async () => {
     fileButton.disabled = true;
-    const done = await run('file', 'Filing…', {
+    const done = await run('Filing…', () => api('POST', '/api/do/file-report', {
+      report: report.id,
       title: title.input.value,
       body: body.input.value,
       type: issueType.input.value,
       labels: labels.input.value.split(',').map(l => l.trim()).filter(Boolean),
-    });
+    }));
     fileButton.disabled = done;
   });
   const dismissButton = el('button', 'link-button danger', 'Dismiss');
   dismissButton.type = 'button';
-  dismissButton.addEventListener('click', () => run('dismiss', 'Dismissing…'));
+  dismissButton.addEventListener('click', () => run('Dismissing…', () => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const handled = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    return api('POST', '/api/q', {batch: [{set: report.id, cells: {status: 'dismissed', handled, handled_by: state.model.user.id}}]});
+  }));
   const actions = el('div', 'report-actions');
   actions.append(fileButton, dismissButton, status);
   card.append(el('div', 'hint', hint), title.wrap, body.wrap, issueType.wrap, labels.wrap, actions);
@@ -140,7 +163,7 @@ function feedbackCard() {
     list.replaceChildren();
     const shown = feedback.rows.filter(r => !feedback.filter || r.status === feedback.filter);
     if (!shown.length) {
-      list.append(el('div', 'hint', feedback.filter === 'New' ? 'Nothing waiting. Everything reported has been filed or dismissed.' : 'Nothing here.'));
+      list.append(el('div', 'hint', feedback.filter === 'new' ? 'Nothing waiting. Everything reported has been filed or dismissed.' : 'Nothing here.'));
     }
     for (const report of shown) {
       const row = el('div', 'report-row' + (feedback.open === report.id ? ' open' : ''));
@@ -164,7 +187,7 @@ function feedbackCard() {
     paint();
     fillReport(detail, id, render);
   };
-  for (const [label, value] of [['New', 'New'], ['Filed', 'Filed'], ['Dismissed', 'Dismissed'], ['All', '']]) {
+  for (const [label, value] of [['New', 'new'], ['Filed', 'filed'], ['Dismissed', 'dismissed'], ['All', '']]) {
     const chip = el('button', 'filter-chip' + (feedback.filter === value ? ' active' : ''), label);
     chip.type = 'button';
     chip.addEventListener('click', () => {
@@ -186,15 +209,18 @@ function feedbackCard() {
 }
 
 async function fillAdminPage(slot) {
-  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.', ...appAdmins('home')})}];
-  if (state.model.allowances.includes('feedback')) {
+  const control = [{key: 'admins', label: 'Admins', card: () => adminsCard({
+    hint: 'Whoever is on this list can add, edit, and delete links and categories, and reach this page. Changes save immediately.',
+    ...groupMembers(['in', {n: 'id'}, ['select', 'APP.admins', ['=', {n: 'key'}, 'home']]]),
+  })}];
+  if (state.model.superAdmin) {
     try {
       await loadFeedback();
     } catch (err) {
       slot.replaceWith(el('p', 'hint', `Could not load the reports: ${err.message}`));
       return;
     }
-    control.push({key: 'feedback', label: 'Feedback', count: feedback.rows.filter(r => r.status === 'New').length, card: feedbackCard});
+    control.push({key: 'feedback', label: 'Feedback', count: feedback.rows.filter(r => r.status === 'new').length, card: feedbackCard});
   }
   slot.replaceWith(buildAdminPage({appName: 'Heliosian', allowed: true, email: state.model.user.email, sections: [
     {title: 'Editing & Control', tabs: control},

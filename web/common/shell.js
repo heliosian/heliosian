@@ -4,7 +4,8 @@ import {initAlerts, renderAlerts} from '/alerts.js';
 import {initSpoof} from '/spoof.js';
 import {noteError} from '/feedback.js';
 import {el} from '/elements.js';
-import {me, query} from '/data.js';
+import {me} from '/data.js';
+import {viewerAlerts} from '/staleness.js';
 
 let app = null;
 let allowances = [];
@@ -250,8 +251,8 @@ export function initTopbar(config) {
     renderAdmin();
   }).catch(err => noteError('/api/me: ' + err.message));
   if (!app.alerts) {
-    query('/api/alerts').then(read => read.get(read.result[0])).catch(err => {
-      noteError('/api/alerts: ' + err.message);
+    viewerAlerts().catch(err => {
+      noteError('alerts: ' + err.message);
       return {broken: true};
     }).then(renderAlerts);
   }

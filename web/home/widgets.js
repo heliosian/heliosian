@@ -2,7 +2,7 @@ import {state, isAdmin, feed, readUpcoming, readToDos, holdsApps, inGrid, widget
 import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
 import {el, svg, toast} from '/elements.js';
-import {act} from '/data.js';
+import {markToDo} from './writes.js';
 import {calendarMark, calendarMenu, categoryItems, dropdown, opensOutside, shownTo} from './cards.js';
 import {categoryMarkOf} from './dom.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
@@ -599,9 +599,11 @@ function todosUnder(chip) {
   return todos.filter(t => t.me.state !== 'done');
 }
 
+const marks = {complete: 'done', save: 'saved', clear: ''};
+
 async function setTodo(todo, action) {
   try {
-    await act('to-dos', todo.id, action);
+    await markToDo(todo, marks[action]);
     await readToDos();
   } catch (err) {
     toast(err.message);
@@ -801,7 +803,7 @@ function hasWork() {
 
 export function widgetRows() {
   return state.model.widgets.map(w => {
-    const meta = [shownTo(w.rules), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
+    const meta = [shownTo(w), w.me.shown ? '' : 'Hidden from you'].filter(Boolean).join(' · ');
     const category = categoryOf(w.key);
     if (category) {
       return {widget: w, name: category.title, mark: categoryMarkOf(category), meta};

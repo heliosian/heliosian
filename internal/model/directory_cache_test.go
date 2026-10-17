@@ -3,15 +3,12 @@ package model
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 
 	"heliosian/internal/access"
-	"heliosian/internal/api"
-	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/geocode"
 	"heliosian/internal/intercept"
@@ -42,40 +39,17 @@ type server struct {
 	dir   *data.Dir
 	queue *store.Queue
 	store *Store
-	mux   *http.ServeMux
 }
 
 func newServer(t *testing.T) server {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s := sampleDirectory(t, dir, queue)
-	mux := http.NewServeMux()
-	typedRegistry(s, queue, DirectoryResources(), []api.Type[*Model]{adminListResources(s)}).Register(mux)
-	return server{dir: dir, queue: queue, store: s, mux: mux}
+	return server{dir: dir, queue: queue, store: sampleDirectory(t, dir, queue)}
 }
 
 func (s server) directory() *Directory {
 	return s.store.Model().Directory
-}
-
-func (s server) personID(email string) string {
-	return s.directory().Person(email).ID
-}
-
-func (s server) call(t *testing.T, as, method, path, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
-	rec := httptest.NewRecorder()
-	auth.Fixed(as, s.mux).ServeHTTP(rec, req)
-	return rec
-}
-
-func (s server) ok(t *testing.T, as, method, path, body string) {
-	t.Helper()
-	if rec := s.call(t, as, method, path, body); rec.Code != http.StatusNoContent {
-		t.Fatalf("%s %s: %d %s", method, path, rec.Code, rec.Body)
-	}
 }
 
 func (s server) rows(t *testing.T, tab string) []map[string]string {
@@ -106,24 +80,6 @@ func sortedKeys(row store.Row) []string {
 func (s server) changeLog(t *testing.T) []string {
 	t.Helper()
 	return testkit.ChangeLines(t, s.dir, s.queue, DirectoryApp)
-}
-
-func logged(t *testing.T, log []string, want ...string) {
-	t.Helper()
-	for _, line := range want {
-		if !slices.Contains(log, line) {
-			t.Errorf("the change log lacks %q:\n%s", line, strings.Join(log, "\n"))
-		}
-	}
-}
-
-func TestTheWhoAdminListIsACommit(t *testing.T) {
-	s := newServer(t)
-	s.ok(t, jordan, "POST", "/api/admin-lists/who/edit", `{"admins":["`+abena+`"]}`)
-	if !s.store.Model().AdminList("who").IsAdmin(abena) || s.count(t, adminsTabName, store.Row{"Email": abena}) != 1 {
-		t.Fatal("the admin list did not take")
-	}
-	logged(t, s.changeLog(t), jordan+"|insert|Admins|Email="+abena+"||")
 }
 
 func TestTagRowsMustHangTogether(t *testing.T) {
