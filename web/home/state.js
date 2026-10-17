@@ -2,6 +2,7 @@ import {batch, query, me as whoAmI} from '/data.js';
 import {eventPath} from '/dayrows.js';
 import {queries} from '/rail.js';
 import {teamQueries, teamWidget} from './team.js';
+import {partyQueries, partiesWidget} from './parties.js';
 
 export const state = {model: null};
 
@@ -152,7 +153,7 @@ export async function loadModel() {
     school: '/api/school-emails',
     todos: '/api/to-dos',
     birthday: '/api/birthday-settings?include=mine.person,mine.donation.charity,mine.fallback-charity,all.person,all.assignee,all.donation.charity,all.fallback-charity',
-  }), whoAmI(), queries(teamQueries)]);
+  }), whoAmI(), queries({...teamQueries, ...partyQueries})]);
   const admin = viewer.allowances.includes('home.configure');
   const today = read.now.slice(0, 10);
   const calendars = read.result.feeds.map(read.get);
@@ -160,7 +161,6 @@ export async function loadModel() {
   const later = await batch({
     month: monthPath(today.slice(0, 7), calendar),
     upcoming: upcomingPath(today, calendar),
-    parties: `/api/events?app=celebrate&from=${today}`,
     ...(admin ? {
       classrooms: '/api/classrooms',
       grades: '/api/grades?enrolled',
@@ -192,7 +192,7 @@ export async function loadModel() {
     dayTypes: read.result.dayTypes.map(read.get),
     month: {month: today.slice(0, 7), calendar, events: cards(later, 'month')},
     upcoming: {calendar, events: cards(later, 'upcoming')},
-    parties: cards(later, 'parties'),
+    parties: partiesWidget(data),
     waiting: read.result.waiting.map(read.get).sort((a, b) => a.start.localeCompare(b.start)).map(e => ({title: e.title, start: e.start, path: eventPath(e)})),
     team: teamWidget(data, read.now),
     school: read.result.school.map(read.get),
