@@ -294,8 +294,8 @@ const PolicySource = `
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
    photo_updated vc_bio)
   true)
-; a person's birthday, to the Birthdays team
-(read PERSON (birthday) (birthday_team))
+; a person's birthday and how they take part, to the Birthdays team
+(read PERSON (birthday birthday_participation) (birthday_team))
 ; when a person last signed out everywhere and when the Veracross import dropped them, for the server and super admins
 (read PERSON (signed_out deactivated) false)
 ; whether the form shares a person's address and phone, to them and their family
@@ -358,7 +358,7 @@ const PolicySource = `
 (read BIRTHDAY_YEAR (and (birthday_team) (person_visible person)))
 ; every column of a birthday year
 (read BIRTHDAY_YEAR
-  (id person year assigned_to assigned ask_by contacted contacted_by participation charity note recorded
+  (id person year assigned_to assigned invite_day contacted contacted_by charity note recorded
    recorded_by published published_by)
   true)
 ; the viewer's own saved searches
