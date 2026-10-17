@@ -30,8 +30,8 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Prefetch(context.Background(), []string{"pronunciation/kept.m4a"}); err != nil {
-		t.Fatal(err)
+	if found, err := s.Has("pronunciation/kept.m4a"); err != nil || !found {
+		t.Fatalf("kept: %v %v", found, err)
 	}
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
@@ -43,8 +43,10 @@ func TestOnlyWhatARefreshNamesIsKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	swap()
-	if _, _, ok := s.Bytes("pronunciation/kept.m4a"); !ok {
-		t.Fatal("a named object was dropped")
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/kept.m4a", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a named object was dropped: %d", rec.Code)
 	}
 	rec = httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/pronunciation/dropped.m4a", nil))
@@ -175,8 +177,9 @@ func TestFullBytesAreCachedThumbnailsHeld(t *testing.T) {
 	if e, ok := s.held("photos/a"); !ok || e.thumb == nil {
 		t.Fatal("the thumbnail is not held")
 	}
-	data, mimeType, ok := s.Bytes("photos/a.png")
-	if !ok || mimeType != "image/png" || !bytes.Equal(data, buf.Bytes()) {
-		t.Fatalf("bytes no longer cached were not read again from the bucket: %v %q", ok, mimeType)
+	rec := httptest.NewRecorder()
+	s.serve(rec, httptest.NewRequest(http.MethodGet, "/photos/a.png", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || !bytes.Equal(rec.Body.Bytes(), buf.Bytes()) {
+		t.Fatalf("bytes no longer cached were not read again from the bucket: %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
 }

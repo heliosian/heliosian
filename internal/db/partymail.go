@@ -74,7 +74,7 @@ func (m *Model) paymentFor(g store.Row, person string) (store.Row, bool) {
 	return found, found != nil
 }
 
-func (m *Model) setting(app, key string) string {
+func (m *Model) Setting(app, key string) string {
 	for _, s := range m.Table("SETTING").All() {
 		if s["app"] == app && s["key"] == key {
 			return s["value"]
@@ -187,7 +187,7 @@ func (mm *MembershipMailer) tickets(ctx context.Context, m *Model, g store.Row, 
 	l.Rows = [][2]string{{"Tickets", m.names(holders)}}
 	if billed {
 		l.Rows = append(l.Rows, [2]string{"Total", fmt.Sprintf("$%s (%d × $%s)", dollarsOf(total), len(holders), g["price"])}, [2]string{"Billed to", m.nameOf(payer)})
-		l.Footnote = m.setting("celebrate", "Ticket Note")
+		l.Footnote = m.Setting("celebrate", "Ticket Note")
 	} else {
 		l.Rows = append(l.Rows, [2]string{"Total", "Free"})
 	}

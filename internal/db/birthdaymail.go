@@ -118,7 +118,7 @@ func (m *Model) birthdaysOf(year int) []staffBirthday {
 }
 
 func (m *Model) birthdayYearOf(now time.Time) int {
-	start, err := time.Parse("01-02", m.setting(birthdayApp, "Year Start"))
+	start, err := time.Parse("01-02", m.Setting(birthdayApp, "Year Start"))
 	if err != nil {
 		panic("db: the birthday Year Start setting is not a month and day: " + err.Error())
 	}
@@ -425,7 +425,7 @@ func (bm *BirthdayMailer) reminder(m *Model, b staffBirthday, step birthdayStep,
 		button("Mark outreach done", link)
 	case "donation":
 		p(fmt.Sprintf("The %s newsletter is two days out and %s's charity is not recorded yet.", mediumDay(m.issueDay(b.row["newsletter"])), name))
-		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + m.charityName(m.setting(birthdayApp, "Default Charity")) + ".")
+		p("If they answered, record what they chose on their page. There is no need to ask again - whether to reply is their choice, and if they do not, the donation goes to " + m.charityName(m.Setting(birthdayApp, "Default Charity")) + ".")
 		button("Record their charity", link)
 	}
 	thread := m.birthdayThread(b)
@@ -466,15 +466,15 @@ func (m *Model) birthdayLetter(b staffBirthday, sender string) birthdayLetter {
 		"{name}", m.nameOf(b.row["person"]),
 		"{newsletter date}", mediumDay(m.issueDay(b.row["newsletter"])),
 		"{birthday}", monthDay(b.row["day"]),
-		"{default charity}", m.charityName(m.setting(birthdayApp, "Default Charity")),
+		"{default charity}", m.charityName(m.Setting(birthdayApp, "Default Charity")),
 		"{sender}", sender,
 		"{last year}", lastYear,
 	).Replace
 	note := ""
 	if b.participation() == "no_newsletter" {
-		note = fill(m.setting(birthdayApp, "No Newsletter Note"))
+		note = fill(m.Setting(birthdayApp, "No Newsletter Note"))
 	}
-	body := m.setting(birthdayApp, "Email Body")
+	body := m.Setting(birthdayApp, "Email Body")
 	if strings.Contains(body, "{no newsletter note}") {
 		body = strings.ReplaceAll(body, "{no newsletter note}", note)
 	} else if note != "" {
@@ -482,8 +482,8 @@ func (m *Model) birthdayLetter(b staffBirthday, sender string) birthdayLetter {
 	}
 	body = trailingSpace.ReplaceAllString(strings.ReplaceAll(fill(body), "\r\n", "\n"), "$1")
 	return birthdayLetter{
-		to: m.addressOf(b.row["person"]), cc: m.setting(birthdayApp, "Outreach CC"),
-		subject: fill(m.setting(birthdayApp, "Email Subject")), body: strings.TrimSpace(manyBlank.ReplaceAllString(body, "\n\n")),
+		to: m.addressOf(b.row["person"]), cc: m.Setting(birthdayApp, "Outreach CC"),
+		subject: fill(m.Setting(birthdayApp, "Email Subject")), body: strings.TrimSpace(manyBlank.ReplaceAllString(body, "\n\n")),
 	}
 }
 
@@ -503,7 +503,7 @@ func lastCopyDay(now time.Time) time.Time {
 func (m *Model) weekIssue(now time.Time) string {
 	from := lastCopyDay(now)
 	to := from.AddDate(0, 0, 7)
-	for _, g := range m.Table("GROUP").Referencing("parent", m.setting(birthdayApp, "Newsletter")) {
+	for _, g := range m.Table("GROUP").Referencing("parent", m.Setting(birthdayApp, "Newsletter")) {
 		if day := m.issueDay(g["id"]); day > from.Format(time.DateOnly) && day <= to.Format(time.DateOnly) {
 			return g["id"]
 		}
@@ -517,7 +517,7 @@ func (m *Model) fallbackCharity(b staffBirthday) (string, string) {
 			return last["charity"], last["note"]
 		}
 	}
-	return m.setting(birthdayApp, "Default Charity"), ""
+	return m.Setting(birthdayApp, "Default Charity"), ""
 }
 
 func (bm *BirthdayMailer) weekly(ctx context.Context, now time.Time) {

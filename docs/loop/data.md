@@ -8,8 +8,7 @@ The email lists are mail lists in the data model (`loop.md`, Entities; `docs/dat
 
 The name is the email list's address, and what leaves the server in mail carries the name rather than the ID. A manager may change the name (`GROUP.slug`), and what carries the old one then reaches the list only while an `ALIAS` row keeps it:
 
-- the mail's own headers: `List-Id`, `List-Post`, `X-Helios-Loop`, and the email list's address in `From` (`internal/db/listrewrite.go`);
-- the old document store's posts, whose Channel is the name (`docs/ask/artifacts.md`).
+- the mail's own headers: `List-Id`, `List-Post`, `X-Helios-Loop`, and the email list's address in `From` (`internal/db/listrewrite.go`).
 
 The email list's page, `/groups/<name>`, is found by its name, any alias or its ID (`group` in `web/loop/state.js`), so a link still opens it.
 

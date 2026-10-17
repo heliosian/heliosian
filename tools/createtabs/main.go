@@ -9,9 +9,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/env"
-	"heliosian/internal/model"
 	"heliosian/internal/spreadsheets"
-	"heliosian/internal/store"
 )
 
 type tab struct {
@@ -19,24 +17,10 @@ type tab struct {
 	header []string
 }
 
-func withChangeLog(tabs []store.Tab) []tab {
-	out := []tab{}
-	for _, t := range tabs {
-		out = append(out, tab{t.Name, t.Columns})
-	}
-	return append(out, tab{store.ChangeLogTab, store.ChangeLogColumns})
-}
-
 var layouts = map[string][]tab{
-	"Artifacts": {
-		{"Documents", model.DocumentColumns},
-		{store.ChangeLogTab, store.ChangeLogColumns},
-	},
-	"Directory": withChangeLog(model.DirectoryTabs),
 	"Staff Birthday List (Shared)": {
 		{db.BirthdaySharedTab, db.BirthdaySharedColumns},
 	},
-	"Config": withChangeLog(model.ConfigTabs),
 }
 
 func applyLayout(source *data.Sheet, layout string) (tabs, columns int, err error) {

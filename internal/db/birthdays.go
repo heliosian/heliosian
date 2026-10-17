@@ -12,14 +12,14 @@ import (
 const birthdayApp = "birthday"
 
 func (m *Model) birthdayRows() []store.Row {
-	start, err := time.Parse("01-02", m.setting(birthdayApp, "Year Start"))
+	start, err := time.Parse("01-02", m.Setting(birthdayApp, "Year Start"))
 	if err != nil {
 		panic("db: the birthday Year Start setting is not a month and day: " + err.Error())
 	}
-	askLead := leadDays(m.setting(birthdayApp, "Request Lead Days"))
-	dueLead := leadDays(m.setting(birthdayApp, "Due By Lead Days"))
+	askLead := leadDays(m.Setting(birthdayApp, "Request Lead Days"))
+	dueLead := leadDays(m.Setting(birthdayApp, "Due By Lead Days"))
 	issues := map[int][]store.Row{}
-	for _, g := range m.Shown("GROUP").Referencing("parent", m.setting(birthdayApp, "Newsletter")) {
+	for _, g := range m.Shown("GROUP").Referencing("parent", m.Setting(birthdayApp, "Newsletter")) {
 		day, ok := dayOf(g["start"])
 		if !ok {
 			continue

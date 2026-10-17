@@ -31,7 +31,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
   - Interfaces with one implementation.
   - Adapters that translate one model into a per-app copy of itself.
   - A type alias with no purpose.
-  - Two routes to the same data, such as some apps going through a `Directory` interface while others read `model.Directory` directly.
+  - Two routes to the same data, such as some pages reading a table through `/api/q` while others ask a handler of their own for it.
 - **Too few layers.**
   - Business rules inside HTTP handlers, where only a request can test them.
   - Sheet-row manipulation scattered through callers.

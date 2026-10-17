@@ -33,12 +33,10 @@ import (
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/mcp"
-	"heliosian/internal/model"
 	"heliosian/internal/ops"
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/spreadsheets"
-	"heliosian/internal/static"
 	"heliosian/internal/store"
 	"heliosian/internal/tools"
 	"heliosian/internal/vitals"
@@ -59,7 +57,6 @@ type Config struct {
 	Geocoder      *geocode.Client
 	Bucket        *blob.Bucket
 	Store         *blob.Store
-	IDKey         []byte
 	ChatKey       []byte
 	AccessKey     []byte
 	BrowserKey    string
@@ -89,7 +86,7 @@ type appSpec struct {
 }
 
 type Core struct {
-	Store     *model.Store
+	Sessions  *db.Sessions
 	Data      *db.Store
 	Pictures  *db.Pictures
 	Search    *db.Searcher
@@ -110,25 +107,21 @@ func NewCore(cfg Config) *Core {
 	queue.Register(cfg.Store.Load)
 	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Bucket, cfg.Store)
 	cfg.ImageSearch.Limits = imagesearch.NewLimits()
-	homeImages := blob.NewImages(cfg.Store, "home")
-	teamImages := blob.NewImages(cfg.Store, "team")
-	celebrateImages := blob.NewImages(cfg.Store, "celebrate")
-	whenImages := blob.NewImages(cfg.Store, "when", "celebrate", "team")
-	models, err := model.NewStore(cfg.Source, cfg.Writer, queue, model.Deps{
-		IDKey: cfg.IDKey, Photos: cfg.Store, Static: static.Files{Root: "web/who"},
-		Objects: cfg.Bucket, Embedder: cfg.Embedder,
-	})
-	if err != nil {
-		logging.Fatal("load the models", "error", err)
+	imageFolder := func(app string) string {
+		folder, ok := blob.ImageFolder(app)
+		if !ok {
+			logging.Fatal("no image folder", "app", app)
+		}
+		return folder
 	}
 	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex())
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
+	sessions := db.NewSessions(dataStore, queue)
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
 	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
 	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, hosts.Origin(cfg.Domain))
-	go models.Locate(cfg.Geocoder)
 	taglineOf := func(key string) func() string {
 		return func() string {
 			return dataStore.Model().App(key)["subtitle"]
@@ -155,7 +148,6 @@ func NewCore(cfg Config) *Core {
 	calendarStyle := db.WhenCardStyle(appName("when"), taglineOf("when"))
 	mux := http.NewServeMux()
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
-	blob.Register(mux, cfg.Store, "pronunciation")
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
 	for _, page := range []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/e/{id...}", "/events/{id...}"} {
@@ -165,13 +157,13 @@ func NewCore(cfg Config) *Core {
 	}
 	whenSearch := cfg.ImageSearch
 	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	whenSearch.Register(calendarMux, "/api/when", whenImages.Folder(), imagesearch.Members)
+	whenSearch.Register(calendarMux, "/api/when", imageFolder("when"), imagesearch.Members)
 	homeMux := http.NewServeMux()
 	homePages := db.NewHomePages(dataStore, homeStyle)
 	homePages.Register(homeMux)
 	homeSearch := cfg.ImageSearch
 	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
-	homeSearch.Register(homeMux, "/api/home", homeImages.Folder(), imagesearch.Members)
+	homeSearch.Register(homeMux, "/api/home", imageFolder("home"), imagesearch.Members)
 	teamMux := http.NewServeMux()
 	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}"} {
 		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +172,7 @@ func NewCore(cfg Config) *Core {
 	}
 	teamSearch := cfg.ImageSearch
 	teamSearch.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	teamSearch.Register(teamMux, "/api/team", teamImages.Folder(), imagesearch.Members)
+	teamSearch.Register(teamMux, "/api/team", imageFolder("team"), imagesearch.Members)
 	activityPages := db.NewActivityPages(dataStore, cfg.Bucket, teamStyle)
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
@@ -193,7 +185,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	celebrateSearch.Register(celebrateMux, "/api/celebrate", celebrateImages.Folder(), imagesearch.Members)
+	celebrateSearch.Register(celebrateMux, "/api/celebrate", imageFolder("celebrate"), imagesearch.Members)
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
@@ -222,14 +214,13 @@ func NewCore(cfg Config) *Core {
 			serve.File(w, r, "web/wiki/index.html")
 		})
 	}
-	wikiImages, _ := blob.ImageFolder("wiki")
-	cfg.ImageSearch.Register(wikiMux, "/api/wiki", wikiImages, imagesearch.Members)
+	cfg.ImageSearch.Register(wikiMux, "/api/wiki", imageFolder("wiki"), imagesearch.Members)
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
-	schoolNow := func() time.Time { return time.Now().In(model.Location) }
+	schoolNow := func() time.Time { return time.Now().In(db.School) }
 	tokens := auth.Tokens{
 		Key:      cfg.AccessKey,
-		Sessions: models,
+		Sessions: sessions,
 		SignedIn: func(email string) bool { return dataStore.Model().SignedIn(email) != "" },
 		Now:      schoolNow,
 	}
@@ -246,7 +237,7 @@ func NewCore(cfg Config) *Core {
 		Data:     dataStore,
 		Tools:    shared,
 		Key:      cfg.AccessKey,
-		Sessions: models,
+		Sessions: sessions,
 		Now:      schoolNow,
 	})
 	apps := []appSpec{
@@ -265,7 +256,7 @@ func NewCore(cfg Config) *Core {
 	ask.Register(askMux, ask.Sources{Data: dataStore, Tools: shared, Origin: hosts.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	feedback := db.NewFeedback(dataStore, queue, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
 	feedback.RegisterTriage(homeMux, func(key string) string { return appName(key)() })
-	optIn := optInForm(func() string { return models.Model().Config.PrivacyLinks.HeliosWhoOptIn })
+	optIn := optInForm(func() string { return dataStore.Model().Setting("platform", "Helios Who Opt-In URL") })
 	suggestions := geocode.NewSuggestions(cfg.Geocoder)
 	for _, a := range apps {
 		db.Register(a.Mux, dataStore, queue, pictures, tokens, schoolNow)
@@ -273,11 +264,9 @@ func NewCore(cfg Config) *Core {
 		a.Mux.Handle("GET "+OptInPath, optIn)
 		feedback.Register(a.Mux, a.Key, appName(a.Key))
 		suggestions.Register(a.Mux)
-		folders := []string{"photos"}
 		if folder, ok := blob.ImageFolder(a.Key); ok {
-			folders = append(folders, folder)
+			blob.Register(a.Mux, cfg.Store, folder)
 		}
-		blob.Register(a.Mux, cfg.Store, folders...)
 	}
 	db.RegisterCompose(adminMux, dataStore, cfg.Composer, tokens, schoolNow)
 	db.RegisterDrafts(loopMux, dataStore, cfg.Describer, tokens, schoolNow)
@@ -300,7 +289,7 @@ func NewCore(cfg Config) *Core {
 		queue.Refresh()
 	})
 	return &Core{
-		Store: models, Data: dataStore, Pictures: pictures, Search: search, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
+		Sessions: sessions, Data: dataStore, Pictures: pictures, Search: search, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
 		Settled: queue.Refreshed(),
 		apps:    apps,
@@ -372,7 +361,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Geocoder:      geocoder,
 		Bucket:        bucket,
 		Store:         store,
-		IDKey:         []byte(env.Required("ID_KEY")),
 		ChatKey:       chatKey.Sum(nil),
 		AccessKey:     auth.AccessKey([]byte(sessionKey)),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
@@ -396,7 +384,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	client := env.Required("GOOGLE_CLIENT_ID")
 	auths := map[string]*auth.Auth{}
 	for _, a := range core.apps {
-		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.SignedIn, []string{OptInPath}, core.Store)
+		gate := auth.New(domain, client, []byte(sessionKey), auth.Login{Title: a.Title}, core.SignedIn, []string{OptInPath}, core.Sessions)
 		gate.Spoof = core.Spoof
 		gate.Preview = a.Preview
 		gate.Register(a.Mux)

@@ -120,7 +120,7 @@ func sampleServer(user string) (*http.Server, *store.Queue) {
 	intercept.GoogleLogin("local/google")
 	bucket := blob.NewMemoryBucket()
 	fillSampleBucket(bucket)
-	core := localCore(&data.Dir{Root: "sampledata"}, bucket, []byte("sample"))
+	core := localCore(&data.Dir{Root: "sampledata"}, bucket)
 	slog.Info("serving sample data", "as", user)
 	return localServer(core, user)
 }
@@ -131,12 +131,12 @@ func snapshotServer(email string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("media bucket", "error", err)
 	}
-	core := localCore(&data.Dir{Root: snapshotRoot}, blob.Overlay(base), []byte(env.Required("ID_KEY")))
+	core := localCore(&data.Dir{Root: snapshotRoot}, blob.Overlay(base))
 	slog.Info("serving the snapshot, disconnected", "dir", snapshotRoot, "as", email)
 	return localServer(core, email)
 }
 
-func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
+func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	intercept.Install(mail.Host, intercept.Mail(mailDir))
 	intercept.Install(intercept.ClaudeHost, intercept.Claude())
 	intercept.Install(intercept.GeocodeHost, intercept.Geocode())
@@ -161,7 +161,6 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 		Geocoder:      geocode.New("sample"),
 		Bucket:        bucket,
 		Store:         media,
-		IDKey:         idKey,
 		ChatKey:       []byte("sample"),
 		AccessKey:     []byte("sample"),
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),
@@ -193,7 +192,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket, idKey []byte) *app.Core {
 }
 
 func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
-	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.SignedIn, []string{app.OptInPath}, core.Store)
+	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.SignedIn, []string{app.OptInPath}, core.Sessions)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
 		m.Handle("POST /auth/logout", http.RedirectHandler("/", http.StatusSeeOther))

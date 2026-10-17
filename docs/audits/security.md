@@ -41,7 +41,7 @@ The people to think about:
 - `auth.Public`: every path it lets through, and whether each does its own check. A new route under `/hooks/`, `/open/` or `/ext/` is public by its prefix alone.
 - Hook secrets: how each is compared, whether a signed request can be replayed (Mailgun's timestamp and token), what the calendar watch's channel token proves, and what a hook does before it has checked.
 - `/open/` and `/ext/` tokens: how long, how random, from which source, what each one opens, whether it can be revoked or re-issued, whether it outlives what it was for, whether it is logged, and whether one kind of token is accepted where another is expected.
-- Admin and super admin: how each is decided, that every handler that needs one asks on the server, that an app's admin is not an admin elsewhere, and that a regular admin cannot make themselves more (`docs/config.md`).
+- Admin and super admin: how each is decided, that every handler that needs one asks on the server, that an app's admin is not an admin elsewhere, and that a regular admin cannot make themselves more (`docs/datamodel.md`, Groups and Permissions).
 - Spoof Mode (`internal/auth/spoof.go`, `docs/toolbar.md`): who can start one, that a spoofed request can never reach more than the person viewed as, that writes made while spoofing are recorded against the admin, that mail and invitations sent while spoofing say who really sent them, and that the spoof cookie cannot be minted or kept by someone who is no longer a super admin.
 - The sample server's sign-in (`auth.Fixed`, `tools/startserver`, `tools/cookie`): that nothing of it is reachable in the production binary, by a flag, an environment variable or a hostname.
 - Host routing: the `Host` header as the app selector, and anything built from it - links in mail, redirect targets, the login URI.
@@ -87,10 +87,10 @@ A second check that costs a few lines where one check stands alone today. The te
 
 - The model and every API response as a member receives them, not as the page draws them: fields sent and then hidden by script, whole models sent where a page needs a slice.
 - Children's data and family details beyond what the consent form allowed (`Preferences`), in every place they surface: the directory, the map, photos, lists, invitations, Helios Ask.
-- Photos and media by name: whether an object's address is enough for any member once known, consent or not, and after the sheet has stopped naming it.
+- Photos and media by name: whether an object's address is enough for any member once known, consent or not, and after no row names it any longer.
 - Guest lists, replies, tickets, waitlists, sign-ups and who declined, for events a person is not part of.
-- Mail a person is not a reader of (`model.EmailList.MailReadableBy`), group membership, and the rules that decide it.
-- Helios Ask as a side door: its tools and its document search must read with the asker's eyes - the same `VisibleTo` the pages call, and `MailReadableBy` for a Loop email list's mail, which has a membership to hold it to. Its other documents are open to every asker on purpose: the forwarding hook files mail only when it went to everyone or to a whole class (`docs/ask/artifacts.md`, What is in it and what is not), what went to one class is not secret from another, and nothing is kept from students. The question for those is what gets filed, not who reads it.
+- Mail a person is not a reader of (`document_visible` in the policies), group membership, and the rules that decide it.
+- Helios Ask and Helios MCP as a side door: their tools and search must read with the asker's eyes - every read through the policies as the asker, as the pages' are. The school's mail is read by the members of the groups it was sent to (`docs/datamodel.md`, Documents), and the mail hook files only the community's broadcasts; the question for those is what gets filed and under which groups, as much as who reads it.
 - What differs by kind of member: whether a student, a parent and a staff member are meant to see the same things, and whether the server knows the difference.
 - Admin-only state reaching everyone: the platform `SETTING` rows and the super admin list, feedback reports, change logs, bounce lists, other people's feed addresses.
 - Anything reachable by changing an id in a request.

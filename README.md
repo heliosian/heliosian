@@ -21,13 +21,12 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/spreadsheets` — which Google Sheets the server and the tools read, the environment variable holding each one's ID, and its title in Drive
 - `internal/static` — reads the bundled files under `web/` that the models check image names against
-- `internal/store` — the one store over every spreadsheet: the parts that build its model, commits and transactions, the Change Log and the write queue ([docs/storage.md](docs/storage.md))
+- `internal/store` — the store under the data model: the parts that build its model from the spreadsheets, commits and transactions, and the write queue ([docs/storage.md](docs/storage.md))
 - `internal/db` — the data model every app reads and writes: its schema, sheets and store, the query language and permissions, `/api/q` and `/api/do/`, the consent step and the opt-in sync, the calendar import's Google stage and the planning both stages share, the school mail's hook and the digest that reads each email into key points and to-dos, the toolbar's reports and their triage, and each app's page shells and share cards ([docs/datamodel.md](docs/datamodel.md); what a query costs and how to measure one, [docs/queryspeed.md](docs/queryspeed.md))
-- `internal/model` — the old sheets the server still loads: the one `model.Model` with the parts that fill it and the store the server runs (`model.go`); the Config sheet, whose sign-out times every sign-in checks; the old Directory sheet's load; and the old document store Helios Ask's imports write: which mail, website pages and parent portal resources belong, each to markdown, the chunks, and the model that scans them
 - `internal/ask` — Helios Ask: the chat with Claude over the data model - the prompt, the conversation, the streaming turn and the chips
 - `internal/tools` — the read-only tools over the data model that Helios MCP serves and Helios Ask gives its model
 - `internal/mcp` — Helios MCP: the OAuth server MCP clients sign in through, and the read-only tools over the data model
-- `internal/artifacts` — the embeddings of Helios Ask's documents through Vertex AI, and the mail hook's settings
+- `internal/artifacts` — the search's embeddings through Vertex AI, and the mail hook's settings
 - `internal/hosts` — which hostnames reach which app, and an app's address on a tier
 - `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
 - `internal/logging` — structured records Cloud Logging indexes: severity, the signed-in user, the app, and the request's trace
@@ -54,7 +53,6 @@ Platform:
 - [api.md](docs/api.md) — the HTTP routes: what every host serves alike, what each app adds, and the shared client
 - [screenshots.md](docs/screenshots.md) — page capture for humans and agents
 - [deploy.md](docs/deploy.md) — production deployment
-- [config.md](docs/config.md) — the Config sheet: the opt-in link and the sign-out times
 - [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
 - [brand.md](docs/brand.md) — where every app's logo art lives, and how its icons and lockups are cut from it
 - [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app, the `REPORT` row it becomes, and the queue a super admin files from
@@ -62,7 +60,6 @@ Platform:
 Helios Who?, in `docs/who/`:
 
 - [directory.md](docs/who/directory.md) — the directory app spec
-- [data.md](docs/who/data.md) — the directory data model and load pipeline
 - [design.md](docs/who/design.md) — palette, typography, brand
 - [pwa.md](docs/who/pwa.md) — installable-app wiring
 
@@ -88,6 +85,7 @@ Helios Celebrate, in `docs/celebrate/`:
 Helios When, in `docs/when/`:
 
 - [calendar.md](docs/when/calendar.md) — the school calendar app spec: the pages, the filters, sharing and RSVP invitations, and personal feeds
+
 Helios Loop, in `docs/loop/`:
 
 - [loop.md](docs/loop/loop.md) — the email lists app spec: email lists, rules, managers, and how mail to an email list reaches its members
@@ -97,8 +95,6 @@ Helios Ask, in `docs/ask/`:
 
 - [ask.md](docs/ask/ask.md) — the chat app spec: the page, what Claude knows, what it can read
 - [data.md](docs/ask/data.md) — the call to Claude, the conversation, the tools and their limits
-- [artifacts.md](docs/ask/artifacts.md) — the community's documents, its mail, its website's pages and its parent portal: what is in them and what is withheld, how they become markdown, chunks and embeddings, and how they are searched
-
 Helios Admin, in `docs/admin/`:
 
 - [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the query runner, the schema diagram, and the OpenAPI spec of the query API

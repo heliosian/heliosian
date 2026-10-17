@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"heliosian/internal/id"
-	"heliosian/internal/store"
 )
 
 const (
@@ -30,25 +29,6 @@ func YesNo(cell string, blank bool) (bool, error) {
 		return blank, nil
 	}
 	return false, fmt.Errorf("%q is not Yes, No, or blank", cell)
-}
-
-func YesNoBlank(cell string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(cell)) {
-	case "yes":
-		return "Yes", nil
-	case "no":
-		return "No", nil
-	case "":
-		return "", nil
-	}
-	return "", fmt.Errorf("%q is not Yes, No, or blank", cell)
-}
-
-func OrDefault(cell string, inherited bool) bool {
-	if cell == "" {
-		return inherited
-	}
-	return cell == "Yes"
 }
 
 func YesNoCell(b bool) string {
@@ -84,54 +64,6 @@ func When(cell string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("%q is not a date like 2026-09-24, 2026-09-24 16:00 or 2026-09-24 16:00:05", cell)
 }
 
-func Span(start, end string) error {
-	var from time.Time
-	if start != "" {
-		t, err := When(start)
-		if err != nil {
-			return fmt.Errorf("start %w", err)
-		}
-		from = t
-	}
-	if end == "" {
-		return nil
-	}
-	to, err := When(end)
-	if err != nil {
-		return fmt.Errorf("end %w", err)
-	}
-	if start == "" {
-		return fmt.Errorf("has an end but no start")
-	}
-	if to.Before(from) {
-		return fmt.Errorf("ends before it starts")
-	}
-	return nil
-}
-
-func Added(cell string) error {
-	if cell == "" {
-		return nil
-	}
-	if _, err := When(cell); err != nil {
-		return fmt.Errorf("added %w", err)
-	}
-	return nil
-}
-
-func Title(kind, title string, max int) error {
-	if strings.TrimSpace(title) == "" {
-		return fmt.Errorf("%s has no title", kind)
-	}
-	if len(title) > max {
-		return fmt.Errorf("%s title %q is too long", kind, title)
-	}
-	if title != strings.TrimSpace(title) {
-		return fmt.Errorf("%s title %q has surrounding spaces", kind, title)
-	}
-	return nil
-}
-
 var prettyForm = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 func NormalizePretty(raw string) string {
@@ -154,48 +86,6 @@ func CheckPretty(pretty string) error {
 	return nil
 }
 
-type Images interface {
-	Has(key string) (bool, error)
-}
-
-func ImageURL(images Images, name string) (string, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", nil
-	}
-	found, err := images.Has(name)
-	if err != nil {
-		return "", fmt.Errorf("image %q: %w", name, err)
-	}
-	if !found {
-		return "", fmt.Errorf("image %q does not exist", name)
-	}
-	return "/" + name, nil
-}
-
-func ImageNames(columns []string, tables ...[]store.Row) []string {
-	names := []string{}
-	for _, table := range tables {
-		for _, row := range table {
-			for _, column := range columns {
-				if name := strings.TrimSpace(row[column]); name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-	}
-	return names
-}
-
-func DisplayName(email string) string {
-	local, _, _ := strings.Cut(email, "@")
-	words := strings.FieldsFunc(local, func(r rune) bool { return r == '.' || r == '_' || r == '-' })
-	for i, w := range words {
-		words[i] = strings.ToUpper(w[:1]) + w[1:]
-	}
-	return strings.Join(words, " ")
-}
-
 func SplitList(cell string) []string {
 	out := []string{}
 	for _, item := range strings.Split(cell, ",") {
@@ -205,8 +95,4 @@ func SplitList(cell string) []string {
 		}
 	}
 	return out
-}
-
-func JoinList(items []string) string {
-	return strings.Join(items, ", ")
 }

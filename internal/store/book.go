@@ -14,10 +14,6 @@ import (
 	"heliosian/internal/logging"
 )
 
-const ChangeLogTab = "Change Log"
-
-var ChangeLogColumns = []string{"Timestamp", "Actor", "Real Actor", "Action", "Tab", "Key", "Column", "Previous"}
-
 type Row = map[string]string
 
 type Tables map[string][]Row
@@ -26,7 +22,6 @@ type kind int
 
 const (
 	insert kind = iota
-	upsert
 	update
 	remove
 	keyed
@@ -43,10 +38,6 @@ func Insert(tab string, cells Row) Op {
 	return Op{kind: insert, tab: tab, cells: cells}
 }
 
-func Upsert(tab string, match, cells Row) Op {
-	return Op{kind: upsert, tab: tab, match: match, cells: cells}
-}
-
 func Update(tab string, match, cells Row) Op {
 	return Op{kind: update, tab: tab, match: match, cells: cells}
 }
@@ -56,11 +47,9 @@ func Delete(tab string, match Row) Op {
 }
 
 type Tab struct {
-	App        string
 	Name       string
 	Columns    []string
 	Key        []string
-	Cascade    func(tables Tables, before, after Row) []Op
 	AppendOnly bool
 }
 
@@ -81,17 +70,6 @@ type ChangeLog struct {
 	Columns []string
 	Row     func(Change) Row
 }
-
-var oldChangeLog = &ChangeLog{Tab: ChangeLogTab, Columns: ChangeLogColumns, Row: func(c Change) Row {
-	key := []string{}
-	for _, column := range c.Key {
-		key = append(key, column+"="+c.Named[column])
-	}
-	return Row{
-		"Timestamp": c.At.Format(time.RFC3339), "Actor": c.Actor, "Real Actor": c.Real, "Action": c.Action,
-		"Tab": c.Tab, "Key": strings.Join(key, "; "), "Column": c.Column, "Previous": c.Previous,
-	}
-}}
 
 type Book struct {
 	app     string
@@ -127,9 +105,6 @@ type change struct {
 }
 
 func NewBook(app string, tabs []Tab, changes *ChangeLog, source data.Source, writer data.Writer, queue *Queue) (*Book, error) {
-	if changes == nil {
-		changes = oldChangeLog
-	}
 	b := &Book{app: app, tabs: tabs, byName: map[string]Tab{}, changes: changes, source: source, writer: writer, queue: queue}
 	for _, t := range tabs {
 		if len(t.Key) == 0 {
@@ -137,36 +112,35 @@ func NewBook(app string, tabs []Tab, changes *ChangeLog, source data.Source, wri
 		}
 		b.byName[t.Name] = t
 	}
+	if changes == nil && b.logged() {
+		return nil, fmt.Errorf("%s names no change log", app)
+	}
 	return b, nil
 }
 
 func (b *Book) Read(ctx context.Context) (Tables, error) {
-	names := map[string][]string{b.app: {}}
+	names := []string{}
 	for _, t := range b.tabs {
-		names[b.appOf(t)] = append(names[b.appOf(t)], t.Name)
+		names = append(names, t.Name)
 	}
-	read := map[string]map[string]data.Tab{}
-	for app, tabs := range names {
-		headers := []string{}
-		if app == b.app && b.logged() {
-			headers = []string{b.changes.Tab}
-		}
-		got, err := b.source.Tabs(ctx, app, tabs, headers)
-		if err != nil {
-			return nil, err
-		}
-		read[app] = got
+	headers := []string{}
+	if b.logged() {
+		headers = []string{b.changes.Tab}
+	}
+	read, err := b.source.Tabs(ctx, b.app, names, headers)
+	if err != nil {
+		return nil, err
 	}
 	tables := Tables{}
 	for _, t := range b.tabs {
-		tab := read[b.appOf(t)][t.Name]
+		tab := read[t.Name]
 		if err := data.CheckColumns(t.Name, tab.Header, t.Columns); err != nil {
 			return nil, err
 		}
 		tables[t.Name] = tab.Rows
 	}
 	if b.logged() {
-		if err := data.CheckColumns(b.changes.Tab, read[b.app][b.changes.Tab].Header, b.changes.Columns); err != nil {
+		if err := data.CheckColumns(b.changes.Tab, read[b.changes.Tab].Header, b.changes.Columns); err != nil {
 			return nil, err
 		}
 	}
@@ -175,18 +149,11 @@ func (b *Book) Read(ctx context.Context) (Tables, error) {
 
 func (b *Book) logged() bool {
 	for _, t := range b.tabs {
-		if b.appOf(t) == b.app && !t.AppendOnly {
+		if !t.AppendOnly {
 			return true
 		}
 	}
 	return false
-}
-
-func (b *Book) appOf(t Tab) string {
-	if t.App == "" {
-		return b.app
-	}
-	return t.App
 }
 
 func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) (Plan, error) {
@@ -195,17 +162,12 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 	real := auth.RealEmailFrom(ctx)
 	writes := []Op{}
 	log := []Row{}
-	for pending := ops; len(pending) > 0; {
-		op := pending[0]
-		pending = pending[1:]
+	for _, op := range ops {
 		tab, ok := b.byName[op.tab]
 		if !ok {
 			return Plan{}, fmt.Errorf("%s has no tab %s", b.app, op.tab)
 		}
-		if b.appOf(tab) != b.app {
-			return Plan{}, fmt.Errorf("%s: tab %s is %s's", b.app, op.tab, tab.App)
-		}
-		if tab.AppendOnly && (op.kind == upsert || op.kind == update) {
+		if tab.AppendOnly && op.kind == update {
 			return Plan{}, fmt.Errorf("%s: tab %s is append-only", b.app, op.tab)
 		}
 		rows, changes := apply(tables[op.tab], op)
@@ -214,13 +176,11 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 		}
 		tables[op.tab] = rows
 		writes = append(writes, planned(op, changes)...)
+		if tab.AppendOnly {
+			continue
+		}
 		for _, c := range changes {
-			if !tab.AppendOnly {
-				log = append(log, entries(b.changes, at, actor, real, tab, c)...)
-			}
-			if tab.Cascade != nil {
-				pending = append(pending, tab.Cascade(tables, c.before, c.after)...)
-			}
+			log = append(log, entries(b.changes, at, actor, real, tab, c)...)
 		}
 	}
 	return Plan{Tables: tables, writes: writes, log: log}, nil
@@ -288,7 +248,7 @@ func (b *Book) write(writes []Op, log []Row) {
 }
 
 func planned(op Op, changes []change) []Op {
-	if (op.kind != upsert && op.kind != update) || len(op.match) != 1 {
+	if op.kind != update || len(op.match) != 1 {
 		return []Op{op}
 	}
 	column := slices.Collect(maps.Keys(op.match))[0]
@@ -345,7 +305,7 @@ func (b *Book) joinable(out [][]Op, w Op) int {
 
 func (b *Book) blocks(p, w Op) bool {
 	if p.tab != w.tab {
-		return (p.kind == insert || p.kind == upsert) && b.references(w, p)
+		return p.kind == insert && b.references(w, p)
 	}
 	if w.kind == insert {
 		return p.kind == insert || data.Matches(w.cells, p.match)
@@ -428,10 +388,8 @@ func (b *Book) put(run []Op) error {
 			keys = append(keys, w.match[column])
 		}
 		return b.writer.DeleteMany(b.app, op.tab, column, keys)
-	case update:
-		return b.writer.Update(b.app, op.tab, op.match, op.cells)
 	}
-	return b.writer.Upsert(b.app, op.tab, op.match, op.cells)
+	return b.writer.Update(b.app, op.tab, op.match, op.cells)
 }
 
 func apply(rows []Row, op Op) ([]Row, []change) {
@@ -457,12 +415,10 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 	}
 	next := slices.Clone(rows)
 	changes := []change{}
-	matched := false
 	for i, row := range next {
 		if !data.Matches(row, op.match) {
 			continue
 		}
-		matched = true
 		updated := maps.Clone(row)
 		data.Fill(updated, op.cells)
 		if len(differing(row, updated)) == 0 {
@@ -470,13 +426,6 @@ func apply(rows []Row, op Op) ([]Row, []change) {
 		}
 		next[i] = updated
 		changes = append(changes, change{before: row, after: updated})
-	}
-	if !matched && op.kind == upsert {
-		row := Row{}
-		data.Fill(row, op.match)
-		data.Fill(row, op.cells)
-		next = append(next, row)
-		changes = append(changes, change{after: row})
 	}
 	return next, changes
 }

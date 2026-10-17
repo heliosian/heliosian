@@ -43,7 +43,6 @@ const (
 	thumbExt     = ".jpg"
 	thumbMime    = "image/jpeg"
 	thumbVersion = "1"
-	fetchWorkers = 32
 	maxPixels    = 40_000_000
 	dataBudget   = 256 << 20
 
@@ -386,20 +385,6 @@ func (s *Store) keep(key string) (*entry, bool) {
 	return e, ok
 }
 
-func (s *Store) Bytes(name string) ([]byte, string, bool) {
-	key := trimExt(name)
-	e, ok := s.held(key)
-	if !ok {
-		return nil, "", false
-	}
-	data, err := s.dataOf(context.Background(), key, e)
-	if err != nil {
-		slog.Error("blob store: read", "name", e.name, "error", err)
-		return nil, "", false
-	}
-	return data, e.mimeType, true
-}
-
 func (s *Store) dataOf(ctx context.Context, key string, e *entry) ([]byte, error) {
 	if data, ok := s.data.Get(key); ok {
 		return data, nil
@@ -439,48 +424,6 @@ func (s *Store) has(ctx context.Context, name string) (bool, error) {
 	s.mu.Unlock()
 	slog.Info("blob store: fetched", "name", name, "bytes", len(data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
 	return true, nil
-}
-
-func (s *Store) Prefetch(ctx context.Context, names []string) error {
-	start := time.Now()
-	pending := []string{}
-	for _, name := range names {
-		if _, ok := s.keep(trimExt(name)); !ok {
-			pending = append(pending, name)
-		}
-	}
-	if len(pending) == 0 {
-		return nil
-	}
-	slog.Info("blob store: prefetching", "names", len(pending))
-	var mu sync.Mutex
-	var firstErr error
-	var wg sync.WaitGroup
-	slots := make(chan struct{}, fetchWorkers)
-	for _, name := range pending {
-		wg.Add(1)
-		slots <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-slots }()
-			if _, err := s.has(ctx, name); err != nil {
-				mu.Lock()
-				if firstErr == nil {
-					firstErr = err
-				}
-				mu.Unlock()
-			}
-		}()
-	}
-	wg.Wait()
-	slog.Info("blob store: prefetched", "names", len(pending), "held", s.count(), "took", time.Since(start).Round(time.Millisecond))
-	return firstErr
-}
-
-func (s *Store) count() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.entries)
 }
 
 func (s *Store) download(ctx context.Context, name string) (*entry, []byte, error) {

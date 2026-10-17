@@ -46,24 +46,6 @@ func TestURL(t *testing.T) {
 	}
 }
 
-func TestTitle(t *testing.T) {
-	for _, c := range []struct {
-		title string
-		fails bool
-	}{
-		{"Field Day", false},
-		{"", true},
-		{"   ", true},
-		{" Field Day", true},
-		{"Field Day ", true},
-		{"a much longer title than ten", true},
-	} {
-		if err := Title("thing", c.title, 20); (err != nil) != c.fails {
-			t.Errorf("Title(%q) = %v", c.title, err)
-		}
-	}
-}
-
 func TestCheckPretty(t *testing.T) {
 	for _, c := range []struct {
 		pretty string
@@ -81,18 +63,19 @@ func TestCheckPretty(t *testing.T) {
 	}
 }
 
-func TestAdded(t *testing.T) {
+func TestWhen(t *testing.T) {
 	for _, c := range []struct {
 		cell  string
 		fails bool
 	}{
-		{"", false},
 		{"2026-09-24", false},
 		{"2026-09-24 16:00", false},
+		{"2026-09-24 16:00:05", false},
+		{"", true},
 		{"yesterday", true},
 	} {
-		if err := Added(c.cell); (err != nil) != c.fails {
-			t.Errorf("Added(%q) = %v", c.cell, err)
+		if _, err := When(c.cell); (err != nil) != c.fails {
+			t.Errorf("When(%q) = %v", c.cell, err)
 		}
 	}
 }

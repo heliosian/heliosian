@@ -285,36 +285,6 @@ func (s *Store[M]) Model() *M {
 	return s.model
 }
 
-func (s *Store[M]) Count(app, tab string, match Row) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	n := 0
-	for _, row := range s.tables[app][tab] {
-		if data.Matches(row, match) {
-			n++
-		}
-	}
-	return n
-}
-
-func (s *Store[M]) Commit(ctx context.Context, actor access.Actor, app string, ops ...Op) error {
-	_, err := s.commit(ctx, actor, app, ops)
-	return err
-}
-
-func (s *Store[M]) CommitAndWait(ctx context.Context, actor access.Actor, app string, ops ...Op) error {
-	done, err := s.commit(ctx, actor, app, ops)
-	if err != nil || done == nil {
-		return err
-	}
-	<-done
-	return nil
-}
-
-func (s *Store[M]) commit(ctx context.Context, actor access.Actor, app string, ops []Op) (<-chan struct{}, error) {
-	return s.queue.Transact(ctx, actor, func(tx *Tx) error { return s.Stage(tx, app, ops...) })
-}
-
 func (s *Store[M]) current() (map[string]Tables, *M) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
