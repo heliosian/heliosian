@@ -221,7 +221,8 @@ export function withoutChips(text) {
 }
 
 export function plain(text) {
-  return (text || '')
+  return withoutChips(text)
+    .replace(/\[!(note|tip|important|warning|caution|question)\]/gi, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/[*_`#>]+/g, '')
