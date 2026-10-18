@@ -63,6 +63,9 @@ export function activityCells(fields, node, edits) {
       cells[to] = fields[from];
     }
   }
+  if (fields.start !== undefined) {
+    cells.all_day = Boolean(fields.start) && fields.start.length === 10;
+  }
   if (fields.spots !== undefined) {
     cells.capacity = fields.spots ? String(fields.spots) : '';
   }
