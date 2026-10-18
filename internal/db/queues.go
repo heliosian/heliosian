@@ -154,6 +154,20 @@ func (m *Model) queueCounts() []queueCount {
 	}
 	out := []queueCount{extraction, fetching, signIn, classifying}
 
+	since := time.Now().In(School).Add(-MailWindow).Format(DateLayout)
+	digest := queueCount{Name: "digest", About: "mail from the last two weeks whose summary, key points and to-dos Claude has not written for the current digest revision; mail still extracting or classifying waits here too", Query: `(from DOCUMENT (where (= kind "mail") (blank parent) (>= published ` + strconv.Quote(since) + `) (or (blank digest) (< digest ` + strconv.Quote(DigestRevision) + `))))`}
+	for _, d := range m.Table("DOCUMENT").All() {
+		if d["kind"] != "mail" || d["parent"] != "" || d["published"] < since {
+			continue
+		}
+		digest.Total++
+		if d["digest"] < DigestRevision {
+			digest.Pending++
+		}
+	}
+	digest.Done = digest.Total - digest.Pending
+	out = append(out, digest)
+
 	search := queueCount{Name: "search indexing", About: "groups, people and extracts whose search entry Claude and Vertex have not made yet", Query: `(from SEARCH (where (not made)))`}
 	byTable := &tally{}
 	searchTable, _ := Lookup("SEARCH")

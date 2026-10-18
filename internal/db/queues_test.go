@@ -2,10 +2,19 @@ package db
 
 import (
 	"testing"
+	"time"
+
+	"heliosian/internal/cells"
 )
 
 func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 	s, queue := sampleWithQueue(t)
+	undigested := 0
+	for _, q := range s.Model().queueCounts() {
+		if q.Name == "digest" {
+			undigested = q.Pending
+		}
+	}
 	apply(t, s, queue, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
@@ -15,6 +24,9 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/a.png"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://example.org/page", "fetch": "gone"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://docs.example.org/locked", "fetch": "sign_in"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Not yet digested", "published": time.Now().In(School).Format(cells.StampFormat), "digest": "2026-01-01"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Digested", "published": time.Now().In(School).Format(cells.StampFormat), "digest": DigestRevision}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Too old to digest", "published": time.Now().In(School).Add(-2 * MailWindow).Format(cells.StampFormat)}},
 	})
 	m := s.Model()
 	counted := map[string]int{}
@@ -32,7 +44,7 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 			counted[q.Name+" "+p.Name] = p.Pending
 		}
 	}
-	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "fetching signed in": 1, "fetching signed in image": 0, "fetching signed in linked": 1, "classifying": 1, "content sweep": 1, "content sweep image/png": 1} {
+	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "fetching signed in": 1, "fetching signed in image": 0, "fetching signed in linked": 1, "classifying": 4, "digest": undigested + 1,"content sweep": 1, "content sweep image/png": 1} {
 		if counted[name] != want {
 			t.Errorf("%s pending %d, want %d", name, counted[name], want)
 		}
