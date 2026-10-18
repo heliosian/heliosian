@@ -59,6 +59,25 @@ func TestABodyIsItsExtractNotTheLinksAfterIt(t *testing.T) {
 	}
 }
 
+func TestTheNewestMailIsClassifiedFirst(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Middle", "published": "2026-10-10 09:00:00"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Oldest", "published": "2019-03-01 09:00:00"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Newest", "published": "2027-01-05 09:00:00"}},
+	})
+	c := &Classifier{s: s, skipped: map[string]bool{}}
+	got := []string{}
+	for _, id := range c.pending() {
+		if slices.Contains(ids, id) {
+			got = append(got, id)
+		}
+	}
+	if want := []string{ids[2], ids[0], ids[1]}; !slices.Equal(got, want) {
+		t.Errorf("classified in the order %v, want newest first %v", got, want)
+	}
+}
+
 func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	var mu sync.Mutex
 	asked := []string{}
