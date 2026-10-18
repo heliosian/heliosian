@@ -1,0 +1,21 @@
+# Sync issues
+
+byre task 664792f45102, "Sync issues: Sync", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 664792f45102 in byre (GET /api/events?task_id=664792f45102).
+
+## Summary
+
+Ran the "Sync issues" workflow, a one-way sync from the GitHub tracker (github.com/heliosian/heliosian) into TODO.md. The tracker was only read, never written.
+
+- Before the sync, no TODO item had an `Issue:` line, so nothing was removed and no upstream changes needed reporting.
+- Added a new `# Issues` section at the end of TODO.md with 22 items, one per open issue: #197, #196, #194, #192, #189, #185, #184, #183, #182, #181, #180, #179, #178, #177, #176, #175, #174, #168, #165, #162, #159, #25. Each item's title is the issue's title exactly, its body is a one-to-two-sentence summary, and its last line is `Issue: <url>`.
+- Only open issues were fetched, through the unauthenticated GitHub API because `gh` isn't installed. Closed issues would only matter for removing items already tied to them, and there were none.
+- Merging main changed nothing because the branch was already up to date. `go vet ./...` passed.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds a new Issues section to TODO.md with 22 open GitHub issues, using their exact titles, short summaries, and issue URLs as the final body lines. Existing TODO content is preserved. Checked all 185 tracker issues across API pages: every open issue has an item, and none of the new items refers to a closed issue or pull request.
+
+No significant findings.
