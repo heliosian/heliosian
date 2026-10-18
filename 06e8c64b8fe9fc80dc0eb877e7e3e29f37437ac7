@@ -1,0 +1,22 @@
+# Verify production
+
+byre task 0b0b386a9f27, "Verify production: Verify", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 0b0b386a9f27 in byre (GET /api/events?task_id=0b0b386a9f27).
+
+## Summary
+
+Verified production for commits 139b54f..7538815 under the Verify workflow.
+
+- Live revision heliosian-01005-tz2 was built from b0625ff1 (Cloud Build c6671bb8). 7538815 only touches docs/deploy.md, which the build trigger's includedFiles allowlist skips, so it counts as live.
+- 20d0f175 (Loop intro wording): verified. Checked the My Email Lists page lead in Chrome and the og:description on loop.heliosian.com.
+- b0625ff1 (editing an event's sharing): verified. A public LARP Junior League event's Edit Event form now opens on Public. The live writes.js and eventform.js have the new code, and the new policy clauses are present (helios_policies). The answerSharing trigger, which copies sharing to the Going/Not Going groups, was not checked because that needs a production write.
+- a76cca6e (tools/import), a0e74ea9, f1f5fff2 and 7538815 have nothing observable in production.
+- No failures, so no TODO.md items were added. TODO.md `Last verified:` moved from 139b54f to 7538815. No commits on main were waiting to go live.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates TODO.md’s last-verified marker from 139b54f to 7538815. The serving Cloud Run revision’s image matches build commit b0625ff; the intervening commit 7538815 changes only deployment documentation, so the marker is consistent with the brief’s rule for commits that do not affect the production image.
+
+No significant findings.
