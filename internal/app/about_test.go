@@ -19,7 +19,7 @@ func TestAboutCards(t *testing.T) {
 		desc  string
 	}{
 		{directoryAbout(func() string { return "Renamed" }, func() string { return "A new line" }), "who.heliosian.com", `content="A new line. Students, parents and staff`},
-		{listAbout(func() string { return "Renamed" }, func() string { return "A new line" }), "loop.heliosian.com", `content="A new line. Each email list is an address`},
+		{listAbout(func() string { return "Renamed" }, func() string { return "A new line" }), "loop.heliosian.com", `content="A new line. Each email list - a class`},
 	} {
 		tags := c.about.PreviewHead(httptest.NewRequest("GET", "https://"+c.host+"/some/page", nil))
 		for _, want := range []string{`og:site_name" content="Renamed"`, `og:title" content="Renamed"`, c.desc, `og:image" content="https://` + c.host + `/open/share/about.png"`} {

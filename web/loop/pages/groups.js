@@ -58,7 +58,7 @@ export function groupsPage() {
   setTitle('My Email Lists');
   const page = el('div', 'list-page');
   page.append(pageHead('My Email Lists'));
-  page.append(el('p', 'page-lead', 'Each email list is an address at ' + domain + ' whose members follow from its rules, drawn from the directory as it changes.'));
+  page.append(el('p', 'page-lead', 'Each email list\'s members follow from its rules, drawn from the directory as it changes. A list with an address at ' + domain + ' delivers what is sent there to its members.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
   const render = () => {

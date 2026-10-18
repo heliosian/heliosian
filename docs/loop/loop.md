@@ -1,6 +1,6 @@
 # Helios Loop
 
-Helios Loop is where the community's email lists are made: each is an address at `loop.heliosian.com` whose members follow from rules over the data model, and every message sent to it goes on to those members as they stand when it arrives. It serves at loop.heliosian.com. Every group in the data model is an email list (`docs/datamodel.md`); one made in Loop is a `GROUP` of kind `group`, under nothing and linking nowhere. The pages are `web/loop/`, reading and writing through the query API (`docs/api.md`); the mail path is `internal/db/listmail.go` (`data.md`, Mail).
+Helios Loop is where the community's email lists are made: each one's members follow from rules over the data model, and one with a slug has an address at `loop.heliosian.com`, where every message sent to it goes on to those members as they stand when it arrives. It serves at loop.heliosian.com. Every group in the data model is an email list (`docs/datamodel.md`); one made in Loop is a `GROUP` of kind `group`, under nothing and linking nowhere. The pages are `web/loop/`, reading and writing through the query API (`docs/api.md`); the mail path is `internal/db/listmail.go` (`data.md`, Mail).
 
 ## Entities
 
