@@ -268,6 +268,13 @@ func TestGroupPhotos(t *testing.T) {
 	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000020"}, "photo", pngOf(t, 6)); rec.Code != http.StatusOK {
 		t.Fatalf("a photo of one's own family: %d %s", rec.Code, rec.Body.String())
 	}
+	moved := Edit{Set: ids[0], Cells: map[string]any{"order": "zz", "crop_width": "4"}}
+	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{moved}}); err != nil {
+		t.Fatalf("a family member moves and re-crops the family's photo: %v", err)
+	}
+	if row, _ := s.Model().Table("PHOTO").Get(ids[0]); row["order"] != "zz" || row["original"] != first["original"] {
+		t.Fatalf("the moved photo reads %v", row)
+	}
 }
 
 func TestStartupMakesPhotosNotReady(t *testing.T) {

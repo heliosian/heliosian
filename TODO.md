@@ -29,9 +29,6 @@ Last verified: bff8f634
 
 # Issues
 
-- A household member's change to their photo is refused: original is required
-  A non-admin household member's `set` on their own `PHOTO` row fails with "original is required", because the set is checked against the row as the writer reads it, which hides `original`. Check against the stored row instead, so parents can move and re-crop their family's photos.
-  Issue: https://github.com/heliosian/heliosian/issues/197
 - Store pronunciation recordings in a format an iPhone plays
   Chrome uploads pronunciations as WebM/Opus, which an iPhone can't play. Convert WebM and Ogg recordings to MP4/AAC on upload through `/api/do/pronunciation`, and convert the ones already stored.
   Issue: https://github.com/heliosian/heliosian/issues/196

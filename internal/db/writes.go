@@ -300,12 +300,12 @@ func (m *Model) existing(id, where string, whole bool) (*Table, store.Row, error
 	if t, _ := Lookup(table); t.Generated {
 		return nil, nil, access.Invalid("%s: %s is generated and can't be written", where, table)
 	}
-	rows := m.view(table, whole)
-	row, ok := rows.Get(id)
-	if !ok {
+	if _, ok := m.view(table, whole).Get(id); !ok {
 		return nil, nil, access.Missing("%s: no %s %s", where, table, id)
 	}
-	return rows.Table(), row, nil
+	rows := m.Table(table)
+	row, _ := rows.Get(id)
+	return rows.table, row, nil
 }
 
 func (m *Model) referencesExist(t *Table, row store.Row, where string, whole bool) error {
