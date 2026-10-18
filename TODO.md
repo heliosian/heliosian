@@ -1,7 +1,5 @@
 # Heliosian
 
-- Birthdays widget's All tab heads each birthday with its newsletter issue date, unlabelled
-  The All tab (admins only) groups rows by `newsletter` with the generic `dayBar` (`web/home/widgets.js:418`), so Mike Orlando sits under "Fri · Oct 30", the issue he is in, while his birthday is Mon Nov 2. Rows show assignee and charity, never the birthday itself, so the heading reads as the birthday. Label the heading as the issue, or show the birthday on the row.
 
 # Helios Staff Birthdays
 

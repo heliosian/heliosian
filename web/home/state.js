@@ -258,7 +258,7 @@ function mailModel(h, today) {
 function birthdayItem(sv) {
   return {
     charity: sv.charity, chosen: sv.donation, name: sv.name, photo: sv.photo, path: sv.path, stage: sv.stage, next: sv.next,
-    newsletter: sv.newsletterDate, urgency: sv.urgency ? sv.urgency.when : '', assignee: sv.assignee,
+    newsletter: sv.newsletterDate, birthday: sv.birthdayThisYear, urgency: sv.urgency ? sv.urgency.when : '', assignee: sv.assignee,
   };
 }
 

@@ -380,7 +380,7 @@ function shortDay(date) {
 
 function birthdayRow(item, i, all) {
   const charity = (item.chosen ? '' : 'Default: ') + item.charity;
-  const line = all ? [item.assignee || 'Unassigned', charity] : [stepWords[item.next.step] + ' ' + shortDay(item.next.day), charity];
+  const line = all ? ['Birthday ' + shortDay(item.birthday), item.assignee || 'Unassigned', charity] : [stepWords[item.next.step] + ' ' + shortDay(item.next.day), charity];
   const pills = el('span', 'wg-stage-pills');
   pills.append(el('span', 'wg-stage stage-' + item.stage.toLowerCase().replace(/[^a-z]+/g, '-'), stageNames[item.stage] || item.stage));
   if (item.urgency) {
@@ -417,7 +417,7 @@ function birthdayWidget() {
   if (all) {
     const groups = dayGroups(items, b => b.newsletter, () => '');
     card.append(...grouped(name, groups,
-      g => dayBar(g.day, [el('span', 'wg-day-count', `${g.rows.length} ${g.rows.length === 1 ? 'birthday' : 'birthdays'}`)]),
+      g => dayBar(g.day, [el('span', 'wg-day-count', `Newsletter · ${g.rows.length} ${g.rows.length === 1 ? 'birthday' : 'birthdays'}`)]),
       (item, g, n) => birthdayRow(item, n, true)));
   } else {
     card.append(pictureList(name, items, (item, i) => birthdayRow(item, i, false)));
