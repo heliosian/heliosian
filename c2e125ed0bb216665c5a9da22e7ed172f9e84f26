@@ -1,0 +1,33 @@
+# Check household members' PHOTO sets against the stored row
+
+byre task 00c2d6b13192, "A household member's change to their photo is refused: original is required", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "A household member's change to their photo is refused: original is required".
+Full transcripts: the events of task 00c2d6b13192 in byre (GET /api/events?task_id=00c2d6b13192).
+
+## Summary
+
+**Goal (issue #197):** a non-admin household member's `set` on their family's `PHOTO` row (moving or re-cropping it) failed with "PHOTO: original is required".
+
+**Cause:** in `stageWrite` (`internal/db/writes.go`), the server took the target row from the writer's own view (`Model.view`, which hides columns such as `original` from non-admins), merged the set into it, and ran `Table.Check` on the result. The hidden required column came through blank and failed.
+
+**Fix:** `Model.existing` still uses the writer's view to decide whether the row exists for them (a row they can't see stays "no such row"). It now returns the full stored row from `Model.Table`. As a result, `Change.Old` and `Change.New`, which the permission checks and the follow-up work after a write receive, now hold full stored rows for sets and deletes, the same as `New` on inserts.
+
+**Crop path unchanged:** the client crop editor shows the reencode, and `Pictures.make` re-encodes `original` and cuts the crop and thumbnail from the reencode, reading the stored row.
+
+**Test:** `TestGroupPhotos` (`internal/db/do_test.go`) now has a parent set `order` and `crop_width` on the family's photo. The test checks the write succeeds and `original` is kept. It was confirmed to fail with the reported error without the fix.
+
+**Also:** `AGENTS.md`'s test limit went from `timeout 10` to `timeout 30`. The full `internal/db` package takes about 11.5s, so it could not run under 10s.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates existing-row writes to validate and authorize against the stored row after checking that the row is available in the consent-filtered view. This lets household members reorder and re-crop photos without the hidden original field causing validation to fail. Adds a regression test and removes the completed TODO item. Targeted photo, authorization, and consent-protection tests pass.
+
+No significant findings.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Uses the stored row when validating, authorizing, and processing updates and deletions, while retaining the existing visibility check. This lets household members reorder and re-crop family photos whose required original is hidden from reads. Adds a regression test and removes the completed TODO item; also increases the documented test timeout to 30 seconds.
+
+No significant findings.
