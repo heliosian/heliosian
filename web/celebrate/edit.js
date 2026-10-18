@@ -1,7 +1,7 @@
 import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, write, celebration, category, categoriesOf} from './state.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
-import {listed, known, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
+import {listed, known, personByEmail, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {keyBetween} from '/order.js';
@@ -23,21 +23,36 @@ function stamp() {
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 }
 
-async function knownGuest(who, editor) {
+function inDirectory(p, person) {
+  const family = household().find(h => h.id === person.id);
+  if (family) {
+    return {id: family.id, name: family.name, email: family.email, family: true, guest: false};
+  }
+  if (!inAudience(p, person)) {
+    throw new Error(`${person.name_show} is in the directory, and this party is for ${audienceWords(p)}.`);
+  }
+  return {id: person.id, name: person.name_show, email: emailOf(person), photoUrl: photoOf(person), title: wordsOf(person), guest: false};
+}
+
+async function knownGuest(p, who) {
   if (who.email) {
     const {person} = await api('POST', '/api/do/person-at', {address: who.email});
     if (person) {
-      const listed = known(who.email);
-      if (listed && !editor && !household().some(h => h.id === person)) {
-        throw new Error(`${who.email} is ${listed.name_show}'s address in the directory: a ticket for someone outside your family is added by the party's hosts.`);
-      }
-      return {id: person, name: who.name};
+      const found = await personByEmail(who.email);
+      return found ? inDirectory(p, found) : {...who, id: person};
     }
-    return who;
   }
   const want = who.name.toLowerCase();
+  const family = household().find(h => h.name.toLowerCase() === want);
+  if (family) {
+    return inDirectory(p, family);
+  }
+  const match = (await listed()).find(x => x.name_show.toLowerCase() === want);
+  if (match && confirm(`${match.name_show}${wordsOf(match) ? ` (${wordsOf(match)})` : ''} is in the directory. Give the ticket to them?\n\nCancel adds a guest named ${who.name} instead.`)) {
+    return inDirectory(p, match);
+  }
   const named = state.model.guests.find(g => g.name.toLowerCase() === want);
-  return named ? {id: named.id, name: who.name} : who;
+  return named ? {...who, id: named.id} : who;
 }
 
 function guestEdits(as, guest) {
@@ -150,19 +165,23 @@ export function openBuy(p) {
   const whoWrap = el('div');
   whoWrap.append(who);
   const whoField = field(waiting ? 'Who wants a ticket?' : "Who's coming?", whoWrap, `This party is for ${audienceWords(p)}.`, true);
+  const whyNot = person => {
+    const have = ticketFor(p, person.email);
+    if (have && have.status === 'Ticket') {
+      return `${person.name} already has a ticket`;
+    }
+    if (have) {
+      return `${person.name} is already on the waitlist`;
+    }
+    if (!admits(p, person)) {
+      return `This party is for ${audienceWords(p)}`;
+    }
+    return '';
+  };
   const paintWho = () => {
     who.replaceChildren();
     for (const person of household()) {
-      let why = '';
-      const have = ticketFor(p, person.email);
-      if (have && have.status === 'Ticket') {
-        why = `${person.name} already has a ticket`;
-      } else if (have) {
-        why = `${person.name} is already on the waitlist`;
-      } else if (!admits(p, person)) {
-        why = `This party is for ${audienceWords(p)}`;
-      }
-      const chip = personChip(person, chosen.has(person.email), why);
+      const chip = personChip(person, chosen.has(person.email), whyNot(person));
       chip.addEventListener('click', () => {
         if (chosen.has(person.email)) {
           chosen.delete(person.email);
@@ -187,8 +206,28 @@ export function openBuy(p) {
   };
   paintWho();
   const addRow = el('div', 'who-add');
-  addRow.append(button('Add someone', 'plus', 'button button-secondary button-small', () => openAddSomeone(p, editor, person => {
-    if (person.email && (added.some(a => a.email === person.email) || household().some(h => h.email === person.email))) {
+  addRow.append(button('Add someone', 'plus', 'button button-secondary button-small', () => openAddSomeone(p, editor, async picked => {
+    let person = picked;
+    try {
+      person = picked.guest ? await knownGuest(p, picked) : picked;
+    } catch (err) {
+      toast(err.message);
+      return;
+    }
+    const family = household().find(h => person.id ? h.id === person.id : person.email && h.email === person.email);
+    if (family) {
+      const why = whyNot(family);
+      if (why) {
+        toast(why);
+        return;
+      }
+      chosen.add(family.email);
+      toast(`${family.name} is in your family, so they're picked above`);
+      paintWho();
+      paintTotal();
+      return;
+    }
+    if ((person.id && added.some(a => a.id === person.id)) || (person.email && added.some(a => a.email === person.email))) {
       toast(`${person.name} is already on the list`);
       return;
     }
@@ -243,7 +282,7 @@ export function openBuy(p) {
       if (!payer) {
         throw new Error('Pick who to bill.');
       }
-      const others = await Promise.all(added.map(a => (a.guest ? knownGuest({name: a.name, email: a.email || ''}, editor) : {id: a.id})));
+      const others = added.map(a => (a.id ? {id: a.id} : a));
       const places = [...chosen].map(email => household().find(h => h.email === email)).concat(others);
       if (!places.length) {
         throw new Error('Pick at least one person.');
@@ -501,7 +540,7 @@ export function openReassign(p, a) {
       if (!name.value.trim()) {
         throw new Error('Give the guest a name.');
       }
-      const who = await knownGuest({name: name.value.trim(), email: email.value.trim().toLowerCase()}, p.can.edit);
+      const who = await knownGuest(p, {name: name.value.trim(), email: email.value.trim().toLowerCase()});
       if (who.id) {
         return write([{set: a.ticketId, cells: {person: who.id}}]);
       }
@@ -587,7 +626,7 @@ export function openAddTicket(p) {
   openAddSomeone(p, true, async picked => {
     let person = picked;
     try {
-      person = picked.guest ? {...picked, ...await knownGuest(picked, true)} : picked;
+      person = picked.guest ? {...picked, ...await knownGuest(p, picked)} : picked;
     } catch (err) {
       toast(err.message);
       return;

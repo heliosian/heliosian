@@ -330,6 +330,21 @@ func TestPlacesPastCapacityGoOnTheWaitlistInTheSameWrite(t *testing.T) {
 	}
 }
 
+func TestSomeoneInAnotherFamilyMayGoOnTheWaitlistInTheSameWrite(t *testing.T) {
+	s, queue, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, queue, "2")
+	if _, err := write(parent,
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": parent, "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": staff, "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
+	); err != nil {
+		t.Fatalf("someone can't take the last place and put someone in another family on the waitlist: %v", err)
+	}
+	if _, ok := s.Model().Table("MEMBER").Find(waitlist, staff); !ok {
+		t.Error("the place waited for isn't there")
+	}
+}
+
 func TestAFamilyLeavesTheWaitlistWithItsExtraPlaces(t *testing.T) {
 	s, queue, write := celebrateSample(t)
 	waitlist := tacoWaitlist(t, s, queue, "1")
@@ -376,6 +391,19 @@ func TestAnyGuestMayBeBoughtAPlace(t *testing.T) {
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": isaac, "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
 	); err != nil {
 		t.Fatalf("someone can't buy a place for a guest another family brought: %v", err)
+	}
+}
+
+func TestAPlaceMayBeBoughtForSomeoneInAnotherFamily(t *testing.T) {
+	s, _, write := celebrateSample(t)
+	if _, err := write(parent,
+		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": staff, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": staff, "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
+	); err != nil {
+		t.Fatalf("someone can't buy a place for someone in the directory outside their family: %v", err)
+	}
+	if _, ok := s.Model().Table("MEMBER").Find(tacoNight, staff); !ok {
+		t.Error("the place isn't on the party")
 	}
 }
 

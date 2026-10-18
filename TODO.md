@@ -10,8 +10,6 @@ Last verified: 882c6dc3
 
 # Helios Who?
 
-- Guest PERSON rows duplicating people in the directory
-  128 `source = guest` people share a `name_show` with a non-guest, e.g. Sara Palanki: `perH2scCSkaDit` (the Ospreys 5th grader) and `perOzsspFugZFy` (guest, no email, no family, a guest of Ravi Palanki); Rhea Palanki likewise. Search returns both. `person-at` matches by address, so a guest made without one never finds the real person.
 - `/groups/<id>` opens only directory groups and the viewer's own lists
   `groupKeyOf` (`web/who/state.js:80`) looks only in `tags` and `lists`, and `lists` holds only groups the viewer runs or is in (`state.js:282`). Every other group `Model.Link` sends here says "Not here": a plain group the viewer only sees (`/groups/grp9AomK6zhG7r`, Spelling Bee), and every Team, Schedule or Celebrate heading of kind `category` (`/groups/grpdwsPcjueNqv`, Activities).
 

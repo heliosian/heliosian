@@ -266,10 +266,10 @@ const PolicySource = `
            (exists GROUP @p (= kind "party") (in join "direct" "others") (visible @p)
              (or (not (blank price)) (not (blank waitlist)))))))
 
-; @p may hold a place the viewer buys at @g: someone in the viewer's household it admits, or any guest
+; @p may hold a place the viewer buys at @g: any guest, or anyone in the directory the viewer sees whom it admits
 (define (buys_for @g @p)
-  (or (and (self_or_household @p) (eligible_for @g @p))
-      (= @p.source "guest")))
+  (or (= @p.source "guest")
+      (and (person_visible @p) (eligible_for @g @p))))
 
 ; the viewer's household holds a ticket, a sign-up or a yes for @e
 (define (going @e)
@@ -539,10 +539,11 @@ const PolicySource = `
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))
        (exists PAYMENT (= group @new.group) (= for @new.person) (blank status))))
-; ask for another place on a party's waitlist: a guest, brought by the viewer or someone in their household
+; ask for another place on a party's waitlist: a guest, brought by the viewer or someone in their household, or someone the viewer may buy a place for, brought by the viewer
 (insert MEMBER
   (and (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
-       (= @new.person.source "guest") (self_or_household @new.guest_of)))
+       (or (and (= @new.person.source "guest") (self_or_household @new.guest_of))
+           (and (= @new.guest_of @viewer) (not (student @viewer)) (buys_for @new.group @new.person)))))
 ; pass a party ticket to someone else: its holder, their household, whoever brought them, or the party's hosts
 (set MEMBER.person
   (and (= @old.group.kind "party") (= @old.member "yes")
