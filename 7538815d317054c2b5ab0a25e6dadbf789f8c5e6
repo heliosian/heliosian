@@ -1,0 +1,67 @@
+# gcloudignore TODO.md
+
+byre task e71a86c6bc48, "gcloudignore TODO.md", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task e71a86c6bc48 in byre (GET /api/events?task_id=e71a86c6bc48).
+
+## Summary
+
+**Goal:** stop production redeploying on pushes that only change TODO.md (task title "gcloudignore TODO.md").
+
+**Finding:** `.gcloudignore` can't do this. Production is built by the Cloud Build trigger `build-main` (project `heliosian`, `us-west1`) from a GitHub connection, and it never reads `.gcloudignore`, which only shapes `gcloud builds submit` uploads. The trigger had no file filter, so every push to `main` built and deployed. Examples: f1f5fff2 (TODO.md only), a0e74ea9 (AGENTS.md + TODO.md), a76cca6e (TODO.md + tools/import).
+
+**Done:**
+- Cancelled builds fa70b1e7 and 2f018280. They were the docs-only commits' builds, and ian asked for this ("maybe also killed the production builds from this"). Left c6671bb8 (b0625ff1, a real code change) to run.
+- ian chose an allowlist over a skip-list. The trigger now has `includedFiles: main.go, go.mod, go.sum, Dockerfile, .dockerignore, internal/**, web/**`, which is exactly what the image is built from. The root package doesn't import `tools/`, and `internal/ask/prompt.md` is embedded, which `internal/**` covers. The change went in via `gcloud builds triggers import` from a hand-written YAML, because this gcloud has no `triggers export`.
+- `docs/deploy.md` now says the trigger builds only when files in its `includedFiles` list change, that a new top-level source directory has to be added to that list, and that `.gcloudignore` plays no part.
+
+**Left out:** no changes to `.gcloudignore` or `.dockerignore`. Risk: Go code added outside `internal/` or `main.go` won't deploy until it's added to the trigger's `includedFiles`.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Restricts production builds through the Cloud Build trigger’s file allowlist and documents that behavior. The live trigger includes main.go, Go module files, Dockerfile, .dockerignore, internal/** and web/**, so TODO.md-only changes no longer trigger deployment; .gcloudignore remains unchanged because it does not control repository triggers.
+
+No significant findings.
+
+## Decisions
+
+### Production redeploys on commits that only touch TODO.md, and .gcloudignore can't stop that. May I add a file filter to the `build-main` Cloud Build trigger so these commits stop deploying, and if so, which filter?
+
+**What I found.** Production is deployed by one Cloud Build trigger, `build-main` (project `heliosian`, region `us-west1`). It fires on every push to `main` through the GitHub connection. It clones the commit and runs `docker build`, `docker push`, `gcloud run deploy`. Nothing in the trigger filters by file, so `gcloud builds triggers describe build-main --region us-west1 --project heliosian` shows only `push: branch: ^main$`, with no `includedFiles` or `ignoredFiles`.
+
+`.gcloudignore` doesn't affect this. It only controls what `gcloud builds submit` uploads from a local checkout, and a GitHub-triggered build never reads it. Adding entries there won't change anything. `.dockerignore` only trims the Docker build context. It doesn't decide whether a build runs either. The only thing that can skip a build is a file filter on the trigger itself.
+
+**It's happening right now.** These are the builds currently queued:
+| build | commit | files changed |
+|---|---|---|
+| fa70b1e7 QUEUED | a0e74ea9 Verify workflow instructions | AGENTS.md, TODO.md |
+| 2f018280 QUEUED | f1f5fff2 Verify production | TODO.md |
+| c6671bb8 QUEUED | b0625ff1 (newer than my checkout) | not checked |
+
+Earlier, a76cca6e (TODO.md plus `tools/import/calendar.go`) built and deployed too. `tools/` isn't part of the server binary: the Dockerfile builds only the root package (`go build .` → `main.go` + `internal/`), and no server code imports `tools/`.
+
+**What the image is built from:** `main.go`, `go.mod`, `go.sum`, `internal/**` (the binary; `internal/ask/prompt.md` is embedded, which is covered), `web/**` (copied in), and `Dockerfile` / `.dockerignore`.
+
+**The change, whichever filter you pick:** export the trigger, add the filter, then import it back: `gcloud builds triggers export build-main --region us-west1 --project heliosian --destination <scratch>` → edit → `gcloud builds triggers import --region us-west1 --project heliosian --source <scratch>`. This writes to production's trigger, so I need your yes first. I'd also add one sentence to `docs/deploy.md` saying that pushes touching nothing in the image don't deploy, and pointing at `triggers describe` for the list.
+
+Here's how each filter would treat the last six commits:
+| commit | files | no filter (today) | allowlist | denylist |
+|---|---|---|---|---|
+| f1f5fff2 Verify production | TODO.md | deploys | skipped | skipped |
+| a0e74ea9 Verify workflow instructions | AGENTS.md, TODO.md | deploys | skipped | skipped |
+| 20d0f175 My Email Lists' intro… | TODO.md, docs/loop/loop.md, internal/app/about.go, internal/app/about_test.go, web/loop/pages/groups.js | deploys | deploys | deploys |
+| a76cca6e Name the year calendar document… | TODO.md, tools/import/calendar.go | deploys | skipped | skipped |
+| 139b54fd New Email List button… | TODO.md, docs/loop/loop.md, web/common/rail.js, web/loop/chrome.js, web/loop/pages/groups.js | deploys | deploys | deploys |
+| 5c70290b Verify deploys after they come up | AGENTS.md | deploys | skipped | skipped |
+
+- (*) Allowlist: build only when image inputs change
+  Adds `includedFiles: [main.go, go.mod, go.sum, Dockerfile, .dockerignore, "internal/**", "web/**"]`. It's one list that names exactly what the Dockerfile uses. A new top-level doc or folder never deploys without anyone having to remember to add it. The risk: a new top-level code directory outside `internal/` would need adding to the list, or its changes wouldn't deploy. Nothing like that exists today.
+- ( ) Denylist: skip when only non-image files change
+  Adds `ignoredFiles: [TODO.md, README.md, AGENTS.md, LICENSE.md, .gitignore, .gcloudignore, "docs/**", "tools/**", "sampledata/**", "asset-sources/**", ".claude/**"]`. It gives the same results on these six commits. Any new path deploys by default, so it fails safe toward deploying, but every new non-code file or folder needs adding to the list or it deploys again.
+- ( ) Leave the trigger alone
+  Nothing changes. TODO.md, AGENTS.md and docs pushes keep redeploying production.
+
+ian@fc.run chose: Allowlist: build only when image inputs change
