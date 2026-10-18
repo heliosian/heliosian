@@ -1,0 +1,28 @@
+# Verify production
+
+byre task 8cc25760b0a8, "Verify production: Verify", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 8cc25760b0a8 in byre (GET /api/events?task_id=8cc25760b0a8).
+
+## Summary
+
+Verified production from 7538815 through live commit 882c6dc3 (revision heliosian-01006-ffp, build 37173b36); no builds were queued.
+
+- 882c6dc3 (shared group-page pieces between Who? and Loop): verified in byre's Chrome as ian. Who? list pages show the "From <app> - open this …" link for an event (When), an activity (HCA-Team) and a tag (Loop). The tag Share uses the shared person picker and leaves out existing managers (nothing was picked). Loop's email list page shows the source line for event groups and none for Loop groups. The Loop Members CSV has a header plus one row per member (14 of 14). The room-parent line ("The families of the grades you are a room parent for") was verified by spoofing room parent Heather Gutnik on Hegrets Families, then turning the spoof off.
+- 06e8c64b: TODO.md only, not observable.
+- No failures, so no TODO items were added. TODO.md's `Last verified:` is now 882c6dc3.
+- At ian's request, added a line to AGENTS.md's Verifying section: check changes that only some viewers see by viewing as one of them (Spoof Mode on pages, `q --spoof` for data), because the room-parent check had first been written off as unverifiable.
+- Not live when verified: 02bd4b9b and 3e875057 (AGENTS.md and TODO.md only).
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates TODO.md’s last-verified marker from 7538815 to 882c6dc3. The range contains one prior verification commit and the shared Who?/Loop group-page changes. I independently confirmed that the serving Cloud Run revision’s image matches the successful build for 882c6dc3, with no queued or running builds; the snapshot does not include the agent’s production interaction transcript or final verification table.
+
+No significant findings.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Updates TODO.md’s production verification checkpoint from 7538815 to 882c6dc3. Adds instructions to verify behavior restricted to particular viewers using Spoof Mode or the query tool’s --spoof option.
+
+No significant findings.
