@@ -201,6 +201,26 @@ func TestASentPostIsFiledAsMail(t *testing.T) {
 	}
 }
 
+func TestAnswerGroupsAreSharedAsTheirEvent(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	seen := func() int {
+		t.Helper()
+		return len(as(t, s, student, `(from GROUP (where (in id "grp00000000040" "grp00000000042" "grp00000000043")))`))
+	}
+	if n := seen(); n != 3 {
+		t.Fatalf("before the picnic is made invite-only, the student sees %d of it and its answer groups, not 3", n)
+	}
+	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"listed": false, "visible_to": "grp00000000040", "members_visible_to": ""}}})
+	for _, id := range []string{"grp00000000042", "grp00000000043"} {
+		if g, _ := s.Model().Table("GROUP").Get(id); g["visible_to"] != "grp00000000040" || g["members_visible_to"] != "" {
+			t.Errorf("once the picnic is invite-only, %s is shown to %q and its members to %q", id, g["visible_to"], g["members_visible_to"])
+		}
+	}
+	if n := seen(); n != 0 {
+		t.Fatalf("once the picnic is invite-only, the student still sees %d of it and its answer groups", n)
+	}
+}
+
 func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	write := func(raw string) {

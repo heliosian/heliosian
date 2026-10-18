@@ -116,7 +116,8 @@ const PolicySource = `
 (define (runs_list @g)
   (and (!= @g.kind "family") (not (hides @g))
        (or (manages @g) (super_admin)
-           (and (admin_of "when") (= @g.kind "event"))
+           (and (admin_of "when")
+                (or (= @g.kind "event") (and (= @g.kind "group") (= @g.parent.kind "event") (exists GROUP (= audience @g)))))
            (and (admin_of "team")
                 (or (= @g.kind "activity") (and (= @g.kind "category") (= @g.parent.kind "activity"))
                     (and (= @g.kind "group") (= @g.parent.kind "activity")
@@ -853,6 +854,8 @@ const PolicySource = `
 (delete PHOTO (and (admin_of "when") (= @old.group.kind "category") (blank @old.group.parent)))
 ; open, cancel or close an event
 (set GROUP.status (and (admin_of "when") (= @old.kind "event")))
+; put an event on the calendar or take it off
+(set GROUP.listed (and (admin_of "when") (= @old.kind "event")))
 ; name the group of those coming to an event
 (set GROUP.rsvp_yes (and (admin_of "when") (= @old.kind "event")))
 ; name the group of those not coming to an event
@@ -1119,6 +1122,14 @@ const PolicySource = `
   (and (in @old.kind "event" "party") (= @old.added_by @viewer) (blank @old.managed_by)
        (= @new.managed_by.kind "group") (= @new.managed_by.added_by @viewer) (= @new.managed_by.managed_by @new.managed_by)
        (not (exists GROUP (= managed_by @new.managed_by) (!= id @new.managed_by) (!= id @old.id)))))
+; an event's hosts take it off the calendar, or put it on to wait for approval
+(set GROUP.listed (and (= @old.kind "event") (runs_list @old) (or (not @new.listed) (= @new.status "pending"))))
+; an event's hosts send it for approval as they put it on the calendar
+(set GROUP.status (and (= @old.kind "event") (runs_list @old) (= @new.status "pending") @new.listed (not @old.listed)))
+; an event's hosts open one waiting for approval as they take it off the calendar
+(set GROUP.status (and (= @old.kind "event") (runs_list @old) (= @old.status "pending") (= @new.status "open") (not @new.listed)))
+; an event's hosts name the group under it of those it is for
+(set GROUP.audience (and (= @old.kind "event") (runs_list @old) (= @new.audience.parent @old.id)))
 ; a group's managers remove one under it that holds no one and nothing
 (delete GROUP
   (and (not (blank @old.parent)) (runs_list @old.parent)

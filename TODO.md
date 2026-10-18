@@ -6,9 +6,6 @@ Last verified: 139b54f
 
 # Helios When
 
-- Editing an event doesn't change its sharing
-  The edit form shows the sharing picker and sends `sharing`, but `editEvent` (`web/when/writes.js:117`) never writes `listed`, `visible_to` or `members_visible_to`; only `addEvent` does. The picker also starts at Invite Only for any event whose `source` isn't `sheet` (`web/when/eventform.js:66`), so it doesn't show the event's real setting.
-
 # Helios Loop
 
 - Who?'s and Loop's group pages converging into one page, as the rail did

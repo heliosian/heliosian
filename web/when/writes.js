@@ -62,7 +62,7 @@ function audienceEdits(event, name, classrooms, audience) {
   const edits = [];
   let group = audience;
   if (!group) {
-    edits.push({insert: 'GROUP', as: 'audience', row: {kind: 'group', parent: event, name: name + ' Audience', status: 'open', listed: false, visible_to: state.model.everyone, members_visible_to: state.model.everyone, posting: 'none', replying: 'none'}});
+    edits.push({insert: 'GROUP', as: 'audience', row: {kind: 'group', parent: event, name: name + ' Audience', status: 'open', added_by: me().id, listed: false, visible_to: state.model.everyone, members_visible_to: state.model.everyone, posting: 'none', replying: 'none'}});
     edits.push({set: event, cells: {audience: '@audience'}});
     group = '@audience';
   }
@@ -121,6 +121,15 @@ export async function editEvent(e, body) {
   }
   if (body.address !== undefined) {
     cells.slug = body.address;
+  }
+  if (body.sharing !== e.sharing) {
+    const open = body.sharing !== 'Invite Only';
+    Object.assign(cells, {listed: body.sharing === 'Public', visible_to: open ? state.model.everyone : e.id, members_visible_to: open ? state.model.everyone : ''});
+    if (body.sharing === 'Public' && !state.model.admin) {
+      cells.status = 'pending';
+    } else if (e.pending) {
+      cells.status = 'open';
+    }
   }
   const batch = [{set: e.id, cells}];
   if (body.classrooms) {

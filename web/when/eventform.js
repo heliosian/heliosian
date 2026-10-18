@@ -63,7 +63,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   title.maxLength = 200;
   eventPanel.append(field('Title', title));
 
-  let sharing = override ? 'Public' : edit && from && from.source === 'sheet' ? from.sharing : 'Invite Only';
+  let sharing = override ? 'Public' : edit ? edit.sharing : 'Invite Only';
   const whoField = el('div', 'field');
   whoField.append(el('span', '', 'Who can find it'));
   const choices = el('div', 'event-visibility');
@@ -313,7 +313,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
     let made;
     try {
       if (override) {
-        await editEvent(edit, {...body, classrooms: null, category: '', address: address.value.trim()});
+        await editEvent(edit, {...body, sharing: edit.sharing, classrooms: null, category: '', address: address.value.trim()});
       } else if (edit) {
         if (JSON.stringify(body) !== JSON.stringify(before)) {
           await editEvent(edit, body);

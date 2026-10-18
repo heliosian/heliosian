@@ -30,6 +30,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "GROUP", fire: groupSlugMoved},
 	{table: "GROUP", fire: hiddenFor},
 	{table: "GROUP", fire: answerGroups},
+	{table: "GROUP", fire: answerSharing},
 	{table: "GROUP", fire: hiddenGone},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
@@ -247,6 +248,23 @@ func answerGroupEdits(g store.Row) []Edit {
 		)
 	}
 	return writes
+}
+
+func answerSharing(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.New["kind"] != "event" {
+		return nil, nil
+	}
+	if c.Old["visible_to"] == c.New["visible_to"] && c.Old["members_visible_to"] == c.New["members_visible_to"] {
+		return nil, nil
+	}
+	writes := []Edit{}
+	for _, column := range []string{"rsvp_yes", "rsvp_no"} {
+		if c.New[column] == "" {
+			continue
+		}
+		writes = append(writes, Edit{Set: c.New[column], Cells: map[string]any{"visible_to": c.New["visible_to"], "members_visible_to": c.New["members_visible_to"]}})
+	}
+	return writes, nil
 }
 
 func hiddenGone(m *Model, c Change) ([]Edit, error) {

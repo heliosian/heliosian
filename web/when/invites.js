@@ -765,7 +765,7 @@ export async function openEditor(e, view, refresh) {
   const {eventForm} = await import('./eventform.js');
   let shut = null;
   const box = el('div', 'editor');
-  box.append(eventForm({edit: e, override: e.can.correct, more: [], onDone: async (ids, changed) => {
+  box.append(eventForm({edit: e, override: e.can.correct && e.source !== 'sheet', more: [], onDone: async (ids, changed) => {
     shut();
     await refresh();
     if (changed && changed.length) {

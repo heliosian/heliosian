@@ -295,6 +295,85 @@ func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
 	}
 }
 
+func TestAHostChangesHowAnEventIsShared(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}})
+	write := func(cells map[string]any) error {
+		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}})
+		return err
+	}
+	for _, c := range []struct {
+		name  string
+		cells map[string]any
+		ok    bool
+	}{
+		{"public to anyone with the link", map[string]any{"listed": false, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}, true},
+		{"on the calendar without approval", map[string]any{"listed": true}, false},
+		{"waiting for approval off the calendar", map[string]any{"status": "pending"}, false},
+		{"anyone with the link to public, waiting for approval", map[string]any{"listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "status": "pending"}, true},
+		{"approve one's own event", map[string]any{"status": "open"}, false},
+		{"waiting for approval to invite-only, live", map[string]any{"listed": false, "visible_to": "grp00000000040", "members_visible_to": "", "status": "open"}, true},
+	} {
+		if err := write(c.cells); (err == nil) != c.ok {
+			t.Errorf("%s: %v", c.name, err)
+		}
+	}
+	if g, _ := s.Model().Table("GROUP").Get("grp00000000040"); g["status"] != "open" || g["visible_to"] != "grp00000000040" {
+		t.Errorf("the picnic ends %s and shown to %s, not open and invite-only", g["status"], g["visible_to"])
+	}
+	batch := func(edits ...Edit) error {
+		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: edits})
+		return err
+	}
+	if err := batch(Edit{Set: "grp00000000040", Cells: map[string]any{"audience": "grp00000000020"}}); err == nil {
+		t.Error("a host names a group not under the event as its audience")
+	}
+	if err := batch(
+		Edit{Set: "grp00000000040", Cells: map[string]any{"listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "status": "pending"}},
+		Edit{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "parent": "grp00000000040", "name": "Fall Picnic Audience", "status": "open", "added_by": parent, "listed": false, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		Edit{Set: "grp00000000040", Cells: map[string]any{"audience": "@audience"}},
+		Edit{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000000004"}},
+	); err != nil {
+		t.Errorf("a host can't make the invite-only picnic public for everyone: %v", err)
+	}
+}
+
+func TestAWhenAdminChangesHowAnEventIsShared(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{
+		{Delete: memberRow(t, s, "grp00000000005", staff)},
+		{Delete: memberRow(t, s, "grp00000000041", staff)},
+		{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}},
+	})
+	for _, cells := range []map[string]any{
+		{"listed": false, "visible_to": "grp00000000040", "members_visible_to": ""},
+		{"listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"},
+	} {
+		if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}}); err != nil {
+			t.Errorf("a When admin can't share the picnic as %v: %v", cells, err)
+		}
+	}
+	if g, _ := s.Model().Table("GROUP").Get("grp00000000040"); g["status"] != "open" || g["listed"] != "Yes" {
+		t.Errorf("the picnic ends %s and listed %q, not open and on the calendar", g["status"], g["listed"])
+	}
+	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
+		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "parent": "grp00000000040", "name": "Fall Picnic Audience", "status": "open", "added_by": staff, "listed": false, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
+		{Set: "grp00000000040", Cells: map[string]any{"audience": "@audience"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000000004"}},
+	}}); err != nil {
+		t.Fatalf("a When admin can't give the picnic an audience: %v", err)
+	}
+	picnic, _ := s.Model().Table("GROUP").Get("grp00000000040")
+	rules := s.Model().Table("RULE").Referencing("group", picnic["audience"])
+	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
+		{Set: "grp00000000040", Cells: map[string]any{"name": "Autumn Picnic"}},
+		{Delete: rules[0]["id"]},
+		{Insert: "RULE", Row: map[string]any{"group": picnic["audience"], "order": "i", "target": "grp00000000004"}},
+	}}); err != nil {
+		t.Errorf("a When admin can't rename the picnic and keep its audience: %v", err)
+	}
+}
+
 func TestAnAppsAdminsAppointManagers(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	apply(t, s, queue, []Edit{
