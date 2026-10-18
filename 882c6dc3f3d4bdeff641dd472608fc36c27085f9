@@ -1,0 +1,43 @@
+# Share group-page pieces between Who? and Loop
+
+byre task cc39e6b189a4, "Who?'s and Loop's group pages converging into one page, as the rail did", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Who?'s and Loop's group pages converging into one page, as the rail did".
+Full transcripts: the events of task cc39e6b189a4 in byre (GET /api/events?task_id=cc39e6b189a4).
+
+## Summary
+
+Started from the TODO item "Who?'s and Loop's group pages converging into one page, as the rail did" (Who?'s `listPage` in `web/who/pages/list.js`, Loop's `groupPage` in `web/loop/pages/group.js`).
+
+**Direction change.** The first proposal was one shared group page in `web/common/`. ian rejected it: Gayle wants clearly bespoke experiences in each app. The goal became sharing every component the two pages can share, and filling features one page lacks, while keeping two distinct pages.
+
+**How it was decided.** The pages were compared side by side with real captures from a production snapshot, viewed as ian: `tools/snapshot`, then `tools/startserver --snapshot --email <addr> --run go run ./tools/console --click/--type --out`. ian found the pictures decisive and a note about it went to the lead. From them ian picked four changes:
+1. Who?'s tag Share panel (`manageControl` in `web/who/tags.js`) uses the shared `createPersonPicker` instead of its own name search. Per ian, the list sits inside the panel at its width (`.share-search .person-picker-list` set to `position: static`), and the people come from `listed()` in `/directory.js`.
+2. The "From <app> - open this <thing>" line moved from `web/who/tags.js` to `sourceLine`/`groupApp` in `web/common/rail.js`, with its CSS in `rail.css`. Loop's email-list page now shows it for parties, activities and events; Loop's group carries `kind` from `listKinds`. It hides itself when the source app is the current one.
+3. Who?'s tag pages link to the tag's Loop page through the same line, since every tag is an email list.
+4. Loop's Members tab has a CSV with name, email and the tile's line. `csvField` moved from `web/who/dom.js` to `web/common/datagrid.js`.
+
+**Docs.** `docs/loop/loop.md` and `docs/who/directory.md` describe the line, the CSV and the shared picker.
+
+**Deliberately left as they are:**
+- separate person cards (Who?'s card is the directory's identity);
+- no rules or member editing in Who? (its lists aren't editable on purpose);
+- the small differences in search and empty-state wording;
+- no Duplicate or Leave in Loop.
+
+**Seen but not changed:**
+- Who?'s group pages drop anyone without a primary email (`emailEntries`), so Who? and Loop can disagree on membership.
+- Who?'s Filter button reads "Filter (1)" with nothing filtered.
+
+**Side finding.** byre's stop hook ("Your final message asks the human something in prose") contradicts byre's own discussion-mode instruction. Over Claude Code transcripts it was wrong in 14 of 21 firings (`local/stophook`, gitignored). The lead was asked to start a byre task to fix it.
+
+**Merge.** Merging main conflicted only in `TODO.md`, where both sides had removed different items; both stay removed.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Shares group source links and their styling between Who? and Loop, adds member CSV downloads to Loop, and uses the common person picker for sharing Who? tags. Moves CSV escaping into a shared module, updates the documentation, and removes the TODO item.
+
+No significant findings.
