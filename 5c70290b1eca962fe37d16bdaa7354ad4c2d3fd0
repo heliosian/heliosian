@@ -1,0 +1,43 @@
+# Verify deploys after they come up
+
+byre task 921e3efeb1d3, "Verify deploys after they come up", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 921e3efeb1d3 in byre (GET /api/events?task_id=921e3efeb1d3).
+
+## Summary
+
+Set out to make deploying agents verify each shipped change against production, then to do that verification for the deploy of heliosian main 2f7a899 (Cloud Run revision heliosian-01000-zfr).
+
+- **AGENTS.md:** a new short "Deploys" section. AGENTS.md had no deploy instructions to amend; the health checks live in `docs/deploy.md`, "Verifying a deploy". Once a deploy is up healthy: list what shipped with `git log <old sha>..<new sha>`, mapping each revision to its commit through `gcloud builds list` by image digest; check data with `go run ./tools/q read` and pages with byre-hands `chrome`, signed in as ian in byre's Chrome on iso; never write production data; report per change what was verified, how, and what couldn't be verified and why.
+- **Verification of 2f7a899:** the range was eebbe18..2f7a899, from heliosian-00998-hmm, live before the deploy. heliosian-00999-s6h (38557c5 alone) was an in-between revision from the same deploy, and the builds for 1152481 and 5cb71db were cancelled.
+  - 38557c5: verified by `tools/q`. The CHARITY row chrZ7bhpKKSAfB's description reads "California Bluegrass Association…", and no description contains "Birthday Association".
+  - 1152481: verified in Chrome. /e/grpykdcGhNGQEC shows "Not here", and the served app.js has the new code.
+  - 5cb71db: verified on Home's birthdays widget, All tab. The heading reads "Newsletter · 1 birthday", and Mike Orlando's row shows "Birthday Mon, Nov 2", which matches his PERSON birthday.
+  - 2f7a899: verified on My Jobs. The empty Do Now shows the new text.
+  - Not verified: how the All tab looks with several rows, since production has only one today.
+- **Sign-in:** ian signed byre's Chrome in to heliosian.com. At ian's request, every app hostname was confirmed signed in.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds a short Deploys section to AGENTS.md requiring agents to inspect deployed commit history, verify each change against production using data and browser tools, and report results and limitations. The agent also inspected revision/build history and checked the charity data; UI verification is pending the requested Google sign-in.
+
+No significant findings.
+
+## Decisions
+
+### Please sign in to heliosian.com in byre's Chrome on iso so I can check the deploy's page changes.
+
+I'm checking the last deploy (heliosian main 2f7a899, revision heliosian-01000-zfr) against production. The data check is done: CHARITY row chrZ7bhpKKSAfB's description now starts "California Bluegrass Association brings music e…", and no CHARITY description contains "Birthday Association". The other three changes are page changes: When's not-found event page, the Home birthdays widget's All tab, and My Jobs' empty Do Now text. Checking those means loading the pages as you, and byre's Chrome profile isn't signed in. When I open https://when.heliosian.com/e/grpykdcGhNGQEC it shows When's login card with "Continue with Google".
+
+Steps:
+1. On iso, find the Chrome window byre started (byre's own profile; it has a tab on https://when.heliosian.com/e/grpykdcGhNGQEC showing the When login card).
+2. Click **Continue with Google** and sign in as ian with your Helios Workspace account.
+3. Once the When page loads, answer here. The session cookie covers all of heliosian.com, so this one sign-in covers Home and Birthdays too.
+
+- (*) Signed in
+  I load the three pages, verify each change, and report.
+- ( ) Skip the browser checks
+  I report the three page changes as not verified, because the browser isn't signed in.
+
+ian@fc.run answered: i logged it in. check the rest of the heliosian sites to make sure they're all logged in
