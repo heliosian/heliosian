@@ -1,0 +1,120 @@
+# Match typed Celebrate guests to directory people; allow tickets for them
+
+byre task 4f7c47c7bdc9, "Guest PERSON rows duplicating people in the directory", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Guest PERSON rows duplicating people in the directory".
+Full transcripts: the events of task 4f7c47c7bdc9 in byre (GET /api/events?task_id=4f7c47c7bdc9).
+
+## Summary
+
+**Goal:** stop guest `PERSON` rows (`source = guest`) from duplicating directory people (TODO item; example: Sara Palanki had a guest copy `perOzsspFugZFy` next to the real student `perH2scCSkaDit`).
+
+**Found:** 55 guests in production shared a `name_show` with a directory person (the TODO said 128).
+- 51 were Celebrate tickets where a parent typed their own child's name as a guest. In every case the bringer (`guest_of`) was in the child's family, and the child held no ticket for that party.
+- The other 4 are deliberate and were left alone: 3 Pandya guests are the shown twins of people in a family that withheld consent (they hold the same school address), and Alice Che's guest holds her own gmail address.
+
+**Built:**
+- Celebrate ticket form, `knownGuest` in `web/celebrate/edit.js`, following ian's rules:
+  - an email that anyone holds uses that person;
+  - a name that matches someone in the buyer's family picks their photo in "Who's coming?", or says why they can't come;
+  - a name that matches anyone else in the directory asks (confirm) whether the place is theirs, and makes a guest only if the buyer says no;
+  - a known guest's name reuses that guest.
+
+  Matching now happens when someone is added, not when the form is submitted. The old refusal ("a ticket for someone outside your family is added by the party's hosts") is gone.
+- Policy (`internal/db/policy.go`), which ian approved widening:
+  - `buys_for` is now any guest, or anyone in the directory the viewer sees whom the party admits;
+  - a party's waitlist also takes anyone the buyer may buy a place for, with `guest_of` the buyer, so a purchase that runs past the room still writes. A reviewer caught this gap.
+
+  Tests: `TestAPlaceMayBeBoughtForSomeoneInAnotherFamily` and `TestSomeoneInAnotherFamilyMayGoOnTheWaitlistInTheSameWrite`. Docs updated in `docs/celebrate/celebrate.md` and `docs/datamodel.md`.
+- Data cleanup: a one-off `local/mergeguests` (gitignored, not in the repo). It runs in import mode, so no mail goes out. It repoints every reference to a guest (`MEMBER.person`, `MEMBER.guest_of`, `PAYMENT.for`) at the matching student and deletes the guest. It only merges when every ticket's bringer is in the student's family, prefers the student when two people share the name (Marco Mena: dad and 8th grader), and skips guests that hold an address. ian ran it; all 51 merged, verified with `tools/q` and in Celebrate search (both of Sara's rows now show her photo).
+
+**Left out:** When's guest list, Loop's hand additions and the outside invitation page (`extGuest`) still make name-only guests without these checks. None of the 51 came from them, and they either have a directory picker or need an address.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+The change resolves typed Celebrate guests against household members and directory names before creating a guest, and lets buyers purchase tickets for eligible directory members outside their household. It updates the documentation, adds a policy test, and removes the TODO item. The two targeted database tests pass.
+
+- Directory members outside the buyer's household cannot enter the waitlist during an overflow purchase, causing the whole purchase to fail.
+- The existing duplicate guest rows remain in directory search despite removal of the TODO item.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Celebrate now checks typed guest names against the buyer’s household and directory before reusing or creating a guest. Buyers may purchase tickets for visible, eligible directory members outside their household, including placing overflow tickets on the waitlist. Documentation and two database write tests cover the expanded behavior; the focused database tests pass.
+
+- Existing duplicate guest identities remain in directory search; the change only affects future ticket entry.
+
+## Decisions
+
+### Should I merge the 51 Celebrate guest people that are really students into the matching directory student, and delete the guest copies?
+
+**Background.** In Celebrate, a parent getting tickets can choose their family members by photo, or add a "guest" by typing a name. A guest is a `PERSON` row with `source = guest`. It has no family and no grade, and usually no email address. When a parent typed their *own child's* name instead of choosing the child, Celebrate made a new guest with the child's name. `person-at` only matches by email address, so nothing ever linked that guest to the real child.
+
+**What I found in production** (I read it with `tools/q --import`, which shows every row):
+- **55** guest people have the same `name_show` as a directory person. That's fewer than the TODO's 128; the 128 probably counted something else, such as rows on both sides.
+- **51** are Celebrate tickets (the `MEMBER` rows) from 2025 parties, plus one from 2026 (Liam Lee, Nerf Blaster Bash). For every ticket, the person who brought the guest (`guest_of`) is in the **same family** as the same-named student, and that student doesn't already have a ticket for the party. So each one is that family's own child.
+- **4 I'd leave alone.** Three are Pandyas: the family's consent is `withheld`, and these guests are the intended "shown twin" of a withheld person, holding the same school address. The fourth is Alice Che: a guest Alice made herself, holding her second address (aliceeche@gmail.com), which she uses on lists.
+- **One ambiguous case:** the Marco Mena guest. The directory has two Marco Menas in the same family, the dad `perC5AYYPFX9OL` and the 8th grader `perld8Ee28RfgJ`. Liz Mena brought "Julian Mena" and "Marco Mena" to Skyline Saturday Nosh and Wander, a party for the whole family. Julian is an 8th grader too, so I'd pick the student.
+
+**The symptom, as ian sees it.** In Celebrate search for "Sara Palanki", the May 17 row (an "S" letter, no photo) is the guest `perOzsspFugZFy`. The Sep 13 row (with her photo) is the real Ospreys 5th grader `perH2scCSkaDit`:
+
+![Celebrate search for Sara Palanki](local/celebrate-search-sara.png)
+
+**Worked example: Sara Palanki**, guest `perOzsspFugZFy`:
+
+| | Before | After |
+|---|---|---|
+| `MEMBER memyx89XHL1UqN` (Backyard Games and Goodies, guest_of Ravi Palanki) | person `perOzsspFugZFy` (guest) | person `perH2scCSkaDit` (Sara, grade 5); guest_of Ravi kept |
+| `PERSON perOzsspFugZFy` | guest, no email, no family | deleted |
+| Celebrate search "Sara Palanki" | two rows; May 17 shows a letter | two rows, both with Sara's photo |
+
+The other references get the same move: Liam Lee's `PAYMENT payzcuuB9QfIBo.for`, and `MEMBER memVBzXEWZOBfg.guest_of`, where the guest Olivia Tang brought an unnamed guest. None of the 51 has an address, a photo, mail or an `ALIAS`. Old guest-page links (`/people/guest:<ticket>`) point to the ticket row, which stays.
+
+- (*) Merge the 51 into the student
+  A one-off tool `local/mergeguests` makes one batch per guest. The batch sets every reference to point at the student and deletes the guest. The Marco Mena guest goes to the student Marco. The tool prints each guest and its student as it writes. Under your rule that bulk production writes are yours to run, I'll give you the command and won't run it myself. The tickets, payments and Celebrate history then name the real children, and their photos show.
+- ( ) Merge the 50, leave Marco Mena as a guest
+  Same as above, but `perHBDqXMkqtjY` stays a guest, so Celebrate keeps one duplicate "Marco Mena" (Skyline Saturday, guest of Liz Mena).
+- ( ) Don't touch the data, only stop new ones
+  All 55 stay. Searching "Sara Palanki" keeps showing the guest row with the letter.
+
+ian@fc.run chose: Merge the 51 into the student
+
+### How should Celebrate's ticket form handle a typed guest name that matches someone in the buyer's own family?
+
+**Background.** When you get tickets in Celebrate (the Tickets form, `web/celebrate/edit.js`), "Who's coming?" shows your family as photos to click. **Add someone** adds a guest: you type a full name and, optionally, an email address. Today the form only stops a duplicate when the typed email belongs to someone already on the list. With a name and no email, `knownGuest` only reuses an existing *guest* of that name. It never looks at your family, so it makes a new guest `PERSON` (`source = guest`). That's how 51 guests that are really students got made, most recently on 2026-03-07: Diana Tan typed "Liam Lee" for Nerf Blaster Bash, a party for Students, when Liam (grade 4, her son) was already offered as a photo.
+
+The same input for each option: Diana Tan, Tickets for Nerf Blaster Bash, Add someone → name "Liam Lee", no email.
+
+- (*) Refuse it and point at the photo
+  The modal doesn't add the guest and shows the toast "Liam Lee is in your family – pick them above". This is the same check and toast the form already uses for a matching email (line 191 of `edit.js`). If Liam can't be picked (he already has a ticket, or the party isn't for him), the photo is greyed and shows why, so the reason is still visible. It adds one name comparison against the family list, which the form already has.
+- ( ) Choose the family member for them
+  The modal quietly selects Liam's photo instead of adding a guest; the ticket goes to the real Liam. When Liam can't be picked (already has a ticket, not in the party's audience), it would have to fall back to refusing with that reason. That makes two outcomes instead of one, and a parent may not notice their typing was changed.
+
+The other places that make guests, When's guest list, Loop hand additions and the outside invitation page, either have a directory picker or need an email address. None of the 51 came from them, so I'd leave them as they are.
+
+ian@fc.run answered: if it's an email match with any person we know about, use that person instead. if it's a name match with someone in their family, use that person instead. if it's a name match with any person we know, suggest that person but allow it if they insist
+
+### To give a ticket to a directory person outside the buyer's family (from an email match, or a name suggestion the buyer accepts), the data-model policy has to allow it. Should I widen it?
+
+**Background.** I'm building your rules for typed guests in Celebrate's Tickets form (`web/celebrate/edit.js`, `knownGuest`):
+1. An email that matches anyone we know: use that person.
+2. A name that matches someone in the buyer's family: use that family member.
+3. A name that matches anyone else we know: suggest that person, and make a guest if the buyer insists.
+
+Rule 2 works with today's policy. Rules 1 and 3 run into the policy that decides whom a buyer may buy a place for, `buys_for` in `internal/db/policy.go:270`. It allows only "someone in the viewer's household the party admits, or any guest". A ticket or payment for a directory person from another family is refused on the server. The form refuses it first today, with "…is X's address in the directory: a ticket for someone outside your family is added by the party's hosts." Hosts (`editor`) can already give anyone a place.
+
+**Example input.** Diana Tan (Liam Lee's mom) gets tickets for Nerf Blaster Bash (eligible: Students, $50) and adds a guest named "Harrison Chan", no email. Harrison Chan `perHUdPdUqdc94` is a grade 4 student in another family.
+
+- (*) Widen `buys_for` to any directory person the viewer sees whom the party admits
+  ```
+  (define (buys_for @g @p)
+    (or (= @p.source "guest")
+        (and (person_visible @p) (!= @p.source "guest") (eligible_for @g @p))))
+  ```
+  Diana sees "Harrison Chan is in the directory (grade 4) – use him?" If she says yes, Harrison's ticket is written with `guest_of` Diana, and Diana's $50 payment has `for` Harrison. Harrison's parents get "Your tickets" (the mail already goes to a student's parents) and can see that payment, because it is for their child. If she insists on the guest, a guest "Harrison Chan" is made, as today. An email that matches Harrison's parent's address uses the parent, if the party admits them.
+- ( ) Keep `buys_for` as it is
+  Rules 1 and 3 can only offer people in Diana's own family. For Harrison, the form says what it says today, "…a ticket for someone outside your family is added by the party's hosts", and gives no choice to insist. Diana can still make the guest by typing the name with no email, which is how duplicates get made. This goes against your rule to "use that person".
+
+ian@fc.run chose: Widen `buys_for` to any directory person the viewer sees whom the party admits
