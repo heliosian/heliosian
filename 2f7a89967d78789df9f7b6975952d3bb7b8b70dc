@@ -1,0 +1,21 @@
+# My Jobs' empty Do Now reads backwards
+
+byre task 80ae72c23e67, "My Jobs' empty Do Now reads backwards", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "My Jobs' empty Do Now reads backwards".
+Full transcripts: the events of task 80ae72c23e67 in byre (GET /api/events?task_id=80ae72c23e67).
+
+## Summary
+
+Set out to fix the Do Now tab on Helios Staff Birthdays' My Jobs page: with no staff awaiting outreach or a response, it showed "There's work to be done!" above an empty list, which says the opposite of what the empty list means.
+
+- Changed the tab's `empty` text in `web/birthday/pages/jobs.js` to "Nothing to do right now. Staff land here when they need outreach.", so it says nothing is due and where staff will show up once they need outreach.
+- The Wait and All Done empty texts were left unchanged. No logic changed.
+- Removed the item from TODO.md. When main was merged in, TODO.md conflicted because main had removed the neighbouring "California Bluegrass Association" item at the same time. The resolution keeps both removals.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates My Jobs’ empty Do Now message to say there is nothing to do right now and explain when staff appear there. Removes the completed item from TODO.md.
+
+No significant findings.
