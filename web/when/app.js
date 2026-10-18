@@ -17,11 +17,7 @@ function eventRoute(parts) {
   if (!e) {
     if (!fetched.has(id)) {
       fetched.add(id);
-      fetchEvent(id).then(found => {
-        if (found) {
-          render();
-        }
-      });
+      fetchEvent(id).then(render);
       return el('div', 'list-page', 'Looking…');
     }
     return notFound('That event');

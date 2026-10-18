@@ -10,8 +10,6 @@
 
 # Helios When
 
-- An event the model hasn't loaded sits at "Looking…" forever
-  When loads only events with a `start` (`web/common/calendar.js:82`). For any other `/e/<id>`, `eventRoute` (`web/when/app.js:14`) calls `fetchEvent`, which looks in the same `byId` and finds nothing, and nothing re-renders to say "Not found". `/e/grpykdcGhNGQEC` (LARP Junior League, kind event, no `start`) is one, linked from Who?'s sidebar.
 - Editing an event doesn't change its sharing
   The edit form shows the sharing picker and sends `sharing`, but `editEvent` (`web/when/writes.js:117`) never writes `listed`, `visible_to` or `members_visible_to`; only `addEvent` does. The picker also starts at Invite Only for any event whose `source` isn't `sheet` (`web/when/eventform.js:66`), so it doesn't show the event's real setting.
 - The year-calendar PDF import never names its document
