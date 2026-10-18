@@ -72,8 +72,14 @@ export function listKey(id) {
   return 'list:' + id;
 }
 
+let opened = {};
+
+export function listAt(key) {
+  return lists[key] || opened[key];
+}
+
 export function groupPath(key) {
-  return (tags[key] || lists[key]).group.path;
+  return (tags[key] || listAt(key)).group.path;
 }
 
 export function groupAt(key) {
@@ -97,7 +103,16 @@ export function groupKeyOf(name) {
   if (tags[tagKey(name)]) {
     return tagKey(name);
   }
-  return Object.keys(lists).find(key => lists[key].id === name || lists[key].groupSlug.toLowerCase() === lower) || '';
+  const all = {...opened, ...lists};
+  return Object.keys(all).find(key => all[key].id === name || all[key].groupSlug.toLowerCase() === lower) || '';
+}
+
+export async function openGroup(name) {
+  const column = /^grp[0-9A-Za-z]{11}$/.test(name) ? 'id' : 'slug';
+  const answer = await q(`(from GROUP (where (= ${column} ${JSON.stringify(name)}) (!= status "closed")))`);
+  for (const g of rowsOf(answer, 'GROUP')) {
+    opened[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: g.name, kind: listKinds[g.kind] || 'group', slug: g.slug || g.id, groupSlug: g.slug || '', group: g, rsvp: g.rsvp_yes || '', run: false, member: false, start: '', people: null, guests: []};
+  }
 }
 
 const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug path ' +
@@ -334,7 +349,7 @@ function loadLists(managed, joined, mineAnswer) {
 }
 
 export async function loadMembers(keys) {
-  const pending = keys.map(key => lists[key]).filter(l => l && l.people === null);
+  const pending = keys.map(listAt).filter(l => l && l.people === null);
   if (!pending.length) {
     return;
   }

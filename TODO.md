@@ -10,9 +10,6 @@ Last verified: 882c6dc3
 
 # Helios Who?
 
-- `/groups/<id>` opens only directory groups and the viewer's own lists
-  `groupKeyOf` (`web/who/state.js:80`) looks only in `tags` and `lists`, and `lists` holds only groups the viewer runs or is in (`state.js:282`). Every other group `Model.Link` sends here says "Not here": a plain group the viewer only sees (`/groups/grp9AomK6zhG7r`, Spelling Bee), and every Team, Schedule or Celebrate heading of kind `category` (`/groups/grpdwsPcjueNqv`, Activities).
-
 # Data model
 
 - Committed triggers wake every worker on a table for any change to it

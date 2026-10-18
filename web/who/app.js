@@ -1,4 +1,4 @@
-import {state, model, lists, loadModel, groupKeyOf, loadMembers, kindAt} from './state.js';
+import {state, model, listAt, loadModel, groupKeyOf, openGroup, loadMembers, kindAt} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {el} from '/elements.js';
@@ -44,6 +44,8 @@ function people() {
   return peoplePage();
 }
 
+const lookedUp = new Set();
+
 function group(parts) {
   const kind = kindAt(parts);
   if (kind === 'family') {
@@ -58,13 +60,20 @@ function group(parts) {
     return gradePage(parts[1]);
   }
   const key = parts[1] ? groupKeyOf(parts[1]) : '';
+  if (!key && parts[1] && !lookedUp.has(parts[1])) {
+    openGroup(parts[1]).then(() => {
+      lookedUp.add(parts[1]);
+      render();
+    });
+    return el('div', 'content container');
+  }
   if (!key) {
     return notFound('That group');
   }
   state.filterTags = new Set([key]);
   state.filterTagRelations = loadTagRelations(key);
   state.tagListView = 'faces';
-  if (lists[key] && lists[key].people === null) {
+  if (listAt(key) && listAt(key).people === null) {
     loadMembers([key]).then(render);
     return el('div', 'content container');
   }

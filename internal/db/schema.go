@@ -441,7 +441,7 @@ var Tables = []Table{
 			ref("added_by", "PERSON").about("Who added it."),
 			col("added", Date).about("When it was added."),
 			generated("path").about("Its page's address within an app, /g/ and its slug, else its ID; each app draws its own view of the group there."),
-			generated("href").about("The address of its main page: an event's on When, an activity's on Team, a party's on Celebrate, any other group's on Who?."),
+			generated("href").about("The address of its main page: an event's on When, an activity's on Team, a party's on Celebrate, a family's, classroom's or grade's on Who?, any other group's on Loop when it has one there; blank on the rest."),
 			generated("who_href").about("A family's, classroom's or grade's page on Who?; blank on any other group."),
 			generated("loop_href").about("Its page on Loop, for a group, event, party or activity; blank on any other group."),
 			generated("when_href").about("Its page on When, for an event, party or activity with a start; blank on any other group."),

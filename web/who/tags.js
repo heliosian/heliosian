@@ -1,4 +1,4 @@
-import {state, tags, lists, byId, tagKey, viewerId, write, q, rowsOf, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
+import {state, tags, lists, listAt, byId, tagKey, viewerId, write, q, rowsOf, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
@@ -29,7 +29,7 @@ export function tagLabel(key) {
   if (tags[key]) {
     return tags[key].name;
   }
-  return lists[key] ? lists[key].name : key;
+  return listAt(key) ? listAt(key).name : key;
 }
 
 export function tagHref(key) {
@@ -58,7 +58,7 @@ export function members(key) {
   if (tags[key]) {
     return tagPeople(tags[key]);
   }
-  return lists[key] ? lists[key].people || [] : [];
+  return listAt(key) ? listAt(key).people || [] : [];
 }
 
 export function ensureMembers() {
@@ -69,7 +69,7 @@ export function selectedGuests() {
   if (state.filterTags.size !== 1 || state.filterGrades.size || state.filterClassrooms.size || state.filterRoles.size) {
     return [];
   }
-  const list = lists[[...state.filterTags][0]];
+  const list = listAt([...state.filterTags][0]);
   if (!list) {
     return [];
   }

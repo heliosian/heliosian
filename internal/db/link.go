@@ -36,12 +36,15 @@ func groupLinks(row store.Row, origin func(app string) string) {
 	on("when", slices.Contains(sharedKinds, kind) && row["start"] != "")
 	on("team", kind == "activity")
 	on("celebrate", kind == "party")
-	home := groupHome[kind]
-	if home == "" {
-		home = "who"
-	}
 	row["path"] = path
-	row["href"] = origin(home) + path
+	switch {
+	case groupHome[kind] != "":
+		row["href"] = origin(groupHome[kind]) + path
+	case row["who_href"] != "":
+		row["href"] = row["who_href"]
+	default:
+		row["href"] = row["loop_href"]
+	}
 }
 
 func documentLinks(row store.Row, docs func(id string) store.Row, origin func(app string) string) {

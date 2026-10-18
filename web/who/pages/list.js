@@ -1,4 +1,4 @@
-import {state, model, lists, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
+import {state, model, listAt, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familySearchText} from '../families.js';
@@ -90,7 +90,7 @@ export function listPage() {
 
   const title = state.filterTags.size ? [...state.filterTags].map(tagLabel).join(', ') : 'Everyone';
   const only = state.filterTags.size === 1 ? [...state.filterTags][0] : '';
-  const smart = only && lists[only] ? lists[only] : null;
+  const smart = (only && listAt(only)) || null;
   const ownTag = only && tags[only] ? only : '';
 
   const pageHeader = el('div', 'page-header container page-header-list');
