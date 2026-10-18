@@ -10,8 +10,6 @@ Last verified: 7538815
 
 # Helios Who?
 
-- Sidebar "Running" lists same-named groups with nothing to tell them apart
-  Rows are names alone (`listName`, `web/common/rail.js:175`). "Tech Team" shows three times: `grpJluA6GycJvc` (group), `grpRXvo3HBnAPa` (HCA-Team activity) and `tech` (the list). "LARP Junior League" twice: `grp6nIVc9H5y08` and `grpykdcGhNGQEC`, both kind event with no `start` under the LARP category, the first with no one in it. "Heliosian Team" twice: `grpybWP2JsCH88` and `team`.
 - Guest PERSON rows duplicating people in the directory
   128 `source = guest` people share a `name_show` with a non-guest, e.g. Sara Palanki: `perH2scCSkaDit` (the Ospreys 5th grader) and `perOzsspFugZFy` (guest, no email, no family, a guest of Ravi Palanki); Rhea Palanki likewise. Search returns both. `person-at` matches by address, so a guest made without one never finds the real person.
 - `/groups/<id>` opens only directory groups and the viewer's own lists
