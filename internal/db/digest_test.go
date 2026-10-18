@@ -39,6 +39,7 @@ func TestTheDigestReadsMailIntoToDosThatKeepTheirMarks(t *testing.T) {
 	bucket := blob.NewMemoryBucket()
 	pics := NewPictures(s, queue, bucket)
 	NewExtractor(s, queue, bucket, "test")
+	StartClassifier(s, queue, bucket, "test")
 	StartDigest(s, queue, bucket, "test", func() time.Time { return testNow })
 	mail := func(subject string) string {
 		return "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Tue, 29 Sep 2026 15:00:00 +0000\r\nSubject: " + subject + "\r\nList-Id: <parentsandstaff.heliosschool.org>\r\n" +

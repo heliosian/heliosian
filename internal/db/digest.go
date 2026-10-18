@@ -31,7 +31,7 @@ const (
 	MailWindow    = 14 * 24 * time.Hour
 )
 
-const DigestRevision = "2026-10-17.2"
+const DigestRevision = "2026-10-18.1"
 
 const digestSystem = `You read one email the Helios School community received - the school's newsletter, a message to all the families or to one class, or a post to a parent email list - and do three things.
 
@@ -209,7 +209,7 @@ func (d *Digest) pending() []string {
 	since := d.since()
 	rows := []store.Row{}
 	for _, row := range m.Table("DOCUMENT").All() {
-		if row["parent"] != "" || row["kind"] != "mail" || row["published"] < since || row["digest"] >= DigestRevision || d.skipped[row["id"]] {
+		if row["parent"] != "" || row["kind"] != "mail" || row["published"] < since || row["digest"] >= DigestRevision || d.skipped[row["id"]] || classifiable(row) {
 			continue
 		}
 		if _, ready := m.bodyMarkdown(row); !ready || len(m.sentTo(row["id"])) == 0 {

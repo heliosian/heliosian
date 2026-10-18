@@ -62,10 +62,13 @@ func TestABodyIsItsExtractNotTheLinksAfterIt(t *testing.T) {
 func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	var mu sync.Mutex
 	asked := []string{}
+	regraded := false
 	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
+		case strings.Contains(request, "Field trip") && regraded:
+			return `{"classrooms": [], "grades": ["Grade 3"], "nobody": false}`
 		case strings.Contains(request, "Field trip"):
 			asked = append(asked, "Field trip")
 			return `{"classrooms": ["hummingbirds"], "grades": [], "nobody": false}`
@@ -100,7 +103,8 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		_, gone := s.Model().Table("DOCUMENT").Get(circle)
-		if len(sentTo(s, trip)) > 0 && len(sentTo(s, play)) > 0 && len(sentTo(s, picnic)) > 0 && !gone {
+		through, _ := s.Model().Table("DOCUMENT").Get(listed)
+		if len(sentTo(s, trip)) > 0 && len(sentTo(s, play)) > 0 && len(sentTo(s, picnic)) > 0 && !gone && through["classified"] == ClassifyRevision {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -117,6 +121,22 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 		if row["parent"] == circle {
 			t.Fatalf("a part of the lit circle's email is left: %v", row)
 		}
+	}
+	for _, document := range []string{trip, play, picnic, listed} {
+		if row, _ := s.Model().Table("DOCUMENT").Get(document); row["classified"] != ClassifyRevision {
+			t.Errorf("%s is classified at %q, want %q", document, row["classified"], ClassifyRevision)
+		}
+	}
+	mu.Lock()
+	regraded = true
+	mu.Unlock()
+	apply(t, s, queue, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
+	deadline = time.Now().Add(2 * time.Second)
+	for strings.Join(sentTo(s, trip), " ") != gradeParents {
+		if time.Now().After(deadline) {
+			t.Fatalf("not classified again after two seconds: trip sent to %v, want %s", sentTo(s, trip), gradeParents)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	mu.Lock()
 	defer mu.Unlock()

@@ -9,11 +9,9 @@ import (
 
 func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	undigested := 0
+	before := map[string]int{}
 	for _, q := range s.Model().queueCounts() {
-		if q.Name == "digest" {
-			undigested = q.Pending
-		}
+		before[q.Name] = q.Pending
 	}
 	apply(t, s, queue, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
@@ -44,7 +42,7 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 			counted[q.Name+" "+p.Name] = p.Pending
 		}
 	}
-	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "fetching signed in": 1, "fetching signed in image": 0, "fetching signed in linked": 1, "classifying": 4, "digest": undigested + 1,"content sweep": 1, "content sweep image/png": 1} {
+	for name, want := range map[string]int{"extraction": 2, "extraction message/rfc822": 1, "extraction text/html": 1, "fetching": 1, "fetching image": 1, "fetching linked": 0, "fetching signed in": 1, "fetching signed in image": 0, "fetching signed in linked": 1, "classifying": before["classifying"] + 4, "digest": before["digest"] + 1, "content sweep": 1, "content sweep image/png": 1} {
 		if counted[name] != want {
 			t.Errorf("%s pending %d, want %d", name, counted[name], want)
 		}

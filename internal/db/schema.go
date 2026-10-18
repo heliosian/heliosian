@@ -567,6 +567,7 @@ var Tables = []Table{
 			col("summary", Text).about("For mail, one sentence on what it is about, as Heliosian's Inbox shows it under the subject."),
 			col("key_points", Text).about("For mail, its key points, one a line, as Heliosian's Inbox shows them."),
 			col("repeats", Text).about("For mail, each key point that repeats an earlier email's to-do, a line each: the point's number, a colon and the TODO's ID."),
+			col("classified", Text).about("For mail, the revision of the classifier that filed it under its sent_to groups, or that found it came through a list; classified again when the classifier's revision moves past it."),
 			col("digest", Text).about("For mail, the revision of the digest that wrote its summary, key points and to-dos; read again when the digest's revision moves past it."),
 			col("extracted", Moment).about("When the server finished making the nodes read out of its content; blank while that work is still to do."),
 			col("slug", Text).about("For a wiki page, its own part of its address in place of the one its title gives, after its parents' parts: lowercase letters, digits and single hyphens, at most 40, never shaped like an id, no two pages under the same parent the same."),

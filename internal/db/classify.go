@@ -26,6 +26,8 @@ const (
 	classifyBackoff = 30 * time.Second
 )
 
+const ClassifyRevision = "2026-10-18.1"
+
 var errAskAgain = errors.New("asking again may answer")
 
 const classifySystem = `You read one email the Helios School community received - the school's newsletter, a notice from the school's mailer, a message to all the families or to one class - and say whom it was written to.
@@ -96,18 +98,17 @@ func (c *Classifier) run() {
 }
 
 func (c *Classifier) pending() []string {
-	m := c.s.Model()
-	links := m.Table("DOCUMENT_GROUP")
 	out := []string{}
-	for _, row := range m.Table("DOCUMENT").All() {
-		if row["parent"] != "" || row["kind"] != "mail" || c.skipped[row["id"]] {
-			continue
-		}
-		if !slices.ContainsFunc(links.Referencing("document", row["id"]), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
+	for _, row := range c.s.Model().Table("DOCUMENT").All() {
+		if classifiable(row) && !c.skipped[row["id"]] {
 			out = append(out, row["id"])
 		}
 	}
 	return out
+}
+
+func classifiable(row store.Row) bool {
+	return row["parent"] == "" && row["kind"] == "mail" && row["message"] == "" && row["classified"] < ClassifyRevision
 }
 
 func (m *Model) bodyMarkdown(root store.Row) (string, bool) {
@@ -162,8 +163,7 @@ func (c *Classifier) classify(id string) (string, error) {
 		return "", err
 	}
 	if listName(msg.Header.Get("List-Id")) != "" {
-		c.skipped[id] = true
-		return "", nil
+		return "through a list", c.file(id, nil)
 	}
 	body, ready := m.bodyMarkdown(root)
 	if !ready {
@@ -205,18 +205,40 @@ func (c *Classifier) classify(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	_, err = c.queue.Transact(ctx, access.System(classifyActor), func(tx *store.Tx) error {
-		if slices.ContainsFunc(c.s.In(tx).Table("DOCUMENT_GROUP").Referencing("document", id), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
+	return strings.Join(sentTo, " "), c.file(id, sentTo)
+}
+
+// A nil sentTo is mail that came through a list: its groups are the list's, so only its revision is written.
+func (c *Classifier) file(id string, sentTo []string) error {
+	_, err := c.queue.Transact(context.Background(), access.System(classifyActor), func(tx *store.Tx) error {
+		m := c.s.In(tx)
+		row, ok := m.Table("DOCUMENT").Get(id)
+		if !ok || !classifiable(row) {
 			return nil
 		}
 		w := &pendingWrites{}
-		for _, group := range sentTo {
-			w.add(Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": id, "group": group, "relation": "sent_to"}})
+		w.add(Edit{Set: id, Cells: map[string]any{"classified": ClassifyRevision}})
+		if sentTo != nil {
+			held := []string{}
+			for _, link := range m.Table("DOCUMENT_GROUP").Referencing("document", id) {
+				if link["relation"] != "sent_to" {
+					continue
+				}
+				held = append(held, link["group"])
+				if !slices.Contains(sentTo, link["group"]) {
+					w.add(Edit{Delete: link["id"]})
+				}
+			}
+			for _, group := range sentTo {
+				if !slices.Contains(held, group) {
+					w.add(Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": id, "group": group, "relation": "sent_to"}})
+				}
+			}
 		}
 		_, err := stageEdits(c.s, tx, Env{System: classifyActor}, w.edits, classifyActor, true)
 		return err
 	})
-	return strings.Join(sentTo, " "), err
+	return err
 }
 
 func (c *Classifier) discard(id string) error {

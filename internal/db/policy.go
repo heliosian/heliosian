@@ -560,7 +560,7 @@ const PolicySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   summary key_points repeats digest extracted slug hidden source terminal)
+   summary key_points repeats digest classified extracted slug hidden source terminal)
   true)
 ; what the mail the viewer may read asks of its readers
 (read TODO (document_visible document))

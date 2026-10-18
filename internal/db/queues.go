@@ -129,9 +129,8 @@ func (m *Model) queueCounts() []queueCount {
 	}
 	signIn := queueCount{Name: "fetching signed in", About: "images and links that need someone signed in to Google: go run ./tools/fetchsignin", Query: signInQuery("image", "linked")}
 	signInBy := map[string]int{}
-	classifying := queueCount{Name: "classifying", About: "mail sent to no group yet, waiting for Claude to say whom it was written to", Query: `(from DOCUMENT @d (where (= kind "mail") (blank parent) (not (exists DOCUMENT_GROUP (= document @d) (= relation "sent_to")))))`}
+	classifying := queueCount{Name: "classifying", About: "mail the classifier has not filed for its current revision, waiting for Claude to say whom it was written to or for its list to be read", Query: `(from DOCUMENT (where (= kind "mail") (blank parent) (blank message) (or (blank classified) (< classified ` + strconv.Quote(ClassifyRevision) + `))))`}
 	byType, byRelation := &tally{}, &tally{}
-	links := m.Table("DOCUMENT_GROUP")
 	for _, d := range m.Table("DOCUMENT").All() {
 		if c, ok := contents.Get(d["content"]); ok && extractable(baseType(c["mime"])) {
 			byType.add(&extraction, baseType(c["mime"]), d["extracted"] == "")
@@ -143,10 +142,14 @@ func (m *Model) queueCounts() []queueCount {
 				signInBy[d["relation"]]++
 			}
 		}
-		if d["kind"] == "mail" && d["parent"] == "" && !slices.ContainsFunc(links.Referencing("document", d["id"]), func(l store.Row) bool { return l["relation"] == "sent_to" }) {
-			classifying.Pending++
+		if d["kind"] == "mail" && d["parent"] == "" && d["message"] == "" {
+			classifying.Total++
+			if classifiable(d) {
+				classifying.Pending++
+			}
 		}
 	}
+	classifying.Done = classifying.Total - classifying.Pending
 	byType.finish(&extraction, func(kind string) string { return extractionQuery(mimesOf[kind]) })
 	byRelation.finish(&fetching, func(relation string) string { return fetchingQuery(relation) })
 	for _, relation := range []string{"image", "linked"} {
