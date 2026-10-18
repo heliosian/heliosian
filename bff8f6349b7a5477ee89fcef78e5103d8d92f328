@@ -1,0 +1,145 @@
+# `/groups/<id>` opens only directory groups and the viewer's own lists
+
+byre task bbae05bae1e8, "`/groups/<id>` opens only directory groups and the viewer's own lists", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "`/groups/<id>` opens only directory groups and the viewer's own lists".
+Full transcripts: the events of task bbae05bae1e8 in byre (GET /api/events?task_id=bbae05bae1e8).
+
+## Summary
+
+**Goal:** Who?'s group page (`/groups/<id>`, now `/g/<id>`) said "Not here" for any group that wasn't a directory group (family/classroom/grade), one of the viewer's tags, or a list they run or are in, even though the data model's generated `href` sent every other group kind there (plain groups like Spelling Bee, `category` headings like Activities).
+
+**Built:**
+- `web/who/state.js`: `openGroup(name)` queries the group by id (when it matches `/^grp[0-9A-Za-z]{11}$/`, Loop's test) or slug, and keeps the row in a separate `opened` map, so it never joins the sidebar or Tags filter. `listAt(key)` reads `lists` or `opened`; `groupPath`, `groupKeyOf`, `loadMembers`, `tags.js` and `pages/list.js` use it. `app.js`'s group route looks a missing name up once, remembering it only after a successful answer (a reviewer caught that a failed request marked the group missing for good).
+- `internal/db/link.go` `groupLinks`: the generated `href` no longer defaults to Who?. Events, activities and parties keep When/Team/Celebrate; families, classrooms and grades go to Who?; any other group gets its `loop_href`, blank where Loop has no page (categories, bands, crews, departments). `docs/dev.md`, the column description and `link_test.go`/`tools_test.go` follow.
+
+**Decisions:** ian asked what the use case was. With `href` in mind, ian first wanted bare `href` removed entirely (path plus app-specific hrefs only); I got partway, then ian stopped me and chose to keep `href` (the default link Ask, MCP and search hand out) with a rule that never points at Who? for a group Who? didn't show before. The Who? page fix stays, so a group someone does reach there opens.
+
+**Left out:** an on-page error when the lookup fails (stays blank, as member loading already does); a JS test (no JS harness in the repo); links for category headings (ian: never link them).
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds on-demand lookup of groups by ID or slug so `/groups/<id>` can open visible groups outside the viewer’s directory tags and joined or managed lists, including category headings. The resulting pages reuse the existing member loading and list rendering, and the TODO item is removed.
+
+- A transient group lookup failure leaves a blank page and prevents retrying that group until the app reloads.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Allows Helios Who’s `/groups/<id-or-slug>` route to fetch visible groups that are absent from the viewer’s directory tags and personal lists, including category headings. The fetched groups use the existing member loader and list page without being added to sidebar lists. Removes the completed TODO item.
+
+No significant findings.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Group pages now fetch visible, non-closed groups when they are absent from the viewer’s directory tags and sidebar lists. The fetched groups use the existing member, title, guest and source-link rendering without being added to the sidebar. The completed TODO item is removed.
+
+No significant findings.
+
+### Snapshot 4, codex gpt-6.1-sol: done
+
+Who? now fetches a visible group on demand when its route is absent from the viewer’s directory tags and lists, then loads its members into the list view. The change also removes generated `href` columns and derives links from app-specific URL columns for search, tools, and mail.
+
+- Category groups lose their links in search and tool responses despite being an explicit target of the task.
+- Existing href tests fail because they were not migrated with the generated-column removal.
+
+### Snapshot 5, codex gpt-6.1-sol: done
+
+Who? now looks up groups outside the viewer’s directory tags and joined or managed lists, then loads their visible members for the list page. The change also replaces the generated href column with app-specific page columns and updates link consumers to choose among them, and removes the TODO item.
+
+- The tools suite fails because its link assertion still expects the previous Who? destination.
+
+### Snapshot 6, codex gpt-6.1-sol: done
+
+Who now looks up directly opened groups by ID or slug, including visible groups outside the viewer’s lists and category headings, and loads their members for the list page. Generated main links send plain groups to Loop and leave categories without a main link. The TODO item and link documentation are updated. Focused database link and tool link tests pass.
+
+No significant findings.
+
+## Decisions
+
+### Should plain groups' page links (`href`) stay on Who?, which this task makes work, or move to Loop?
+
+**Background.** Every GROUP row the data model returns carries `href`, its page link. `groupLinks` in `internal/db/link.go` builds it. Events go to When, activities to Team and parties to Celebrate. Every other kind goes to Who? at `/g/<slug or id>`: plain `group` lists, `category` headings, bands, crews and departments. The Helios MCP server and Ask put that `href` into Claude's answers, so it is the link people click when Claude names a group.
+
+Before this task, Who?'s `/g/` page opened only directory groups and the viewer's own lists, so those links landed on "Not here". This branch makes Who? open any open group the viewer can see. The page fetches the group, then shows its members as directory cards. That fix is done and tested on the sample server.
+
+The use case is narrow: links the system hands out. Loop already has its own page for plain groups (`loop_href`), but category groups get no Loop link.
+
+**The same two groups under each option:**
+
+| Group | Today on main | Keep this branch (Who?) | Point plain groups at Loop |
+|---|---|---|---|
+| Spelling Bee, `grp9AomK6zhG7r`, kind `group`, slug `spelling-bee` | `who.heliosian.com/g/spelling-bee` → "Not here" | same link, opens with members as directory cards | `loop.heliosian.com/g/spelling-bee` → Loop's email-list page |
+| Activities, `grpdwsPcjueNqv`, kind `category`, no slug | `who.heliosian.com/g/grpdwsPcjueNqv` → "Not here" | same link, opens with title and "No matches." (a category has no members) | no Loop page; stays the Who? link, so this branch is still needed, or the group gets no link |
+
+- (*) Keep this branch as is
+  One rule covers every kind: any group whose link goes to Who? opens there. No change to `link.go`. Plain groups show as directory cards rather than Loop's list page.
+- ( ) Also point `href` at Loop for kind `group`
+  A one-line change in `groupLinks`: kind `group` gets home `loop`. Spelling Bee's link opens Loop's page, where the list's address, posting rules and archive live. Categories, bands, crews and departments still go to Who?, so this branch's fix stays. That leaves two rules where there was one.
+
+ian@fc.run answered: we dropped bare `href` from the generated model at HEAD.
+
+when will who actually get linked to for these, though? i don't think any of the sites uses who_href?
+
+### With bare `href` gone, nothing I can find links to Who? for a plain group or category any more. Should this task be dropped?
+
+**What I can see.** I fetched main just now, and its tip is `66897730` ("Client pages use the generated href column"). There, GROUP still has a generated `href` (`internal/db/schema.go:444`), and `groupLinks` (`internal/db/link.go:39-44`) points it at Who? for every kind other than event, activity or party. Two things read it: MCP (`internal/tools/tools.go:178`) and Ask (`internal/ask/turn.go:70`). That's the only path I found that sends a plain group to Who?, e.g. Spelling Bee → `who.heliosian.com/g/spelling-bee`. The commit that drops `href` isn't on origin yet, so I can't see it.
+
+**Once `href` is gone, the only links to Who?'s `/g/` page are:**
+- **`who_href`**, set only for families, classrooms and grades (`link.go:34`). Birthday, Celebrate and the person card read it. Those pages always opened.
+- **Who?'s own sidebar, tag pages and the Tags filter**, which use the `path` of your tags and lists. Those always opened too.
+- **Old addresses.** `who…/groups/<x>` redirects to `who…/g/<x>` (`internal/app/wiring.go:247`). Before this, Who?'s `/groups/` pages showed only your own tags and lists, so old links lead to groups that already open.
+
+So no link the system produces would reach a group that only this task's change opens. What's left is someone typing or editing a `/g/<id>` address by hand on Who?.
+
+The same input under each choice: the address `who.heliosian.com/g/spelling-bee`, which a viewer reaches only by typing it.
+
+- (*) Drop the task
+  The address shows "Not here", as on main today. Nothing links there, so nobody lands on it. That keeps 20-odd lines and a second `opened` map of lists out of `web/who/state.js`. If you want this, say so and I'll put the TODO item back on this branch so it doesn't get lost, or you can discard the task.
+- ( ) Merge it anyway
+  The address opens Spelling Bee as a page of member cards. It only helps someone who types the address, and adds that code for it.
+
+ian@fc.run answered: go find the href change from history and fix it here -- that's a vilation of my instructions. path, app-specific hrefs, that's it
+
+it's fine to show other groups in who if linked to. let's just make sure they're never linked to
+
+### Keep the generated `href` column with a rule that never points at Who? for groups Who? didn't show before, or finish removing it and pick the link at read time?
+
+I've stopped. Yes: `href` was the one default link per row, the one MCP's tools (`c.href` in `internal/tools/tools.go`), Ask's chips (`t.href` in `internal/ask/turn.go`) and search results (`SearchRow.Href` in `internal/db/search.go`) hand out. On main, `groupLinks` (`internal/db/link.go`) sets it to Who? for every kind other than event, activity and party. That's why categories, plain groups and managers groups linked to Who?, where they said "Not here" before this task.
+
+**Where the worktree stands (mid-change, uncommitted until this turn ends):**
+- Done:
+  - the `href` column is removed from PERSON, GROUP and DOCUMENT (`schema.go`, `policy.go`), and DOCUMENT gains `wiki_href`
+  - new `db.PageHref(table, row)` picks the first filled of `who_href`, `team_href`, `celebrate_href`, `when_href`, `loop_href` (a document: `wiki_href`, else `url`)
+  - tools, Ask, search and the party and activity mail read app columns; the alerts menu reads `when_href`
+  - the MCP instructions are reworded, and `go vet` passes
+- Not done:
+  - `docs/mcp/mcp.md`, `docs/dev.md` and `docs/tools.md` still describe `href` as a column
+  - `link_test.go` is half migrated
+  - the other test files that check `href` haven't been run yet
+
+**The same sample rows under each option** (the default link MCP, Ask and search give):
+
+| Row | main today | Keep `href`, Who? only for family/classroom/grade | Drop `href`, `PageHref` at read time |
+|---|---|---|---|
+| Rowan Ashdown (person) | `who/p/rowan.ashdown` | `who/p/rowan.ashdown` | `who/p/rowan.ashdown` |
+| Hummingbirds (classroom) | `who/g/hummingbirds` | `who/g/hummingbirds` | `who/g/hummingbirds` |
+| Fall Picnic (event) | `when/g/fall-picnic` | `when/g/fall-picnic` | `when/g/fall-picnic` |
+| Fall Picnic Managers (plain group) | `who/g/grp00000000041` | `loop/g/grp00000000041` | `loop/g/grp00000000041` |
+| Community (category) | `who/g/community` | none | none |
+| Getting Started (wiki page) | `wiki/p/getting-started` | `wiki/p/getting-started` | `wiki/p/getting-started` |
+
+The links come out the same either way. What differs is the data model.
+
+- (*) Keep `href`, change only its rule
+  - `groupLinks` sets `href` to `who_href`, else `team_href`, `celebrate_href`, `when_href`, `loop_href`, else blank.
+  - I'd undo the column removal and the reader changes, `PageHref` and `wiki_href`. That leaves one line of logic changed in `link.go`, its test cases updated, and the `href` descriptions in `schema.go` and `docs/dev.md` reworded.
+  - `href` stays a queryable column, as main has it.
+- ( ) Finish removing `href`
+  - The model has only `path` and the app hrefs, and the readers pick with `db.PageHref`.
+  - I'd finish the docs and tests.
+  - A query that trims columns gets no link unless it names the app columns.
+
+Either way, Who?'s `/g/` page keeps this task's fix: it opens any group you can see when someone does reach it.
+
+ian@fc.run chose: Keep `href`, change only its rule
