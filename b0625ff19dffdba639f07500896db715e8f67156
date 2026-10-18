@@ -1,0 +1,113 @@
+# Editing an event doesn't change its sharing
+
+byre task 7731ba2b009a, "Editing an event doesn't change its sharing", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Editing an event doesn't change its sharing".
+Full transcripts: the events of task 7731ba2b009a in byre (GET /api/events?task_id=7731ba2b009a).
+
+## Summary
+
+**Goal:** editing a When event never changed its sharing. `editEvent` didn't write `listed` / `visible_to` / `members_visible_to`, and the edit form's picker always started at Invite Only for anything not added in When.
+
+**Built:**
+- `web/when/writes.js` `editEvent` writes the sharing cells when the chosen sharing differs from the event's current `sharing`. It does this the same way `addEvent` does: Invite Only → `visible_to` the event itself and `members_visible_to` blank; Link and Public → everyone. A host who isn't an admin making an event Public sends it to `pending`, and making a pending event non-public opens it. `audienceEdits` now sets `added_by` on the audience group, without which hosts' inserts of it were refused.
+- `web/when/eventform.js`: the picker starts at `edit.sharing`. The school-calendar override form keeps the event's own sharing.
+- `web/when/invites.js`: the override form ("correct the school's version") opens only for imported or linked events (`source !== 'sheet'`). For events added in When, admins now get the normal form with the sharing picker.
+- `internal/db/policy.go`:
+  - Hosts may unlist an event, list it only as pending (and only when it wasn't listed), open a pending one only while unlisting it, and name a group under the event as its `audience`.
+  - When admins may set `listed` on any event.
+  - `runs_list` now also covers an event's audience group for When admins, as Team's does for an activity's leads and co-chair offers groups.
+- `internal/db/trigger.go`: a new staged trigger, `answerSharing`, copies an event's `visible_to` / `members_visible_to` onto its Going and Not Going groups whenever either changes. Before, the answers stayed visible to everyone after an event went invite-only. A side effect: new invite-only events' answer groups end up visible to the event's own members, not blank.
+- Tests: `TestAHostChangesHowAnEventIsShared`, `TestAWhenAdminChangesHowAnEventIsShared` and `TestAnswerGroupsAreSharedAsTheirEvent`. Docs updated in `docs/when/calendar.md` and `docs/datamodel.md`.
+
+**Decision:** ian chose adding host policy rules, with going Public meaning pending approval, over removing Public from the edit form.
+
+**Left out (found, not fixed):**
+- `addEvent` and `saveFeed` destructure `write()`'s result as an array, but `/api/q` answers `{"result": [...]}`. So adding an event in When saves it, then shows "(intermediate value) is not iterable".
+- A Public event shared with "Everyone" reopens with no classrooms picked, because `e.classrooms` maps only classroom targets.
+- Sample data's When categories have `adding` blank, so hosts can't add Public events in sample mode.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The event edit form now starts with the event’s current sharing setting, and saving a different setting updates listing and visibility fields. It also attempts to move newly public events into moderation and open pending events made private or link-only, preserves sharing during school-calendar overrides, updates the documentation, and removes the TODO item.
+
+- Sharing changes involving moderation are rejected for non-admin hosts by the unchanged server policy.
+- Making an event invite-only leaves its RSVP groups and responses visible to everyone.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+The edit form now starts with the event’s current sharing setting and saves changes to its listing and visibility. Sharing edits also attempt approval-status transitions, and a database trigger keeps Going and Not Going groups’ visibility aligned with the event. The TODO item is removed and documentation updated.
+
+- Sharing changes involving Public fail because only super admins may change `GROUP.listed`.
+- Ordinary hosts lack permission for the approval-status transitions sent by sharing edits.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+The event editor now starts with the event’s current sharing setting and writes visibility and calendar listing changes. Host changes to public sharing require approval, RSVP groups follow the event’s visibility, and the TODO item is removed with supporting documentation and database tests.
+
+- When admins cannot change event sharing because the editor always uses override mode and the listing policy lacks an admin grant.
+
+### Snapshot 4, codex gpt-6.1-sol: done
+
+The event editor now starts with the event’s current sharing setting and saves changes to visibility and calendar listing. Hosts can submit newly public events for approval, RSVP groups follow event visibility, and the completed TODO item is removed.
+
+- Public event edits and sharing changes can fail for When admins who do not host the event because they cannot rewrite its audience rules.
+
+### Snapshot 5, codex gpt-6.1-sol: done
+
+The event editor now starts with the event’s current sharing setting and saves changes to its visibility and calendar listing. Host permissions enforce approval when making an event public, and a database trigger keeps RSVP groups’ visibility aligned with the event. The change also updates documentation, adds policy and trigger tests, and removes the TODO item.
+
+No significant findings.
+
+## Decisions
+
+### When's edit form can now switch an event between Invite only and Anyone with the link. Switching to or from Public is refused by the server's write policy for hosts who aren't admins. Should I add policy rules so hosts can do that, with going Public sending the event to admin approval?
+
+**Background.** On Helios When, an event's sharing lives in three `GROUP` cells. `listed` puts it on the calendar for everyone to find. `visible_to` is who can open it: everyone, or the event itself, meaning only its invitees. `members_visible_to` is who can see who's going. The form offers three settings:
+
+| Setting | listed | visible_to | members_visible_to |
+|---|---|---|---|
+| Invite only | false | the event itself | blank |
+| Anyone with the link | false | everyone | everyone |
+| Public | true | everyone | everyone |
+
+When a host who isn't an admin adds a Public event, it starts as `status` pending and waits for a When admin to approve it.
+
+**What's done.** `editEvent` (`web/when/writes.js`) now writes those cells when the chosen setting differs from the event's current one. The picker opens on the event's real setting; before, it always showed Invite only for anything not added in When. I tested this on the sample server, signed in as Jordan Whitfield (not an admin), on an event Jordan added called "Sharing Test":
+
+- Invite only → Anyone with the link: saved, the event now reads Link.
+- Anyone with the link → Invite only: saved.
+- Invite only → Public (classroom Everyone): the form shows **`you may not change GROUP.status`**.
+
+**Why Public fails.** `internal/db/policy.go` has no `set GROUP.listed` rule at all, so a host can never list or unlist an event. A host also can't set `status` to pending, and can't move a pending event back to open: the existing rule (`policy.go:1033`) allows that only for someone who runs the parent category, meaning an admin. Admins never see the picker in the edit form; for them it's the correct-the-school's-version form. So this only affects hosts.
+
+Here is the same event, "Sharing Test" hosted by Jordan, under each option:
+
+- (*) Add host rules to the policy
+  Three rules in `policy.go`'s When section, plus a test in `internal/db`:
+  ```
+  (set GROUP.listed (and (= @old.kind "event") (runs_list @old) (or (not @new.listed) (= @new.status "pending"))))
+  (set GROUP.status (and (= @old.kind "event") (runs_list @old) (= @new.status "pending") @new.listed))
+  (set GROUP.status (and (= @old.kind "event") (runs_list @old) (= @old.status "pending") (= @new.status "open") (not @new.listed)))
+  ```
+  - Invite only → Public: saved as listed and pending. Jordan sees it dashed in amber with Waiting for approval, and admins get Approve and Decline, the same as an event added as Public.
+  - Public (approved) → Link: unlisted and stays open, so it leaves everyone's calendar but its link still works.
+  - Public (still pending) → Invite only: unlisted and goes back to open, live for its invitees.
+  - A host can't list an event without it going to pending, so the approval step holds.
+- ( ) Leave Public out of editing
+  No policy change. The edit form for a host offers only Invite only and Anyone with the link, and a Public event's form hides the picker.
+  - Invite only → Public: not offered. Jordan has to add a new Public event.
+  - Public → Link: not offered, so a host can't take an event off the calendar. Only an admin can, by Declining it.
+
+<details><summary>A separate bug I found while testing (not fixed)</summary>
+
+`addEvent` (`web/when/writes.js:113`) does `const [id] = await write(batch)`, but `/api/q` answers `{"result": [...]}`. Adding an event in When saves it and then shows "(intermediate value) is not iterable" in the form, with no toast and no navigation to the new event. `saveFeed` (line 17) has the same pattern. The other apps read `.result`. It came in with 270814ce. I left it alone because it's outside this item; I can fix it here or add it to TODO.md.
+</details>
+
+<details><summary>Smaller detail in either case</summary>
+
+An event that was never Public has no classrooms, so switching it to Public opens the Who tab with no classrooms picked, and saving asks you to pick one ("Pick at least one classroom."). This is the same check the add form uses, so I've left it as is.
+</details>
+
+ian@fc.run chose: Add host rules to the policy
