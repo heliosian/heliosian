@@ -135,6 +135,32 @@ func sendMail(t *testing.T, s *Store, pics *Pictures, subject, body string) stri
 	return children(s, part["id"])[0]["id"]
 }
 
+func TestReadyAfterTheStoredEntriesAreIndexed(t *testing.T) {
+	s, _, bucket, x := searcher(t)
+	rows := waitRows(t, s, x)
+	waitIndexed(t, x, rows)
+	vertex, err := artifacts.NewVertex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s2, queue2 := sampleWithQueue(t)
+	started := NewSearcher(s2, queue2, bucket, vertex)
+	select {
+	case <-started.Ready():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the searcher never became ready")
+	}
+	v := started.snapshot()
+	for id, r := range rows {
+		if v.entries[r.Object] == nil {
+			t.Errorf("ready without the entry for %s", id)
+		}
+	}
+	if len(v.vectors["DOCUMENT"].centroids) == 0 {
+		t.Error("ready without trained cells")
+	}
+}
+
 func TestEveryRowIsMadeUnasked(t *testing.T) {
 	s, _, bucket, x := searcher(t)
 	rows := waitRows(t, s, x)

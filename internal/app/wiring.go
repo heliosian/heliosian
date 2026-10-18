@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"image/color"
-	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -41,8 +40,6 @@ import (
 	"heliosian/internal/tools"
 	"heliosian/internal/vitals"
 )
-
-const deployOverlap = 30 * time.Second
 
 const localMail = "local/mail"
 
@@ -283,10 +280,6 @@ func NewCore(cfg Config) *Core {
 		<-queue.Refreshed()
 		pictures.Start()
 	}()
-	time.AfterFunc(deployOverlap, func() {
-		slog.Info("reading again for the previous revision's last writes")
-		queue.Refresh()
-	})
 	return &Core{
 		Sessions: sessions, Data: dataStore, Pictures: pictures, Search: search, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
@@ -417,6 +410,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	} else {
 		db.StartIdleWorkers(core.Data)
 	}
+	<-core.Search.Ready()
 	return server, core.Queue
 }
 

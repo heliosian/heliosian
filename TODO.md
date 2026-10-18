@@ -20,11 +20,6 @@ Last verified: bff8f634
 - Resources' DOCUMENT tab takes seconds to load
   Its one query (`scan` in `web/admin/resources/start.js:31`) reads all ~60,000 DOCUMENT rows with every reference included and answers 24 MB (7 MB on the wire). Its trace: about 2.8s on the server, of which redact ~1.0s, include ~1.1s and encode ~0.5s; the policies take ~0.2s, and `document_visible` is never reached for a super admin. The browser saw ~4s waiting plus ~0.6s downloading.
 
-# Search
-
-- Search answers empty for about a minute after each start
-  The index starts on `emptyView()` (`internal/db/search.go:169`) and `Search` answers from it with no readiness check until the first full pass has loaded every entry and trained its k-means cells.
-
 # Issues
 
 - Store pronunciation recordings in a format an iPhone plays

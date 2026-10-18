@@ -285,10 +285,11 @@ type Searcher struct {
 	waiting map[string]bool
 	swept   bool
 	wake    chan struct{}
+	ready   chan struct{}
 }
 
 func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1), ready: make(chan struct{})}
 	go x.follow()
 	go x.index()
 	queue.OnTick(x.rebuild)
@@ -782,7 +783,16 @@ func (x *Searcher) index() {
 		x.view = view
 		x.mu.Unlock()
 		slog.Info("search: indexed", "entries", len(entries), "names", len(view.names), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
+		select {
+		case <-x.ready:
+		default:
+			close(x.ready)
+		}
 	}
+}
+
+func (x *Searcher) Ready() <-chan struct{} {
+	return x.ready
 }
 
 func loadAll[T any](n int, f func(i int) (T, error)) ([]T, []error) {

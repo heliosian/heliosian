@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/hosts"
@@ -150,6 +151,8 @@ func route(domain string, apps, aliased map[string]http.Handler) http.Handler {
 	})
 }
 
+const deployOverlap = 30 * time.Second
+
 func Port() string {
 	if port := os.Getenv("PORT"); port != "" {
 		return port
@@ -174,6 +177,10 @@ func Serve(server *http.Server, queue *store.Queue) {
 			slog.Error("shutdown", "error", err)
 		}
 	}()
+	time.AfterFunc(deployOverlap, func() {
+		slog.Info("reading again for the previous revision's last writes")
+		queue.Refresh()
+	})
 	slog.Info("listening", "port", Port())
 	if err := ListenAndServe(server); err != http.ErrServerClosed {
 		logging.Fatal("serve", "error", err)
