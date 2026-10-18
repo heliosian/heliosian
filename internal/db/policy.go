@@ -84,13 +84,13 @@ const PolicySource = `
        (or (manages @g)
            (and (= @g.status "pending") (= @g.added_by @viewer))
            (and (!= @g.status "pending")
-                (exists EFFECTIVE_MEMBER (= group @g.visible_to) (= person @viewer))))))
+                (in @g.visible_to (select EFFECTIVE_MEMBER.group (= person @viewer)))))))
 
 ; the viewer may see @g, and manages it or is an effective member of the group its members are visible to
 (define (sees_members @g)
   (and (visible @g)
        (or (manages @g)
-           (exists EFFECTIVE_MEMBER (= group @g.members_visible_to) (= person @viewer)))))
+           (in @g.members_visible_to (select EFFECTIVE_MEMBER.group (= person @viewer))))))
 
 ; @p is the viewer, a guest in one of the viewer's groups or in a group whose members the viewer sees, or anyone else not hidden and active; the consent step has already removed everyone unconsented
 (define (person_visible @p)
