@@ -1,0 +1,20 @@
+# Verify deployed work, then queued deploys, in AGENTS.md
+
+byre task 26fb044de43c, "update the heliosian verify agents.md text to verify deployed work, then wait for queued deploys, then verify that", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 26fb044de43c in byre (GET /api/events?task_id=26fb044de43c).
+
+## Summary
+
+Set out to change the Verifying section of heliosian's `AGENTS.md` so agents verify deployed work, then wait for queued deploys, then verify those too.
+
+- Added one bullet under Verifying: first verify the work the live commit already carries. Then wait for every Cloud Build still queued or running, listed with `gcloud builds list --region us-west1 --project heliosian --filter "status=QUEUED OR status=WORKING"`, to finish, and verify the work those deploys carry against the new live commit. For how to wait on a single build, it points to `docs/deploy.md`, Verifying a deploy, instead of copying the wait loop.
+- Checked that the gcloud filter command runs.
+- Took the task title as the wording to write into the doc, not as an order to verify production during this task, so no production verification was done.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates AGENTS.md to require verifying the currently deployed work first, waiting for all queued or running builds to finish, then verifying the resulting deployed work against the new live commit. Includes the command to list pending builds and a reference to the existing deployment waiting instructions.
+
+No significant findings.
