@@ -1,0 +1,22 @@
+# An event the model hasn't loaded sits at "Looking…" forever
+
+byre task 9a6ababf6e4a, "An event the model hasn't loaded sits at \"Looking…\" forever", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "An event the model hasn't loaded sits at \"Looking…\" forever".
+Full transcripts: the events of task 9a6ababf6e4a in byre (GET /api/events?task_id=9a6ababf6e4a).
+
+## Summary
+
+Fixed Helios When's `/e/<id>` page hanging at "Looking…" for events the calendar model hasn't loaded (the model loads only events with a `start`, e.g. `/e/grpykdcGhNGQEC`, LARP Junior League).
+
+- Cause: `eventRoute` (`web/when/app.js`) calls `fetchEvent` (alias lookup into the same `byId`), and only re-rendered when it found the event, so a miss never left "Looking…".
+- Fix: `fetchEvent(id).then(render)` always re-renders; the second pass sees the id in `fetched` and shows the existing "That event not found" page.
+- Left out: making undated events actually viewable in When (would need loading them separately); they now show "not found" rather than hanging.
+- Removed the TODO.md item. Merged main cleanly; `go vet ./...` passes; no tests cover this route, and it was not exercised in a browser.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The event route now re-renders after an event lookup completes even when no event is found. Events absent from the calendar model therefore leave “Looking…” and show the existing “Not here” page. The corresponding TODO item is removed.
+
+No significant findings.
