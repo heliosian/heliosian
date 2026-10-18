@@ -81,11 +81,13 @@ func TestTheNewestMailIsClassifiedFirst(t *testing.T) {
 func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	var mu sync.Mutex
 	asked := []string{}
-	regraded := false
+	regraded, circled := false, false
 	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
+		case strings.Contains(request, "Field trip") && circled:
+			return `{"classrooms": [], "grades": [], "nobody": true}`
 		case strings.Contains(request, "Field trip") && regraded:
 			return `{"classrooms": [], "grades": ["Grade 3"], "nobody": false}`
 		case strings.Contains(request, "Field trip"):
@@ -156,6 +158,23 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 			t.Fatalf("not classified again after two seconds: trip sent to %v, want %s", sentTo(s, trip), gradeParents)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+	mu.Lock()
+	circled = true
+	mu.Unlock()
+	apply(t, s, queue, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
+	deadline = time.Now().Add(2 * time.Second)
+	for {
+		if _, held := s.Model().Table("DOCUMENT").Get(trip); !held {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("an email with groups, classified again as to nobody, is still there after two seconds, sent to %v", sentTo(s, trip))
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := len(s.Model().Table("DOCUMENT_GROUP").Referencing("document", trip)); n != 0 {
+		t.Errorf("%d links outlived the deleted email", n)
 	}
 	mu.Lock()
 	defer mu.Unlock()

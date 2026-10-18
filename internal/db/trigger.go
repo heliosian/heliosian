@@ -42,6 +42,7 @@ var stagedTriggers = []stagedTrigger{
 var deleteTriggers = []stagedTrigger{
 	{fire: aliasesGone},
 	{table: "DOCUMENT", fire: toDosGone},
+	{table: "DOCUMENT", fire: linksGone},
 	{table: "TODO", fire: marksGone},
 }
 
@@ -262,6 +263,14 @@ func hiddenGone(m *Model, c Change) ([]Edit, error) {
 func toDosGone(m *Model, c Change) ([]Edit, error) {
 	writes := []Edit{}
 	for _, row := range m.Table("TODO").Referencing("document", c.Old["id"]) {
+		writes = append(writes, Edit{Delete: row["id"]})
+	}
+	return writes, nil
+}
+
+func linksGone(m *Model, c Change) ([]Edit, error) {
+	writes := []Edit{}
+	for _, row := range m.Table("DOCUMENT_GROUP").Referencing("document", c.Old["id"]) {
 		writes = append(writes, Edit{Delete: row["id"]})
 	}
 	return writes, nil
