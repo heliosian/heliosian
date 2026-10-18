@@ -3,9 +3,6 @@
 
 # Helios Staff Birthdays
 
-- My Jobs' empty Do Now reads backwards
-  With no staff awaiting outreach or a response, Do Now says "There's work to be done!" (`web/birthday/pages/jobs.js:12`) above an empty list.
-
 # Helios When
 
 - Editing an event doesn't change its sharing
