@@ -1,0 +1,35 @@
+# Remove the fixed same-named sidebar groups item from TODO
+
+byre task f69f47716f95, "Sidebar \"Running\" lists same-named groups with nothing to tell them apart", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Sidebar \"Running\" lists same-named groups with nothing to tell them apart".
+Full transcripts: the events of task f69f47716f95 in byre (GET /api/events?task_id=f69f47716f95).
+
+## Summary
+
+Set out to stop the Who?/Loop sidebar's Running section from listing same-named groups with nothing to tell them apart (`listName`, `web/common/rail.js`). I proposed showing a hint (the address, else the kind) on rows whose names collide. ian chose to fix the duplicates in the data instead, so the UI is unchanged and the only repo change is removing the TODO.md item.
+
+Production writes, each approved by ian before it ran, all through `go run ./tools/q --import write`. Import mode skips membership and invite mail (`placeChanges` in membershipmail.go, `Invitations.react` in invitemail.go).
+- **Tech Team:** the `tech` email list (grpeDECZoGMSqH) got all its members from two rules on ian's tag group (grpJluA6GycJvc): the tag's members and their parents. Both were folded into the HCA-Team activity grpRXvo3HBnAPa:
+  - added the 9 people only on the list as sign-ups, and Gayle McDowell to the activity's managers;
+  - pointed the `tech-team` alias and a hidden alias at the activity;
+  - deleted the list's rules, the list, the tag and both managers groups;
+  - then gave the activity the slug `tech`. That has to come after the delete, because blanking a slug makes `groupSlugMoved` add a hidden alias for the old slug, which would block the move. Aliases must move before their target is deleted (`aliasesGone`).
+  - There was no mail history to move.
+- **LARP Junior League:** deleted the empty duplicate series event grp6nIVc9H5y08 along with its Going, Not Going and managers groups; the server removed its Hidden group itself.
+  - The event's `rsvp_yes` and `rsvp_no` had to be blanked first, because the event and its answer groups point at each other and the server refused the delete.
+  - The real series grpykdcGhNGQEC, with 12 monthly sessions and their RSVPs, is untouched.
+- **Heliosian Team:** grpybWP2JsCH88 (Gayle, Ian, Donny Kurniawan; it manages `team`, Super Secret Beta and the 14 band parents lists) is renamed "Heliosian Dev Team". It was briefly named "Heliosian Admins", which clashed with the `home-admins` app-admins group.
+
+Checked live in Who?: Running now shows each name once.
+
+Left out: Joined still shows "Tech Team" twice (the 2025–26 and 2026–27 Skills & Needs activities, which have no dates) and "International Night" twice. Also reported to the lead: the hands `chrome` tool's screenshot can't be saved to the task's media folder, so byre can't show it.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Removes the sidebar duplicate-name item from TODO.md. The associated commit message records renaming the group with Donny to “Heliosian Dev Team”; this snapshot contains no application code or test changes, so any data cleanup is outside the reviewed diff.
+
+No significant findings.
