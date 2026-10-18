@@ -1,0 +1,208 @@
+# Client pages use the generated href column
+
+byre task 81bfc11b0add, "Client pages use the generated href column", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 81bfc11b0add in byre (GET /api/events?task_id=81bfc11b0add).
+
+## Summary
+
+**Goal.** Finish moving the client pages under `web/` onto the server's generated link columns (follow-up to 3427f8b, which made `href` a generated column), so that link rules live only on the server and the client builds no page addresses.
+
+**Design, settled with ian in several rounds:**
+- Generated columns, each returned only when a query names it (no forced-on columns):
+  - `path`: the in-app relative address. `/p/<slug, else id>` for a PERSON, `/g/<slug, else id>` for a GROUP, the wiki path for a wiki DOCUMENT.
+  - Per-app absolute hrefs, blank when the row isn't that app's kind of thing: `who_href` (person, family, classroom, grade), `loop_href` (group, event, party, activity), `when_href` (event, party or activity with a start), `team_href` (activity), `celebrate_href` (party).
+  - `href` stays the main page for Ask, MCP and mail.
+- Person links use the slug, not the ID; ian chose this, and it matches `PERSON.slug`'s own description.
+- Every app routes `/g/<key>` to its own view of the group. Who? picks the family, classroom, grade or list page by kind (`kindAt` in `web/who/state.js`). Who? routes `/p/<key>` for people. The `/p/` clash with Celebrate's old prefix and the wiki's `/p/` was accepted, since they are on different hosts.
+- Old prefixes (Who?'s `/people/`, `/families/`, `/classrooms/`, `/grades/`, `/groups/`; Loop's `/groups/`; When's `/e/`, `/events/`; Team's `/v/`, `/activities/`; Celebrate's `/p/`, `/parties/`) get a 301 to the same rest under the new prefix. This runs before sign-in, so share previews keep working, and after Team's and Celebrate's REDIRECT-table wraps, because production REDIRECT rows name old paths. It is the `Moved` field on each app in `internal/app/wiring.go`.
+- Links within an app use `path`. Links across apps use the app's href. `link()` in `web/public/common/elements.js` marks only relative hrefs for the router, which replaced `railLink`'s special case.
+- Writes return only IDs. The two places that need a new row's address right after writing it query `path` afterwards rather than adding columns to the write API (ian's choice): Who?'s tag duplicate/create and When's slug rename.
+- Links into the current app's own view of a group stay app routes: Loop's and Who?'s sidebar lists and When's `/g/` page for parties. That was ian's call.
+
+**What was built.** The server generates and documents the columns and serves the read grants and routes. Previews, invites and feeds use `path`. On the client, `personLink`, `familyLink`, `classroomPath`, `gradePath`, `groupPathOf`, `eventPath`, `linkURL`, `profileLink` and `whoLink` were deleted, along with the hand-built `/p/`, `/v/` and `/e/` addresses in Home, alerts, calendar, Celebrate, Team, Loop and Who?. The user menu's profile link comes from `who_href` through `data.js`'s `me()`. The unused `rulesEditor` in `web/common/rules.js` was deleted. Docs were updated (`docs/dev.md` "Where its page is", plus the app docs). Tests cover the columns, the redirects (signed out, in order with REDIRECT rows) and the previews.
+
+**Left out or left alone.**
+- Wiki URLs are unchanged. ian: "leave wiki however it is for urls"; a `/d/` scheme for documents was discussed and deferred. A `path` column was added to wiki documents only so the wiki's own links read it.
+- The editors' typed-slug address previews still show a `/g/<typed>` prefix, since no row exists yet.
+- Staff Birthdays' `/staff/<handle>` pages are an in-app view and were left as is.
+- No production page check was possible: production runs the old code, so only data was read from it. Pages were checked on sample data with `tools/console` and `tools/screenshot`.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+The change introduces generated page paths and per-app URLs, changes person and group routes to /p/ and /g/, and redirects legacy routes. It migrates some Who links to generated paths and updates server link expectations, but leaves much of the client migration unfinished.
+
+- Who cannot load because modules still import deleted link helpers.
+- New canonical detail routes are missing from every client router.
+- Sidebar tag queries omit the generated path now used for navigation.
+- Link construction outside Who remains unmigrated.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Migrates client page links to generated row addresses and introduces generated paths and app-specific href columns. It also changes person and group routes to /p/ and /g/, with redirects from previous routes, and updates server consumers and tests.
+
+- Existing shared URLs lose their specific public previews because legacy redirects run after authentication.
+- Documentation still describes deleted helpers and the old link-building contract.
+- An unused client-side activity and party URL builder remains.
+
+### Snapshot 4, codex gpt-6.1-sol: done
+
+Moves client links to generated row paths and app-specific href columns, removes client URL builders, and adds redirects from the previous page routes to `/p/` and `/g/`. Updates the schema, server link consumers, documentation, and tests for the new addresses.
+
+No significant findings.
+
+## Decisions
+
+### Who?'s person links use the person's slug (`/people/ian.gulliver`), but the server's generated `href` uses their ID (`/people/perWPWxQkmB98q`). Which address should a person's page have, everywhere?
+
+**Background.** The task is to make every client page under `web/` link people, groups and documents through the generated `href` column (added in 3427f8b, computed in `internal/db/link.go`) and delete the client's own link-building code. For people the two rules disagree today:
+
+- **Client** (`personLink` in `web/who/people.js`, also `web/common/directory.js` `profileLink`, `whoLink` in `web/common/appswitch.js`): `/people/<slug>`, falling back to the ID. `PERSON.slug` is the part of a person's primary email before the @, written by the import; its schema description says it is "their short name in Who?'s addresses (/people/<slug>)". Guests have none.
+- **Server** (`personHref`): always `https://who.<domain>/people/<id>`. This is what Ask, MCP, search and mail already link to.
+
+Who? opens a person page at either form (`personByKey` takes a slug or an ID), so both work; the question is only which one people see and share.
+
+**Real row (production, you):** `PERSON perWPWxQkmB98q`, `name_show` Ian Gulliver, `slug` ian.gulliver, `href` https://who.heliosian.com/people/perWPWxQkmB98q
+
+| | Your card in Who?'s directory links to | Ask / MCP / mail link to |
+|---|---|---|
+| Client switches to today's `href` | `who.heliosian.com/people/perWPWxQkmB98q` | `who.heliosian.com/people/perWPWxQkmB98q` |
+| `personHref` uses the slug, client uses `href` | `who.heliosian.com/people/ian.gulliver` | `who.heliosian.com/people/ian.gulliver` |
+
+- (*) Server uses the slug
+  Change `personHref` to `/people/<slug>`, else the ID (a guest), matching the column's own description and the addresses Who? shows today. Every client link then uses `href`. Ask/MCP/mail links change from the ID form to the slug form; old ID links still open.
+- ( ) Keep the ID
+  Leave `personHref` as it is; Who?'s links change from `/people/ian.gulliver` to `/people/perWPWxQkmB98q`. The `PERSON.slug` description would be corrected to say it is only accepted, not linked.
+
+ian@fc.run chose: Server uses the slug
+
+### Should links into the current app's own view of a group (Loop's and Who?'s sidebar lists, When's page for a party) keep their in-app address, with `href` used only where a link means "this row's own page"?
+
+**Background.** The task moves client links onto the generated `href` column, which is one address per row: an event's page on When, an activity's on Team, a party's on Celebrate, any other group's on Who?. Several client links don't mean that page: they open the row inside the app you're in.
+
+- **Loop and Who? sidebar "Lists"** (`groupPathOf` in `web/common/rail.js`, `web/loop/state.js:214`, `groupPath` in `web/who/state.js`): every list, whatever its kind, links to `/groups/<slug or id>` on the current app, the group page that shows its members and mail.
+- **When's calendar** (`eventPath` in `web/when/state.js`, `web/common/dayrows.js`): every entry, parties and activities included, opens When's own `/e/<key>` page, which then has a "Celebrate"/"Team" button (`e.link`) to the row's own page.
+
+**Real rows (production):**
+
+| Row | Link today | Its `href` |
+|---|---|---|
+| Halloween Coffee Cart (activity) in Loop's sidebar | `loop.heliosian.com/groups/grp4xuQMKn2N0b` | `team.heliosian.com/v/grp4xuQMKn2N0b` |
+| Parents (email list) in Loop's sidebar | `loop.heliosian.com/groups/parents` | `who.heliosian.com/groups/parents` |
+| Inspire Without Pressure (party) on When's calendar | `when.heliosian.com/e/inspire` | `celebrate.heliosian.com/p/inspire` |
+| same party, When's "Celebrate" button (`e.link`) | `celebrate.heliosian.com/p/inspire` | `celebrate.heliosian.com/p/inspire` |
+
+- (*) Keep in-app views; href for own-page links
+  The first three rows keep their links (they are app routes, like `/day/<date>`); the fourth, and every other link that today builds a row's own page (people, families, classrooms, grades, Celebrate/Team/When "open this" buttons, alerts, Home's party and activity cards, wiki pages), uses `href` and its builder is deleted.
+- ( ) Everything uses href
+  All four rows link to `href`: clicking an activity in Loop's sidebar leaves Loop for Team, the Parents list leaves Loop for Who?, and a party on When's calendar opens Celebrate directly with no When page.
+
+ian@fc.run chose: Keep in-app views; href for own-page links
+
+### OK to change the page router so in-app links can carry an absolute `href`: same-origin links navigate in place, other-app links open normally?
+
+**Background.** `href` is always absolute (`https://who.heliosian.com/people/…`). Every client link made by `link()` (`web/public/common/elements.js`) is marked `data-link`, and the router (`web/common/router.js`) catches clicks on those and calls `history.pushState(…, a.getAttribute('href'))`. That works for `/people/x`, but for a link to another app (`https://team.heliosian.com/v/…`) `pushState` throws and the click does nothing, so today `railLink` in `web/common/rail.js` strips `data-link` from absolute links as a special case, and other cross-app links avoid `link()`. The router's back trail also compares paths, so an absolute same-app href would not match.
+
+**Example, a Who? directory card linking `href` https://who.heliosian.com/people/perWPWxQkmB98q, and Who?'s rail linking https://team.heliosian.com/v/grp4xuQMKn2N0b:**
+
+- (*) Router handles origins
+  The click handler reads the link's resolved URL: same origin → `navigate(pathname + search)` (Who? card: in-place, `/people/perWPWxQkmB98q` in the trail); other origin → it returns and the browser follows (Team link loads Team). About three changed lines in `router.js`; `railLink` is deleted and every page uses `link(row.href)` as is.
+- ( ) Strip origins in each page
+  Each same-app use cuts the origin off (`new URL(row.href).pathname`) before `link()`, and each cross-app use builds a plain `<a>` without `data-link`. No router change, but every call site has to know whether its row lives on this app.
+
+ian@fc.run answered: note on previous answer: do we need multiple hrefs? loop page href, team page href -- could be blank if they're not there? primary href? what actually uses do we have?
+
+if we need relative links, have a generated column with relative links, or generate an in-app link column
+
+### Here's your design written out as columns on real rows. One relative in-app `path` that every app routes to its own view, plus absolute per-app hrefs that are blank when the row isn't that app's kind of thing. Is this it? If so, which way should Team, Celebrate and When take `path`?
+
+**Proposed generated columns.** Each is returned only when a query asks for it.
+
+- `path`, relative, the same on every app: a person is `/people/<slug, else id>` and a group is `/groups/<slug, else id>`. Links within an app use it, and the app you're on draws its own view at that address.
+- `who_href`: a person, family, classroom or grade on Who?. Blank on other groups.
+- `loop_href`: a group of kind group, event, party or activity on Loop (`/groups/<key>`). Blank on families, classrooms, grades, days and categories.
+- `when_href`: an event, party or activity with a start, on When (`/e/<key>`).
+- `team_href`: an activity on Team (`/v/<key>`).
+- `celebrate_href`: a party on Celebrate (`/p/<key>`).
+- `href` stays as the row's main page (Ask, MCP and mail use it). It is whichever of those the row's kind makes primary.
+
+**Four real rows (production):**
+
+| Row | `path` | `who_href` | `loop_href` | `when_href` | `team_href` | `celebrate_href` |
+|---|---|---|---|---|---|---|
+| Ian Gulliver (person) | `/people/ian.gulliver` | `who…/people/ian.gulliver` | | | | |
+| Parents (email list) | `/groups/parents` | | `loop…/groups/parents` | | | |
+| Halloween Coffee Cart (activity, no slug) | `/groups/grp4xuQMKn2N0b` | | `loop…/groups/grp4xuQMKn2N0b` | `when…/e/grp4xuQMKn2N0b` | `team…/v/grp4xuQMKn2N0b` | |
+| Inspire Without Pressure (party) | `/groups/inspire` | | `loop…/groups/inspire` | `when…/e/inspire` | | `celebrate…/p/inspire` |
+
+So Loop's page for the coffee cart shows "open on Team" because `team_href` is filled. It shows no Celebrate link, because `celebrate_href` is blank and so it isn't a party.
+
+**The catch with one shared `path`:** apps route a group at different addresses today. Loop and Who? use `/groups/<key>`, When uses `/e/<key>`, Team `/v/<key>` and Celebrate `/p/<key>`. Inside Team, a link at `/groups/grp4xuQMKn2N0b` only works if Team routes `/groups/`.
+
+- (*) Every app routes /groups/ and /people/
+  `path` is as shown above. Team, Celebrate and When each add a `/groups/<key>` route that draws the same page as their `/v/`, `/p/` or `/e/` route. The cross-app hrefs keep `/v/`, `/p/` and `/e/`, so shared links and printed URLs stay as they are.
+- ( ) Each app's hrefs also move to /groups/
+  `team_href` becomes `team…/groups/grp4xuQMKn2N0b`, `celebrate_href` becomes `celebrate…/groups/inspire`, and so on. Every address is origin + `path`, with no per-app route names. Existing `/v/`, `/p/` and `/e/` links stop working unless they redirect, which would be a second path.
+- ( ) Per-app paths, no shared path
+  No `path` column. Inside an app, a page takes its own app's absolute column and the router moves in place when it is same-origin, so the coffee cart in Team uses `team_href` and stays in Team.
+
+ian@fc.run answered: are we only talking about linking to groups here, not people? if so, let's use /g/<key> everywhere. we can redirect the old URL prefixes to it across the board, but that gets us both short and consistent, and doesn't clash with existing ones
+
+### People are linked too, but only on Who?, so they keep `/people/<slug>` and `/g/<key>` covers every group page. Go with this plan?
+
+**People.** Only Who? draws a person page. Every other app links across to it (the user menu, Staff Birthdays, people cards in Loop, When, Celebrate and Team), so a person needs `path` (`/people/<slug>`) and `who_href`, and no `/g/`-style rule. Documents keep only `href` (a wiki page's address on Wiki, else its `url`).
+
+**Groups.** Nothing in `web/` or `internal/` routes `/g/` today, so there's no clash. Wiki's own `/p/<page>` is left alone.
+
+**Plan:**
+- Generated columns, each returned only when asked for:
+  - `path`: `/g/<slug, else id>` for a group, `/people/<slug, else id>` for a person.
+  - `who_href`: a person, family, classroom or grade.
+  - `loop_href`: kinds group, event, party, activity.
+  - `when_href`: an event, party or activity with a start.
+  - `team_href`: an activity.
+  - `celebrate_href`: a party.
+
+  The app hrefs are the app's origin + `path`, blank where the row isn't that app's kind of thing. `href` stays as the row's main page: Ask, MCP and mail.
+- Every app routes `/g/<key>` to its own view: Who? picks the family, classroom, grade or group page by kind; Loop its group page; When, Team and Celebrate their event, activity and party page.
+- The server redirects the old prefixes to `/g/` on each app, keeping the rest of the path and the query: Who?'s `/groups/`, `/families/`, `/classrooms/`, `/grades/`; Loop's `/groups/`; When's `/e/`; Team's `/v/`; Celebrate's `/p/` and `/parties/`.
+- Client links use `path` inside an app and the app's href across apps; their link builders are deleted. People links use the slug.
+
+**Real rows:**
+
+| Row | `path` | `href` | other hrefs |
+|---|---|---|---|
+| Ian Gulliver (person) | `/people/ian.gulliver` | `who…/people/ian.gulliver` | `who_href` same |
+| Park & Gulliver Family | `/g/grpdaKKgNUdbtG` | `who…/g/grpdaKKgNUdbtG` | `who_href` same |
+| Parents (email list) | `/g/parents` | `who…/g/parents` | `loop_href` `loop…/g/parents` |
+| Halloween Coffee Cart (activity) | `/g/grp4xuQMKn2N0b` | `team…/g/grp4xuQMKn2N0b` | `loop_href`, `when_href` `when…/g/grp4xuQMKn2N0b`, `team_href` |
+| Inspire Without Pressure (party) | `/g/inspire` | `celebrate…/g/inspire` | `loop_href`, `when_href`, `celebrate_href` |
+
+Old links still open: `when.heliosian.com/e/inspire` → `when.heliosian.com/g/inspire`; `celebrate…/p/inspire?invite=1` → `celebrate…/g/inspire?invite=1`.
+
+- (*) Go
+  Build the plan above.
+- ( ) Change something
+  Say what.
+
+ian@fc.run answered: let's move people to /p/<key> while we're at it, for consistency. i realize that clashes with parties, but different sites so i think that's ok
+
+rest of it lgtm
+
+### Should a write be able to name columns to return for the rows it makes, or should the one page that needs a new row's `path` just query for it?
+
+**Background.** Client links now use the generated `path` column (`/g/<slug or id>`, `/p/<slug or id>`) instead of building addresses. A write (`POST /api/q` with `{batch}`) answers only the IDs it touched: `{"result": ["grpA1", "grpA1", "memM1", "grpT1", "memX1"]}`, with no columns.
+
+**Who needs a new row's path right after writing it:** I checked every page that navigates after a write. Loop's new and renamed email lists, Team's new activity, Celebrate's new party and the wiki's new page all reload their model after saving and read the new row from it, so they already have `path`. The only one that doesn't is **Who?'s "Duplicate tag"** (`makeTag` in `web/who/tags.js`). It adds the new tag to its local state by hand and then goes to the tag's page, so today it builds `/groups/<id>`.
+
+**The same write under each option.** Duplicating the tag "Soccer carpool" as "Soccer carpool copy":
+
+- (*) Query after the write
+  The write is unchanged. Then one query, `(from GROUP (where (= id "grpT1")) (columns path))`, answers `{"result": ["grpT1"], "resources": {"GROUP": {"grpT1": {"id": "grpT1", "path": "/g/grpT1"}}}}`, and the page goes to `/g/grpT1`. That's one extra round trip, only when someone duplicates a tag. Nothing new in the API.
+- ( ) Columns on a write
+  An insert can name columns: `{"insert": "GROUP", "as": "tag", "row": {…}, "columns": ["path"]}`. The write answers `{"result": [...], "resources": {"GROUP": {"grpT1": {"id": "grpT1", "path": "/g/grpT1"}}}}`, read back through the same read policies a query uses. No extra round trip, but it's new write-API surface, documented in the API docs and OpenAPI, with Who?'s tag duplication as its one caller today. The pages that reload after saving could later use it instead of reloading.
+
+ian@fc.run chose: Query after the write
