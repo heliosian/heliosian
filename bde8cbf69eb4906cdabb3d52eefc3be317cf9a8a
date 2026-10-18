@@ -1,0 +1,36 @@
+# Hold off listening until search's first index is built
+
+byre task 73a1e9d3e7ce, "Search answers empty for about a minute after each start", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Search answers empty for about a minute after each start".
+Full transcripts: the events of task 73a1e9d3e7ce in byre (GET /api/events?task_id=73a1e9d3e7ce).
+
+## Summary
+
+**Goal:** search answered empty for about 63s after every production start. The index began on `emptyView()` and `Search` answered from it until the first full pass had loaded every stored entry from the bucket (~41s for ~14k entries) and trained its k-means cells (~22s). Cloud Run's startup TCP check passed at `listening`, so traffic reached the new instance while its search was still empty.
+
+**Built:**
+- `Searcher.Ready()` returns a channel that closes after the first index pass, which follows the first full pass's load (`internal/db/search.go`).
+- `app.Production` waits on it before returning the server, so production doesn't listen until search is built. Cloud Run keeps the old revision serving until then.
+- The `deployOverlap` re-read (the refresh 30s after start, which picks up the old revision's last writes) moved from `NewCore` to `app.Serve`, just before listening. The longer startup would otherwise have missed writes the old revision took after the 30s mark.
+- Docs updated: `docs/storage.md` (re-read timing) and `docs/deploy.md` (boot sequence now shows the search log lines before `listening`).
+- New test: `TestReadyAfterTheStoredEntriesAreIndexed`.
+
+**Decisions:**
+- Rejected speeding startup with a combined snapshot of entries and centroids: ian said it was tried before and doesn't work.
+- Rejected having `Search` return a "not ready" error: it would still leave search down for a minute.
+- A reviewer asked to hold readiness until the stored entries load with no errors. Declined: a single unreadable entry would block every deploy. Failed loads are retried on the next pass, and no `search: load` errors had appeared in 30 days of production logs.
+
+**Left out:**
+- The local `startserver` sample and snapshot servers don't wait for search; only the production setup does, which `--real` also uses.
+- `startserver --run` and `--capture` no longer get the 30s re-read, since they don't go through `app.Serve`.
+- Production startup grows from ~17s to ~80s, still inside the 240s startup window.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Adds a search readiness signal and makes production startup wait for the first indexed view before listening. Moves the deployment overlap refresh to server startup, updates the documentation, removes the TODO item, and adds a stored-index readiness test.
+
+- Startup readiness can report success after failed stored-entry reads, exposing incomplete search results.
