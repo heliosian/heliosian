@@ -1,0 +1,80 @@
+# Make href a generated column on PERSON, GROUP and DOCUMENT
+
+byre task 234d9d49f831, "A row's href depends on which columns the query asked for", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "A row's href depends on which columns the query asked for".
+Full transcripts: the events of task 234d9d49f831 in byre (GET /api/events?task_id=234d9d49f831).
+
+## Summary
+
+**Goal:** a row's `href` used to depend on which columns the query asked for. `Model.Link` built the href from the row after `(columns …)` had trimmed it. So `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name))` linked Alumni Night, an event, to a "Not here" page on Who? instead of When, and a row read without `slug` was linked by its ID.
+
+**Built:**
+- `href` is now a generated column on PERSON, GROUP and DOCUMENT, filled when the model loads. The functions are `personHref`, `groupHref` and `documentHref` in `internal/db/link.go`. A wiki page's path walks its parent chain within the DOCUMENT rows through `wikiPathIn`.
+- `Table.Generate` now receives an origin, and `db.NewStore` takes it (`hosts.Origin(cfg.Domain)` in wiring). This is needed because hosts differ between production and the dev server.
+- `Model.Link` is deleted. Every caller reads `row["href"]`: MCP `call.href`, Ask `turn.href`, search, membership and party mail, and the party and activity redirects through `hrefPath`.
+- The `Origin` fields on the Searcher, `tools.Deps` and `ask.Sources` are removed, since nothing uses them any more.
+- `href` is added to the read policies of the three tables. The MCP instructions and docs (`dev.md`, `tools.md`, `mcp/mcp.md`) are updated.
+
+**Key decisions:**
+- ian proposed the generated column, rejecting a `Link(table, id)` lookup.
+- ian ruled out always returning href beside id: "we don't want magic forced-on-you columns". `href` comes back only when a query asks for all columns or names it, like any other column.
+- The wiki parent walk stops at a page it has already seen. Hrefs are generated before the load refuses a loop of parents, and without the guard the existing loop test hung.
+
+**Also fixed:** `web/loop/index.html` was missing its `/datagrid.js` modulepreload, which left `internal/app` tests already failing.
+
+**Left out:** `href` is not always-on, and there is no href on other tables.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Moves page addresses into generated `href` columns on people, groups, and documents, computed from complete rows before query projection. Updates tools, Ask, search, and mail callers to use those columns, documents explicit selection of `href`, and removes the TODO item. Focused database tests and the tools, Ask, and MCP suites passed; the full database suite exceeded its 10-second timeout.
+
+No significant findings.
+
+## Decisions
+
+### How should a row's href be built so it no longer depends on the columns a query asked for?
+
+**Background.** `Model.Link(table, row, origin)` in `internal/db/link.go` builds a record's page address (`href`) from cells in the row it's given. For a GROUP it uses `kind` to pick the app (event → When `/e/`, activity → HCA-Team `/v/`, party → Celebrate `/p/`, family/classroom/grade/other → Who?) and `slug`, falling back to `id`, for the last path segment. For a wiki DOCUMENT it uses `parent` and `name`, and for any other document it uses `url`. MCP (`internal/tools/tools.go:179`) and Ask (`internal/ask/turn.go:70`) call it on the row *after* `(columns …)` has trimmed it, so missing cells give a wrong link.
+
+I checked the read policies in `internal/db/policy.go`: every column Link uses (`kind slug parent name url`) can be read by anyone who can read the row. So reading the stored row adds nothing the viewer couldn't already see.
+
+**Real input, from production MCP today:**
+- `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name))` → `href: https://who.heliosian.com/groups/grp66iuvIijMm6` (a "Not here" page)
+- `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name kind slug))` → `href: https://when.heliosian.com/e/grp66iuvIijMm6`
+
+- (*) Link takes an ID and reads the stored row
+  The signature becomes `Link(table, id string, origin)`. It looks the row up in the model (`m.Table(table).Get(id)`), and returns "" when there's no such row. Every caller passes `row["id"]` instead of the row: the 2 above, plus mail (membershipmail, partymail), search, activitytree and partypages, which already pass full stored rows, so their output stays the same. `link_test.go` gets rewritten to use real sample-fixture IDs, because its current rows are made up. For example, it uses `grp00000000041` as an event, but in the fixture that ID is "picnic managers".
+  With this, `(columns name)` on Alumni Night gives `https://when.heliosian.com/e/grp66iuvIijMm6`, the same as asking for `kind slug`. One code path, and no caller can hand Link a partial row again.
+- ( ) MCP and Ask look up the stored row before calling Link
+  `Link` doesn't change. `tools.go` `href` and `ask/turn.go` `href` each do `m.Table(table).Get(row["id"])` and pass that row to it. Alumni Night gives the same `https://when.heliosian.com/e/grp66iuvIijMm6`. But Link still accepts any row, so a new caller holding a trimmed row would bring the bug back.
+
+ian@fc.run answered: generated column?
+
+### A generated `href` column works, but it needs two more pieces. Should I build it with both?
+
+**How generated columns work today.** Each table's `Generate` func in `internal/db/schema.go` fills cells such as PERSON `name_show` and DOCUMENT `terminal` when the model is built (`buildRows`, `internal/db/model.go:201`). The func sees only that table's rows. An href fits that: a GROUP's needs only its own `kind`, `slug` and `id`, a PERSON's its `id`, and a wiki DOCUMENT's its parent chain, which is in the same table. `Model.Link` would go away, and every caller would read `row["href"]`.
+
+**The two extra pieces:**
+1. **The domain.** An href is absolute (`https://when.heliosian.com/…`), and its host depends on `cfg.Domain`: `heliosian.com` in production, `heliosiandev.com:<port>` from `tools/startserver`. The model doesn't know the domain today. `db.NewStore` would take a domain, and the Generate funcs would receive it. That touches the ~8 `NewStore` callers (wiring, mcp/tools/ask/q/import tests, `tools/searchplan`, `tools/loadcheck`).
+2. **Always returned, like `id`.** On its own, a generated column is still cut by `(columns …)`. `picked()` and `redact()` in `internal/db/query.go` keep only the listed columns plus `id`, so `(columns name)` would just drop `href` rather than get it wrong. To fix the bug, `href` would be kept beside `id` in every answer. It also gets added to the column read lists for GROUP, DOCUMENT and PERSON in `policy.go`.
+
+**Real input:** production row `grp66iuvIijMm6`, Alumni Night, kind `event`, no slug.
+
+| query | today | generated column, always returned |
+|---|---|---|
+| `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name))` | `href: https://who.heliosian.com/groups/grp66iuvIijMm6` (Not here) | `href: https://when.heliosian.com/e/grp66iuvIijMm6` |
+| `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name kind slug))` | `href: https://when.heliosian.com/e/grp66iuvIijMm6` | same |
+| `(from GROUP (where (= kind "event")) (where (= href "https://when.heliosian.com/e/grp66iuvIijMm6")))` | error: no column href | finds Alumni Night |
+
+Mail and page code that wants a path and not a URL (`partypages.go:83` party redirects, `activitytree.go:87`) would take the path from `href` with `url.Parse`.
+
+- (*) Generated column, domain passed to NewStore, always returned beside id
+  Everything above. One place builds an href, and every answer carries the right one whatever columns were asked for.
+- ( ) Generated column, domain passed to NewStore, returned only when asked for
+  Skips the always-returned rule. `(columns name)` on Alumni Night then answers `{id, name}` with no href. MCP and Ask would add `href` to every column list they pass on, which is the same special case moved into two callers.
+
+ian@fc.run answered: of course it would have to be asked for? we don't want magic forced-on-you columns
