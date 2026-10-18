@@ -38,6 +38,27 @@ func sentTo(s *Store, document string) []string {
 	return out
 }
 
+func TestABodyIsItsExtractNotTheLinksAfterIt(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "m1", "blob": "content/m1", "mime": "message/rfc822", "size": "100"}},
+		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "h1", "blob": "content/h1", "mime": "text/html; charset=utf-8", "size": "90"}},
+		{Insert: "CONTENT", As: "text", Row: map[string]any{"hash": "t1", "blob": "content/t1", "mime": "text/markdown", "size": "40"}},
+		{Insert: "CONTENT", As: "logo", Row: map[string]any{"hash": "l1", "blob": "content/l1", "mime": "image/png", "size": "30"}},
+		{Insert: "DOCUMENT", As: "update", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Weekly Update", "extracted": "2026-10-16 17:40:13"}},
+		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@update", "content": "@html", "order": "9", "extracted": "2026-10-16 17:40:25"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": "@part", "content": "@text", "order": "4"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "content": "@logo", "order": "9"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://example.org/class-page", "fetch": "refused", "order": "d"}},
+	})
+	m := s.Model()
+	root, _ := m.Table("DOCUMENT").Get(ids[4])
+	body, ready := m.bodyMarkdown(root)
+	if !ready || body != ids[2] {
+		t.Fatalf("the body is %q (ready %v), want the extract's content %q", body, ready, ids[2])
+	}
+}
+
 func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	var mu sync.Mutex
 	asked := []string{}

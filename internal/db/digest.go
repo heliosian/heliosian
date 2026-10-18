@@ -31,7 +31,7 @@ const (
 	MailWindow    = 14 * 24 * time.Hour
 )
 
-const DigestRevision = "2026-10-17.1"
+const DigestRevision = "2026-10-17.2"
 
 const digestSystem = `You read one email the Helios School community received - the school's newsletter, a message to all the families or to one class, or a post to a parent email list - and do three things.
 

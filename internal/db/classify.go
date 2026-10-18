@@ -131,7 +131,9 @@ func (m *Model) bodyMarkdown(root store.Row) (string, bool) {
 			continue
 		}
 		for _, extract := range docs.Referencing("parent", part["id"]) {
-			bodies[kind] = extract["content"]
+			if extract["relation"] == "extract" {
+				bodies[kind] = extract["content"]
+			}
 		}
 	}
 	if id, ok := bodies["text/html"]; ok {
