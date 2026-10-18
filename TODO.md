@@ -7,8 +7,6 @@
 
 - Editing an event doesn't change its sharing
   The edit form shows the sharing picker and sends `sharing`, but `editEvent` (`web/when/writes.js:117`) never writes `listed`, `visible_to` or `members_visible_to`; only `addEvent` does. The picker also starts at Invite Only for any event whose `source` isn't `sheet` (`web/when/eventform.js:66`), so it doesn't show the event's real setting.
-- The year-calendar PDF import never names its document
-  `addCalendarPDF` (`tools/import/calendar.go:48`) sends only `kind`, `url` and `published`, so next year's calendar arrives nameless; this year's (`doc1vbgme8d9uv`) was named by hand.
 
 # Helios Loop
 

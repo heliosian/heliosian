@@ -42,10 +42,10 @@ func (c client) calendarRows() (db.CalendarRows, error) {
 	return out, nil
 }
 
-func (c client) addCalendarPDF(pdf []byte, address string) (string, error) {
+func (c client) addCalendarPDF(pdf []byte, address, year string) (string, error) {
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
-	for field, value := range map[string]string{"kind": "calendar", "url": address, "published": time.Now().In(db.School).Format(cells.StampFormat)} {
+	for field, value := range map[string]string{"kind": "calendar", "name": year + " Helios School Calendar", "url": address, "published": time.Now().In(db.School).Format(cells.StampFormat)} {
 		if err := form.WriteField(field, value); err != nil {
 			return "", err
 		}
@@ -195,7 +195,7 @@ func importCalendar(c client, anthropicKey string, dryRun bool) error {
 		if cal.Document == "" {
 			cal.Document = "doc00000000000"
 		}
-	} else if cal.Document, err = c.addCalendarPDF(pdf, address); err != nil {
+	} else if cal.Document, err = c.addCalendarPDF(pdf, address, cal.Year); err != nil {
 		return err
 	}
 	edits, err := db.PDFPlan(rows, v, cal, classified, matched)
