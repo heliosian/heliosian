@@ -7,8 +7,6 @@
 
 - My Jobs' empty Do Now reads backwards
   With no staff awaiting outreach or a response, Do Now says "There's work to be done!" (`web/birthday/pages/jobs.js:12`) above an empty list.
-- California Bluegrass Association's description says "California Birthday Association"
-  Data, in its CHARITY row (`chrZ7bhpKKSAfB`).
 
 # Helios When
 
