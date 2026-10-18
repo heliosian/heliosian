@@ -1,0 +1,23 @@
+# New Email List button on the shared rail
+
+byre task 24b725d65dc6, "New Email List button on the shared rail", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "New Email List button on the shared rail".
+Full transcripts: the events of task 24b725d65dc6 in byre (GET /api/events?task_id=24b725d65dc6).
+
+## Summary
+
+Moved Loop's New Email List entry onto the shared rail (TODO item "New Email List button on the shared rail").
+
+- `fillNav` in `web/common/rail.js` takes a `newList` option. When it is set, the rail draws a "New Email List" row (plus icon, `/new`, highlighted while on `/new`) in the Lists section under Everyone and Invites. Loop's `web/loop/chrome.js` is the only caller that passes it, so Who?'s rail is unchanged. This is Loop's one allowed rail customization.
+- Removed the other two entry points: the New Email List tab in Loop's tab bar (which now holds only My Email Lists) and the header button on My Email Lists (`web/loop/pages/groups.js`, along with its now-unused `button`/`navigate` imports). On a phone the row is reached through the drawer, which draws the same rail.
+- `docs/loop/loop.md` describes the row, and the TODO item is removed.
+- Decision: "on the shared rail" was read as moving the button there, not adding a third copy.
+- Verified with a `startserver --capture` of Loop's front page. No tests cover these JS files.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Moves Loop’s New Email List action into the shared rail’s Lists section, beneath Everyone and Invites. Removes the duplicate tab and page-header button, updates the documentation, and removes the completed TODO item.
+
+No significant findings.
