@@ -1,0 +1,24 @@
+# Verify
+
+byre task aac07505f6cf, "Verify: Verify", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task aac07505f6cf in byre (GET /api/events?task_id=aac07505f6cf).
+
+## Summary
+
+Verify workflow run: checked that what shipped to production since the last verified commit (882c6dc3) works, through the live commit bff8f634 (Cloud Run revision heliosian-01010-pd4, build 4f9a5c3f).
+
+- Verified 3427f8b0 (generated href/path/per-app href columns on PERSON, GROUP, DOCUMENT) with `tools/q read`. The values are right for a person, family, classroom, event, activity, party and wiki page.
+- Verified 66897730 (client pages use the href columns). Who?, When, Loop, Team and Celebrate pages were checked in Chrome. curl showed every old URL prefix answering 301 to `/g/` or `/p/`, with the query string kept.
+- Verified 070b51b7 (Celebrate guests typed by name match directory people). The live policy `buys_for` and the waitlist insert rule match the commit. The ticket form's Guest tab asked "Heather Gutnik (Parent) is in the directory…" and added her as a Parent. The form was cancelled without buying, and a query confirmed no MEMBER row was written.
+- Verified bff8f634 (Who? `/g/<id>` opens any visible group). Spelling Bee by ID and by slug, and the Activities category, open. An unknown ID says "Not here". Spelling Bee's href is now its Loop page, and the category's href is blank.
+- 02bd4b9b, 3e875057 and f300cba8 changed only docs and TODO.md, so there was nothing to check in production.
+
+No failures, so no TODO items were added. TODO.md `Last verified:` moved to bff8f634. Not live at the time: 15803327 "Sync issues" (TODO only). The only file changed on the branch is TODO.md.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates TODO.md’s last-verified commit from 882c6dc3 to bff8f634. The new marker matches the Cloud Build commit whose image digest is currently serving all production traffic; no builds are queued or running. The snapshot contains no application changes or persisted verification report, so the individual production checks cannot be assessed from the diff.
+
+No significant findings.
