@@ -1,0 +1,34 @@
+# Drop the committed-trigger column filter TODO; scans measured cheap
+
+byre task 8293913eed31, "Committed triggers wake every worker on a table for any change to it", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Committed triggers wake every worker on a table for any change to it".
+Full transcripts: the events of task 8293913eed31 in byre (GET /api/events?task_id=8293913eed31).
+
+## Summary
+
+Set out to cut the wakes `committedTriggers` (`internal/db/trigger.go`) deliver to every worker watching a table, whatever columns changed: the five document workers (fetch, extract, classify, digest, sweep) each rescan the whole `DOCUMENT`/`CONTENT` table on every commit. The proposed fix was declaring the columns each inbox cares about on its trigger, measured first.
+
+Measured on a production snapshot (`tools/snapshot`) rather than with production logs, using a temporary test file that was deleted afterwards. Each worker's pending scan was timed on 60k `DOCUMENT` / 35k `CONTENT` rows: sweep 22.8 ms, extract 4.4, fetch 1.8, classify 1.5, digest 1.5, 32 ms for all five. Real commits per hour came from the snapshot's `CHANGES` tabs (commits keyed by second and actor). The busiest hours were classify re-classifying mail (3,125 commits/hour) and import/extract backfills (3,900 commits/hour). They spend about 95–125 s scanning, 2.6–3.5% of one core, all in background workers off the request path. Normal hours spend seconds.
+
+Decision (ian agreed): not worth the machinery. Triggers are unchanged. The `: pending` took logs added during the work were removed, since in production they'd write five lines per document commit. The TODO item is deleted. The branch's only net change is the TODO removal. Column filters would cut the busiest hour from about 95 s to about 10 s of scanning, so revisit only if sweep's scan grows a lot.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds pending-scan duration and result-count logs to fetch, extract, classify, digest, and sweep. Updates the TODO to describe collecting these logs; committed-trigger routing remains unchanged. Targeted worker and trigger tests passed.
+
+- The requested task remains at instrumentation only, with trigger routing and the TODO item unchanged.
+- Sweep pending logs count batch scans as wakeups, distorting the planned measurement.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Adds per-wake pending-scan timing and result counts to fetch, extract, classify, digest, and sweep. Updates the TODO entry to describe the logs; committed-trigger delivery remains unchanged. Focused classifier, fetch, and sweep tests pass.
+
+- The requested busy-hour measurement is left for later, and the TODO item remains despite the explicit removal requirement.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+The change removes the committed-trigger performance item from TODO.md. It makes no changes to trigger dispatch, worker scan instrumentation, or tests.
+
+- The TODO is removed without implementing the requested scan measurements or resolving the unchanged table-wide trigger dispatch.
