@@ -1,0 +1,17 @@
+# Fix California Bluegrass Association's charity description
+
+byre task c1f82aa6461f, "California Bluegrass Association's description says \"California Birthday Association\"", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "California Bluegrass Association's description says \"California Birthday Association\"".
+Full transcripts: the events of task c1f82aa6461f in byre (GET /api/events?task_id=c1f82aa6461f).
+
+## Summary
+
+Fixed a data typo: the CHARITY row `chrZ7bhpKKSAfB` (California Bluegrass Association) had the description "California Birthday Association brings music education to kids in their local community". I corrected "Birthday" to "Bluegrass" in production with one `go run ./tools/q write` set batch (`{"batch": [{"set": "chrZ7bhpKKSAfB", "cells": {"description": "…"}}]}`), then read the row back to confirm the change. No code changed. The only repo change is removing the item from TODO.md.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Removes the completed California Bluegrass Association typo item from TODO.md. A read of production CHARITY row `chrZ7bhpKKSAfB` confirms its description now says “California Bluegrass Association brings music education to kids in their local community.” The data correction lives outside the repository.
+
+No significant findings.
