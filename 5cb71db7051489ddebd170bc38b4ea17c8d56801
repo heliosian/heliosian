@@ -1,0 +1,24 @@
+# Label birthdays widget's All tab headings as newsletter issues
+
+byre task 365f6acc4da5, "Birthdays widget's All tab heads each birthday with its newsletter issue date, unlabelled", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Birthdays widget's All tab heads each birthday with its newsletter issue date, unlabelled".
+Full transcripts: the events of task 365f6acc4da5 in byre (GET /api/events?task_id=365f6acc4da5).
+
+## Summary
+
+Goal: the Birthdays widget's All tab on the Heliosian home page (admins only) groups birthdays by newsletter issue with the shared `dayBar`, so the heading date (e.g. "Fri · Oct 30") read as the birthday (Mike Orlando's is Mon Nov 2); rows showed only assignee and charity.
+
+Built (both fixes the TODO offered, since either alone leaves it ambiguous):
+- Heading side text now reads "Newsletter · N birthdays" (`web/home/widgets.js`, birthdayWidget), labelling the date as the issue without touching the shared `dayBar` in `web/common/dayrows.js`.
+- All-tab rows now lead with "Birthday Mon, Nov 2" before assignee and charity (`birthdayRow`), mirroring the Mine tab's "Ask by …" step/date line.
+- `birthdayItem` in `web/home/state.js` carries `birthday: sv.birthdayThisYear` from `web/common/birthdays.js`.
+
+Left out: no change to `dayBar` itself or other widgets; no tests cover home widgets, verified by `node --check` and `go vet` only, not visually.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The Birthdays widget’s admin All tab now labels each date group as a newsletter and shows each person’s birthday in their row alongside the assignee and charity. The corresponding TODO item is removed. Both changed JavaScript files pass syntax checks.
+
+No significant findings.
