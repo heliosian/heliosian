@@ -1,0 +1,23 @@
+# Verify production
+
+byre task 85cd4cc418c7, "Verify production: Verify", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 85cd4cc418c7 in byre (GET /api/events?task_id=85cd4cc418c7).
+
+## Summary
+
+Verify workflow run that checked production between the last-verified commit 2f7a899 and the live commit 139b54f. The live commit was found the way AGENTS.md describes: Cloud Run revision heliosian-01002-b8w, whose image digest matches build 4c244baa.
+
+- 139b54f (New Email List button on the shared rail): verified in byre's Chrome. Loop's rail shows "New Email List" (/new) under Everyone and Invites, and the row is highlighted at /new, where the editor opens. My Email Lists has no header button and the tab bar has no New Email List tab. Who?'s rail does not show the row, and the console has no errors.
+- 5c70290 (AGENTS.md only): nothing to check in production.
+
+There were no failures, so no TODO.md items were added. The only change is TODO.md's `Last verified:` line, set to 139b54f.
+
+When the run happened, a76cca6, 20d0f17 and a0e74ea were not live yet; they are left for the next Verify run.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates TODO.md’s last-verified commit from 2f7a899 to 139b54f, covering the verification instructions and the New Email List rail change. No application code or failure items change. Cloud Build records confirm 139b54f was deployed; production has since advanced to a76cca6e, whose change is import tooling.
+
+No significant findings.
