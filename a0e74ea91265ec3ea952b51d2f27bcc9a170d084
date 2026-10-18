@@ -1,0 +1,26 @@
+# Verify workflow instructions
+
+byre task 5bf7bcdc5d5e, "Verify workflow instructions", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 5bf7bcdc5d5e in byre (GET /api/events?task_id=5bf7bcdc5d5e).
+
+## Summary
+
+Set heliosian up for byre's "Verify" workflow, which now checks production separately from deploys (production deploys on every push to main). The workflow does the generic steps: read `Last verified: <sha>` in TODO.md, find the live commit, check each commit in between against production read-only, file TODO.md items for anything that fails, and move the marker forward. This task added only the heliosian-specific part.
+
+- AGENTS.md: replaced the "Deploys" section from 5c70290 with "Verifying". It says how to find the live commit:
+  1. `gcloud run services describe heliosian` (project heliosian, us-west1) gives the revision taking traffic.
+  2. `gcloud run revisions describe <revision>` gives its `status.imageDigest`.
+  3. The build in `gcloud builds list` with that digest under `results.images[].digest` has the commit in `substitutions.COMMIT_SHA`.
+  
+  It also says to check data with `go run ./tools/q read`, and pages with byre-hands `chrome` in byre's Chrome on iso, where ian is signed in to every heliosian site. It doesn't repeat the workflow's generic steps; that includes the read-only rule the old section had.
+- TODO.md: added `Last verified: 2f7a899` under the top heading. Task 921e3efeb1d3 verified everything through that commit.
+- The three gcloud commands were run once on iso, read-only, and the output matched the text as written. On 2026-10-18 they led to live commit 139b54f, revision heliosian-01002-b8w.
+- Nothing in production was changed.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Replaces AGENTS.md’s deploy instructions with heliosian-specific verification guidance: identifying the live commit through Cloud Run and Cloud Build, querying data, and checking authenticated pages. Adds `Last verified: 2f7a899` near the top of TODO.md.
+
+No significant findings.
