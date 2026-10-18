@@ -1,0 +1,22 @@
+# Name the year calendar document when importing it
+
+byre task febfd351b992, "The year-calendar PDF import never names its document", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "The year-calendar PDF import never names its document".
+Full transcripts: the events of task febfd351b992 in byre (GET /api/events?task_id=febfd351b992).
+
+## Summary
+
+Set out to fix the TODO item "The year-calendar PDF import never names its document": `addCalendarPDF` in `tools/import/calendar.go` uploaded the school's year-calendar PDF to `/api/do/file` with only `kind`, `url` and `published`, so each new year's DOCUMENT row came in with no name (2026-2027's, `doc1vbgme8d9uv`, was named by hand).
+
+- `addCalendarPDF` now takes the extracted school year and sends `name` = "<YYYY-YYYY> Helios School Calendar", matching the hand-entered name. It is called after `yearCalendar` has checked that the year is in YYYY-YYYY form with two consecutive years, so the name is always well formed.
+- No server change was needed: `fileRoot` in `internal/db/do.go` already accepted an optional `name`.
+- Left out: renaming existing documents. When the uploaded PDF is identical to one already stored, the existing document keeps its row. No real import was run, because it would fetch the PDF, call Anthropic and write to production; only `go vet` and the package's tests were run.
+- The TODO item was removed.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The year-calendar PDF importer now sends a document name formed from the extracted school year, such as “2026-2027 Helios School Calendar,” when uploading the PDF. The completed item is removed from TODO.md. The existing tools/import tests pass.
+
+No significant findings.
