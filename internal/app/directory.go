@@ -50,12 +50,31 @@ func registerDirectoryPages(mux *http.ServeMux, about *sharecard.About, mapsKey 
 		mux.HandleFunc("GET /"+section, directoryPage)
 	}
 	mux.HandleFunc("GET /people", directoryPeople)
-	mux.HandleFunc("GET /groups/{key}", directoryPage)
-	mux.HandleFunc("GET /people/{id}", directoryPage)
-	mux.HandleFunc("GET /families/{id}", directoryPage)
-	mux.HandleFunc("GET /classrooms/{slug}", directoryPage)
-	mux.HandleFunc("GET /grades/{slug}", directoryPage)
+	mux.HandleFunc("GET /g/{key}", directoryPage)
+	mux.HandleFunc("GET /p/{key}", directoryPage)
 	mux.HandleFunc("GET /dl/", directoryLegacyRedirect)
+}
+
+func moved(prefixes map[string]string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			next.ServeHTTP(w, r)
+			return
+		}
+		for from, to := range prefixes {
+			rest, ok := strings.CutPrefix(r.URL.EscapedPath(), from)
+			if !ok {
+				continue
+			}
+			target := to + rest
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func directoryLegacyRedirect(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +98,7 @@ func directoryPeople(w http.ResponseWriter, r *http.Request) {
 		directoryPage(w, r)
 		return
 	}
-	http.Redirect(w, r, "/groups/"+url.PathEscape(key), http.StatusMovedPermanently)
+	http.Redirect(w, r, "/g/"+url.PathEscape(key), http.StatusMovedPermanently)
 }
 
 func directoryPage(w http.ResponseWriter, r *http.Request) {

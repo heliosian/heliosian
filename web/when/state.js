@@ -1,4 +1,3 @@
-import {appOrigin} from '/appswitch.js';
 import {parseWhen} from '/datecard.js';
 import {queries} from '/rail.js';
 import {api} from '/api.js';
@@ -550,13 +549,6 @@ export function timeColumn(e, date) {
   return timeRange(e.start.slice(11), e.end.slice(11));
 }
 
-export function eventPath(e) {
-  if (e.address) {
-    return '/e/' + encodeURIComponent(e.address);
-  }
-  return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
-}
-
 export function dayType(id) {
   return state.model.dayTypes.find(d => d.id === id) || null;
 }
@@ -677,10 +669,6 @@ export function sourceWords(e) {
 
 export function linkedApp(e) {
   return e.source === 'celebrate' ? 'celebrate' : 'team';
-}
-
-export function linkURL(e) {
-  return appOrigin(linkedApp(e)) + e.link;
 }
 
 export function answerOf(e) {

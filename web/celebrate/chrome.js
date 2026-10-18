@@ -20,7 +20,7 @@ function navItems() {
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/parties/') || path.startsWith('/celebrations/');
+    return path === '/' || path.startsWith('/g/') || path.startsWith('/celebrations/');
   }
   if (href === '/approvals') {
     return path === '/hosting' && hostingShown() === 'approvals';

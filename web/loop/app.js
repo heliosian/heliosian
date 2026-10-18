@@ -15,7 +15,7 @@ const routes = {
     setTimeout(newGroupModal);
     return groupsPage();
   },
-  groups: parts => {
+  g: parts => {
     const key = parts[1] || '';
     const g = group(key);
     if (g) {

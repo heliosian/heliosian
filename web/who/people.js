@@ -7,12 +7,8 @@ export function personByKey(key) {
   return key ? bySlug[key.toLowerCase()] || byId[key] : undefined;
 }
 
-export function personLink(p) {
-  return '/people/' + encodeURIComponent(p.slug || p.id);
-}
-
 export function guestCard(g) {
-  const card = link(personLink(g), 'person-card');
+  const card = link(g.path, 'person-card');
   const wrap = el('div', 'photo-wrap photo-wrap-peek');
   wrap.append(photoOrInitials('', g.name_show, 'person-photo'));
   card.append(wrap);
@@ -165,7 +161,7 @@ export function personCard(p) {
   if (p.source === 'guest') {
     return guestCard(p);
   }
-  const card = link(personLink(p), 'person-card');
+  const card = link(p.path, 'person-card');
   card.append(photoWithTag(applyRingColor(photoOrInitials(personPhotoUrl(p), p.name_show, 'person-photo'), p), p.id, gradeBadge(p)));
   card.append(el('div', 'role-label role-label-' + baseRole(p).toLowerCase(), baseRole(p)));
   card.append(el('div', 'person-name', p.name_show));

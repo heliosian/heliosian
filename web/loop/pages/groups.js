@@ -1,4 +1,4 @@
-import {state, groupPath, domain} from '../state.js';
+import {state, domain} from '../state.js';
 import {pageHead} from '../dom.js';
 import {shown, groupFilters} from '../filters.js';
 import {el, svg, link, iconButton, copyText} from '/elements.js';
@@ -8,7 +8,7 @@ import {setTitle} from '/shell.js';
 export const visibilityWords = {hidden: 'Hidden', members: 'Visible to members', everyone: 'Visible to everyone'};
 
 function groupCard(g) {
-  const card = link(groupPath(g), 'group-card');
+  const card = link(g.path, 'group-card');
   const head = el('div', 'group-card-head');
   const icon = el('div', 'group-icon');
   icon.append(svg('groups'));

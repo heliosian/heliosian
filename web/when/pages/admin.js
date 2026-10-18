@@ -1,4 +1,4 @@
-import {state, me, classroomNames, categoryTags, tagName, event, eventPath, dayLabel} from '../state.js';
+import {state, me, classroomNames, categoryTags, tagName, event, dayLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {popup} from '/modal.js';
 import {saveCategories, setPicture, setStatus, moveEvent} from '../writes.js';
@@ -277,7 +277,7 @@ function eventsTool() {
       for (const e of waiting) {
         const row = el('div', 'admin-row admin-event' + (e.declined ? ' is-declined' : ' is-pending'));
         const words = el('div', 'admin-row-words');
-        const title = link(eventPath(e), 'admin-row-name');
+        const title = link(e.path, 'admin-row-name');
         title.textContent = e.title;
         const who = (state.model.names || {})[e.addedBy] || e.addedBy;
         words.append(title, el('div', 'admin-row-note', [dayLabel(e.start.slice(0, 10)) + (e.allDay ? '' : ' ' + e.start.slice(11)), e.location, 'shared by ' + who].filter(Boolean).join(' \u00b7 ')));
@@ -312,7 +312,7 @@ function eventsTool() {
     for (const e of mine) {
       const row = el('div', 'admin-row admin-event' + (e.end.slice(0, 10) < today ? ' is-past' : ''));
       const words = el('div', 'admin-row-words');
-      const title = link(eventPath(e), 'admin-row-name');
+      const title = link(e.path, 'admin-row-name');
       title.textContent = e.title;
       words.append(title, el('div', 'admin-row-note', [e.location, categoryTags(e).map(tagName).join(', ')].filter(Boolean).join(' · ')));
       const start = whenPicker(e.start);

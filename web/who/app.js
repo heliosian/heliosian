@@ -1,4 +1,4 @@
-import {state, model, lists, loadModel, groupKeyOf, loadMembers} from './state.js';
+import {state, model, lists, loadModel, groupKeyOf, loadMembers, kindAt} from './state.js';
 import {segments, shuffled} from './dom.js';
 import {tabParam} from '/tabs.js';
 import {el} from '/elements.js';
@@ -21,7 +21,8 @@ import {adminPage} from './pages/admin.js';
 
 const sectionTitles = {
   people: 'People',
-  groups: 'People',
+  p: 'People',
+  g: 'People',
   classrooms: 'Gradebands',
   'my-family': 'My Family',
   staff: 'Staff',
@@ -38,15 +39,24 @@ function resetTagFilter() {
   state.filterTagRelations = new Set();
 }
 
-function people(parts) {
-  if (parts[1]) {
-    return personPage(parts[1]);
-  }
+function people() {
   state.tab = tabParam('everyone');
   return peoplePage();
 }
 
 function group(parts) {
+  const kind = kindAt(parts);
+  if (kind === 'family') {
+    return familyPage(parts[1]);
+  }
+  if (kind === 'classroom') {
+    state.rosterTab = tabParam('students');
+    return classroomPage(parts[1]);
+  }
+  if (kind === 'grade') {
+    state.rosterTab = tabParam('students');
+    return gradePage(parts[1]);
+  }
   const key = parts[1] ? groupKeyOf(parts[1]) : '';
   if (!key) {
     return notFound('That group');
@@ -64,20 +74,12 @@ function group(parts) {
 const routes = {
   admin: () => adminPage(),
   people,
-  groups: group,
-  families: parts => parts[1] ? familyPage(parts[1]) : notFound('That family'),
+  p: parts => parts[1] ? personPage(parts[1]) : notFound('That person'),
+  g: group,
   'my-family': () => myFamilyPage(),
-  classrooms: parts => {
-    if (parts[1]) {
-      state.rosterTab = tabParam('students');
-      return classroomPage(parts[1]);
-    }
+  classrooms: () => {
     state.classTab = tabParam('by-classroom');
     return classroomsPage();
-  },
-  grades: parts => {
-    state.rosterTab = tabParam('students');
-    return parts[1] ? gradePage(parts[1]) : notFound('That grade');
   },
   staff: () => {
     state.q = '';

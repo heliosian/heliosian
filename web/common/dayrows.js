@@ -1,6 +1,5 @@
 import {el, link, svg} from '/elements.js';
 import {parseWhen} from '/datecard.js';
-import {appOrigin} from '/appswitch.js';
 import {dayTypeClass} from '/daytype.js';
 
 export function anchor(base, path, className, text) {
@@ -10,13 +9,6 @@ export function anchor(base, path, className, text) {
   const a = el('a', className, text);
   a.href = base + path;
   return a;
-}
-
-export function eventPath(e) {
-  if (e.address) {
-    return '/e/' + encodeURIComponent(e.address);
-  }
-  return '/e/' + e.id.split('/').map(encodeURIComponent).join('/');
 }
 
 export function standing(event) {
@@ -47,22 +39,22 @@ function answered(event, alongside) {
   return null;
 }
 
-function action(event, base) {
+function action(event) {
   if (event.invited && !event.hosted && !event.cancelled && !event.answer) {
-    const pill = anchor(base, event.path, 'wg-pill is-rsvp', 'RSVP');
+    const pill = link(event.path, 'wg-pill is-rsvp', 'RSVP');
     pill.title = 'You’re invited - answer on its page';
     return pill;
   }
   if (event.link && event.call && !event.mine && ['available', 'open', 'waitlist'].includes(event.availability)) {
     const pill = el('a', 'wg-pill', event.call);
-    pill.href = appOrigin(event.linkApp) + event.link;
+    pill.href = event.link;
     return pill;
   }
   return null;
 }
 
-export function eventRow(event, {base, time, className}) {
-  const title = anchor(base, event.path, 'wg-title', event.title);
+export function eventRow(event, {time, className}) {
+  const title = link(event.path, 'wg-title', event.title);
   if (event.hosted) {
     const star = svg('star');
     star.classList.add('host-star');
@@ -71,7 +63,7 @@ export function eventRow(event, {base, time, className}) {
   }
   const ticket = held(event);
   const answer = answered(event, event.mine === 'going');
-  const chips = ticket || answer ? [answer, ticket] : [action(event, base)];
+  const chips = ticket || answer ? [answer, ticket] : [action(event)];
   return dayRow(className, {title, chips, time}, () => title.click());
 }
 

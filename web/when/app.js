@@ -1,4 +1,4 @@
-import {loadModel, event, eventPath, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {loadModel, event, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
 import {el} from '/elements.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
@@ -22,8 +22,8 @@ function eventRoute(parts) {
     }
     return notFound('That event');
   }
-  if (e.address && id !== e.address) {
-    history.replaceState(null, '', eventPath(e) + location.search);
+  if (e.path !== location.pathname) {
+    history.replaceState(null, '', e.path + location.search);
   }
   state.day = eventDates(e)[0];
   return eventPage(e);
@@ -45,8 +45,7 @@ const routes = {
     return homePage(today());
   },
   day: parts => parseDate(parts[1]) ? homePage(parts[1]) : notFound('That day'),
-  e: eventRoute,
-  events: eventRoute,
+  g: eventRoute,
   mine: parts => minePage(parts[1] || ''),
   admin: () => adminPage(),
 };

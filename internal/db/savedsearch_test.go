@@ -128,7 +128,7 @@ func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 			t.Fatalf("%s: %d %s %s", token, rec.Code, rec.Header().Get("Content-Type"), rec.Body)
 		}
 		text := rec.Body.String()
-		if !strings.Contains(text, "SUMMARY:Fall Picnic") || !strings.Contains(text, "X-WR-CALNAME:Juni's Calendar") || !strings.Contains(text, "https://when.test/e/fall-picnic") {
+		if !strings.Contains(text, "SUMMARY:Fall Picnic") || !strings.Contains(text, "X-WR-CALNAME:Juni's Calendar") || !strings.Contains(text, "https://when.test/g/fall-picnic") {
 			t.Fatalf("%s's feed reads %s", token, text)
 		}
 		if strings.Contains(text, "Taco Night") {

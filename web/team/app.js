@@ -23,7 +23,7 @@ function activity(parts) {
   }
   const path = location.pathname;
   if (missing.has(path)) {
-    return notFound(parts[0] === 'v' ? 'That address' : 'That activity');
+    return notFound('That activity');
   }
   resolveAlias(path).then(found => {
     if (location.pathname !== path) {
@@ -46,8 +46,7 @@ const routes = {
   calendar: () => calendarPage(),
   admin: () => adminPage(),
   approvals: () => allows('team.curate') ? approvalsPage() : notFound('That page'),
-  activities: activity,
-  v: activity,
+  g: activity,
 };
 
 initChrome();

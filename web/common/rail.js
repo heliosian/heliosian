@@ -46,23 +46,23 @@ export const listIncludes = '(include parent parent.parent parent.parent.parent)
 export const listKinds = {party: 'party', activity: 'activity', event: 'event', admins: 'admins'};
 
 const groupSources = {
-  party: {app: 'celebrate', name: 'Celebrate', path: '/p/', thing: 'party'},
-  activity: {app: 'team', name: 'HCA-Team', path: '/v/', thing: 'activity'},
-  event: {app: 'when', name: 'Helios When', path: '/e/', thing: 'event'},
-  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
+  party: {app: 'celebrate', name: 'Celebrate', thing: 'party'},
+  activity: {app: 'team', name: 'HCA-Team', thing: 'activity'},
+  event: {app: 'when', name: 'Helios When', thing: 'event'},
+  group: {app: 'loop', name: 'Helios Loop', thing: 'email list'},
 };
 
 export function groupApp(kind) {
   return groupSources[kind] ? groupSources[kind].app : 'who';
 }
 
-export function sourceLine(kind, key, className) {
-  const source = groupSources[kind];
-  if (!source || source.app === currentApp()) {
+export function sourceLine(g, className) {
+  const source = groupSources[g.kind];
+  if (!source || source.app === currentApp() || !g[source.app + '_href']) {
     return null;
   }
   const open = el('a');
-  open.href = appOrigin(source.app) + source.path + encodeURIComponent(key);
+  open.href = g[source.app + '_href'];
   const mark = el('img');
   mark.src = `/brand/apps/${source.app}.png`;
   mark.alt = '';
@@ -74,12 +74,12 @@ export function sourceLine(kind, key, className) {
 
 export function navQueries() {
   return {
-    navTags: `(from GROUP @g (where ${tagCondition}) (include managed_by) (columns name managed_by))`,
+    navTags: `(from GROUP @g (where ${tagCondition}) (include managed_by) (columns kind name managed_by path loop_href))`,
     navTagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
     navManaged: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
     navJoined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
     navMine: '(from EFFECTIVE_MEMBER (where (= person @viewer)) (columns group))',
-    navRooms: '(from GROUP (where (= kind "group") (= parent.kind "band") (in id (select EFFECTIVE_MEMBER.group (= person @viewer)))) (include parent) (columns name slug parent))',
+    navRooms: '(from GROUP (where (= kind "group") (= parent.kind "band") (in id (select EFFECTIVE_MEMBER.group (= person @viewer)))) (include parent) (columns name slug parent path))',
   };
 }
 
@@ -132,7 +132,7 @@ export function navLists(answers) {
     if (tagRows.some(other => other.managed_by === t.id && t.name === other.name + ' Managers')) {
       continue;
     }
-    tags.push({key: 'tag:' + t.id, id: t.id, name: t.name, slug: '', shared: (managers[t.managed_by] || new Set()).size > 1});
+    tags.push({key: 'tag:' + t.id, id: t.id, name: t.name, slug: '', path: t.path, shared: (managers[t.managed_by] || new Set()).size > 1});
   }
   const groups = {};
   for (const g of [...all(answers.navManaged, 'GROUP'), ...all(answers.navJoined, 'GROUP')]) {
@@ -149,6 +149,7 @@ export function navLists(answers) {
       name: g.name,
       kind: listKinds[g.kind] || 'group',
       slug: g.slug || '',
+      path: g.path,
       run: running.has(g.id),
       member: mine.has(g.kind === 'event' ? g.rsvp_yes : g.id),
       start: dated ? dated.start : '',
@@ -160,13 +161,9 @@ export function navLists(answers) {
   const kept = lists.filter(l => !shownElsewhere.has(l.id));
   for (const g of rooms) {
     const band = bands[g.parent];
-    kept.push({key: 'list:' + g.id, id: g.id, name: `${band ? band.name : g.name} Families`, kind: 'room', slug: g.slug || '', run: true, member: true, start: ''});
+    kept.push({key: 'list:' + g.id, id: g.id, name: `${band ? band.name : g.name} Families`, kind: 'room', slug: g.slug || '', path: g.path, run: true, member: true, start: ''});
   }
   return {tags, lists: kept};
-}
-
-export function groupPathOf(item) {
-  return '/groups/' + encodeURIComponent(item.slug || item.id);
 }
 
 let hiddenSections = new Set();
@@ -232,16 +229,8 @@ function railHeading(nav, {title, icon, open, toggle, after = []}) {
   return body;
 }
 
-function railLink(href, className) {
-  const a = link(href, className);
-  if (/^https?:/.test(href)) {
-    a.removeAttribute('data-link');
-  }
-  return a;
-}
-
 export function railRow(item, active) {
-  const a = railLink(item.href, active ? 'active' : '');
+  const a = link(item.href, active ? 'active' : '');
   const icon = svg(item.icon);
   icon.classList.add('nav-icon-' + item.icon);
   a.append(icon, el('span', '', item.label));
@@ -296,7 +285,7 @@ export function whoPath(path) {
 
 export function groupActive(item) {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  return parts[0] === 'groups' && Boolean(parts[1]) && (parts[1] === item.id || parts[1].toLowerCase() === item.slug.toLowerCase());
+  return parts[0] === 'g' && Boolean(parts[1]) && (parts[1] === item.id || parts[1].toLowerCase() === item.slug.toLowerCase());
 }
 
 export function fillNav(nav, {here = '', lists, family = null, newList = false, redraw}) {
@@ -330,7 +319,6 @@ export function fillNav(nav, {here = '', lists, family = null, newList = false, 
     tools.append(railRow({href: '/new', icon: 'plus', label: 'New Email List'}, location.pathname === '/new'));
   }
   drawNavSections(tools, navSections(lists), {
-    href: groupPathOf,
     active: groupActive,
     isOpen: listsOpen,
     toggle: (section, next) => {
@@ -340,14 +328,14 @@ export function fillNav(nav, {here = '', lists, family = null, newList = false, 
   });
 }
 
-export function drawNavSections(container, sections, {href, active, isOpen, toggle}) {
+export function drawNavSections(container, sections, {active, isOpen, toggle}) {
   for (const section of sections) {
     const open = isOpen(section);
     if (!sectionHeading(container, section, {className: 'nav-subheading', open, toggle: next => toggle(section, next)})) {
       continue;
     }
     for (const item of section.items) {
-      const a = railLink(href(item));
+      const a = link(item.path);
       a.title = item.title;
       if (active(item)) {
         a.className = 'active';

@@ -1,5 +1,6 @@
-import {state, tagGroups, bands, classroomNames, eventDates, eventPath, addDays, parseDate} from './state.js';
+import {state, tagGroups, bands, classroomNames, eventDates, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
+import {queries} from '/rail.js';
 import {addEvent, editEvent, setPicture} from './writes.js';
 import {el, svg, toast, longToast} from '/elements.js';
 
@@ -101,7 +102,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       slug.value = slug.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
     });
     const row = el('div', 'event-slug-row');
-    row.append(el('span', 'event-slug-prefix', location.host + '/e/'), slug);
+    row.append(el('span', 'event-slug-prefix', location.host + '/g/'), slug);
     const slugField = el('div', 'field');
     slugField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event’s own link works either way.'));
     eventPanel.append(slugField);
@@ -174,7 +175,7 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
   });
   if (override) {
     const row = el('div', 'event-slug-row');
-    row.append(el('span', 'event-slug-prefix', location.host + '/e/'), address);
+    row.append(el('span', 'event-slug-prefix', location.host + '/g/'), address);
     const addressField = el('div', 'field');
     addressField.append(el('span', '', 'Web address'), row, el('small', '', 'A friendly address for sharing - letters, digits and dashes. Blank for none; the event\u2019s old link keeps working either way.'));
     eventPanel.append(addressField);
@@ -337,7 +338,8 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       toast('Saved over the school\u2019s version');
       const now = address.value.trim();
       if (now !== (edit.address || '')) {
-        history.replaceState(null, '', eventPath(now ? {address: now} : {id: edit.id}));
+        const moved = await queries({path: `(from GROUP (where (= id ${JSON.stringify(edit.id)})) (columns path))`});
+        history.replaceState(null, '', moved.path.resources.GROUP[edit.id].path);
       }
       await onDone([edit.id], changed);
       return;

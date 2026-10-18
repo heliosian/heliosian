@@ -1,5 +1,4 @@
 import {queries} from '/rail.js';
-import {eventPath} from '/dayrows.js';
 import {teamQueries, teamWidget} from './team.js';
 import {partyQueries, partiesWidget} from './parties.js';
 import {birthdayWork} from '/birthdays.js';
@@ -84,7 +83,7 @@ function dateOf(d) {
 export function eventCard(e) {
   const linked = e.source === 'celebrate' || e.source === 'team';
   return {
-    id: e.id, title: e.title, path: eventPath(e), start: e.start.slice(0, 10), startAt: e.start, endAt: e.end || e.start, allDay: e.allDay,
+    id: e.id, title: e.title, path: e.whenHref, start: e.start.slice(0, 10), startAt: e.start, endAt: e.end || e.start, allDay: e.allDay,
     dates: e.dates, link: linked ? e.link : '', linkApp: linked ? (e.source === 'celebrate' ? 'celebrate' : 'team') : '',
     call: linked ? e.call || '' : '', mine: linked ? e.mine || '' : '', availability: linked ? e.availability || '' : '',
     answer: e.me.answer || '', going: e.going || '', invited: Boolean(e.invited), hosted: Boolean(e.hosted), cancelled: Boolean(e.cancelled),
@@ -317,7 +316,7 @@ export async function loadModel() {
     events: cal.events,
     dayTypes: cal.dayTypes,
     parties: partiesWidget(data),
-    waiting: upcoming.filter(e => !e.hosted && e.invited && !e.me.answer && !e.cancelled).sort((x, y) => x.start.localeCompare(y.start)).map(e => ({title: e.title, start: e.start, path: eventPath(e)})),
+    waiting: upcoming.filter(e => !e.hosted && e.invited && !e.me.answer && !e.cancelled).sort((x, y) => x.start.localeCompare(y.start)).map(e => ({title: e.title, start: e.start, path: e.whenHref})),
     team: teamWidget(data, `${today} 00:00`),
     school: mail.school,
     todos: mail.todos,

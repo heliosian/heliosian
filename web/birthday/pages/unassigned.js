@@ -5,7 +5,6 @@ import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
 import {monthGrid, monthNav, showToggle} from './calendar.js';
-import {whoLink} from '/appswitch.js';
 
 let month = null;
 let picked = '';
@@ -123,7 +122,7 @@ function pickCard(sv) {
   card.append(facts);
   const actions = el('div', 'pick-actions');
   const profile = el('a', 'button button-secondary');
-  profile.href = whoLink(sv.email);
+  profile.href = sv.profile;
   profile.target = '_blank';
   profile.rel = 'noopener';
   profile.append(svg('open'), el('span', '', 'Open Helios Who'));

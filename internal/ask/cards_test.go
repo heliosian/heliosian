@@ -12,11 +12,11 @@ func TestClassroomChipsWearTheirColor(t *testing.T) {
 	if _, err := tr.run(context.Background(), "helios_classroom", json.RawMessage(`{"name": "Hummingbirds"}`)); err != nil {
 		t.Fatal(err)
 	}
-	card, ok := tr.linkCard("https://who.heliosian.com/classrooms/hummingbirds")
+	card, ok := tr.linkCard("https://who.heliosian.com/g/hummingbirds")
 	if !ok || card.Kind != "classroom" || card.Color != "#5b8def" || card.Name != "Hummingbirds" {
 		t.Fatalf("Hummingbirds: %+v %v", card, ok)
 	}
-	crew, ok := tr.linkCard("https://who.heliosian.com/people/per00000000003")
+	crew, ok := tr.linkCard("https://who.heliosian.com/p/maya.lindqvist")
 	if !ok || crew.Kind != "person" || crew.Name != "Maya Lindqvist" || crew.Color != "" {
 		t.Fatalf("Maya: %+v %v", crew, ok)
 	}
@@ -61,11 +61,11 @@ func TestLinkCardsAreWhatTheViewerMayRead(t *testing.T) {
 	if _, err := parent.run(context.Background(), "helios_whoami", json.RawMessage(`{}`)); err != nil {
 		t.Fatal(err)
 	}
-	family := "https://who.heliosian.com/families/grp00000000020"
+	family := "https://who.heliosian.com/g/grp00000000020"
 	if _, ok := parent.linkCard(family); !ok {
 		t.Fatal("the parent's own family has no chip")
 	}
-	if _, ok := parent.linkCard("https://who.heliosian.com/people/per99999999999"); ok {
+	if _, ok := parent.linkCard("https://who.heliosian.com/p/per99999999999"); ok {
 		t.Fatal("a chip for a link no tool gave")
 	}
 }

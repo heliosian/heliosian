@@ -1,4 +1,4 @@
-import {state, me, sourceWords, dayType, dayTypeName, eventDates, linkURL, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer, eventPath} from '../state.js';
+import {state, me, sourceWords, dayType, dayTypeName, eventDates, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {render as markdown} from '/markdown.js';
 import {el, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -17,8 +17,8 @@ import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, 
 
 function hero(e) {
   return detailHero({
-    imageUrl: eventImage(e), title: e.title, path: eventPath(e),
-    stamp: dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + eventPath(e)].filter(Boolean).join('\n\n')})}),
+    imageUrl: eventImage(e), title: e.title, path: e.path,
+    stamp: dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + e.path].filter(Boolean).join('\n\n')})}),
     extras: e.link ? [linkedBadge(e)] : [],
     edit: e.can.edit || e.can.image ? imageEdit(e) : null,
   });
@@ -351,7 +351,7 @@ function rsvpCard(e, slot, guest) {
       } else {
         words.append(el('div', 'rsvp-title', 'No tickets yet'), el('div', 'rsvp-lead', 'Tickets are on the party page.'));
         const add = el('a', 'button rsvp-yes' + (e.availability === 'available' ? ' is-on' : ' is-off'));
-        add.href = linkURL(e);
+        add.href = e.link;
         add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
         buttons.append(add);
       }
@@ -387,7 +387,7 @@ function inviteBand(e) {
   }
   words.append(el('div', 'pending-title', 'Anyone with the link'), el('div', 'pending-lead', mine ? 'On the calendar of the people you invite, and of anyone you send this link to who answers.' : 'You were invited, or sent this link. Your answer below puts it on your calendar.'));
   band.append(svg('link'), words);
-  const url = location.origin + eventPath(e);
+  const url = location.origin + e.path;
   band.append(button('Copy link', 'copy', 'button button-small', () => copyText(url, 'Link copied')));
   return band;
 }
@@ -531,7 +531,7 @@ const seeWords = {celebrate: 'See the party', team: 'See the event'};
 function linkedBadge(e) {
   const kind = isParty(e) ? 'celebrate' : 'team';
   const card = el('a', 'hero-linked' + (e.mine ? ' is-mine' : ''));
-  card.href = linkURL(e);
+  card.href = e.link;
   card.title = e.mine ? seeWords[kind] : e.call || seeWords[kind];
   const mark = el('img', 'hero-linked-mark');
   mark.src = `/brand/apps/${kind}.png`;

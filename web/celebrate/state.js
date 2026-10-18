@@ -75,7 +75,7 @@ export async function loadModel() {
     invitations: '(from MESSAGE (where (= kind "invitation") (in group (select GROUP.id (= kind "party")))) (columns group))',
     eligible: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.eligible (= kind "party"))) (in person (household @viewer))) (columns group person))',
     photos: '(from PHOTO (where ready (in group (select GROUP.id (in kind "party" "celebration")))) (order order asc) (columns group))',
-    families: '(from GROUP (where (= kind "family")) (columns name slug))',
+    families: '(from GROUP (where (= kind "family")) (columns name slug who_href))',
     guests: '(from PERSON (where (= source "guest")) (order name_sort asc) (columns name_show))',
     settings: '(from SETTING (where (= app "celebrate")))',
   }), directory()]);
@@ -128,7 +128,7 @@ export async function loadModel() {
 
   const familyOf = id => {
     const f = (dir.families[id] || []).map(fid => families[fid]).find(Boolean);
-    return f ? {key: f.slug || f.id, name: f.name, photo: photoOf({id: f.id})} : null;
+    return f ? {key: f.slug || f.id, name: f.name, href: f.who_href, photo: photoOf({id: f.id})} : null;
   };
   const kindOf = d => (!d ? 'Guest' : isStudent(d) ? 'Student' : isStaff(d) ? 'Staff' : isParent(d) ? 'Parent' : 'Guest');
   const lineOf = (d, m) => {
@@ -181,7 +181,7 @@ export async function loadModel() {
         purchaser: sees && pay ? emailOfId(pay.person) : '', purchaserName: sees && pay ? nameOf(pay.person) : '',
         price: sees && pay ? Number(pay.amount) || 0 : 0, note: sees ? m.note || '' : '', addedBy: sees && m.added_by ? nameOf(m.added_by) : '',
         rsvp: isInvited ? rsvp : '',
-        household: family ? family.key : m.guest_of || m.person, familyKey: family ? family.key : '', familyName: family ? family.name : '', familyPhoto: family ? family.photo : '',
+        household: family ? family.key : m.guest_of || m.person, familyHref: family ? family.href : '', familyName: family ? family.name : '', familyPhoto: family ? family.photo : '',
         can: {reassign: edit || mine, delete: edit || mine},
       };
     };
@@ -201,7 +201,7 @@ export async function loadModel() {
     const chips = chipsOf(g.description);
     const description = withoutChips(g.description);
     const p = {
-      id: g.id, partyId: g.id, prettyId: g.slug || '', path: `/p/${encodeURIComponent(g.slug || g.id)}`,
+      id: g.id, partyId: g.id, prettyId: g.slug || '', path: g.path,
       title: g.name, subtitle: g.subtitle || '', description, summary: summaryOf(g.description), chips, audience: chips.join(' · '),
       hosts: '', hostRows, hostPeople: hostIds.map(id => ({id, email: emailOfId(id), name: nameOf(id), photoUrl: dir.byId[id] ? photoOf(dir.byId[id]) : ''})),
       category: categoryIds.has(g.parent) ? g.parent : '', celebration: under,

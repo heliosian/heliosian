@@ -45,16 +45,16 @@ func TestActivityPreviews(t *testing.T) {
 		hiddens = append(hiddens, hidden{p, m})
 	}
 	t.Chdir("../..")
-	page := []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/v/international-night"`,
+	page := []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/g/international-night"`,
 		`og:image" content="https://team.heliosian.com/open/share/` + activityNight + `.png"`, `Friday, February 5 · 5:30 – 9:00 PM — An evening of food`}
 	testkit.Previews(t, pages.PreviewHead,
-		testkit.Preview{URL: "https://team.heliosian.com/v/international-night", Want: page},
-		testkit.Preview{URL: "https://team.heliosian.com/activities/" + activityNight, Want: page},
+		testkit.Preview{URL: "https://team.heliosian.com/g/international-night", Want: page},
+		testkit.Preview{URL: "https://team.heliosian.com/g/" + activityNight, Want: page},
 		testkit.Preview{URL: "https://team.heliosian.com/my", Want: []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + activityNight + ".png", "/open/share/upcoming.png"}, "/open/share/grp00000000510.png", "/open/share/grp00000000040.png")
 	for _, h := range hiddens {
-		testkit.Previews(t, h.pages.PreviewHead, testkit.Preview{URL: "https://team.heliosian.com/v/international-night", Want: []string{`og:title" content="HCA-Team"`}, Never: []string{activityNight}})
+		testkit.Previews(t, h.pages.PreviewHead, testkit.Preview{URL: "https://team.heliosian.com/g/international-night", Want: []string{`og:title" content="HCA-Team"`}, Never: []string{activityNight}})
 		testkit.Cards(t, h.mux, nil, "/open/share/"+activityNight+".png")
 	}
 }
@@ -85,9 +85,10 @@ func TestActivityRedirects(t *testing.T) {
 	s, queue, pages, _ := activityPagesSample(t)
 	apply(t, s, queue, []Edit{
 		{Insert: "ALIAS", Row: map[string]any{"alias": "E001", "target": activityNight}},
-		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/old-booth", "new": "/v/international-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/old-booth", "new": "/g/international-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/activities/nsSPomxFcPrSfoRCAgzI", "new": "/v/international-night"}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "https://hca.heliosian.com/fair", "new": "/"}},
-		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/elsewhere", "new": "https://celebrate.heliosian.com/p/taco-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/elsewhere", "new": "https://celebrate.heliosian.com/g/taco-night"}},
 	})
 	handler := pages.Redirected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for _, c := range []struct {
@@ -95,16 +96,18 @@ func TestActivityRedirects(t *testing.T) {
 		status int
 		to     string
 	}{
-		{"/activities/E001", http.StatusMovedPermanently, "https://example.com/v/international-night"},
-		{"/activities/E001?x=1", http.StatusMovedPermanently, "https://example.com/v/international-night?x=1"},
-		{"/v/" + activityNight, http.StatusMovedPermanently, "https://example.com/v/international-night"},
-		{"/v/inight/" + activityNight, http.StatusMovedPermanently, "https://example.com/v/international-night"},
-		{"/old-booth", http.StatusFound, "https://example.com/v/international-night"},
+		{"/g/E001", http.StatusMovedPermanently, "https://example.com/g/international-night"},
+		{"/g/E001?x=1", http.StatusMovedPermanently, "https://example.com/g/international-night?x=1"},
+		{"/g/" + activityNight, http.StatusMovedPermanently, "https://example.com/g/international-night"},
+		{"/g/inight/" + activityNight, http.StatusMovedPermanently, "https://example.com/g/international-night"},
+		{"/old-booth", http.StatusFound, "https://example.com/g/international-night"},
+		{"/activities/nsSPomxFcPrSfoRCAgzI", http.StatusFound, "https://example.com/v/international-night"},
 		{"/fair", http.StatusFound, "https://example.com/"},
 		{"/fair/calendar", http.StatusFound, "https://example.com/calendar"},
-		{"/elsewhere/x", http.StatusFound, "https://celebrate.heliosian.com/p/taco-night/x"},
+		{"/elsewhere/x", http.StatusFound, "https://celebrate.heliosian.com/g/taco-night/x"},
 		{"/fair//elsewhere.example", http.StatusTeapot, ""},
 		{"/fair/\\elsewhere.example", http.StatusTeapot, ""},
+		{"/g/international-night", http.StatusTeapot, ""},
 		{"/v/international-night", http.StatusTeapot, ""},
 		{"/calendar", http.StatusTeapot, ""},
 		{"/nowhere", http.StatusTeapot, ""},

@@ -147,7 +147,7 @@ export function rsvpButtons(event) {
     } else {
       const live = event.availability === 'available';
       const add = el('a', 'button button-small' + (live ? '' : ' button-secondary'));
-      add.href = appOrigin(event.linkApp) + event.link;
+      add.href = event.link;
       add.append(svg('ticket'), el('span', '', live ? 'Add Ticket' : event.call || 'See the party'));
       rsvp.append(add);
     }

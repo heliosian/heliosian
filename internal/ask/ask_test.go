@@ -32,7 +32,7 @@ import (
 
 const (
 	rowan   = "rowan@example.com"
-	juniURL = "https://who.heliosian.com/people/per00000000001"
+	juniURL = "https://who.heliosian.com/p/per00000000001"
 )
 
 var sampleNow = time.Date(2026, 9, 28, 9, 0, 0, 0, db.School)
@@ -114,7 +114,7 @@ func promptParts(t *testing.T, tr *turn) (schoolData, *viewer) {
 func TestViewerBlockNamesTheFamily(t *testing.T) {
 	tr := sampleTurn(t, rowan)
 	block := tr.viewerBlock(promptParts(t, tr))
-	for _, want := range []string{"Today is Monday, September 28, 2026. The school year is 2026-2027.", "Rowan Ashdown (rowan@example.com), a parent.", `Family "Ashdown Family" (https://who.heliosian.com/families/grp00000000020)`, "- Student: Juni Ashdown, Grade 3, in Hummingbirds, crew Robins, taught by Maya Lindqvist", "- in International Night (activity, a lead)", "- in Jayvens Room Parents (group)"} {
+	for _, want := range []string{"Today is Monday, September 28, 2026. The school year is 2026-2027.", "Rowan Ashdown (rowan@example.com), a parent.", `Family "Ashdown Family" (https://who.heliosian.com/g/grp00000000020)`, "- Student: Juni Ashdown, Grade 3, in Hummingbirds, crew Robins, taught by Maya Lindqvist", "- in International Night (activity, a lead)", "- in Jayvens Room Parents (group)"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("viewer block lacks %q:\n%s", want, block)
 		}
@@ -137,7 +137,7 @@ func TestLingoReadsTheModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3, Grade 4; Hummingbirds, Ravens)", "- Hummingbirds (https://who.heliosian.com/classrooms/hummingbirds; Jayvens; 3, 4; teachers Maya Lindqvist; crews Robins, Thrushes)", "- Ravens (https://who.heliosian.com/classrooms/ravens; Jayvens; 3, 4; teachers Ines Carvalho; crews Juncos, Towhees)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Spring Celebration 2027."} {
+	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3, Grade 4; Hummingbirds, Ravens)", "- Hummingbirds (https://who.heliosian.com/g/hummingbirds; Jayvens; 3, 4; teachers Maya Lindqvist; crews Robins, Thrushes)", "- Ravens (https://who.heliosian.com/g/ravens; Jayvens; 3, 4; teachers Ines Carvalho; crews Juncos, Towhees)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Spring Celebration 2027."} {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
 		}
@@ -381,7 +381,7 @@ func TestToolsRunTogether(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	if _, ok := tr.found.of("https://who.heliosian.com/classrooms/hummingbirds"); !ok {
+	if _, ok := tr.found.of("https://who.heliosian.com/g/hummingbirds"); !ok {
 		t.Fatal("the tools' links were not noted for chips")
 	}
 }

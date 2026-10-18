@@ -122,7 +122,7 @@ func redirectPath(cell string) string {
 		}
 	}
 	if !strings.HasPrefix(path, "/") {
-		path = "/v/" + path
+		path = "/g/" + path
 	}
 	if path != "/" {
 		path = strings.TrimRight(path, "/")

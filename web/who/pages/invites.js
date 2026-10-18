@@ -2,8 +2,7 @@ import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId, 
 import {firstName, lastName, hue} from '../dom.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
-import {familyLink, familySearchText} from '../families.js';
-import {personLink} from '../people.js';
+import {familySearchText} from '../families.js';
 import {tagFacetOptions, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {anyFiltersActive, matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, tagRelationOptionsFor} from '../filters.js';
@@ -155,7 +154,7 @@ function familyInviteParams(family) {
   const anchor = kids[0] || primary;
   return {
     ...buildInviteParams(primary, emailOf(primary), greeting, members),
-    linkHref: familyLink(family),
+    linkHref: family.path,
     sortKey: lastName(anchor.name_show) + ' ' + firstName(anchor.name_show),
   };
 }
@@ -188,7 +187,7 @@ function buildMergedEntry(people, contact) {
   const greeting = format ? buildGreeting(format.format, {person: addressee, siblings: people.slice(1)}) : '';
   return {
     ...buildInviteParams(addressee, contact, greeting, []),
-    linkHref: personLink(addressee),
+    linkHref: addressee.path,
     sortKey: lastName(addressee.name_show) + ' ' + firstName(addressee.name_show),
   };
 }

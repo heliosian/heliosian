@@ -255,7 +255,7 @@ export function openActivity(act, options) {
   const signMeRow = act ? null : settingRow('Sign me up as', 'Whether you are on this yourself.', signMe);
   const suggestImage = imagePicker('', '', {dropzone: true, query: () => title.value.trim()});
   const pretty = text(act ? act.prettyId || '' : '', {placeholder: 'applause', maxLength: 40});
-  const addressBase = () => `${location.origin}/v/`;
+  const addressBase = () => `${location.origin}/g/`;
   const addressLine = el('div', 'address-line');
   const addressText = el('code', 'address-text');
   const addressCopy = button('Copy', 'copy', 'button button-secondary button-small', () => {
@@ -1161,9 +1161,9 @@ export function openSettings() {
 
 export function openRedirect(item) {
   const old = text(item ? item.old : '', {required: true, placeholder: 'https://hca.heliosian.com/dl/signup/... or /old/path'});
-  const to = text(item ? item.new : '', {required: true, placeholder: '/v/spring-celebration, or https://...'});
+  const to = text(item ? item.new : '', {required: true, placeholder: '/g/spring-celebration, or https://...'});
   openModal(item ? 'Edit Redirect' : 'Add Redirect', [
-    field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /v/word.'),
+    field('Old address', old, 'The link people still hold: paste the whole link, or its path. A bare word is a friendly address, /g/word.'),
     field('Send them to', to, 'A page here, as its path, or a whole address on another site. A link into what sits under the old address follows along.'),
   ], {
     submit: () => write([item

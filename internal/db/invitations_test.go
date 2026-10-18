@@ -154,7 +154,7 @@ func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	if !slices.ContainsFunc(m.ReplyTo, func(a string) bool { return strings.Contains(a, organizer) }) || len(m.Attachments) != 1 || !strings.Contains(string(m.Attachments[0].Content), "METHOD:REQUEST") {
 		t.Errorf("the invitation: reply-to %v, attachments %d", m.ReplyTo, len(m.Attachments))
 	}
-	if m.Headers["Message-Id"] != mail.MessageID(copied["id"], mailtest.From) || !strings.Contains(m.HTML, "https://when.test/e/"+h.event) {
+	if m.Headers["Message-Id"] != mail.MessageID(copied["id"], mailtest.From) || !strings.Contains(m.HTML, "https://when.test/g/"+h.event) {
 		t.Errorf("the invitation's id %q and link", m.Headers["Message-Id"])
 	}
 	h.waitFor("the copy marked sent", func() bool { return h.copyOf(parent)["sent"] != "" })

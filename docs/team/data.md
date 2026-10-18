@@ -14,7 +14,7 @@ Everything the portal shows is a `GROUP` under the top-level `Community` categor
 ## An activity's cells
 
 - `name`, `description` (markdown, rendered with `/markdown.js`; its links and the highlight it once had are part of it), `location`, `start` and `end` (wall-clock, `2026-09-24 16:00` or `2026-09-24` for a whole day), `timing` (words in place of a date, "All Year").
-- `slug` is its short name: its page is `/v/<slug>` and its email list `<slug>@loop.heliosian.com` (every activity is a mail list, `posting` and `replying` `members`). Slugs are unique across every group, so last year's are cleared by hand in the summer before next year's can take them; a copy into the next year has none. Renaming one leaves the old as a hidden `ALIAS` of the group (`groupSlugMoved` in `internal/db/trigger.go`), which the page and the server's redirects both resolve.
+- `slug` is its short name: its page is `/g/<slug>` and its email list `<slug>@loop.heliosian.com` (every activity is a mail list, `posting` and `replying` `members`). Slugs are unique across every group, so last year's are cleared by hand in the summer before next year's can take them; a copy into the next year has none. Renaming one leaves the old as a hidden `ALIAS` of the group (`groupSlugMoved` in `internal/db/trigger.go`), which the page and the server's redirects both resolve.
 - `status`: `open`, `pending` (a suggestion waiting for approval), or `done`. Hidden is not a status: a hidden activity has a blank `visible_to`, and one shown has the `everyone` group there.
 - `visible_to` and `members_visible_to`: the `everyone` group or blank. A blank `members_visible_to` is Show volunteers set to Hidden: only its managers see who signed up, and each person their own and their household's rows.
 - `join` is Allow volunteers: `others` lets whoever sees it sign up themselves, their household or anyone they see; `below` takes sign-ups only on the things under it (No More); `none` is Volunteers Complete, which no control sets and the popup shows only where it is already set. `capacity` is the number of spots, blank for unlimited; full is the `member=yes` count against it, never a flag.
@@ -45,7 +45,7 @@ An activity's list reaches its own members. Its settings' "Email list reaches ev
 ## Everything else
 
 - `SETTING` rows of app `team`: `Intro` (shown under the Sign Up heading) and `Expense Form URL`.
-- `REDIRECT` rows of app `team`: `old` a path here (a whole link is read as its path, a bare word as `/v/<word>`), `new` a path here or a whole `https://` address, `added` the day it was made (Redirects in `team.md`).
+- `REDIRECT` rows of app `team`: `old` a path here (a whole link is read as its path, a bare word as `/g/<word>`), `new` a path here or a whole `https://` address, `added` the day it was made (Redirects in `team.md`).
 - `ALIAS` rows: the ids activities and headings had in the `Events` sheet, and old short names, each naming its group.
 - `APP` row `team`: its `admins` group is `team-admins`.
 

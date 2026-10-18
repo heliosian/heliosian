@@ -2,7 +2,7 @@ import {state, model, lists, tags, peopleOf, emailOf, isStudent, isStaff, famili
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familySearchText} from '../families.js';
-import {personCard, personLink} from '../people.js';
+import {personCard} from '../people.js';
 import {sourceLine} from '/rail.js';
 import {tagControl, onTagsChange, tagLabel, tagFacetOptions, sharedTag, otherManagers, manageControl, selectedGuests, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
@@ -96,7 +96,7 @@ export function listPage() {
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
-  const source = smart ? sourceLine(smart.kind, smart.slug, 'page-subtitle') : ownTag ? sourceLine('group', tags[ownTag].id, 'page-subtitle') : null;
+  const source = smart && smart.kind !== 'room' ? sourceLine(smart.group, 'page-subtitle') : ownTag ? sourceLine(tags[ownTag].group, 'page-subtitle') : null;
   if (source) {
     titleWrap.append(source);
   } else if (smart && smart.kind === 'room') {
@@ -104,7 +104,7 @@ export function listPage() {
     line.append(svg('sparkle'), el('span', '', 'The families of the grades you are a room parent for'));
     titleWrap.append(line);
   }
-  const chip = p => link(personLink(p), 'tag-chip person-chip', p.name_show);
+  const chip = p => link(p.path, 'tag-chip person-chip', p.name_show);
   const ownership = el('div', 'page-subtitle tag-ownership');
   const paintOwnership = () => {
     ownership.replaceChildren();
@@ -206,7 +206,7 @@ export function listPage() {
   page.append(content);
 
   function renderEmailsTable(container, rows) {
-    const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => link(personLink(r.p), '', r.p.name_show)} : c));
+    const columns = emailColumns.map((c, i) => (i === 0 ? {...c, show: r => link(r.p.path, '', r.p.name_show)} : c));
     const trailing = r => (r.p.source === 'guest' ? el('span') : tagControl(r.p.id, 'tag-wrap', 'row-tag', () => {
       if (state.filterTags.size) {
         renderGrid();

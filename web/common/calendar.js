@@ -79,7 +79,7 @@ export const calendarQueries = {
   parts: '(from GROUP (where (= kind "day_part")) (columns name start end parent))',
   dayRules: '(from RULE (where (= group.kind "day")) (columns group target))',
   tree: '(from GROUP (where (in kind "category" "activity" "celebration" "event")) (columns kind parent slug))',
-  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location description parent status visible_to listed audience rsvp_yes rsvp_no waitlist hidden_for capacity join added_by added))`,
+  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location description parent status visible_to listed audience rsvp_yes rsvp_no waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
   audiences: `(from RULE (where (in group (select GROUP.audience ${eventKinds}))) (columns group target))`,
   sources: `(from GROUP_SOURCE (where (in group.kind "event" "party" "activity")) (columns group calendar_event document name))`,
   photos: `(from PHOTO (where (in group.kind "event" "party" "activity" "category")) (order order asc) (columns group ready))`,
@@ -162,12 +162,12 @@ export function buildCalendar(a) {
     const full = Boolean(g.capacity) && taken >= Number(g.capacity);
     const availability = g.kind === 'party' ? (!full ? 'available' : g.waitlist ? 'waitlist' : 'sold-out') : g.kind === 'activity' ? (g.status === 'done' ? 'done' : g.join === 'none' || full ? 'full' : 'open') : '';
     const e = {
-      id: g.id, address: g.slug || '', title: g.name, start: g.start, end: g.end || g.start, allDay: g.all_day === 'Yes', dates: datesBetween(g.start, g.end),
+      id: g.id, address: g.slug || '', path: g.path, whenHref: g.when_href, title: g.name, start: g.start, end: g.end || g.start, allDay: g.all_day === 'Yes', dates: datesBetween(g.start, g.end),
       location: g.location || '', description: g.description || '', source, sourceTitle: ((sources[g.id] || [])[0] || {}).name || '', sourceUrl: '',
       classrooms: rooms, tags: [top, ...(audiences[g.audience] || []).map(r => r.target).filter(t => classroomName[t])].filter(Boolean),
       sharing: g.visible_to === everyone ? (g.listed === 'Yes' || g.kind !== 'event' ? 'Public' : 'Link') : 'Invite Only',
       status: g.status, pending: g.status === 'pending', cancelled: g.status === 'cancelled', declined: false,
-      link: g.kind === 'party' ? `/p/${encodeURIComponent(g.slug || g.id)}` : g.kind === 'activity' ? `/v/${encodeURIComponent(g.slug || g.id)}` : '',
+      link: g.celebrate_href || g.team_href,
       linkedId: g.kind === 'event' ? '' : g.id, availability, image: imageOf(g.id), hosts: [], hostNames: [], hosted: hosted.has(g.id),
       mine: holders.length ? 'going' : waiting.length ? 'waitlisted' : '', mineWho: (holders.length ? holders : waiting).map(nameOf), minePeople: [],
       going: going.length ? namesWords(going.map(nameOf)) + (going.length > 1 || going[0] === me.id ? ' are going' : ' is going') : '',

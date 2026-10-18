@@ -1,4 +1,4 @@
-import {state, groupPath, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
+import {state, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
 import {queries, sourceLine} from '/rail.js';
 import {csvField} from '/datagrid.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
@@ -547,7 +547,7 @@ function editorActions(ed) {
     if (closeModal) {
       closeModal();
     } else {
-      navigate(withTab(groupPath(g)));
+      navigate(withTab(g.path));
     }
   }), ed.summary, status, close);
   return actions;
@@ -638,7 +638,9 @@ async function makeGroup(ed) {
   }
   edits.push(...ruleEdits(ed, '@list'), ...handEdits(ed, '@list'), ...aliasEdits(ed, '@list'));
   const {result} = await write(edits);
-  await addGuests(ed, result[edits.findIndex(e => e.as === 'list')]);
+  const id = result[edits.findIndex(e => e.as === 'list')];
+  await addGuests(ed, id);
+  return id;
 }
 
 async function changeGroup(ed) {
@@ -699,30 +701,30 @@ async function writeGroup(ed, save, status) {
   status.textContent = 'Saving…';
   save.disabled = true;
   try {
-    if (isNew) {
-      await makeGroup(ed);
-    } else {
+    const id = isNew ? await makeGroup(ed) : ed.g.id;
+    if (!isNew) {
       await changeGroup(ed);
     }
     if (closeModal) {
       closeModal();
     }
+    const pathOf = () => state.model.groups.find(x => x.id === id).path;
     if (isNew) {
       await loadModel();
       toast('Email list made');
-      navigate(groupPath(draft));
+      navigate(pathOf());
       return;
     }
     if (draft.slug !== ed.original.slug) {
       await loadModel();
       toast('Saved');
-      navigate(withTab(groupPath(draft)));
+      navigate(withTab(pathOf()));
       return;
     }
     await load();
     toast('Saved');
     if (!closeModal) {
-      navigate(withTab(groupPath(draft)));
+      navigate(withTab(ed.g.path));
     }
   } catch (err) {
     status.classList.add('error');
@@ -913,7 +915,7 @@ function addressBand(g) {
 
 function overview(g) {
   const wrap = el('div', 'group-overview');
-  const source = sourceLine(g.kind, g.slug || g.id, 'subject-note');
+  const source = sourceLine(g.row, 'subject-note');
   if (source) {
     wrap.append(source);
   }

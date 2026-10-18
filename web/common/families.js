@@ -1,6 +1,5 @@
 import {el, svg} from '/elements.js';
 import {face, gradeBadge, personRow} from '/personrow.js';
-import {appOrigin} from '/appswitch.js';
 import {openModal} from '/modal.js';
 import {doneButton} from '/personcard.js';
 
@@ -70,9 +69,9 @@ function openFamilyCard(named, counts, members, gradeColors) {
     }));
   }
   const foot = el('div', 'who-foot');
-  if (named.familyKey) {
+  if (named.familyHref) {
     const who = el('a', 'button');
-    who.href = appOrigin('who') + '/families/' + encodeURIComponent(named.familyKey);
+    who.href = named.familyHref;
     who.target = '_blank';
     who.rel = 'noopener';
     who.append(svg('open'), el('span', '', 'Open on Helios Who?'));

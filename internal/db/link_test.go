@@ -9,16 +9,17 @@ import (
 func TestHrefPointsAtEachAppsPage(t *testing.T) {
 	m := sample(t).Model()
 	for _, c := range []struct{ table, id, want string }{
-		{"PERSON", "per00000000002", "https://who.test/people/per00000000002"},
-		{"GROUP", "grp00000000020", "https://who.test/families/grp00000000020"},
-		{"GROUP", "grp00000000010", "https://who.test/classrooms/hummingbirds"},
-		{"GROUP", "grp00000000011", "https://who.test/grades/grade-3"},
-		{"GROUP", "grp00000000040", "https://when.test/e/fall-picnic"},
-		{"GROUP", "grp00000000512", "https://team.test/v/international-night"},
-		{"GROUP", "grp00000000510", "https://team.test/v/grp00000000510"},
-		{"GROUP", "grp00000000521", "https://celebrate.test/p/taco-night"},
-		{"GROUP", "grp00000000041", "https://who.test/groups/grp00000000041"},
-		{"GROUP", "grp00000000060", "https://who.test/groups/community"},
+		{"PERSON", "per00000000002", "https://who.test/p/rowan.ashdown"},
+		{"PERSON", "per00000000004", "https://who.test/p/per00000000004"},
+		{"GROUP", "grp00000000020", "https://who.test/g/grp00000000020"},
+		{"GROUP", "grp00000000010", "https://who.test/g/hummingbirds"},
+		{"GROUP", "grp00000000011", "https://who.test/g/grade-3"},
+		{"GROUP", "grp00000000040", "https://when.test/g/fall-picnic"},
+		{"GROUP", "grp00000000512", "https://team.test/g/international-night"},
+		{"GROUP", "grp00000000510", "https://team.test/g/grp00000000510"},
+		{"GROUP", "grp00000000521", "https://celebrate.test/g/taco-night"},
+		{"GROUP", "grp00000000041", "https://who.test/g/grp00000000041"},
+		{"GROUP", "grp00000000060", "https://who.test/g/community"},
 		{"DOCUMENT", "doc00000000102", "https://wiki.test/p/getting-started"},
 		{"DOCUMENT", "doc00000000104", "https://wiki.test/p/getting-started/Drop-off-and-Pickup"},
 		{"DOCUMENT", "doc00000000107", "https://wiki.test/p/Activities/Clubs"},
@@ -45,12 +46,37 @@ func TestHrefPointsAtEachAppsPage(t *testing.T) {
 	}
 }
 
+func TestEachAppsHrefIsBlankWhereTheRowIsNotItsThing(t *testing.T) {
+	m := sample(t).Model()
+	for _, c := range []struct {
+		id   string
+		want map[string]string
+	}{
+		{"grp00000000020", map[string]string{"path": "/g/grp00000000020", "who_href": "https://who.test/g/grp00000000020"}},
+		{"grp00000000040", map[string]string{"path": "/g/fall-picnic", "loop_href": "https://loop.test/g/fall-picnic", "when_href": "https://when.test/g/fall-picnic"}},
+		{"grp00000000512", map[string]string{"path": "/g/international-night", "loop_href": "https://loop.test/g/international-night", "when_href": "https://when.test/g/international-night", "team_href": "https://team.test/g/international-night"}},
+		{"grp00000000521", map[string]string{"path": "/g/taco-night", "loop_href": "https://loop.test/g/taco-night", "when_href": "https://when.test/g/taco-night", "celebrate_href": "https://celebrate.test/g/taco-night"}},
+		{"grp00000000060", map[string]string{"path": "/g/community"}},
+		{"grp00000000041", map[string]string{"path": "/g/grp00000000041", "loop_href": "https://loop.test/g/grp00000000041"}},
+	} {
+		row, ok := m.Table("GROUP").Get(c.id)
+		if !ok {
+			t.Fatalf("no GROUP %s", c.id)
+		}
+		for _, column := range []string{"path", "who_href", "loop_href", "when_href", "team_href", "celebrate_href"} {
+			if row[column] != c.want[column] {
+				t.Errorf("%s %s is %q, want %q", c.id, column, row[column], c.want[column])
+			}
+		}
+	}
+}
+
 func TestHrefIsAColumnLikeAnyOther(t *testing.T) {
 	m := sample(t).Model()
 	for src, want := range map[string]string{
-		`(from GROUP (where (= id "grp00000000040")) (columns name href))`: "https://when.test/e/fall-picnic",
+		`(from GROUP (where (= id "grp00000000040")) (columns name href))`: "https://when.test/g/fall-picnic",
 		`(from GROUP (where (= id "grp00000000040")) (columns name))`:      "",
-		`(from GROUP (where (= href "https://when.test/e/fall-picnic")))`:  "https://when.test/e/fall-picnic",
+		`(from GROUP (where (= href "https://when.test/g/fall-picnic")))`:  "https://when.test/g/fall-picnic",
 	} {
 		res := m.Run(t.Context(), mustParse(t, src), Env{Viewer: parent, Now: testNow})
 		if res.Err != nil || len(res.IDs) != 1 || res.IDs[0] != "grp00000000040" {

@@ -2,10 +2,6 @@ import {model, viewer, familyOf, membersOf, kidsOf, gradeName, familyShortName, 
 import {firstName} from './dom.js';
 import {familyPhoto} from './people.js';
 
-export function familyLink(family) {
-  return '/families/' + encodeURIComponent(family.id);
-}
-
 export function myFamily() {
   return familyOf(viewer());
 }
@@ -19,7 +15,7 @@ export function familyEntries() {
       grades: [...new Set(kidsOf(f).map(gradeName).filter(Boolean))],
       members: membersOf(f).map(p => firstName(p.name_show)).filter(Boolean),
       photoUrl: thumbOf(familyPhoto(f)),
-      href: familyLink(f),
+      href: f.path,
     }));
 }
 

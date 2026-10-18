@@ -26,7 +26,7 @@ function party(parts) {
       });
       return el('div', 'list-page', 'Looking…');
     }
-    return notFound(parts[0] === 'p' ? 'That address' : 'That party');
+    return notFound('That party');
   }
   if (p.path !== location.pathname) {
     history.replaceState(null, '', p.path);
@@ -40,8 +40,7 @@ const routes = {
     const c = celebrationByCode(parts[1]);
     return c ? partiesPage(c.id) : notFound('That celebration');
   },
-  parties: party,
-  p: party,
+  g: party,
   my: parts => {
     if (!parts[1]) {
       return myPage(null);

@@ -1,4 +1,4 @@
-import {classroomByKey, gradeByKey, groupKeyOf} from './state.js';
+import {groupAt, groupKeyOf, kindAt} from './state.js';
 import {el, svg, link} from '/elements.js';
 import {trail} from '/router.js';
 import {tagsOf, tagControl, tagLabel, tagHref} from './tags.js';
@@ -12,15 +12,20 @@ export function fromURL() {
   return new URL(raw, location.origin);
 }
 
+function segmentsOf(href) {
+  return new URL(href, location.origin).pathname.split('/').filter(Boolean).map(decodeURIComponent);
+}
+
 function classroomsBack() {
   const parent = trail()[1];
-  return parent && parent.startsWith('/classrooms') ? parent : '/classrooms';
+  const kind = parent ? kindAt(segmentsOf(parent)) : '';
+  return parent && (parent.startsWith('/classrooms') || kind === 'classroom' || kind === 'grade') ? parent : '/classrooms';
 }
 
 export function peopleCrumbs(from) {
   const back = from.pathname + from.search;
-  const seg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  const key = seg[0] === 'groups' && seg[1] ? groupKeyOf(seg[1]) : '';
+  const seg = segmentsOf(from.pathname);
+  const key = kindAt(seg) === 'list' ? groupKeyOf(seg[1]) : '';
   if (!key) {
     return [['People', back]];
   }
@@ -28,7 +33,11 @@ export function peopleCrumbs(from) {
 }
 
 export function listedFrom(href) {
-  return Boolean(href) && ((href.startsWith('/people') && !href.startsWith('/people/')) || href.startsWith('/groups/'));
+  if (!href) {
+    return false;
+  }
+  const seg = segmentsOf(href);
+  return (seg[0] === 'people' && !seg[1]) || kindAt(seg) === 'list';
 }
 
 export function fromCrumbs() {
@@ -36,21 +45,13 @@ export function fromCrumbs() {
   if (!from) {
     return null;
   }
-  const seg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  const seg = segmentsOf(from.pathname);
   const back = from.pathname + from.search;
-  if (seg[0] === 'grades' && seg[1]) {
-    const grade = gradeByKey(seg[1]);
-    if (grade) {
-      return [['Gradebands', classroomsBack()], [grade.name, back]];
-    }
+  const kind = kindAt(seg);
+  if (kind === 'grade' || kind === 'classroom') {
+    return [['Gradebands', classroomsBack()], [groupAt(seg[1]).name, back]];
   }
-  if (seg[0] === 'classrooms' && seg[1]) {
-    const classroom = classroomByKey(seg[1]);
-    if (classroom) {
-      return [['Gradebands', classroomsBack()], [classroom.name, back]];
-    }
-  }
-  if ((seg[0] === 'people' && !seg[1]) || seg[0] === 'groups') {
+  if (seg[0] === 'people' || kind === 'list') {
     return peopleCrumbs(from);
   }
   if (seg[0] === 'classrooms') {

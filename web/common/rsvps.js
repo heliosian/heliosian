@@ -1,4 +1,4 @@
-import {el, svg} from '/elements.js';
+import {el, svg, link} from '/elements.js';
 import {parseWhen} from '/datecard.js';
 import {anchor} from '/dayrows.js';
 
@@ -24,7 +24,7 @@ export function rsvpPanel(waiting, base) {
   const list = el('ol', 'wg-rsvp-list');
   for (const rsvp of waiting) {
     const row = el('li');
-    const a = anchor(base, rsvp.path, 'wg-rsvp');
+    const a = link(rsvp.path, 'wg-rsvp');
     a.title = 'You’re invited - answer on its page';
     const date = parseWhen(rsvp.start).date;
     const when = `${date.toLocaleDateString('en-US', {weekday: 'short'})}, ${date.toLocaleDateString('en-US', {month: 'short', day: 'numeric'})}`;

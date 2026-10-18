@@ -83,6 +83,7 @@ type appSpec struct {
 	Mux     *http.ServeMux
 	Preview func(r *http.Request) string
 	Wrap    func(http.Handler) http.Handler
+	Moved   map[string]string
 }
 
 type Core struct {
@@ -152,7 +153,7 @@ func NewCore(cfg Config) *Core {
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/e/{id...}", "/events/{id...}"} {
+	for _, page := range []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}"} {
 		calendarMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/when/index.html")
 		})
@@ -167,7 +168,7 @@ func NewCore(cfg Config) *Core {
 	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	homeSearch.Register(api, "/api/home", imageFolder("home"), imagesearch.Members)
 	teamMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/activities/{path...}", "/v/{path...}"} {
+	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/g/{path...}"} {
 		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/team/index.html")
 		})
@@ -194,7 +195,7 @@ func NewCore(cfg Config) *Core {
 	db.RegisterMailHook(askMux, dataStore, queue, pictures, cfg.ArtifactsMail.SigningKey)
 	loopMux := http.NewServeMux()
 	loopMux.Handle("GET /open/share/about.png", loopAbout)
-	for _, page := range []string{"/{$}", "/new", "/groups/{key}"} {
+	for _, page := range []string{"/{$}", "/new", "/g/{key}"} {
 		loopMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
 			serve.File(w, r, "web/loop/index.html")
 		})
@@ -243,13 +244,13 @@ func NewCore(cfg Config) *Core {
 		Now:      schoolNow,
 	})
 	apps := []appSpec{
-		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead},
+		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead, Moved: map[string]string{"/groups/": "/g/", "/families/": "/g/", "/classrooms/": "/g/", "/grades/": "/g/", "/people/": "/p/"}},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: homePages.PreviewHead},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected},
+		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected, Moved: map[string]string{"/v/": "/g/", "/activities/": "/g/"}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
-		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead, Wrap: partyPages.Redirected},
-		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: whenPages.PreviewHead},
-		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead},
+		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead, Wrap: partyPages.Redirected, Moved: map[string]string{"/p/": "/g/", "/parties/": "/g/"}},
+		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: whenPages.PreviewHead, Moved: map[string]string{"/e/": "/g/", "/events/": "/g/"}},
+		{Key: "loop", Title: "Helios Loop", Mux: loopMux, Preview: loopAbout.PreviewHead, Moved: map[string]string{"/groups/": "/g/"}},
 		{Key: "ask", Title: "Helios Ask", Mux: askMux, Preview: askAbout.PreviewHead},
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
@@ -310,7 +311,7 @@ func (c *Core) Muxes() map[string]*http.ServeMux {
 func (c *Core) Handlers(gate func(key string, next http.Handler) http.Handler) map[string]http.Handler {
 	out := map[string]http.Handler{}
 	for _, a := range c.apps {
-		h := gate(a.Key, Logged(a.Key, withAPI(c.api, Files(a.Key, a.Mux))))
+		h := moved(a.Moved, gate(a.Key, Logged(a.Key, withAPI(c.api, Files(a.Key, a.Mux)))))
 		if a.Wrap != nil {
 			h = a.Wrap(h)
 		}

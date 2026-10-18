@@ -17,10 +17,10 @@ func TestEveryEventIsShared(t *testing.T) {
 	mux := http.NewServeMux()
 	pages.Register(mux)
 	t.Chdir("../..")
-	picnic := []string{`og:title" content="Fall Picnic"`, `og:url" content="https://when.heliosian.com/e/fall-picnic"`, `og:image" content="https://when.heliosian.com/open/share/grp00000000040.png"`}
+	picnic := []string{`og:title" content="Fall Picnic"`, `og:url" content="https://when.heliosian.com/g/fall-picnic"`, `og:image" content="https://when.heliosian.com/open/share/grp00000000040.png"`}
 	testkit.Previews(t, pages.PreviewHead,
-		testkit.Preview{URL: "https://when.heliosian.com/e/fall-picnic", Want: picnic},
-		testkit.Preview{URL: "https://when.heliosian.com/events/grp00000000040", Want: picnic},
+		testkit.Preview{URL: "https://when.heliosian.com/g/fall-picnic", Want: picnic},
+		testkit.Preview{URL: "https://when.heliosian.com/g/grp00000000040", Want: picnic},
 		testkit.Preview{URL: "https://when.heliosian.com/mine", Want: []string{`og:title" content="Helios When"`, "One calendar", `og:image" content="https://when.heliosian.com/open/share/upcoming.png"`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/grp00000000040.png", "/open/share/fall-picnic.png", "/open/share/grp00000000521.png", "/open/share/grp00000000512.png", "/open/share/upcoming.png"}, "/open/share/grp00000000010.png", "/open/share/nope.png")

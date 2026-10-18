@@ -1,4 +1,4 @@
-import {eventPath, timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, tagName, eventColors, plan, selectedClassrooms, classroomNames, linkURL} from './state.js';
+import {timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, tagName, eventColors, plan, selectedClassrooms, classroomNames} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from '/elements.js';
 
@@ -34,7 +34,7 @@ export function roomDots(e) {
 }
 
 export function eventRow(e, opts = {}) {
-  const row = link(eventPath(e), 'event-row');
+  const row = link(e.path, 'event-row');
   const first = eventColors(e)[0];
   if (first && first.color) {
     row.style.borderLeftColor = first.color;
@@ -65,7 +65,7 @@ export function callPill(e) {
   pill.addEventListener('click', ev => {
     ev.preventDefault();
     ev.stopPropagation();
-    location.href = linkURL(e);
+    location.href = e.link;
   });
   return pill;
 }

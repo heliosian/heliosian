@@ -1,10 +1,10 @@
-import {model, viewer, familyOf, resetPageState} from './state.js';
+import {model, viewer, familyOf, resetPageState, groupAt, kindAt} from './state.js';
 import {segments, hue, firstName} from './dom.js';
-import {initRail, navSections, sectionHeading, listName, railRow, fillNav as drawRail, listPageRows, listsOpen, setListsOpen, groupActive, groupPathOf} from '/rail.js';
+import {initRail, navSections, sectionHeading, listName, railRow, fillNav as drawRail, listPageRows, listsOpen, setListsOpen, groupActive} from '/rail.js';
 import {el, svg, link} from '/elements.js';
 import {loadNavScroll, saveNavScroll} from './storage.js';
 import {myFamily} from './families.js';
-import {personByKey, personLink, photoOrInitials, personPhotoUrl} from './people.js';
+import {personByKey, photoOrInitials, personPhotoUrl} from './people.js';
 import {tagKeys, tagOf, listKeys, listApp, listOf, sharedTag, onTagsChange, onTagsChangeChrome} from './tags.js';
 import {staleItems, familyInfoBanner, familyNavPeople, personTodoCount} from './stale.js';
 import {searchResults} from './search.js';
@@ -21,18 +21,19 @@ const mobileNavSections = [
 
 function onMyFamily(seg) {
   const family = myFamily();
-  return seg[0] === 'my-family' || (seg[0] === 'families' && Boolean(family) && seg[1] === family.id);
+  return seg[0] === 'my-family' || (kindAt(seg) === 'family' && Boolean(family) && groupAt(seg[1]) === family);
 }
 
 function activeSection() {
   const seg = segments();
-  if (seg[0] === 'families') {
+  const kind = kindAt(seg);
+  if (kind === 'family') {
     return onMyFamily(seg) ? 'my-family' : 'people';
   }
-  if (seg[0] === 'grades') {
+  if (kind === 'classroom' || kind === 'grade') {
     return 'classrooms';
   }
-  if (seg[0] === 'groups') {
+  if (kind) {
     return 'people';
   }
   return seg[0];
@@ -87,7 +88,7 @@ export function showPage(node) {
   }
   const onOwnFamilyPage = onMyFamily(seg);
   const familyIds = new Set(familyNavPeople().map(fp => fp.id));
-  const segPerson = seg[0] === 'people' && seg[1] ? personByKey(seg[1]) : undefined;
+  const segPerson = kindAt(seg) === 'person' ? personByKey(seg[1]) : undefined;
   const onOwnFamilyMemberPage = !!segPerson && familyIds.has(segPerson.id);
   if (!onOwnFamilyPage && !onOwnFamilyMemberPage && seg[0] !== 'my-privacy') {
     const stale = staleItems();
@@ -105,7 +106,7 @@ function navBadge(count) {
 }
 
 function familyMemberRow(p, meId, activeId) {
-  const a = link(personLink(p), 'nav-family-link');
+  const a = link(p.path, 'nav-family-link');
   if (p.id === activeId) {
     a.className = 'nav-family-link active';
   }
@@ -172,7 +173,7 @@ function fillNav(nav) {
   const rawSeg = segments();
   const familyPeople = familyNavPeople();
   const familyIds = new Set(familyPeople.map(p => p.id));
-  const rawSegPerson = rawSeg[0] === 'people' && rawSeg[1] ? personByKey(rawSeg[1]) : undefined;
+  const rawSegPerson = kindAt(rawSeg) === 'person' ? personByKey(rawSeg[1]) : undefined;
   const onFamilyMember = !!rawSegPerson && familyIds.has(rawSegPerson.id);
   drawRail(nav, {
     here: seg === 'people' && onFamilyMember ? '' : seg,
@@ -189,8 +190,8 @@ function fillNav(nav) {
 
 function listItems() {
   return {
-    tags: tagKeys().map(key => ({key, id: tagOf(key).id, name: tagOf(key).name, slug: '', shared: sharedTag(key)})),
-    lists: listKeys().map(key => ({...listOf(key), slug: listOf(key).groupSlug})),
+    tags: tagKeys().map(key => ({key, id: tagOf(key).id, name: tagOf(key).name, slug: '', path: tagOf(key).group.path, shared: sharedTag(key)})),
+    lists: listKeys().map(key => ({...listOf(key), slug: listOf(key).groupSlug, path: listOf(key).group.path})),
   };
 }
 
@@ -280,7 +281,7 @@ function renderMobileListsMenu() {
       continue;
     }
     for (const item of group.items) {
-      const a = link(groupPathOf(item), 'mobile-lists-item' + (groupActive(item) ? ' active' : ''));
+      const a = link(item.path, 'mobile-lists-item' + (groupActive(item) ? ' active' : ''));
       a.append(itemIcon(item), listName(item));
       body.append(a);
     }

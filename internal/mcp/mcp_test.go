@@ -443,13 +443,13 @@ func TestTools(t *testing.T) {
 		{"helios_describe_schema", nil, []string{"PERSON:", "DOCUMENT:", "EFFECTIVE_MEMBER:"}, false},
 		{"helios_describe_table", map[string]any{"table": "person"}, []string{"- name_show (text)", "Pointed at by:", "PERSON_EMAIL.person"}, false},
 		{"helios_policies", nil, []string{"(define (visible @g)"}, false},
-		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, `"href":"https://who.heliosian.com/people/` + rowanID + `"`}, false},
+		{"helios_query", map[string]any{"query": `(from PERSON (where (= id "` + rowanID + `")))`}, []string{`"count":1`, `"href":"https://who.heliosian.com/p/rowan.ashdown"`}, false},
 		{"helios_query", map[string]any{"query": "(from PERSON (where (= grde \"3\")))"}, []string{"did you mean grade"}, true},
-		{"helios_query_json", map[string]any{"query": []any{"from", "PERSON", []any{"where", []any{"=", map[string]any{"n": "id"}, rowanID}}}}, []string{`"count":1`, `"href":"https://who.heliosian.com/people/` + rowanID + `"`}, false},
+		{"helios_query_json", map[string]any{"query": []any{"from", "PERSON", []any{"where", []any{"=", map[string]any{"n": "id"}, rowanID}}}}, []string{`"count":1`, `"href":"https://who.heliosian.com/p/rowan.ashdown"`}, false},
 		{"helios_query_json", map[string]any{"query": []any{"from", "PERSON", []any{"where", []any{"=", map[string]any{"n": "grde"}, "3"}}}}, []string{"did you mean grade"}, true},
-		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`, `"href":"https://when.heliosian.com/e/`}, false},
+		{"helios_get", map[string]any{"id": picnic}, []string{`"table":"GROUP"`, `"MEMBER.group"`, `"href":"https://when.heliosian.com/g/`}, false},
 		{"helios_get", map[string]any{"id": "not-an-id"}, []string{"is not an ID"}, true},
-		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/people/`}, false},
+		{"helios_group", map[string]any{"id": picnic}, []string{`"members"`, `"memberCount"`, `"href":"https://who.heliosian.com/p/`}, false},
 		{"helios_group", map[string]any{"id": rowanID}, []string{"not a GROUP"}, true},
 		{"helios_read_document", map[string]any{"id": camping}, []string{"# Camping Trips", "https://wiki.heliosian.com/p/Activities/Camping-Trips", "doc00000000109 side", "## wiki (" + camping + ")"}, false},
 		{"helios_similar", map[string]any{"id": camping}, []string{"no search entry"}, true},
@@ -488,7 +488,7 @@ func TestSearchNamesEachHit(t *testing.T) {
 		t.Fatalf("%v: %s", err, text)
 	}
 	people := found["PERSON"]
-	if len(people) == 0 || people[0].ID != rowanID || people[0].Score != 1 || people[0].Name == "" || people[0].Href != "https://who.heliosian.com/people/"+rowanID {
+	if len(people) == 0 || people[0].ID != rowanID || people[0].Score != 1 || people[0].Name == "" || people[0].Href != "https://who.heliosian.com/p/rowan.ashdown" {
 		t.Fatalf("the search answered %s", text)
 	}
 }

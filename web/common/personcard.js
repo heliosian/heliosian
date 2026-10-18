@@ -1,7 +1,7 @@
 import {el, svg, avatar, toast} from '/elements.js';
 import {openModal, closeModal} from '/modal.js';
 import {tabbedFields} from '/tabs.js';
-import {personByEmail, emailOf, photoOf, placeOf, wordsOf, gradeOf, isStudent, relativesOf, profileLink} from '/directory.js';
+import {personByEmail, emailOf, photoOf, placeOf, wordsOf, gradeOf, isStudent, relativesOf} from '/directory.js';
 
 export async function openPersonCard(person, tabs = [], options = {}) {
   const info = person.email ? await personByEmail(person.email) : null;
@@ -139,7 +139,7 @@ function cardFoot(info, done) {
   if (info) {
     const profile = el('a', 'button', '');
     profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
-    profile.href = profileLink(info);
+    profile.href = info.who_href;
     profile.target = '_blank';
     profile.rel = 'noopener';
     foot.append(profile);

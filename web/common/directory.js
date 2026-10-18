@@ -1,5 +1,4 @@
 import {signedIn} from '/api.js';
-import {appOrigin} from '/appswitch.js';
 
 let asked = null;
 let index = null;
@@ -172,10 +171,6 @@ export function relativesOf(p, relation) {
       return isStudent(p) ? others.filter(isStudent) : [];
   }
   return [];
-}
-
-export function profileLink(p) {
-  return appOrigin('who') + '/people/' + encodeURIComponent(p.slug || p.id);
 }
 
 function firstName(name) {

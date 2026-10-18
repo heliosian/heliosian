@@ -10,7 +10,7 @@ The name is the email list's address, and what leaves the server in mail carries
 
 - the mail's own headers: `List-Id`, `List-Post`, `X-Helios-Loop`, and the email list's address in `From` (`internal/db/listrewrite.go`).
 
-The email list's page, `/groups/<name>`, is found by its name, any alias or its ID (`group` in `web/loop/state.js`), so a link still opens it.
+The email list's page, `/g/<name>`, is found by its name, any alias or its ID (`group` in `web/loop/state.js`), so a link still opens it.
 
 ## The membership
 

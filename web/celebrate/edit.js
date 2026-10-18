@@ -869,7 +869,7 @@ export function openParty(p) {
   const prettyHint = el('small', '', '');
   const paintPretty = () => {
     const v = pretty.value.trim().toLowerCase();
-    prettyHint.textContent = v ? `${location.origin}/p/${v}` : 'Lower-case letters, digits and hyphens; optional. Without one the party lives at /parties/{id}.';
+    prettyHint.textContent = v ? `${location.origin}/g/${v}` : 'Lower-case letters, digits and hyphens; optional. Without one the party lives at /g/{id}.';
   };
   pretty.addEventListener('input', paintPretty);
   paintPretty();

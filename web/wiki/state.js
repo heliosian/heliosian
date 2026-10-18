@@ -39,7 +39,7 @@ export async function loadModel() {
   state.admin = admin.result.length > 0;
   state.pages = pages.result.map(id => {
     const row = pages.resources.DOCUMENT[id];
-    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || '', hidden: row.hidden === 'Yes'};
+    return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || '', path: row.path, hidden: row.hidden === 'Yes'};
   });
   state.viewer = person.result[0] || '';
   const self = state.viewer ? person.resources.PERSON[state.viewer] : null;
@@ -90,7 +90,7 @@ export function pageAt(segments) {
 }
 
 export function pagePath(p) {
-  return '/p/' + [...trail(p), p].map(a => encodeURIComponent(segmentOf(a))).join('/');
+  return p.path;
 }
 
 export function editPath(p) {

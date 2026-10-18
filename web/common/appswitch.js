@@ -17,10 +17,6 @@ export function appOrigin(key) {
   return location.protocol + '//' + host.join('.') + (location.port ? ':' + location.port : '');
 }
 
-export function whoLink(email) {
-  return appOrigin('who') + '/people/' + encodeURIComponent((email || '').split('@')[0]);
-}
-
 async function switchList() {
   const a = await queries({
     apps: '(from APP (where (!= key "home")) (order order asc) (columns key name subtitle))',

@@ -2,7 +2,7 @@ import {state, model, familiesOf, familyOf, isStudent, thumbOf, photosOf, gradeN
 import {firstName} from '../dom.js';
 import {el, svg, link} from '/elements.js';
 import {tabStrip, tabHref} from '/tabs.js';
-import {personCard, personLink, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
+import {personCard, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests, ensureMembers} from '../tags.js';
 import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter} from '../filters.js';
 import {facetDropdown} from '/rules.js';
@@ -40,7 +40,7 @@ function renderStudents(grid) {
   grid.className = 'student-grid';
   const matches = model.people.filter(p => isStudent(p) && p.name_show.toLowerCase().includes(state.q) && matchesFilters(p));
   for (const p of matches) {
-    const card = link(personLink(p), 'student-card');
+    const card = link(p.path, 'student-card');
     const head = el('div', 'student-head');
     const family = familyPhoto(familyOf(p));
     if (family) {

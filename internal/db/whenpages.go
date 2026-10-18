@@ -65,10 +65,7 @@ func (m *Model) sharedGroup(key string) store.Row {
 
 func (p *WhenPages) PreviewHead(r *http.Request) string {
 	origin := "https://" + r.Host
-	key, ok := strings.CutPrefix(r.URL.Path, "/e/")
-	if !ok {
-		key, ok = strings.CutPrefix(r.URL.Path, "/events/")
-	}
+	key, ok := strings.CutPrefix(r.URL.Path, "/g/")
 	if g := p.s.Model().sharedGroup(key); ok && g != nil {
 		return p.head(g, origin)
 	}
@@ -82,11 +79,7 @@ func (p *WhenPages) head(g store.Row, origin string) string {
 			parts = append(parts, s)
 		}
 	}
-	key := g["slug"]
-	if key == "" {
-		key = g["id"]
-	}
-	return p.style.PreviewTags(g["name"], strings.Join(parts, " — "), origin+"/e/"+key, origin+"/open/share/"+g["id"]+".png")
+	return p.style.PreviewTags(g["name"], strings.Join(parts, " — "), origin+g["path"], origin+"/open/share/"+g["id"]+".png")
 }
 
 func (p *WhenPages) extPage(w http.ResponseWriter, r *http.Request) {

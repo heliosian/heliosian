@@ -301,7 +301,7 @@ func documentGenerated(rows []store.Row, origin func(app string) string) {
 	}
 	docs := func(id string) store.Row { return byID[id] }
 	for _, row := range rows {
-		row["href"] = documentHref(row, docs, origin)
+		documentLinks(row, docs, origin)
 	}
 	kinded := map[string]string{}
 	var nearest func(id string, depth int) string
@@ -353,13 +353,13 @@ func personGenerated(rows []store.Row, origin func(app string) string) {
 		default:
 			row["name_show"] = "[Missing Name]"
 		}
-		row["href"] = personHref(row, origin)
+		personLinks(row, origin)
 	}
 }
 
 func groupGenerated(rows []store.Row, origin func(app string) string) {
 	for _, row := range rows {
-		row["href"] = groupHref(row, origin)
+		groupLinks(row, origin)
 		if !strings.EqualFold(row["kind"], "family") {
 			row["address"] = overrideOr(row, "address")
 			row["phone"] = overrideOr(row, "phone")

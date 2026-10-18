@@ -165,7 +165,7 @@ export async function loadModel() {
       volunteersHidden: !g.members_visible_to, volunteersHiddenOwn: g.members_visible_to ? 'No' : 'Yes',
       allowAdding: addingWords[g.adding] || ADDING.no, allowAddingOwn: addingWords[g.adding] || ADDING.no,
       priority: g.priority === 'Yes', prettyId: g.slug || '', added: g.added || '', addedBy: nameOf(g.added_by),
-      reachesUnder: reaching.has(g.id), path: `/v/${encodeURIComponent(g.slug || g.id)}`,
+      reachesUnder: reaching.has(g.id), path: g.path,
       canEdit: runs.has(g.id), runs: runs.has(g.id), children: [], volunteers, managerRows: managers[g.managed_by] || [],
       offersOpen: Boolean(g.chair_offers), offerRows, leadRows: leads[g.leads] || [],
       can: {
@@ -325,7 +325,7 @@ export function rootOf(node) {
 
 export function resolvePath(path) {
   const segs = path.split('/').filter(Boolean).map(decodeURIComponent);
-  if (segs.length < 2 || (segs[0] !== 'v' && segs[0] !== 'activities')) {
+  if (segs.length < 2 || segs[0] !== 'g') {
     return null;
   }
   const want = segs[segs.length - 1].toLowerCase();

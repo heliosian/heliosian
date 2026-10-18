@@ -202,9 +202,9 @@ func TestEveryHrefIsNotedWithItsRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	for href, id := range map[string]string{
-		"https://who.heliosian.com/classrooms/hummingbirds":     "grp00000000010",
-		"https://who.heliosian.com/people/" + maya:              maya,
-		"https://who.heliosian.com/groups/jayvens-room-parents": "grp00000000502",
+		"https://who.heliosian.com/g/hummingbirds":         "grp00000000010",
+		"https://who.heliosian.com/p/maya.lindqvist":       maya,
+		"https://who.heliosian.com/g/jayvens-room-parents": "grp00000000502",
 	} {
 		if answer.Links[href] != id {
 			t.Errorf("%s noted as %q; every link: %v", href, answer.Links[href], answer.Links)

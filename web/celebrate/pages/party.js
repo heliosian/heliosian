@@ -3,7 +3,6 @@ import {el, link, svg, button, toast} from '/elements.js';
 import {render as markdown} from '/markdown.js';
 import {listPath} from '../chrome.js';
 import {setTitle} from '/shell.js';
-import {appOrigin} from '/appswitch.js';
 import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, givePlace, setPartyStatus, openContacts, savePartyFields, uploadImage, imageSearchOn, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
@@ -340,7 +339,7 @@ function flyerCard(p) {
 }
 
 function invitePath(p) {
-  return appOrigin('when') + '/e/' + encodeURIComponent(p.partyId) + (p.started ? '' : '?invite=1');
+  return p.row.when_href + (p.started ? '' : '?invite=1');
 }
 
 function inviteCard(p) {

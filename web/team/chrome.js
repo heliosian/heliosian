@@ -19,7 +19,7 @@ function navItems() {
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/years/') || path.startsWith('/activities/') || path.startsWith('/v/');
+    return path === '/' || path.startsWith('/years/') || path.startsWith('/g/');
   }
   return path === href || path.startsWith(href + '/');
 }

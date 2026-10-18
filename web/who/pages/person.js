@@ -1,5 +1,5 @@
 import {render, notFound} from '/router.js';
-import {state, viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, classroomPath, groupById, canEdit, today} from '../state.js';
+import {state, viewerId, emailOf, isStudent, isStaff, familiesOf, photosOf, photoUrl, fullOf, pronunciationUrl, classroomOf, groupById, canEdit, today} from '../state.js';
 import {firstName, copyButton, pronouncePill, contactRow, aboutMeText, paletteColor} from '../dom.js';
 import {el, svg, link, iconLink, editToggle} from '/elements.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns, familyPhoto} from '../people.js';
@@ -154,12 +154,12 @@ export function personPage(key) {
   const topRight = el('div', 'detail-top-right');
   const classroom = classroomOf(p);
   if ((isStaff(p) || isStudent(p)) && classroom) {
-    const classroomChip = link(classroomPath(classroom), 'tag-chip', classroom.name);
+    const classroomChip = link(classroom.path, 'tag-chip', classroom.name);
     tintChip(classroomChip, classroom.color);
     topRight.append(classroomChip);
     const crew = groupById[p.crew];
     if (crew) {
-      const crewChip = link(classroomPath(classroom), 'tag-chip', crew.name);
+      const crewChip = link(classroom.path, 'tag-chip', crew.name);
       tintChip(crewChip, paletteColor(crew.name));
       topRight.append(crewChip);
     }

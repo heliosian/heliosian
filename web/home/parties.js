@@ -3,7 +3,7 @@ import {parseWhen} from '/datecard.js';
 const upcoming = '(= kind "party") (not (in status "closed" "pending")) (not (blank visible_to)) (not (blank start)) (or (>= start today) (>= end today))';
 
 export const partyQueries = {
-  parties: `(from GROUP (where ${upcoming}) (order start asc) (columns name slug start end status join capacity waitlist visible_to))`,
+  parties: `(from GROUP (where ${upcoming}) (order start asc) (columns name slug start end status join capacity waitlist visible_to celebrate_href))`,
   partyTickets: `(from MEMBER (where (= member "yes") (or (in group (select GROUP.id ${upcoming})) (in group (select GROUP.waitlist ${upcoming})))) (columns group person guest_of added_by))`,
   partyViewer: '(from PERSON (where (= id @viewer)) (columns name_short))',
   partyHousehold: '(from PERSON (where (in id (household @viewer))) (columns name_short))',
@@ -84,9 +84,8 @@ export function partiesWidget(data) {
     const going = circle(tickets);
     const waiting = circle(members[g.waitlist] || []);
     const mine = going.length ? 'going' : waiting.length ? 'waitlisted' : '';
-    const path = '/p/' + encodeURIComponent(g.slug || g.id);
     return {
-      id: g.id, title: g.name, path, link: path, start: g.start.slice(0, 10), startAt: g.start, endAt: g.end || g.start,
+      id: g.id, title: g.name, link: g.celebrate_href, start: g.start.slice(0, 10), startAt: g.start, endAt: g.end || g.start,
       image: picture[g.id] ? `/api/blob/${picture[g.id]}/image` : '', imageApp: 'celebrate',
       availability, mine, call: mineWords(mine, mine === 'going' ? going : waiting) || callWords[availability] || '',
     };

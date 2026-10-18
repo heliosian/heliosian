@@ -1,5 +1,5 @@
 export const teamQueries = {
-  activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by leads))',
+  activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by leads team_href))',
   headings: '(from GROUP (where (= kind "category") (= parent.kind "activity")) (columns kind parent visible_to))',
   everyone: '(from GROUP (where (= id (slug "everyone"))) (columns slug))',
   mine: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.id (= kind "activity")))) (columns group))',
@@ -132,7 +132,7 @@ export function teamWidget(data, now) {
     const pic = [g, ...above(g)].map(n => picture[n.id]).find(Boolean);
     return {
       title: g.name, under: above(g).reverse().map(n => n.name).join(' › '), start: dayOf(when.start), timing: when.timing || '',
-      position: on[g.id] || '', note: g.status === 'open' ? wants(g) : '', path: '/v/' + encodeURIComponent(g.slug || g.id),
+      position: on[g.id] || '', note: g.status === 'open' ? wants(g) : '', href: g.team_href,
       image: pic ? `/api/blob/${pic}/image` : '',
     };
   };

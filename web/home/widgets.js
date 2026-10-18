@@ -180,7 +180,7 @@ function whenWidget() {
   }
   card.append(...grouped('when', groups,
     g => dayBar(g.day, (days[g.day] || []).map(k => dayChip(k.name, k.words))),
-    (event, g) => eventRow(event, {base: appOrigin('when'), time: startTime(event, g.day), className: tint(event)})));
+    (event, g) => eventRow(event, {time: startTime(event, g.day), className: tint(event)})));
   const total = groups.reduce((n, g) => n + g.rows.length, 0);
   card.append(widgetFoot('when', total, {href: appOrigin('when')}));
   return card;
@@ -227,7 +227,7 @@ function teamWidget() {
       return;
     }
     body.append(pictureList('team-' + teamChip, items, (item, i) => {
-      const href = appOrigin('team') + item.path;
+      const href = item.href;
       const day = item.start ? parseDate(item.start).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'}) : item.timing;
       const line = mine ? [day, item.under, item.position] : [day, item.note];
       let pill = null;
@@ -266,7 +266,7 @@ function partyPill(p) {
   }
   if (p.call && (p.availability === 'available' || p.availability === 'waitlist')) {
     const pill = el('a', 'wg-pill', p.call);
-    pill.href = appOrigin('celebrate') + p.link;
+    pill.href = p.link;
     return pill;
   }
   return null;
@@ -323,7 +323,7 @@ function pictureRow({href, image, title, line, pill, tone, mark}) {
 function partyRow(p) {
   const day = parseDate(p.start).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
   return pictureRow({
-    href: appOrigin('celebrate') + p.link, image: p.image ? appOrigin(p.imageApp) + p.image : '',
+    href: p.link, image: p.image ? appOrigin(p.imageApp) + p.image : '',
     title: p.title, line: day + ' · ' + startTime(p, p.start), pill: partyPill(p),
   });
 }
@@ -849,7 +849,7 @@ function upcomingItems() {
         continue;
       }
       seen.add(event.path);
-      out.push({href: appOrigin('when') + event.path, title: event.title, letter: String(parseDate(g.day).getDate()), tip: `${event.title}, ${shortDay(g.day)}`});
+      out.push({href: event.path, title: event.title, letter: String(parseDate(g.day).getDate()), tip: `${event.title}, ${shortDay(g.day)}`});
     }
   }
   return out;
@@ -864,8 +864,8 @@ function schoolItems() {
 const sidebarItems = {
   when: upcomingItems,
   todo: () => todosUnder('open').slice().sort(byDue).map(todo => ({href: todoAsk(todo), title: todo.title, todo, tip: todo.summary})),
-  team: () => state.model.team.open.map(item => ({href: appOrigin('team') + item.path, title: item.title, image: item.image ? appOrigin('team') + item.image : ''})),
-  celebrate: () => partiesUnder('upcoming').map(p => ({href: appOrigin('celebrate') + p.link, title: p.title, image: p.image ? appOrigin(p.imageApp) + p.image : ''})),
+  team: () => state.model.team.open.map(item => ({href: item.href, title: item.title, image: item.image ? appOrigin('team') + item.image : ''})),
+  celebrate: () => partiesUnder('upcoming').map(p => ({href: p.link, title: p.title, image: p.image ? appOrigin(p.imageApp) + p.image : ''})),
   school: schoolItems,
   birthday: () => {
     const birthday = state.model.birthday;

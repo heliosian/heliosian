@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, findSearch, eventPath, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, findSearch, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -16,7 +16,7 @@ const primary = [
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/e/') || path.startsWith('/events/');
+    return path === '/' || path.startsWith('/c/') || path.startsWith('/day/') || path.startsWith('/g/');
   }
   return path === href || path.startsWith(href + '/');
 }
@@ -660,7 +660,7 @@ function showResults(query) {
   resultRows = [];
   activeRow = -1;
   for (const {event, hidden} of found.slice(0, resultLimit)) {
-    const row = link(eventPath(event), 'search-row' + (hidden ? ' is-hidden-by-filters' : ''));
+    const row = link(event.path, 'search-row' + (hidden ? ' is-hidden-by-filters' : ''));
     row.style.setProperty('--c', eventTint(event));
     const when = el('span', 'search-row-date');
     const day = event.start.slice(0, 10);

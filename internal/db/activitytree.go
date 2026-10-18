@@ -84,7 +84,7 @@ func (t activityTree) shown(g store.Row) bool {
 }
 
 func (t activityTree) path(g store.Row) string {
-	return hrefPath(g["href"])
+	return g["path"]
 }
 
 func (t activityTree) named(key string) store.Row {
@@ -107,7 +107,7 @@ func (t activityTree) named(key string) store.Row {
 
 func (t activityTree) at(path string) store.Row {
 	segs := strings.Split(strings.Trim(path, "/"), "/")
-	if len(segs) < 2 || (segs[0] != "v" && segs[0] != "activities") {
+	if len(segs) < 2 || segs[0] != "g" {
 		return nil
 	}
 	return t.named(segs[len(segs)-1])

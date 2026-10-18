@@ -1,4 +1,4 @@
-import {eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, eventPath, isMatch, isGray} from './state.js';
+import {eventsOn, today, addDays, parseDate, formatDate, monthOf, shiftMonth, monthLabel, weekStart, weekdayLong, specials, isSchoolDay, eventTint, timeLine, isMatch, isGray, event} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg, button} from '/elements.js';
 import {popup} from '/modal.js';
@@ -58,7 +58,7 @@ function miniMonth(date, paging) {
 }
 
 function timelineRow(e, date) {
-  const row = link(eventPath(e), 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
+  const row = link(e.path, 'timeline-row' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
   const dot = el('span', 'timeline-dot');
   dot.style.background = eventTint(e);
   const body = el('span', 'timeline-body');
@@ -95,7 +95,7 @@ export function openAddEvent() {
     shut();
     await load();
     if (ids && ids.length) {
-      navigate('/e/' + ids[0]);
+      navigate(event(ids[0]).path);
     }
   }});
   shut = popup('Add an event', form, {wide: true}).shut;

@@ -128,7 +128,6 @@ export function renderAccount() {
   if (app.alerts) {
     renderAlerts(app.alerts());
   }
-  renderProfileLink(user.email);
   for (const line of document.querySelectorAll('.user-menu-email')) {
     line.textContent = user.email;
   }
@@ -249,6 +248,7 @@ export function initTopbar(config) {
   viewer.then(m => {
     allowances = m.allowances;
     renderAdmin();
+    renderProfileLink(m.profile);
   }).catch(err => noteError('/api/me: ' + err.message));
   if (!app.alerts) {
     viewerAlerts().catch(err => {

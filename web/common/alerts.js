@@ -1,5 +1,4 @@
 import {queries} from '/rail.js';
-import {eventPath} from '/dayrows.js';
 import {el} from '/elements.js';
 import {appOrigin, hoverMenu, hoverClick} from '/appswitch.js';
 import {noteError} from '/feedback.js';
@@ -284,16 +283,16 @@ export function initAlerts() {
   Promise.all([queries({
     waiting: `(from GROUP @e (where (= kind "event") (not (in status "closed" "cancelled")) (or (>= start today) (>= end today)) (not (manages @e))
       (exists MESSAGE @m (= kind "invitation") (= group @e) (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer)))))
-      (not (exists MEMBER (= person @viewer) (or (= group @e.rsvp_yes) (= group @e.rsvp_no) (= group @e.hidden_for))))) (order start asc) (columns name slug start all_day))`,
-    events: '(from GROUP @g (where (= kind "event") (= status "pending") (admin_of "when")) (columns name slug start))',
-    activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name slug start))',
-    parties: '(from GROUP @g (where (= kind "party") (= status "pending") (exists GROUP @u (= id @g.parent) (runs_list @u))) (columns name slug start))',
+      (not (exists MEMBER (= person @viewer) (or (= group @e.rsvp_yes) (= group @e.rsvp_no) (= group @e.hidden_for))))) (order start asc) (columns name start all_day when_href))`,
+    events: '(from GROUP @g (where (= kind "event") (= status "pending") (admin_of "when")) (columns name start href))',
+    activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name start team_href))',
+    parties: '(from GROUP @g (where (= kind "party") (= status "pending") (exists GROUP @u (= id @g.parent) (runs_list @u))) (columns name start celebrate_href))',
   }), birthdayWork()]).then(([data, work]) => {
     const groups = name => data[name].result.map(id => data[name].resources.GROUP[id]);
-    const activities = groups('activities').map(g => ({app: 'team', title: g.name, start: g.start || '', path: '/v/' + encodeURIComponent(g.slug || g.id)}));
-    const parties = groups('parties').map(g => ({app: 'celebrate', title: g.name, start: g.start || '', path: '/p/' + encodeURIComponent(g.slug || g.id)}));
-    const events = groups('events').map(g => ({app: 'when', title: g.name, start: g.start || '', path: eventPath({id: g.id, address: g.slug || ''})}));
-    showRSVP(user, groups('waiting').map(g => ({title: g.name, start: g.start, allDay: g.all_day === 'Yes', path: eventPath({id: g.id, address: g.slug || ''})})));
+    const activities = groups('activities').map(g => ({app: 'team', title: g.name, start: g.start || '', href: g.team_href}));
+    const parties = groups('parties').map(g => ({app: 'celebrate', title: g.name, start: g.start || '', href: g.celebrate_href}));
+    const events = groups('events').map(g => ({app: 'when', title: g.name, start: g.start || '', href: g.href}));
+    showRSVP(user, groups('waiting').map(g => ({title: g.name, start: g.start, allDay: g.all_day === 'Yes', href: g.when_href})));
     showApprovals(user, [...activities, ...parties, ...events].sort(byStart));
     const late = work.items.filter(sv => sv.late).map(sv => ({
       name: sv.name,
@@ -331,7 +330,7 @@ function showRSVP(user, waiting) {
     items: waiting.map(r => {
       const day = new Date(r.start.slice(0, 10) + 'T12:00:00');
       const hours = r.allDay || r.start.length < 16 ? '' : ' · ' + new Date(r.start.replace(' ', 'T')).toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
-      return {title: r.title, note: rsvpDay.format(day) + hours, href: when + r.path};
+      return {title: r.title, note: rsvpDay.format(day) + hours, href: r.href};
     }),
     icon: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="1.6"/></svg>',
     button: 'Open RSVP in Helios When',
@@ -363,7 +362,7 @@ function showApprovals(user, waiting) {
   alertMenu(badge, () => alertList({
     count: waiting.length,
     words: waiting.length === 1 ? 'thing waits for your approval' : 'things wait for your approval',
-    items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' · ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: appOrigin(a.app) + a.path, icon: alertIcons[a.app]})),
+    items: waiting.map(a => ({title: a.title, note: approvalApps[a.app] + (a.start ? ' · ' + rsvpDay.format(new Date(a.start.slice(0, 10) + 'T12:00:00')) : ''), href: a.href, icon: alertIcons[a.app]})),
     icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/></svg>',
     tone: 'amber',
   }));

@@ -22,7 +22,7 @@ const (
 	partiesShell  = "web/celebrate/index.html"
 )
 
-var partiesPages = []string{"/{$}", "/p/{key}", "/parties/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin"}
+var partiesPages = []string{"/{$}", "/g/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin"}
 
 func PartyCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{
@@ -73,17 +73,14 @@ func (p *PartyPages) Redirected(next http.Handler) http.Handler {
 
 func (m *Model) partyCanonical(u *url.URL) string {
 	kind, key, ok := strings.Cut(strings.Trim(u.Path, "/"), "/")
-	if !ok || (kind != "p" && kind != "parties") || strings.Contains(key, "/") {
+	if !ok || kind != "g" || strings.Contains(key, "/") {
 		return ""
 	}
 	g := m.party(key)
-	if g == nil {
+	if g == nil || g["path"] == u.EscapedPath() {
 		return ""
 	}
-	if to := hrefPath(g["href"]); to != u.EscapedPath() {
-		return to
-	}
-	return ""
+	return g["path"]
 }
 
 func (m *Model) partyRedirect(path string) string {
@@ -112,7 +109,7 @@ func (p *PartyPages) PreviewHead(r *http.Request) string {
 	origin := "https://" + r.Host
 	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 	var g store.Row
-	if len(parts) == 2 && (parts[0] == "p" || parts[0] == "parties") {
+	if len(parts) == 2 && parts[0] == "g" {
 		g = m.party(parts[1])
 	}
 	if g == nil {

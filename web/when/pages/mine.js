@@ -1,4 +1,4 @@
-import {myEvents, eventPath, eventImage, eventDates, parseDate, timeLine, answerOf} from '../state.js';
+import {myEvents, eventImage, eventDates, parseDate, timeLine, answerOf} from '../state.js';
 import {el, link, svg} from '/elements.js';
 import {setTitle} from '/shell.js';
 
@@ -49,7 +49,7 @@ const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'short'});
 function eventCard(e, key) {
   const slot = el('div', 'mine-slot');
   const card = el('div', 'mine-card');
-  const media = link(eventPath(e), 'mine-card-media');
+  const media = link(e.path, 'mine-card-media');
   const img = el('img', 'mine-card-image');
   img.src = eventImage(e);
   img.alt = '';
@@ -64,7 +64,7 @@ function eventCard(e, key) {
   }
   card.append(media);
   const body = el('div', 'mine-card-body');
-  const title = link(eventPath(e), 'mine-card-title');
+  const title = link(e.path, 'mine-card-title');
   title.textContent = e.title;
   body.append(title);
   const when = el('div', 'mine-card-line');
@@ -78,13 +78,13 @@ function eventCard(e, key) {
   card.append(body);
   const foot = el('div', 'mine-card-foot');
   if (key === 'rsvp') {
-    foot.append(link(eventPath(e), 'button button-small', 'RSVP'), el('span', 'mine-card-note is-waiting', 'Waiting for your reply'));
+    foot.append(link(e.path, 'button button-small', 'RSVP'), el('span', 'mine-card-note is-waiting', 'Waiting for your reply'));
   } else if (key === 'pending') {
-    foot.append(link(eventPath(e), 'button button-secondary button-small', 'Details'), el('span', 'mine-card-note is-waiting', 'Waiting for approval'));
+    foot.append(link(e.path, 'button button-secondary button-small', 'Details'), el('span', 'mine-card-note is-waiting', 'Waiting for approval'));
   } else if (key === 'hosting') {
-    foot.append(link(eventPath(e), 'button button-small', 'Manage'), el('span', 'mine-card-note', 'You host this'));
+    foot.append(link(e.path, 'button button-small', 'Manage'), el('span', 'mine-card-note', 'You host this'));
   } else {
-    foot.append(link(eventPath(e), 'button button-secondary button-small', 'Details'), el('span', 'mine-card-note is-going', answerOf(e) === 'yes' ? '✓ You’re going' : ''));
+    foot.append(link(e.path, 'button button-secondary button-small', 'Details'), el('span', 'mine-card-note is-going', answerOf(e) === 'yes' ? '✓ You’re going' : ''));
   }
   card.append(foot);
   slot.append(card);

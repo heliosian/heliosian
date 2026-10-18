@@ -164,7 +164,7 @@ function dayCard() {
   for (const event of events) {
     const item = el('div', 'rail-item');
     const row = el('a', 'rail-event ' + tint(event));
-    row.href = appOrigin('when') + event.path;
+    row.href = event.path;
     row.append(el('span', 'rail-event-dot'));
     const body = el('span', 'rail-event-body');
     body.append(el('span', 'rail-event-title', event.title));

@@ -1,4 +1,4 @@
-import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, groupWords, eventTint, timeLine, startTime, eventPath, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
+import {state, eventsOn, today, addDays, parseDate, formatDate, longDayLabel, monthLabel, monthOf, shiftMonth, weekStart, specials, plan, clock, scheduleOn, isSchoolDay, dayTypeMatches, selectedClassrooms, groupWords, eventTint, timeLine, startTime, isMatch, isHidden, isGray, myEvents, linkedApp} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {feedMark} from '../dom.js';
 import {el, link, svg, button, toast, longToast, copyText} from '/elements.js';
@@ -28,8 +28,8 @@ function upcomingRow(date, e, group) {
     return dayRow(dayTypeClass(group.name), {title, chips: [], time: ''}, () => title.click());
   }
   const states = [[isMatch(e), 'is-match'], [e.pending, 'is-pending'], [e.declined, 'is-declined'], [e.sharing !== 'Public', 'is-invite']];
-  const card = {...e, path: eventPath(e), answer: answerOf(e), linkApp: linkedApp(e)};
-  const row = eventRow(card, {base: '', time: e.allDay ? 'All day' : startTime(e, date), className: states.filter(([on]) => on).map(([, name]) => name).join(' ')});
+  const card = {...e, answer: answerOf(e), linkApp: linkedApp(e)};
+  const row = eventRow(card, {time: e.allDay ? 'All day' : startTime(e, date), className: states.filter(([on]) => on).map(([, name]) => name).join(' ')});
   row.style.setProperty('--ink-tint', eventTint(e));
   attachRowPeek(row, date, e);
   return row;
@@ -43,7 +43,7 @@ function upcomingPanel(date) {
     body.replaceChildren();
     const waiting = myEvents().waiting.filter(e => !e.cancelled).sort((a, b) => a.start.localeCompare(b.start));
     if (waiting.length) {
-      body.append(rsvpPanel(waiting.map(e => ({title: e.title, start: e.start, path: eventPath(e)})), ''));
+      body.append(rsvpPanel(waiting.map(e => ({title: e.title, start: e.start, path: e.path})), ''));
     }
     const from = date;
     const soon = addDays(from, 14);
@@ -124,7 +124,7 @@ function dayCell(date) {
   const room = 3;
   const pips = el('div', 'month-pips');
   for (const e of events) {
-    const pip = link(eventPath(e), 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
+    const pip = link(e.path, 'month-pip' + (isMatch(e) ? ' is-match' : '') + (isGray(e) ? ' is-hidden' : '') + (e.pending ? ' is-pending' : '') + (e.declined ? ' is-declined' : '') + (e.sharing !== 'Public' ? ' is-invite' : ''));
     pip.style.setProperty('--c', eventTint(e));
     pip.append(el('span', 'month-pip-title', e.title));
     if (!e.allDay) {

@@ -1,8 +1,8 @@
-import {state, model, isStudent, isStaff, kidsOf, adultsOf, gradeOf, classroomOf, groupById, photosOf, photoUrl, thumbOf, pronunciationUrl, familyName, familyShortName, canEditFamily, gradePath, classroomPath} from '../state.js';
+import {state, model, isStudent, isStaff, kidsOf, adultsOf, gradeOf, classroomOf, photosOf, photoUrl, thumbOf, pronunciationUrl, familyName, familyShortName, canEditFamily, groupAt, kindAt} from '../state.js';
 import {firstName, copyButton, pronouncePill, contactRow} from '../dom.js';
 import {el, svg, link, iconButton, iconLink, editToggle} from '/elements.js';
-import {myFamily, familyLink} from '../families.js';
-import {personByKey, personLink, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
+import {myFamily} from '../families.js';
+import {personByKey, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
 import {saveCells, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
 import {openPhotoLightbox, cropBadge, cropped, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
@@ -19,7 +19,7 @@ export function familyDetailChip(text, color, href) {
 }
 
 function familyCardRow(p, subtitle) {
-  const row = link(personLink(p), 'fcard-row');
+  const row = link(p.path, 'fcard-row');
   row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'fcard-avatar'));
   const info = el('div', 'fcard-info');
   info.append(el('div', 'fcard-name', p.name_show));
@@ -110,7 +110,7 @@ export function familyCard(p, family) {
       right.append(familyCardRow(adult, roleWithPronouns(adult)));
     }
   }
-  const seeChip = link(familyLink(family), 'fcard-see-chip');
+  const seeChip = link(family.path, 'fcard-see-chip');
   seeChip.append(el('span', '', `See ${familyName(family)}`), svg('chevron-right'));
   right.append(seeChip);
   grid.append(right);
@@ -120,12 +120,12 @@ export function familyCard(p, family) {
 
 export function familyPage(key) {
   const page = document.createDocumentFragment();
-  const family = groupById[key];
+  const family = groupAt(key);
   if (!family || family.kind !== 'family') {
     return notFound('That family');
   }
   const editable = canEditFamily(family);
-  const editing = editable && state.editing === key;
+  const editing = editable && state.editing === family.id;
   const shortName = familyShortName(family);
   const mine = myFamily() === family;
   let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
@@ -135,12 +135,12 @@ export function familyPage(key) {
   } else if (from) {
     const rseg = from.pathname.split('/').filter(Boolean).map(decodeURIComponent);
     const back = from.pathname + from.search;
-    const rsegPerson = rseg[0] === 'people' && rseg[1] ? personByKey(rseg[1]) : undefined;
+    const rsegPerson = kindAt(rseg) === 'person' ? personByKey(rseg[1]) : undefined;
     if (rsegPerson) {
       const peopleBack = trail()[1];
       const origin = listedFrom(peopleBack) ? peopleCrumbs(new URL(peopleBack, location.origin)) : [['People', '/people']];
       crumbs = [...origin, [rsegPerson.name_show, back], ['Family', null]];
-    } else if ((rseg[0] === 'people' && !rseg[1]) || rseg[0] === 'groups') {
+    } else if ((rseg[0] === 'people' && !rseg[1]) || kindAt(rseg) === 'list') {
       crumbs = [...peopleCrumbs(from), [shortName, null], ['Family', null]];
     } else if (rseg[0] === 'map') {
       crumbs = [['Map', back], [shortName, null], ['Family', null]];
@@ -149,7 +149,7 @@ export function familyPage(key) {
   let toggle = null;
   if (editable) {
     toggle = editToggle('Edit Family', editing, () => {
-      state.editing = editing ? '' : key;
+      state.editing = editing ? '' : family.id;
       render();
     });
   }
@@ -219,10 +219,10 @@ export function familyPage(key) {
   const topRow = el('div', 'detail-top');
   const chipRow = el('div', 'chip-row');
   for (const g of grades) {
-    chipRow.append(familyDetailChip(g.name, g.color, gradePath(g)));
+    chipRow.append(familyDetailChip(g.name, g.color, g.path));
   }
   for (const h of homerooms) {
-    chipRow.append(familyDetailChip(h.name, h.color, classroomPath(h)));
+    chipRow.append(familyDetailChip(h.name, h.color, h.path));
   }
   if (adults.some(isStaff)) {
     const staffChip = link('/staff', 'role-label role-label-staff', 'Staff');
@@ -303,6 +303,6 @@ export function myFamilyPage() {
   if (!family) {
     return notFound('Your family');
   }
-  history.replaceState(history.state, '', '/families/' + encodeURIComponent(family.id));
+  history.replaceState(history.state, '', family.path);
   return familyPage(family.id);
 }

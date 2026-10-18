@@ -112,11 +112,7 @@ func (iv *Invitations) linkFor(m *Model, g store.Row, person, token string) stri
 	if p, ok := m.Table("PERSON").Get(person); ok && p["source"] == "guest" {
 		return iv.config.Origin("when") + "/ext/" + token
 	}
-	key := g["slug"]
-	if key == "" {
-		key = g["id"]
-	}
-	return iv.config.Origin("when") + "/e/" + url.PathEscape(key)
+	return iv.config.Origin("when") + g["path"]
 }
 
 func (m *Model) namesOf(people []string) []string {

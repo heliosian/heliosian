@@ -116,11 +116,7 @@ func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now ti
 		if allDay {
 			end = end.AddDate(0, 0, 1)
 		}
-		key := g["slug"]
-		if key == "" {
-			key = id
-		}
-		link := origin + "/e/" + key
+		link := origin + g["path"]
 		c.Events = append(c.Events, mail.Event{
 			UID: id + "@when.heliosian.com", Start: start, End: end, AllDay: allDay, Summary: g["name"],
 			Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: g["location"], URL: link,

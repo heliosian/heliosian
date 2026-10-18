@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	samURL  = "https://who.heliosian.com/people/sam"
+	samURL  = "https://who.heliosian.com/p/sam"
 	formURL = "https://docs.google.com/d/abc"
 	xURL    = "https://x.org/a?b=1&c=2"
 )
@@ -83,7 +83,7 @@ func TestMapStringsLeavesThinkingAlone(t *testing.T) {
 
 func TestExpanderHoldsATitledKey(t *testing.T) {
 	l := newLinks()
-	donhowe := "https://who.heliosian.com/families/donhowe"
+	donhowe := "https://who.heliosian.com/g/donhowe"
 	l.shorten(donhowe)
 	key := keyOf(donhowe)
 	out := &strings.Builder{}
@@ -128,7 +128,7 @@ func TestExpanderDropsSplitMadeUpLinks(t *testing.T) {
 
 func TestContextReadsWithKeysAndWritesWithAddresses(t *testing.T) {
 	l := newLinks()
-	picnic := "https://when.heliosian.com/e/abc"
+	picnic := "https://when.heliosian.com/g/abc"
 	raw := json.RawMessage(`[{"role":"user","content":[{"type":"text","text":"Is ` + picnic + ` on?"}]},{"role":"assistant","content":[{"type":"text","text":"Yes: [the picnic](` + picnic + `), with [Sam](` + samURL + `)."}]}]`)
 	history, err := readContext(raw, l)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestExpanderHoldsSplitKeys(t *testing.T) {
 			cards = append(cards, data.(linkCard).Name)
 		}
 	}, cards: func(address string) (linkCard, bool) {
-		return linkCard{URL: address, Kind: "person", Name: "Sam Lee"}, strings.Contains(address, "/people/")
+		return linkCard{URL: address, Kind: "person", Name: "Sam Lee"}, strings.Contains(address, "/p/")
 	}, sent: map[string]bool{}}
 	for _, piece := range []string{"Ask [Sam", " Lee]", "(" + key[:1], key[1:5], key[5:] + ") today [or] not", "]"} {
 		e.send("text", piece)

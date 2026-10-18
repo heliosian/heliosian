@@ -313,7 +313,7 @@ const PolicySource = `
    vc_grade grade_override grade vc_classroom classroom_override classroom vc_crew crew_override crew
    vc_department department_override department vc_job_title job_title_override job_title
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
-   photo_updated vc_bio href)
+   photo_updated vc_bio path href who_href)
   true)
 ; a person's birthday and how they take part, to the Birthdays team
 (read PERSON (birthday birthday_participation) (birthday_team))
@@ -425,7 +425,7 @@ const PolicySource = `
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
    eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for auto_invite priority price unit parent_ticket_required
-   drop_off_allowed start end all_day timing location added_by added href)
+   drop_off_allowed start end all_day timing location added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -561,7 +561,7 @@ const PolicySource = `
 ; every column of a document
 (read DOCUMENT
   (id parent kind relation order name published author url fetch link filename content_id content message
-   summary key_points repeats digest classified extracted slug hidden source terminal href)
+   summary key_points repeats digest classified extracted slug hidden source terminal path href)
   true)
 ; what the mail the viewer may read asks of its readers
 (read TODO (document_visible document))

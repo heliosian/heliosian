@@ -56,7 +56,7 @@ func (a *ActivityPages) PreviewHead(r *http.Request) string {
 	tr := a.tree()
 	origin := "https://" + r.Host
 	var g store.Row
-	if first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]; first == "v" || first == "activities" {
+	if first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]; first == "g" {
 		g = tr.resolve(r.URL.Path)
 	}
 	if g == nil || !tr.shown(g) {

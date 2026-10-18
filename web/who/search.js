@@ -1,8 +1,8 @@
-import {model, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeName, gradePath, classroomPath} from './state.js';
+import {model, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeName} from './state.js';
 import {firstName} from './dom.js';
 import {el, link} from '/elements.js';
 import {navigate} from '/router.js';
-import {personLink, photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
+import {photoOrInitials, personPhotoUrl, roleLabel, gradeChain} from './people.js';
 import {gradeImage, classroomImage} from './pages/classrooms.js';
 import {searchInput} from '/shell.js';
 
@@ -57,7 +57,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   }
 
   group('People', people, p => {
-    const row = link(personLink(p), 'gsearch-result');
+    const row = link(p.path, 'gsearch-result');
     row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', p.name_show));
@@ -70,7 +70,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   });
 
   group('Grades', grades, g => {
-    const row = link(gradePath(g), 'gsearch-result');
+    const row = link(g.path, 'gsearch-result');
     row.append(photoOrInitials(gradeImage(g), g.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', g.name));
@@ -79,7 +79,7 @@ function renderGlobalSearchResults(resultsEl, query) {
   });
 
   group('Gradebands', classrooms, c => {
-    const row = link(classroomPath(c), 'gsearch-result');
+    const row = link(c.path, 'gsearch-result');
     row.append(photoOrInitials(classroomImage(c), c.name, 'gsearch-avatar'));
     const info = el('div', 'gsearch-info');
     info.append(el('div', 'gsearch-title', c.name));

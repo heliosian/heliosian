@@ -12,7 +12,9 @@ export function el(tag, className, text) {
 export function link(href, className, text) {
   const node = el('a', className, text);
   node.href = href;
-  node.setAttribute('data-link', '');
+  if (href.startsWith('/')) {
+    node.setAttribute('data-link', '');
+  }
   return node;
 }
 

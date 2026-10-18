@@ -1,4 +1,4 @@
-import {today, dayLabel, eventTint, timeLine, eventPath, answerOf, answer, linkURL} from './state.js';
+import {today, dayLabel, eventTint, timeLine, answerOf, answer} from './state.js';
 import {peopleLine} from './dom.js';
 import {el, link, svg, button} from '/elements.js';
 import {roomDots, planCards} from './events.js';
@@ -47,7 +47,7 @@ function fillMorePeek(node, date, events) {
   head.append(el('span', 'day-peek-date', dayLabel(date)));
   node.append(head);
   for (const e of events) {
-    const row = link(eventPath(e), 'day-peek-row day-peek-event day-peek-more');
+    const row = link(e.path, 'day-peek-row day-peek-event day-peek-more');
     row.style.setProperty('--c', eventTint(e));
     const body = el('span', 'day-peek-body');
     body.append(el('span', 'day-peek-time', e.allDay ? 'All day' : timeLine(e, date)), el('span', 'day-peek-title', e.title));
@@ -58,7 +58,7 @@ function fillMorePeek(node, date, events) {
 }
 
 function fillEventPeek(node, date, e) {
-  const row = link(eventPath(e), 'day-peek-row day-peek-event');
+  const row = link(e.path, 'day-peek-row day-peek-event');
   row.style.setProperty('--c', eventTint(e));
   const body = el('span', 'day-peek-body');
   body.append(el('span', 'day-peek-time', timeLine(e, date)), el('span', 'day-peek-title', e.title));
@@ -89,7 +89,7 @@ function fillEventPeek(node, date, e) {
       buttons.append(button(word === 'yes' ? 'Invite sent' : 'Add to my calendar', word === 'yes' ? 'check' : 'calendar', 'button button-small' + (word === 'yes' ? ' button-secondary' : ''), () => say('yes')));
     } else {
       const add = el('a', 'button button-small' + (e.availability === 'available' ? '' : ' button-secondary'));
-      add.href = linkURL(e);
+      add.href = e.link;
       add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
       buttons.append(add);
     }

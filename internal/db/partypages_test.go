@@ -17,10 +17,10 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 	pages.Register(mux)
 	t.Chdir("../..")
 	testkit.Previews(t, pages.PreviewHead,
-		testkit.Preview{URL: "https://celebrate.heliosian.com/p/taco-night", Want: []string{
-			`og:title" content="Taco Night"`, `og:url" content="https://celebrate.heliosian.com/p/taco-night"`,
+		testkit.Preview{URL: "https://celebrate.heliosian.com/g/taco-night", Want: []string{
+			`og:title" content="Taco Night"`, `og:url" content="https://celebrate.heliosian.com/g/taco-night"`,
 			`og:image" content="https://celebrate.heliosian.com/open/share/` + tacoNight + `.png"`, `Saturday, March 6 · 6:00 – 9:00 PM — Montara — A taco bar`}},
-		testkit.Preview{URL: "https://celebrate.heliosian.com/parties/" + tacoNight, Want: []string{`og:title" content="Taco Night"`}},
+		testkit.Preview{URL: "https://celebrate.heliosian.com/g/" + tacoNight, Want: []string{`og:title" content="Taco Night"`}},
 		testkit.Preview{URL: "https://celebrate.heliosian.com/my", Want: []string{
 			`og:title" content="Upcoming Parties"`, `og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
 			`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}},
@@ -32,8 +32,8 @@ func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	apply(t, s, queue, []Edit{
 		{Insert: "ALIAS", Row: map[string]any{"alias": "P001", "target": tacoNight, "hidden": true}},
-		{Insert: "REDIRECT", Row: map[string]any{"app": "celebrate", "old": "/parties/ha725m8r", "new": "/p/taco-night"}},
-		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/parties/teamonly", "new": "/p/taco-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "celebrate", "old": "/parties/ha725m8r", "new": "/g/taco-night"}},
+		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/parties/teamonly", "new": "/g/taco-night"}},
 	})
 	pages := NewPartyPages(s, blob.NewMemoryBucket(), PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
 	handler := pages.Redirected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
@@ -42,17 +42,17 @@ func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
 		status int
 		to     string
 	}{
-		{"/parties/P001", http.StatusMovedPermanently, "https://example.com/p/taco-night"},
-		{"/p/P001?x=1", http.StatusMovedPermanently, "https://example.com/p/taco-night?x=1"},
-		{"/parties/" + tacoNight, http.StatusMovedPermanently, "https://example.com/p/taco-night"},
-		{"/p/" + tacoNight, http.StatusMovedPermanently, "https://example.com/p/taco-night"},
-		{"/p/Taco-Night/", http.StatusMovedPermanently, "https://example.com/p/taco-night"},
-		{"/parties/ha725m8r", http.StatusFound, "https://example.com/p/taco-night"},
-		{"/parties/HA725M8R/", http.StatusFound, "https://example.com/p/taco-night"},
+		{"/g/P001", http.StatusMovedPermanently, "https://example.com/g/taco-night"},
+		{"/g/P001?x=1", http.StatusMovedPermanently, "https://example.com/g/taco-night?x=1"},
+		{"/g/" + tacoNight, http.StatusMovedPermanently, "https://example.com/g/taco-night"},
+		{"/g/Taco-Night/", http.StatusMovedPermanently, "https://example.com/g/taco-night"},
+		{"/parties/ha725m8r", http.StatusFound, "https://example.com/g/taco-night"},
+		{"/parties/HA725M8R/", http.StatusFound, "https://example.com/g/taco-night"},
+		{"/g/taco-night", http.StatusTeapot, ""},
 		{"/p/taco-night", http.StatusTeapot, ""},
 		{"/parties/teamonly", http.StatusTeapot, ""},
-		{"/p/" + celebration, http.StatusTeapot, ""},
-		{"/p/nothing", http.StatusTeapot, ""},
+		{"/g/" + celebration, http.StatusTeapot, ""},
+		{"/g/nothing", http.StatusTeapot, ""},
 		{"/celebrations/sc-2026", http.StatusTeapot, ""},
 	} {
 		rec := httptest.NewRecorder()
@@ -62,7 +62,7 @@ func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest("POST", "/parties/P001", nil))
+	handler.ServeHTTP(rec, httptest.NewRequest("POST", "/g/P001", nil))
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("a POST is redirected: %d", rec.Code)
 	}
@@ -70,7 +70,7 @@ func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
 	mux := http.NewServeMux()
 	pages.Register(mux)
 	t.Chdir("../..")
-	for _, path := range []string{"/", "/p/taco-night", "/parties/" + tacoNight, "/celebrations/sc-2026", "/my", "/my/rowan", "/hosting", "/admin"} {
+	for _, path := range []string{"/", "/g/taco-night", "/celebrations/sc-2026", "/my", "/my/rowan", "/hosting", "/admin"} {
 		rec := httptest.NewRecorder()
 		mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<html") {

@@ -1,5 +1,5 @@
 import {modeRow} from '/mode.js';
-import {whoLink, hoverMenu, hoverClick, closeBarMenus} from '/appswitch.js';
+import {hoverMenu, hoverClick, closeBarMenus} from '/appswitch.js';
 
 export function initUserMenu() {
   const button = document.querySelector('#user');
@@ -39,9 +39,9 @@ export function renderAvatars({photoUrl, initial}) {
   }
 }
 
-export function renderProfileLink(email) {
+export function renderProfileLink(profile) {
   for (const link of document.querySelectorAll('.user-menu-profile')) {
-    link.href = whoLink(email);
+    link.href = profile;
   }
 }
 

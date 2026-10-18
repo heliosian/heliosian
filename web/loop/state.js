@@ -36,6 +36,7 @@ function summaries(answers) {
     return {
       id: g.id,
       slug: g.slug,
+      path: g.path,
       title: g.name,
       address: g.slug ? `${g.slug}@${domain}` : '',
       description: g.description || '',
@@ -115,7 +116,9 @@ function buildGroups(answers) {
     return {
       id: g.id,
       kind: listKinds[g.kind] || 'group',
+      row: g,
       slug: g.slug,
+      path: g.path,
       title: g.name,
       address: g.slug ? `${g.slug}@${domain}` : '',
       description: g.description || '',
@@ -208,8 +211,4 @@ export function me() {
 
 export function group(slug) {
   return bySlug[slug] || byId[slug] || null;
-}
-
-export function groupPath(g) {
-  return `/groups/${encodeURIComponent(g.slug || g.id)}`;
 }

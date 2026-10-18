@@ -1,4 +1,4 @@
-import {state, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
+import {state, tags, lists, byId, tagKey, viewerId, write, q, rowsOf, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
@@ -146,7 +146,8 @@ async function makeTag(name, people) {
     memberRows[person] = result[5 + i];
   });
   const key = tagKey(result[3]);
-  tags[key] = {id: result[3], name, memberRows, managerRows: {[me]: result[2]}, managersGroup: result[0], ownManagers: true};
+  const made = await q(`(from GROUP (where (= id ${JSON.stringify(result[3])})) (columns kind path loop_href))`);
+  tags[key] = {id: result[3], name, group: rowsOf(made, 'GROUP')[0], memberRows, managerRows: {[me]: result[2]}, managersGroup: result[0], ownManagers: true};
   return key;
 }
 

@@ -73,8 +73,23 @@ export function listKey(id) {
 }
 
 export function groupPath(key) {
-  const g = tags[key] || lists[key];
-  return '/groups/' + encodeURIComponent((g && g.groupSlug) || (g && g.id) || key);
+  return (tags[key] || lists[key]).group.path;
+}
+
+export function groupAt(key) {
+  const lower = (key || '').toLowerCase();
+  return groupById[key] || Object.values(groupById).find(g => (g.slug || '').toLowerCase() === lower) || null;
+}
+
+export function kindAt(seg) {
+  if (seg[0] === 'p') {
+    return 'person';
+  }
+  if (seg[0] !== 'g') {
+    return '';
+  }
+  const g = groupAt(seg[1]);
+  return g && ['family', 'classroom', 'grade'].includes(g.kind) ? g.kind : 'list';
 }
 
 export function groupKeyOf(name) {
@@ -85,17 +100,17 @@ export function groupKeyOf(name) {
   return Object.keys(lists).find(key => lists[key].id === name || lists[key].groupSlug.toLowerCase() === lower) || '';
 }
 
-const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug ' +
+const personColumns = 'source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug path ' +
   'grade_override grade classroom_override classroom crew_override crew department_override department job_title_override job_title ' +
   'phone phone_consent address_consent pronouns pronunciation facts facts_updated photo_updated';
 
 function oldName() {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
-  if (parts[0] === 'people' && parts[1]) {
+  if (parts[0] === 'p' && parts[1]) {
     return parts[1].startsWith('guest:') ? {page: 'guest', key: parts[1].slice('guest:'.length)} : {page: 'person', key: parts[1].toLowerCase()};
   }
-  if (['families', 'classrooms', 'grades', 'groups'].includes(parts[0]) && parts[1]) {
-    return {page: parts[0], key: parts[1]};
+  if (parts[0] === 'g' && parts[1]) {
+    return {page: 'group', key: parts[1]};
   }
   return null;
 }
@@ -121,20 +136,10 @@ async function oldTarget(name) {
   return ticket ? ticket.person : '';
 }
 
-function movedTo(name, target) {
-  if (!target) {
-    return '';
-  }
-  if (target.startsWith('per')) {
-    return '/people/' + encodeURIComponent((byId[target] && byId[target].slug) || target);
-  }
-  const group = groupById[target];
-  const path = {
-    groups: groupPath(tags[tagKey(target)] ? tagKey(target) : listKey(target)),
-    families: '/families/' + encodeURIComponent(target),
-    classrooms: group && group.slug ? '/classrooms/' + encodeURIComponent(group.slug) : '',
-    grades: group && group.slug ? '/grades/' + encodeURIComponent(group.slug) : '',
-  }[name.page] || '';
+function movedTo(target) {
+  const listed = tags[tagKey(target)] || lists[listKey(target)];
+  const row = target ? byId[target] || groupById[target] || (listed && listed.group) : null;
+  const path = row ? row.path : '';
   return path === location.pathname + location.search ? '' : path;
 }
 
@@ -234,7 +239,7 @@ export async function loadModel() {
   }
   loadTags(navTags, [tagMembers, navTagManagers]);
   loadLists(navManaged, navJoined, navMine);
-  model.moved = movedTo(name, oldId);
+  model.moved = movedTo(oldId);
   model.movedFrom = location.pathname + location.search;
 }
 
@@ -260,6 +265,7 @@ function loadTags(tagged, memberAnswers) {
     tags[tagKey(t.id)] = {
       id: t.id,
       name: t.name,
+      group: t,
       memberRows: rowsOfGroup[t.id] || {},
       managerRows: rowsOfGroup[t.managed_by] || {},
       managersGroup: t.managed_by,
@@ -302,6 +308,7 @@ function loadLists(managed, joined, mineAnswer) {
       kind: listKinds[g.kind] || 'group',
       slug: g.slug || g.id,
       groupSlug: g.slug || '',
+      group: g,
       rsvp: g.rsvp_yes || '',
       run: running.has(g.id),
       member: mine.has(g.id),
@@ -322,7 +329,7 @@ function loadLists(managed, joined, mineAnswer) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', rsvp: '', run: true, member: true, start: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', group: g, rsvp: '', run: true, member: true, start: '', people: [...ids], guests: []};
   }
 }
 
@@ -479,14 +486,6 @@ export function classroomByKey(key) {
 
 export function gradeByKey(key) {
   return model.grades.find(g => groupKey(g) === key) || null;
-}
-
-export function classroomPath(c) {
-  return '/classrooms/' + encodeURIComponent(groupKey(c));
-}
-
-export function gradePath(g) {
-  return '/grades/' + encodeURIComponent(groupKey(g));
 }
 
 export function roomParentsOf(band) {
