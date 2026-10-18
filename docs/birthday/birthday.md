@@ -4,7 +4,7 @@ Helios Staff Birthdays is where the Helios Community Association's birthday team
 
 ## Data
 
-- **Staff** — every person with a `PERSON.birthday`, and every effective member of `staff` without one, who shows as missing a birthday. The birthday is a month and day; its year is unused. `PERSON.birthday_participation` is the standing wish about taking part.
+- **Staff** — every person but a guest with a `PERSON.birthday`, and every effective member of `staff` without one, who shows as missing a birthday. A guest's birthday is kept but never in the process, and their past years' records stay. The birthday is a month and day; its year is unused. `PERSON.birthday_participation` is the standing wish about taking part.
 - **A birthday's year** — the generated `BIRTHDAY` row (its day, its newsletter issue, its days to ask by and give by) and the team's `BIRTHDAY_YEAR` record of it (who has it, the outreach, the charity and the staff member's words, the newsletter's use).
 - **Charity** — name, donation link, the newsletter's sentence, EIN, and whether the association can give to it. A charity that cannot be given to keeps its reason, so the next volunteer who hears the same name knows why.
 - **Newsletter issue** — a plain group under the series the `Newsletter` setting names, its day in `start`.

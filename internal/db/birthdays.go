@@ -37,7 +37,7 @@ func (m *Model) birthdayRows() []store.Row {
 	out := []store.Row{}
 	for _, p := range m.Shown("PERSON").All() {
 		born, ok := dayOf(p["birthday"])
-		if !ok {
+		if !ok || p["source"] == "guest" {
 			continue
 		}
 		for year, list := range issues {

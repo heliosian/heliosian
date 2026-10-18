@@ -31,6 +31,17 @@ func TestABirthdayIsAnnouncedInTheLastIssueBeforeIt(t *testing.T) {
 	}
 }
 
+func TestAGuestHasNoBirthday(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	apply(t, s, queue, []Edit{{Set: guest, Cells: map[string]any{"birthday": "2000-09-15"}}})
+	if row, _ := s.Model().Table("PERSON").Get(guest); row["birthday"] == "" {
+		t.Fatal("the guest's birthday was not written")
+	}
+	if rows := as(t, s, staff, `(from BIRTHDAY (where (= person "`+guest+`")))`); len(rows) != 0 {
+		t.Fatalf("the guest has birthdays %v", rows)
+	}
+}
+
 func TestBirthdaysShowToTheBirthdaysTeam(t *testing.T) {
 	s := sample(t)
 	for i, viewer := range []string{nobody, student, parent, staff, guest} {

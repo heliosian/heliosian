@@ -34,7 +34,7 @@ export async function loadModel() {
     admin: '(from APP (where (= key "birthday") (admin_of "birthday")) (columns key))',
     team: '(from APP (where (= key "birthday") (birthday_team)) (columns key))',
     settings: '(from SETTING (where (= app "birthday")))',
-    people: '(from PERSON (where (or (not (blank birthday)) (in id (members (slug "staff"))))) (columns name_show slug job_title department birthday birthday_participation))',
+    people: '(from PERSON (where (!= source "guest") (or (not (blank birthday)) (in id (members (slug "staff"))))) (columns name_show slug job_title department birthday birthday_participation))',
     birthdays: '(from BIRTHDAY)',
     years: '(from BIRTHDAY_YEAR)',
     charities: '(from CHARITY (order name asc))',
