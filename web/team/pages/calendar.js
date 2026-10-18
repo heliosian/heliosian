@@ -17,6 +17,11 @@ function mine(node) {
   return Boolean(mySignUp(node));
 }
 
+function headingName(id) {
+  const c = state.model.categories.find(c => c.id === id);
+  return c ? c.title : '';
+}
+
 function entries() {
   const out = [];
   const add = (node, isChild) => {
@@ -32,7 +37,7 @@ function entries() {
       }
     }
     const root = rootOf(node);
-    if (filter === 'mine' ? !own : (filter && (root.category || '') !== filter)) {
+    if (filter === 'mine' ? !own : (filter && headingName(root.category) !== filter)) {
       return;
     }
     const end = parseWhen(node.end);
@@ -72,9 +77,11 @@ function chipRow(onChange) {
     add('', 'All', 'chip-all');
     add('mine', '⭐ Mine', 'chip-mine');
     const present = new Set(state.model.activities.filter(a => parseWhen(a.start) && shown(a)).map(a => a.category || ''));
+    const named = new Set();
     for (const c of state.model.categories) {
-      if (present.has(c.id)) {
-        add(c.id, c.title, categoryClass(c.id));
+      if (present.has(c.id) && !named.has(c.title)) {
+        named.add(c.title);
+        add(c.title, c.title, categoryClass(c.id));
       }
     }
   };

@@ -1753,7 +1753,7 @@ h2.section .link-button { font-size: 14px; }
 
 .calendar .day.other .num { color: #bbb; }
 
-.calendar .day.today { background: #e7edee; }
+.calendar .day.today { background: var(--input); }
 
 .calendar .chip {
   display: block;
