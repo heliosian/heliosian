@@ -25,6 +25,13 @@ function copier(className, title, text) {
   return btn;
 }
 
+export function csvField(value) {
+  if (/^[=+\-@\t\r]/.test(value) && isNaN(Number(value))) {
+    value = "'" + value;
+  }
+  return /[",\n\r]/.test(value) ? '"' + value.replaceAll('"', '""') + '"' : value;
+}
+
 export function copyGlyph(text) {
   return copier('copy-glyph', 'Copy', text);
 }

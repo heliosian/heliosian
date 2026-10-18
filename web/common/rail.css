@@ -285,3 +285,38 @@
   color: var(--lime);
   font-size: 12px;
 }
+
+.magic-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.magic-source > svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--cat-yellow);
+  stroke: #c9b52a;
+  stroke-width: 1;
+  flex-shrink: 0;
+}
+
+.magic-source a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.magic-source a:hover {
+  text-decoration: underline;
+}
+
+.magic-source img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+}

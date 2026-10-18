@@ -1,10 +1,10 @@
 import {state, model, lists, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
-import {csvField} from '../dom.js';
-import {dataGrid} from '/datagrid.js';
+import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familySearchText} from '../families.js';
 import {personCard, personLink} from '../people.js';
-import {tagControl, onTagsChange, tagLabel, tagFacetOptions, listSource, sharedTag, otherManagers, manageControl, selectedGuests, ensureMembers} from '../tags.js';
+import {sourceLine} from '/rail.js';
+import {tagControl, onTagsChange, tagLabel, tagFacetOptions, sharedTag, otherManagers, manageControl, selectedGuests, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
 import {matchesFilters, familyMatchesFilters, roleChips, gradeOptions, classroomOptions, directoryFilter, tagRelationOptionsFor} from '../filters.js';
 import {facetDropdown, familyDropdown} from '/rules.js';
@@ -96,23 +96,13 @@ export function listPage() {
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
-  if (smart) {
+  const source = smart ? sourceLine(smart.kind, smart.slug, 'page-subtitle') : ownTag ? sourceLine('group', tags[ownTag].id, 'page-subtitle') : null;
+  if (source) {
+    titleWrap.append(source);
+  } else if (smart && smart.kind === 'room') {
     const line = el('div', 'page-subtitle magic-source');
-    const source = listSource(smart.key);
-    if (source) {
-      line.append(svg('sparkle'), el('span', '', 'From '));
-      const open = el('a');
-      open.href = source.href;
-      const mark = el('img');
-      mark.src = `/brand/apps/${source.app}.png`;
-      mark.alt = '';
-      open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
-      line.append(open);
-      titleWrap.append(line);
-    } else if (smart.kind === 'room') {
-      line.append(svg('sparkle'), el('span', '', 'The families of the grades you are a room parent for'));
-      titleWrap.append(line);
-    }
+    line.append(svg('sparkle'), el('span', '', 'The families of the grades you are a room parent for'));
+    titleWrap.append(line);
   }
   const chip = p => link(personLink(p), 'tag-chip person-chip', p.name_show);
   const ownership = el('div', 'page-subtitle tag-ownership');

@@ -45,6 +45,33 @@ export const listIncludes = '(include parent parent.parent parent.parent.parent)
 
 export const listKinds = {party: 'party', activity: 'activity', event: 'event', admins: 'admins'};
 
+const groupSources = {
+  party: {app: 'celebrate', name: 'Celebrate', path: '/p/', thing: 'party'},
+  activity: {app: 'team', name: 'HCA-Team', path: '/v/', thing: 'activity'},
+  event: {app: 'when', name: 'Helios When', path: '/e/', thing: 'event'},
+  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
+};
+
+export function groupApp(kind) {
+  return groupSources[kind] ? groupSources[kind].app : 'who';
+}
+
+export function sourceLine(kind, key, className) {
+  const source = groupSources[kind];
+  if (!source || source.app === currentApp()) {
+    return null;
+  }
+  const open = el('a');
+  open.href = appOrigin(source.app) + source.path + encodeURIComponent(key);
+  const mark = el('img');
+  mark.src = `/brand/apps/${source.app}.png`;
+  mark.alt = '';
+  open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
+  const line = el('div', className + ' magic-source');
+  line.append(svg('sparkle'), el('span', '', 'From '), open);
+  return line;
+}
+
 export function navQueries() {
   return {
     navTags: `(from GROUP @g (where ${tagCondition}) (include managed_by) (columns name managed_by))`,

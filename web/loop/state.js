@@ -1,7 +1,7 @@
 import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
-import {navQueries, navLists, viewerListCondition, listIncludes, queries, fetchGroups} from '/rail.js';
+import {navQueries, navLists, viewerListCondition, listIncludes, listKinds, queries, fetchGroups} from '/rail.js';
 import {nameRulesWith} from '/listrules.js';
 
 nameRulesWith({group: id => state.model.groupNames[id] || null, person: id => personView(id).name});
@@ -114,6 +114,7 @@ function buildGroups(answers) {
     const shown = (members[source] || []).map(e => ({...personView(e.person), reasons: e.reasons.split(', ').map(w => reasonOf(listRules, w)).filter(Boolean)}));
     return {
       id: g.id,
+      kind: listKinds[g.kind] || 'group',
       slug: g.slug,
       title: g.name,
       address: g.slug ? `${g.slug}@${domain}` : '',

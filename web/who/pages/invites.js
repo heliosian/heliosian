@@ -1,6 +1,6 @@
 import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId, q, rowsOf, write} from '../state.js';
-import {firstName, lastName, hue, csvField} from '../dom.js';
-import {dataGrid} from '/datagrid.js';
+import {firstName, lastName, hue} from '../dom.js';
+import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
 import {familyLink, familySearchText} from '../families.js';
 import {personLink} from '../people.js';

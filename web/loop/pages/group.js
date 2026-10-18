@@ -1,5 +1,6 @@
 import {state, groupPath, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
-import {queries} from '/rail.js';
+import {queries, sourceLine} from '/rail.js';
+import {csvField} from '/datagrid.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
 import {pageHead} from '../dom.js';
 import {visibilityWords} from './groups.js';
@@ -853,7 +854,9 @@ export function groupPage(g) {
   search.addEventListener('input', showMembers);
   showMembers();
   if (g.members.length) {
-    members.append(search);
+    const tools = el('div', 'member-tools');
+    tools.append(search, membersCsv(g));
+    members.append(tools);
   }
   members.append(grid, empty);
   if (canEdit) {
@@ -871,6 +874,19 @@ export function groupPage(g) {
   }
   page.append(tabbed(tabs, true, null, tabs.length > 2 ? 1 : 2));
   return page;
+}
+
+function membersCsv(g) {
+  const columns = [['Full Name', m => m.name], ['Email', m => m.email], ['Details', m => m.context || '']];
+  const csv = [columns.map(([label]) => label).join(',')]
+    .concat(g.members.map(m => columns.map(([, get]) => csvField(get(m))).join(',')))
+    .join('\n');
+  const download = el('a', 'filter-button member-csv');
+  download.title = 'Download the members';
+  download.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  download.download = `${g.slug || g.id}.csv`;
+  download.append(svg('download'), el('span', '', 'CSV'));
+  return download;
 }
 
 function addressBand(g) {
@@ -897,6 +913,10 @@ function addressBand(g) {
 
 function overview(g) {
   const wrap = el('div', 'group-overview');
+  const source = sourceLine(g.kind, g.slug || g.id, 'subject-note');
+  if (source) {
+    wrap.append(source);
+  }
   if (g.address) {
     wrap.append(addressBand(g));
   }

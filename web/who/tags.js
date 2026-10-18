@@ -1,10 +1,12 @@
-import {state, model, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
+import {state, tags, lists, byId, tagKey, viewerId, write, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
-import {appOrigin} from '/appswitch.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
+import {groupApp} from '/rail.js';
+import {createPersonPicker} from '/picker.js';
+import {listed} from '/directory.js';
 import {navigate, render as renderPage} from '/router.js';
 
 export function tagKeys() {
@@ -48,24 +50,8 @@ export function listIcon(key) {
   return listIcons[lists[key].kind];
 }
 
-const listSources = {
-  party: {app: 'celebrate', name: 'Celebrate', path: '/p/', thing: 'party'},
-  activity: {app: 'team', name: 'HCA-Team', path: '/v/', thing: 'activity'},
-  event: {app: 'when', name: 'Helios When', path: '/e/', thing: 'event'},
-  group: {app: 'loop', name: 'Helios Loop', path: '/groups/', thing: 'email list'},
-};
-
-export function listSource(key) {
-  const source = lists[key] && listSources[lists[key].kind];
-  if (!source) {
-    return null;
-  }
-  return {...source, href: appOrigin(source.app) + source.path + encodeURIComponent(lists[key].slug)};
-}
-
 export function listApp(key) {
-  const kind = lists[key] && lists[key].kind;
-  return listSources[kind] ? listSources[kind].app : 'who';
+  return groupApp(lists[key] && lists[key].kind);
 }
 
 export function members(key) {
@@ -312,7 +298,7 @@ export function manageControl(key, onManagersChange) {
   });
   const shareItem = item('families', 'Share', 'Let others manage this tag with you', () => {
     open(share);
-    input.focus();
+    picker.input.focus();
   });
   if (sharedTag(key)) {
     item('close', 'Leave', 'Stop managing this tag - the others keep it', async () => {
@@ -347,11 +333,17 @@ export function manageControl(key, onManagersChange) {
 
   const managers = el('div', 'share-managers');
   const searchBox = el('div', 'share-search');
-  const input = el('input');
-  input.placeholder = 'Add someone by name';
-  input.maxLength = 60;
-  const results = el('div', 'share-results');
-  searchBox.append(input, results);
+  const picker = createPersonPicker(searchBox, {
+    placeholder: 'Add someone by name',
+    people: async () => (await listed()).filter(p => !tagManagers(tags[key]).includes(p.id)),
+    onPick: async (_, p) => {
+      if (await shareTag(key, p.id, true)) {
+        paintManagers();
+        updateLabel();
+        onManagersChange();
+      }
+    },
+  });
   share.append(managers, searchBox);
 
   const updateLabel = () => {
@@ -383,39 +375,6 @@ export function manageControl(key, onManagersChange) {
     }
     managers.hidden = !managers.children.length;
   };
-  const paintResults = () => {
-    const q = input.value.trim().toLowerCase();
-    results.replaceChildren();
-    if (!q) {
-      return;
-    }
-    const managing = tagManagers(tags[key]);
-    const matches = model.people
-      .filter(p => !managing.includes(p.id))
-      .filter(p => p.name_show.toLowerCase().includes(q))
-      .slice(0, 6);
-    if (!matches.length) {
-      results.append(el('div', 'share-empty', 'No one by that name.'));
-      return;
-    }
-    for (const p of matches) {
-      const row = el('button', 'share-result');
-      row.type = 'button';
-      row.append(photoOrInitials(personPhotoUrl(p), p.name_show, 'share-avatar'), el('span', '', p.name_show), svg('plus'));
-      row.addEventListener('click', async () => {
-        if (await shareTag(key, p.id, true)) {
-          input.value = '';
-          paintResults();
-          paintManagers();
-          updateLabel();
-          onManagersChange();
-        }
-      });
-      results.append(row);
-    }
-  };
-  input.addEventListener('input', paintResults);
-
   paintManagers();
   updateLabel();
   wrap.append(button, menu, share);

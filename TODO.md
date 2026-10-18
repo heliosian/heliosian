@@ -8,9 +8,6 @@ Last verified: 7538815
 
 # Helios Loop
 
-- Who?'s and Loop's group pages converging into one page, as the rail did
-  Who?'s is `listPage` (`web/who/pages/list.js`), Loop's `groupPage` (`web/loop/pages/group.js`); they share only the rail and the route shape.
-
 # Helios Who?
 
 - Sidebar "Running" lists same-named groups with nothing to tell them apart
