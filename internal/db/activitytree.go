@@ -84,7 +84,7 @@ func (t activityTree) shown(g store.Row) bool {
 }
 
 func (t activityTree) path(g store.Row) string {
-	return t.m.Link("GROUP", g, func(string) string { return "" })
+	return hrefPath(g["href"])
 }
 
 func (t activityTree) named(key string) store.Row {

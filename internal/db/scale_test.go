@@ -122,7 +122,7 @@ func scaleStoreIn(tb testing.TB) (*Store, *store.Queue, *data.Dir) {
 	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT_GROUP.csv"), sentTo)
 	dir := &data.Dir{Root: root}
 	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex())
+	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
 	if after.Groups["GROUP"] == before.Groups["GROUP"] {
 		t.Error("the refresh kept the Groups sheet a hand edit changed")
 	}
-	fresh, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex())
+	fresh, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}

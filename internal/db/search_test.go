@@ -27,7 +27,7 @@ import (
 var testLimits, _ = SearchLimits(nil)
 
 func testOrigin(app string) string {
-	return "https://" + app + ".example.org"
+	return "https://" + app + ".test"
 }
 
 func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store, *store.Queue, *Searcher) {
@@ -40,7 +40,7 @@ func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store
 		t.Fatal(err)
 	}
 	s, queue := sampleWithQueue(t)
-	x := NewSearcher(s, queue, bucket, vertex, testOrigin)
+	x := NewSearcher(s, queue, bucket, vertex)
 	x.StartMaking("test")
 	return s, queue, x
 }
@@ -868,7 +868,7 @@ func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 	if err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`)); err != nil {
 		t.Fatal(err)
 	}
-	x := NewSearcher(s, queue, bucket, vertex, testOrigin)
+	x := NewSearcher(s, queue, bucket, vertex)
 	x.StartMaking("test")
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		held, err := bucket.Exists(context.Background(), stray)

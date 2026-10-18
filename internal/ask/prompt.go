@@ -290,7 +290,7 @@ func (t *turn) lingo(s schoolData) (string, error) {
 	}
 	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews and their teachers):\n")
 	for _, room := range s.classrooms {
-		line := fmt.Sprintf("- %s (%s; %s; %s", room["name"], t.href("GROUP", room), s.groups[room["parent"]]["name"], strings.Join(s.studentGrade[room["id"]], ", "))
+		line := fmt.Sprintf("- %s (%s; %s; %s", room["name"], t.href(room), s.groups[room["parent"]]["name"], strings.Join(s.studentGrade[room["id"]], ", "))
 		if teachers := s.teachers[room["id"]]; len(teachers) > 0 {
 			line += "; teachers " + strings.Join(teachers, ", ")
 		}
@@ -493,7 +493,7 @@ func (t *turn) exampleLinks(s schoolData, v *viewer) ([]string, error) {
 			}
 			out = append(out, m.Href)
 			if room := s.named("classroom", m.Classroom); room != nil {
-				out = append(out, t.href("GROUP", room))
+				out = append(out, t.href(room))
 			}
 			break
 		}
@@ -509,7 +509,7 @@ func (t *turn) exampleLinks(s schoolData, v *viewer) ([]string, error) {
 			return nil, err
 		}
 		for _, g := range found {
-			out = append(out, t.href("GROUP", g))
+			out = append(out, t.href(g))
 		}
 	}
 	lists, _, err := t.rows(`(from GROUP (where (= kind "group")) (order name asc) (limit 1))`)
@@ -517,7 +517,7 @@ func (t *turn) exampleLinks(s schoolData, v *viewer) ([]string, error) {
 		return nil, err
 	}
 	for _, g := range lists {
-		out = append(out, t.href("GROUP", g))
+		out = append(out, t.href(g))
 	}
 	return out, nil
 }

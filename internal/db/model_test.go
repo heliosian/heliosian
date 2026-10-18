@@ -17,7 +17,7 @@ func sampleWithQueue(t *testing.T) (*Store, *store.Queue) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex())
+	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestDocumentsKnowTheirSourceAndTerminal(t *testing.T) {
 		{"id": "filePages", "parent": "file", "relation": "pages"},
 		{"id": "filePagesText", "parent": "filePages", "relation": "extract"},
 	}
-	documentGenerated(rows)
+	documentGenerated(rows, testOrigin)
 	for _, want := range []struct{ id, source, terminal string }{
 		{"mail", "", ""},
 		{"body", "", "mail"},
@@ -188,7 +188,7 @@ func TestALoadRefusesRowsWithoutTheirOwnID(t *testing.T) {
 			}
 			appendRows(t, filepath.Join(root, GroupsSheet, "GROUP.csv"), []map[string]string{c.row})
 			dir := &data.Dir{Root: root}
-			if _, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex()); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex(), testOrigin); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want %q", err, c.want)
 			}
 		})
@@ -211,7 +211,7 @@ func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
 			}
 			dir := &data.Dir{Root: root}
 			queue := store.NewQueue()
-			s, err := NewStore(dir, dir, queue, NewSearchIndex())
+			s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
 			if err != nil {
 				t.Fatal(err)
 			}

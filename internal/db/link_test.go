@@ -6,33 +6,58 @@ import (
 	"heliosian/internal/store"
 )
 
-func TestLinkPointsAtEachAppsPage(t *testing.T) {
+func TestHrefPointsAtEachAppsPage(t *testing.T) {
 	m := sample(t).Model()
-	origin := func(app string) string { return "https://" + app + ".example.org" }
-	for _, c := range []struct {
-		table string
-		row   store.Row
-		want  string
-	}{
-		{"PERSON", store.Row{"id": "per00000000002"}, "https://who.example.org/people/per00000000002"},
-		{"GROUP", store.Row{"id": "grp00000000020", "kind": "family"}, "https://who.example.org/families/grp00000000020"},
-		{"GROUP", store.Row{"id": "grp00000000010", "kind": "classroom", "slug": "hummingbirds"}, "https://who.example.org/classrooms/hummingbirds"},
-		{"GROUP", store.Row{"id": "grp00000000011", "kind": "grade", "slug": "grade-k"}, "https://who.example.org/grades/grade-k"},
-		{"GROUP", store.Row{"id": "grp00000000040", "kind": "event", "slug": "picnic"}, "https://when.example.org/e/picnic"},
-		{"GROUP", store.Row{"id": "grp00000000041", "kind": "event"}, "https://when.example.org/e/grp00000000041"},
-		{"GROUP", store.Row{"id": "grp00000000050", "kind": "activity", "slug": "book-fair"}, "https://team.example.org/v/book-fair"},
-		{"GROUP", store.Row{"id": "grp00000000060", "kind": "party", "slug": "taco night"}, "https://celebrate.example.org/p/taco%20night"},
-		{"GROUP", store.Row{"id": "grp00000000070", "kind": "group", "slug": "soccer"}, "https://who.example.org/groups/soccer"},
-		{"GROUP", store.Row{"id": "grp00000000072", "kind": "category"}, "https://who.example.org/groups/grp00000000072"},
-		{"DOCUMENT", store.Row{"id": "doc00000000102", "kind": "wiki", "name": "Getting Started", "slug": "getting-started"}, "https://wiki.example.org/p/getting-started"},
-		{"DOCUMENT", store.Row{"id": "doc00000000104", "kind": "wiki", "name": "Drop-off and Pickup", "parent": "doc00000000102"}, "https://wiki.example.org/p/getting-started/Drop-off-and-Pickup"},
-		{"DOCUMENT", store.Row{"id": "doc00000000107", "kind": "wiki", "name": "Clubs & Cafés", "parent": "doc00000000105"}, "https://wiki.example.org/p/Activities/Clubs-Caf%C3%A9s"},
-		{"DOCUMENT", store.Row{"id": "doc00000000200", "relation": "linked", "url": "https://docs.google.com/x"}, "https://docs.google.com/x"},
-		{"DOCUMENT", store.Row{"id": "doc00000000001", "kind": "mail"}, ""},
-		{"MEMBER", store.Row{"id": "mem00000000010"}, ""},
+	for _, c := range []struct{ table, id, want string }{
+		{"PERSON", "per00000000002", "https://who.test/people/per00000000002"},
+		{"GROUP", "grp00000000020", "https://who.test/families/grp00000000020"},
+		{"GROUP", "grp00000000010", "https://who.test/classrooms/hummingbirds"},
+		{"GROUP", "grp00000000011", "https://who.test/grades/grade-3"},
+		{"GROUP", "grp00000000040", "https://when.test/e/fall-picnic"},
+		{"GROUP", "grp00000000512", "https://team.test/v/international-night"},
+		{"GROUP", "grp00000000510", "https://team.test/v/grp00000000510"},
+		{"GROUP", "grp00000000521", "https://celebrate.test/p/taco-night"},
+		{"GROUP", "grp00000000041", "https://who.test/groups/grp00000000041"},
+		{"GROUP", "grp00000000060", "https://who.test/groups/community"},
+		{"DOCUMENT", "doc00000000102", "https://wiki.test/p/getting-started"},
+		{"DOCUMENT", "doc00000000104", "https://wiki.test/p/getting-started/Drop-off-and-Pickup"},
+		{"DOCUMENT", "doc00000000107", "https://wiki.test/p/Activities/Clubs"},
+		{"DOCUMENT", "doc00000000001", ""},
 	} {
-		if got := m.Link(c.table, c.row, origin); got != c.want {
-			t.Errorf("%s %v links to %q, want %q", c.table, c.row, got, c.want)
+		row, ok := m.Table(c.table).Get(c.id)
+		if !ok {
+			t.Fatalf("no %s %s", c.table, c.id)
+		}
+		if row["href"] != c.want {
+			t.Errorf("%s %s links to %q, want %q", c.table, c.id, row["href"], c.want)
+		}
+	}
+	rows := []store.Row{
+		{"id": "doc00000000200", "relation": "linked", "url": "https://docs.google.com/x"},
+		{"id": "doc00000000201", "kind": "wiki", "name": "Clubs & Cafés", "parent": "doc00000000202"},
+		{"id": "doc00000000202", "kind": "wiki", "name": "Activities"},
+	}
+	documentGenerated(rows, testOrigin)
+	for i, want := range []string{"https://docs.google.com/x", "https://wiki.test/p/Activities/Clubs-Caf%C3%A9s", "https://wiki.test/p/Activities"} {
+		if rows[i]["href"] != want {
+			t.Errorf("%s links to %q, want %q", rows[i]["id"], rows[i]["href"], want)
+		}
+	}
+}
+
+func TestHrefIsAColumnLikeAnyOther(t *testing.T) {
+	m := sample(t).Model()
+	for src, want := range map[string]string{
+		`(from GROUP (where (= id "grp00000000040")) (columns name href))`: "https://when.test/e/fall-picnic",
+		`(from GROUP (where (= id "grp00000000040")) (columns name))`:      "",
+		`(from GROUP (where (= href "https://when.test/e/fall-picnic")))`:  "https://when.test/e/fall-picnic",
+	} {
+		res := m.Run(t.Context(), mustParse(t, src), Env{Viewer: parent, Now: testNow})
+		if res.Err != nil || len(res.IDs) != 1 || res.IDs[0] != "grp00000000040" {
+			t.Fatalf("%s answered %v, %v", src, res.IDs, res.Err)
+		}
+		if got := res.Rows()[0]["href"]; got != want {
+			t.Errorf("%s gave href %q, want %q", src, got, want)
 		}
 	}
 }

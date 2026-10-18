@@ -53,7 +53,7 @@ type Table struct {
 	Columns     []Column
 	AppendOnly  bool
 	Generated   bool
-	Generate    func(rows []store.Row)
+	Generate    func(rows []store.Row, origin func(app string) string)
 	Description string
 }
 
@@ -178,7 +178,7 @@ var Tables = []Table{
 	{
 		Name:        "PERSON",
 		Sheet:       PeopleSheet,
-		Generate:    eachRow(personGenerated),
+		Generate:    personGenerated,
 		Description: "Anyone the community touches: a student, parent or staff member, or a guest. Whether someone is a student, parent or staff member is their membership of the role groups. Never deleted: deactivated instead, so what names them keeps its record.",
 		Columns: []Column{
 			ident(PersonPrefix),
@@ -238,6 +238,7 @@ var Tables = []Table{
 			col("hidden", Bool).about("Out of every view but import mode's, with every row naming them, and refused at sign-in without being deactivated."),
 			col("deactivated", Moment).about("When they stopped being part of the community. A deactivated person can't sign in and is in no group's effective members."),
 			col("signed_out", Moment).about("When they last signed out everywhere; sessions from before it are refused."),
+			generated("href").about("The address of their page on Who?."),
 		},
 	},
 	{
@@ -350,7 +351,7 @@ var Tables = []Table{
 		Name:        "GROUP",
 		Sheet:       GroupsSheet,
 		Distinct:    []string{"slug"},
-		Generate:    eachRow(groupGenerated),
+		Generate:    groupGenerated,
 		Description: "Any set of people, anything things are filed under, and anything on the calendar. A group sits under its parent; a thing's category is its parent. Its managers are the effective members of its managed_by group and of every group above it.",
 		Columns: []Column{
 			ident(GroupPrefix),
@@ -437,6 +438,7 @@ var Tables = []Table{
 			col("location", Text).about("Where it happens."),
 			ref("added_by", "PERSON").about("Who added it."),
 			col("added", Date).about("When it was added."),
+			generated("href").about("The address of its page: an event's on When, an activity's on Team, a party's on Celebrate, any other group's on Who?, under its slug, else its ID."),
 		},
 	},
 	{
@@ -573,7 +575,8 @@ var Tables = []Table{
 			col("slug", Text).about("For a wiki page, its own part of its address in place of the one its title gives, after its parents' parts: lowercase letters, digits and single hyphens, at most 40, never shaped like an id, no two pages under the same parent the same."),
 			col("hidden", Bool).about("For a wiki page, kept out of the wiki's lists of pages for all but its author and the wiki's admins; its link still opens it."),
 			{Name: "source", Kind: Ref, Target: "DOCUMENT", Generated: true, Description: "On an extract or a split of a PDF, the document its text was read from: the nearest document above it that is not a split - an attachment, an image, a linked page, an email's body or a shared file. Blank on anything else."},
-			{Name: "terminal", Kind: Ref, Target: "DOCUMENT", Generated: true, Description: "The nearest document above it with a kind - the email, shared file, year calendar or wiki page it is part of. Blank on a document with a kind."}},
+			{Name: "terminal", Kind: Ref, Target: "DOCUMENT", Generated: true, Description: "The nearest document above it with a kind - the email, shared file, year calendar or wiki page it is part of. Blank on a document with a kind."},
+			generated("href").about("The address to open it at: a wiki page's on Helios Wiki, anything else's url.")},
 		Generate: documentGenerated,
 	},
 	{

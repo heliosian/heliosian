@@ -115,14 +115,14 @@ func NewCore(cfg Config) *Core {
 		}
 		return folder
 	}
-	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex())
+	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex(), hosts.Origin(cfg.Domain))
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
 	sessions := db.NewSessions(dataStore, queue)
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
 	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
-	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder, hosts.Origin(cfg.Domain))
+	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
 	taglineOf := func(key string) func() string {
 		return func() string {
 			return dataStore.Model().App(key)["subtitle"]
@@ -233,7 +233,7 @@ func NewCore(cfg Config) *Core {
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
 	birthdays := db.NewBirthdayMailer(dataStore, queue, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
-	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Origin: hosts.Origin(cfg.Domain), Now: schoolNow})
+	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, api, mcp.Deps{
 		Data:     dataStore,
@@ -255,7 +255,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
-	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Origin: hosts.Origin(cfg.Domain), Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
+	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	feedback := db.NewFeedback(dataStore, queue, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
 	feedback.RegisterTriage(api, func(key string) string { return appName(key)() })
 	feedback.Register(api, cfg.Domain, func(key string) string { return appName(key)() })

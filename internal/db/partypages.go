@@ -80,7 +80,7 @@ func (m *Model) partyCanonical(u *url.URL) string {
 	if g == nil {
 		return ""
 	}
-	if to := m.Link("GROUP", g, func(string) string { return "" }); to != u.EscapedPath() {
+	if to := hrefPath(g["href"]); to != u.EscapedPath() {
 		return to
 	}
 	return ""

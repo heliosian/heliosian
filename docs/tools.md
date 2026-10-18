@@ -4,7 +4,7 @@
 
 Each is a `Tool`: a name starting `helios_`, a description that says it is Helios School's, the words Ask's page shows while it runs (`Words`), and an input struct whose JSON Schema (`jsonschema.For`, field descriptions from its `jsonschema` tags) both servers offer as its input. `Set.Run` runs one as a viewer, a person ID the server resolved from the session or the token (`Model.SignedIn`), never from the model's arguments, and every read goes through `Model.Run`, so the read policies and the consent step decide what it answers, exactly as for `/api/q`. A tool answers text: JSON written without HTML escaping, so an address in it reads whole, or for a few of them their own text. Alongside it, `Answer.Links` maps every `href` the tool wrote for a person or group to that row's ID, which is how Ask draws a link as a chip. Each server holds tools' answers to its own length (`maxOutput` in `internal/mcp`, `maxToolOutput` in `internal/ask`) and refuses a longer one with a word on narrowing it. Each run logs a `tools: run` line with the tool, the viewer, how long it took and any error.
 
-A person in any answer is marked by their roles - `student`, `parent` or `staff`, from the role groups they are effective members of - and listed staff first, then parents, then students, by sorting name. Every record with a page on the Helios apps carries `href` (`Model.Link`).
+A person in any answer is marked by their roles - `student`, `parent` or `staff`, from the role groups they are effective members of - and listed staff first, then parents, then students, by sorting name. Every record with a page on the Helios apps carries `href`, its generated column (`internal/db/link.go`).
 
 | Tool | What it answers |
 | --- | --- |

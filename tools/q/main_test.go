@@ -12,6 +12,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
+	"heliosian/internal/hosts"
 	"heliosian/internal/qclient"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -21,7 +22,7 @@ func sampleClient(t *testing.T) *qclient.Client {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +91,7 @@ func TestWrite(t *testing.T) {
 func TestLocalReachesADevServer(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}

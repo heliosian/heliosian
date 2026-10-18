@@ -312,7 +312,7 @@ func whenWords(row store.Row) string {
 }
 
 func (mm *MembershipMailer) letter(m *Model, g store.Row) mail.Letter {
-	l := mail.Letter{Brand: teamBrand, Base: mm.config.Origin("team"), Title: g["name"], Where: g["location"], Path: m.Link("GROUP", g, mm.config.Origin), When: g["timing"]}
+	l := mail.Letter{Brand: teamBrand, Base: mm.config.Origin("team"), Title: g["name"], Where: g["location"], Path: g["href"], When: g["timing"]}
 	if d, ok := m.dated(g); ok {
 		l.When = whenWords(d)
 		if l.Where == "" {
@@ -343,7 +343,7 @@ func (mm *MembershipMailer) invite(m *Model, g store.Row, person string, to []st
 	if levels := m.activities(g); len(levels) > 1 {
 		summary += " (" + levels[len(levels)-1]["name"] + ")"
 	}
-	path := m.Link("GROUP", g, mm.config.Origin)
+	path := g["href"]
 	e := mail.Event{UID: fmt.Sprintf("group-%s-%s@heliosian.com", g["id"], person), Start: from, End: until, AllDay: allDay, Summary: summary,
 		Description: path, Location: d["location"], URL: path, Organizer: mail.Person{Name: teamBrand.Name, Email: mail.AddressOf(mm.config.Sender.From())}}
 	for _, p := range to {

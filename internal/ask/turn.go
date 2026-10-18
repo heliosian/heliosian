@@ -66,8 +66,8 @@ func (t *turn) rows(format string, args ...any) ([]store.Row, db.Result, error) 
 	return res.Rows(), res, nil
 }
 
-func (t *turn) href(table string, row store.Row) string {
-	href := t.m.Link(table, row, t.sources.Origin)
+func (t *turn) href(row store.Row) string {
+	href := row["href"]
 	if href != "" {
 		t.found.note(href, row["id"])
 	}

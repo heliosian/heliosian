@@ -31,7 +31,6 @@ type Deps struct {
 	Data   *db.Store
 	Search *db.Searcher
 	Bucket *blob.Bucket
-	Origin func(app string) string
 	Now    func() time.Time
 }
 
@@ -176,7 +175,7 @@ func (c *call) row(table, id string) (store.Row, bool, error) {
 }
 
 func (c *call) href(table string, row store.Row) string {
-	href := c.m.Link(table, row, c.deps.Origin)
+	href := row["href"]
 	if href != "" && table != "DOCUMENT" {
 		c.note(href, row["id"])
 	}

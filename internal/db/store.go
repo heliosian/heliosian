@@ -14,14 +14,14 @@ type Store = store.Store[Model]
 
 const refreshSystem = "refresh"
 
-func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index *SearchIndex) (*Store, error) {
+func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index *SearchIndex, origin func(app string) string) (*Store, error) {
 	var s *Store
 	refreshed := func(tab string, before, after store.Row) {
 		for _, in := range committedInboxes(s, tab) {
 			in.deliver(delivery{change: Change{Table: tab, Old: before, New: after}, env: Env{System: refreshSystem, Now: time.Now()}})
 		}
 	}
-	s, err := store.New(parts(index, newServices(index), refreshed), finishModel, checkModel, source, writer, queue)
+	s, err := store.New(parts(index, newServices(index), origin, refreshed), finishModel, checkModel, source, writer, queue)
 	return s, err
 }
 
@@ -47,7 +47,7 @@ var changeLog = &store.ChangeLog{Tab: ChangesTab, Columns: ChangesColumns, Row: 
 	}
 }}
 
-func parts(index *SearchIndex, sv *services, refreshed func(tab string, before, after store.Row)) []store.Part[Model] {
+func parts(index *SearchIndex, sv *services, origin func(app string) string, refreshed func(tab string, before, after store.Row)) []store.Part[Model] {
 	out := []store.Part[Model]{}
 	for _, sheet := range Sheets {
 		tabs := []store.Tab{}
@@ -56,12 +56,12 @@ func parts(index *SearchIndex, sv *services, refreshed func(tab string, before, 
 				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: []string{"id"}, AppendOnly: t.AppendOnly})
 			}
 		}
-		out = append(out, store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv), Loaded: loaded(sheet), Refreshed: refreshed, Incremental: true})
+		out = append(out, store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv, origin), Loaded: loaded(sheet), Refreshed: refreshed, Incremental: true})
 	}
 	return out
 }
 
-func build(sheet string, index *SearchIndex, sv *services) func(context.Context, store.Tables, *Model) error {
+func build(sheet string, index *SearchIndex, sv *services, origin func(app string) string) func(context.Context, store.Tables, *Model) error {
 	return func(ctx context.Context, tables store.Tables, m *Model) error {
 		m.index = index
 		m.services = sv
@@ -71,7 +71,7 @@ func build(sheet string, index *SearchIndex, sv *services) func(context.Context,
 			if !t.In(sheet) {
 				continue
 			}
-			rows, err := buildRows(ctx, t, tables[t.Name])
+			rows, err := buildRows(ctx, t, tables[t.Name], origin)
 			if err != nil {
 				return err
 			}

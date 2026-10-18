@@ -283,9 +283,19 @@ func wikiSegment(row store.Row) string {
 
 func (m *Model) wikiPath(parent, segment string) string {
 	docs := m.Table("DOCUMENT")
+	return wikiPathIn(func(id string) store.Row {
+		row, _ := docs.Get(id)
+		return row
+	}, parent, segment)
+}
+
+func wikiPathIn(docs func(id string) store.Row, parent, segment string) string {
 	parts := []string{segment}
-	for at := parent; at != ""; {
-		row, _ := docs.Get(at)
+	seen := map[string]bool{}
+	// Hrefs are generated before the load refuses a loop of parents.
+	for at := parent; at != "" && !seen[at]; {
+		seen[at] = true
+		row := docs(at)
 		parts = append([]string{wikiSegment(row)}, parts...)
 		at = row["parent"]
 	}

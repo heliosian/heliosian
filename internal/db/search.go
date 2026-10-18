@@ -279,7 +279,6 @@ type Searcher struct {
 	s       *Store
 	bucket  *blob.Bucket
 	vertex  *artifacts.Vertex
-	origin  func(app string) string
 	client  *anthropic.Client
 	texts   map[string]string
 	pending []string
@@ -288,8 +287,8 @@ type Searcher struct {
 	wake    chan struct{}
 }
 
-func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex, origin func(app string) string) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, origin: origin, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	go x.follow()
 	go x.index()
 	queue.OnTick(x.rebuild)
@@ -678,9 +677,9 @@ func correctedRows(was, now map[string]SearchRow, dirty map[string]bool) []strin
 
 func (x *Searcher) rowsFor(m *Model, full bool, dirty map[string]bool) (map[string]SearchRow, error) {
 	linked := func(r SearchRow) SearchRow {
-		r.Href = m.Link(r.Table, r.named, x.origin)
+		r.Href = r.named["href"]
 		if r.source != nil {
-			r.SourceHref = m.Link("DOCUMENT", r.source, x.origin)
+			r.SourceHref = r.source["href"]
 		}
 		return r
 	}

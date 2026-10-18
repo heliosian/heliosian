@@ -57,7 +57,7 @@ func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
 	}
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), func(app string) string { return "https://" + app + ".heliosian.com" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +65,8 @@ func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
 	if err := bucket.FillFrom("../../sampledata/bucket"); err != nil {
 		t.Fatal(err)
 	}
-	origin := func(app string) string { return "https://" + app + ".heliosian.com" }
-	search := db.NewSearcher(s, queue, bucket, vertex, origin)
-	return New(Deps{Data: s, Search: search, Bucket: bucket, Origin: origin, Now: func() time.Time { return sampleNow }}), s, queue
+	search := db.NewSearcher(s, queue, bucket, vertex)
+	return New(Deps{Data: s, Search: search, Bucket: bucket, Now: func() time.Time { return sampleNow }}), s, queue
 }
 
 func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer, error) {

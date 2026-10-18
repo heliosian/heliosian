@@ -198,7 +198,7 @@ func uniqueOf(t *Table, row store.Row) string {
 	return strings.Join(parts, "\x00")
 }
 
-func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
+func buildRows(ctx context.Context, t *Table, raw []store.Row, origin func(app string) string) (*Rows, error) {
 	table := trace.From(ctx).Tally(t.Name)
 	start := time.Now()
 	rows := []store.Row{}
@@ -212,7 +212,7 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row) (*Rows, error) {
 		rows = append(rows, row)
 	}
 	if t.Generate != nil {
-		t.Generate(rows)
+		t.Generate(rows, origin)
 	}
 	table.Tally("check").Add(time.Since(start))
 	start = time.Now()
@@ -286,18 +286,22 @@ func describeUnique(t *Table, row store.Row) string {
 	return strings.Join(parts, "; ")
 }
 
-func eachRow(f func(row map[string]string)) func(rows []store.Row) {
-	return func(rows []store.Row) {
+func eachRow(f func(row map[string]string)) func(rows []store.Row, origin func(app string) string) {
+	return func(rows []store.Row, _ func(app string) string) {
 		for _, row := range rows {
 			f(row)
 		}
 	}
 }
 
-func documentGenerated(rows []store.Row) {
+func documentGenerated(rows []store.Row, origin func(app string) string) {
 	byID := map[string]store.Row{}
 	for _, row := range rows {
 		byID[row["id"]] = row
+	}
+	docs := func(id string) store.Row { return byID[id] }
+	for _, row := range rows {
+		row["href"] = documentHref(row, docs, origin)
 	}
 	kinded := map[string]string{}
 	var nearest func(id string, depth int) string
@@ -335,29 +339,35 @@ func documentGenerated(rows []store.Row) {
 	}
 }
 
-func personGenerated(row map[string]string) {
-	for _, name := range []string{"name_long", "name_short", "name_sort", "grade", "classroom", "crew", "department", "job_title"} {
-		row[name] = overrideOr(row, name)
-	}
-	row["phone"] = consented(row, "phone")
-	switch {
-	case row["name_long"] != "":
-		row["name_show"] = row["name_long"]
-	case row["source"] == "guest":
-		row["name_show"] = "Guest"
-	default:
-		row["name_show"] = "[Missing Name]"
+func personGenerated(rows []store.Row, origin func(app string) string) {
+	for _, row := range rows {
+		for _, name := range []string{"name_long", "name_short", "name_sort", "grade", "classroom", "crew", "department", "job_title"} {
+			row[name] = overrideOr(row, name)
+		}
+		row["phone"] = consented(row, "phone")
+		switch {
+		case row["name_long"] != "":
+			row["name_show"] = row["name_long"]
+		case row["source"] == "guest":
+			row["name_show"] = "Guest"
+		default:
+			row["name_show"] = "[Missing Name]"
+		}
+		row["href"] = personHref(row, origin)
 	}
 }
 
-func groupGenerated(row map[string]string) {
-	if !strings.EqualFold(row["kind"], "family") {
-		row["address"] = overrideOr(row, "address")
-		row["phone"] = overrideOr(row, "phone")
-		return
+func groupGenerated(rows []store.Row, origin func(app string) string) {
+	for _, row := range rows {
+		row["href"] = groupHref(row, origin)
+		if !strings.EqualFold(row["kind"], "family") {
+			row["address"] = overrideOr(row, "address")
+			row["phone"] = overrideOr(row, "phone")
+			continue
+		}
+		row["address"] = consented(row, "address")
+		row["phone"] = consented(row, "phone")
 	}
-	row["address"] = consented(row, "address")
-	row["phone"] = consented(row, "phone")
 }
 
 func emailGenerated(row map[string]string) {

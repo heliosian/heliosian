@@ -52,7 +52,7 @@ func sampleSources(t *testing.T) sample {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), origin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +65,9 @@ func sampleSources(t *testing.T) sample {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return sampleNow }
-	search := db.NewSearcher(s, queue, bucket, vertex, origin)
-	set := tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Origin: origin, Now: now})
-	return sample{sources: Sources{Data: s, Tools: set, Origin: origin, Now: now}, data: s, queue: queue, pics: db.NewPictures(s, queue, bucket)}
+	search := db.NewSearcher(s, queue, bucket, vertex)
+	set := tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: now})
+	return sample{sources: Sources{Data: s, Tools: set, Now: now}, data: s, queue: queue, pics: db.NewPictures(s, queue, bucket)}
 }
 
 func requestAs(email string) *http.Request {

@@ -17,8 +17,6 @@ Last verified: 882c6dc3
 
 # Data model
 
-- A row's href depends on which columns the query asked for
-  `Model.Link` (`internal/db/link.go`) picks the app from `kind`, and MCP (`internal/tools/tools.go:179`) and Ask (`internal/ask/turn.go:70`) call it on the row as `columns` trimmed it. `(from GROUP (where (= id "grp66iuvIijMm6")) (columns name))` gives Alumni Night `https://who.heliosian.com/groups/grp66iuvIijMm6`, a "Not here" page; with `kind` among the columns it gets its When page. Any event, activity or party read without `kind` links to Who?, and without `slug` to its ID rather than its slug.
 - Committed triggers wake every worker on a table for any change to it
   `committedTriggers` (`internal/db/trigger.go`) deliver every change on a table to every inbox naming it, whatever the operation or columns, and fetch, extract, sweep, classify and digest take each delivery as a wake and scan the whole `DOCUMENT` table. The classifier setting `classified` on one email wakes all five, itself included. Declaring the columns each inbox cares about on its trigger would cut that; measure first, with a `took` log on each worker's pending scan read over a busy hour. Staged and delete triggers gain nothing from declared filters: all but two also test a row value (a `kind`, a value becoming yes), so their early returns stay.
 - Family names are recomputed on every PERSON and MEMBER change

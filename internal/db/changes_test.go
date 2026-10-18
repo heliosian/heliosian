@@ -13,7 +13,7 @@ import (
 func TestEveryWriteAppendsAChangeToTheSheet(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex())
+	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}

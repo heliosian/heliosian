@@ -72,7 +72,7 @@ func setup(t *testing.T) fixture {
 	}
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex())
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,11 +81,11 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	signed := &sessions{out: map[string]time.Time{}}
-	search := db.NewSearcher(s, queue, bucket, vertex, hosts.Origin("heliosian.com"))
+	search := db.NewSearcher(s, queue, bucket, vertex)
 	mux := http.NewServeMux()
 	Register(mux, mux, Deps{
 		Data:     s,
-		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Origin: hosts.Origin("heliosian.com"), Now: time.Now}),
+		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: time.Now}),
 		Key:      []byte("test"),
 		Sessions: signed,
 		Now:      time.Now,

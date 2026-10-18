@@ -39,10 +39,9 @@ const (
 )
 
 type Sources struct {
-	Data   *db.Store
-	Tools  *tools.Set
-	Origin func(app string) string
-	Now    func() time.Time
+	Data  *db.Store
+	Tools *tools.Set
+	Now   func() time.Time
 }
 
 type app struct {

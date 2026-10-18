@@ -97,7 +97,7 @@ func centsOf(cell string) int {
 
 func (mm *MembershipMailer) partyLetter(m *Model, g store.Row) mail.Letter {
 	base := mm.config.Origin("celebrate")
-	l := mail.Letter{Brand: celebrateBrand, Base: base, Title: g["name"], Subtitle: g["subtitle"], When: whenWords(g), Where: g["location"], Path: m.Link("GROUP", g, mm.config.Origin),
+	l := mail.Letter{Brand: celebrateBrand, Base: base, Title: g["name"], Subtitle: g["subtitle"], When: whenWords(g), Where: g["location"], Path: g["href"],
 		Picture: base + "/open/share/" + g["id"] + ".png"}
 	if g["address"] != "" {
 		if l.Where != "" {
@@ -125,7 +125,7 @@ func (mm *MembershipMailer) partyEvent(m *Model, g store.Row, payer string, to [
 	if !ok {
 		return mail.Event{}, false
 	}
-	path := m.Link("GROUP", g, mm.config.Origin)
+	path := g["href"]
 	where := g["location"]
 	if g["address"] != "" {
 		where = g["address"]
