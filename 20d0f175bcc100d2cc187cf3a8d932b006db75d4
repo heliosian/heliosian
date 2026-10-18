@@ -1,0 +1,28 @@
+# My Email Lists' intro says every list is an address
+
+byre task 98ef15355afa, "My Email Lists' intro says every list is an address", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "My Email Lists' intro says every list is an address".
+Full transcripts: the events of task 98ef15355afa in byre (GET /api/events?task_id=98ef15355afa).
+
+## Summary
+
+Set out to fix Helios Loop's My Email Lists intro, which said "Each email list is an address at loop.heliosian.com…" although every group is a list and only those with a slug have an address (cards like 3D Printer and Coffee Carts have none).
+
+- `web/loop/pages/groups.js`: intro now reads "Each email list's members follow from its rules, drawn from the directory as it changes. A list with an address at loop.heliosian.com delivers what is sent there to its members."
+- On request, the same false claim was fixed in Loop's about-card description (`internal/app/about.go`, with `about_test.go`'s expected substring updated) and in `docs/loop/loop.md` (only a group with a slug has an address).
+- Merging main: main had removed the New Email List header button from this page and dropped another TODO item; the resolution keeps main's button-less header with the new intro, and both TODO removals.
+- Left alone: the empty-state text "Make one, and its address is yours to hand out" on the same page.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates the My Email Lists introduction to explain that membership follows directory rules and that lists with an address deliver email to their members. Removes the completed item from TODO.md.
+
+No significant findings.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Updates the My Email Lists introduction to distinguish list membership from having an email address. Applies the same distinction to Loop's public description and documentation, and removes the completed TODO item.
+
+No significant findings.
