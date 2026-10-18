@@ -239,7 +239,7 @@ function mailModel(h, today) {
     return current || t.me.state === 'saved';
   });
   todos.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || b.source.date.localeCompare(a.source.date) || a.title.localeCompare(b.title));
-  const school = rowsOf(h.mail, 'DOCUMENT').filter(d => !d.message && !(sent[d.id] || []).some(g => g.slug === 'chat')).map(d => {
+  const school = rowsOf(h.mail, 'DOCUMENT').filter(d => !d.message).map(d => {
     const repeats = {};
     for (const line of (d.repeats || '').split('\n')) {
       const [point, todo] = line.split(':').map(s => s.trim());

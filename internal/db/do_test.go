@@ -548,8 +548,8 @@ func TestMailIsSentToItsListsGroups(t *testing.T) {
 		"<2020-21.hummingbirds.parents.heliosns.org>":              "mail grp00000000030",
 		"<hummingbirds.students.heliosns.org>":                     "mail grp00000000010",
 		"<jaysandravens.heliosns.org>":                             "mail " + jayvens,
-		"<chat.heliosschool.org>":                                  "mail grp00000000014",
-		"<chat2.heliosschool.org>":                                 "mail grp00000000014",
+		"<chat.heliosschool.org>":                                  "mail grp00000000004",
+		"<chat2.heliosschool.org>":                                 "mail grp00000000004",
 	} {
 		root, sentTo, err := m.mailRoot([]byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: " + listID + "\r\n\r\nhello\r\n"))
 		if err != nil {

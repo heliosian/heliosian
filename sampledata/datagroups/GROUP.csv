@@ -3,7 +3,6 @@ grp00000000001,,group,open,students,Students,,,,,,,Yes,,,grp00000000004,grp00000
 grp00000000002,,group,open,parents,Parents,,,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,none,none,,,,,,,,,,,,,,,,,,,,,,
 grp00000000003,,group,open,staff,Staff,,,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,none,none,,,,,,,,,,,,,,,,,,,,,,
 grp00000000004,,group,open,everyone,Everyone,,,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,none,none,,,,,,,,,,,,,,,,,,,,,,
-grp00000000014,,group,open,chat,Chat,,,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,none,none,,,,,,,,,,,,,,,,,,,,,,
 grp00000000008,,group,open,adults,Adults,,,,,,,Yes,,,grp00000000004,grp00000000004,,,,,,,,,none,none,,,,,,,,,,,,,,,,,,,,,,
 grp00000000005,,admins,open,super-admins,Super Admins,,,,,,,,,,grp00000000005,grp00000000004,grp00000000005,,,,,,,,members,members,,,,,,,,,,,,,,,,,,,,,,
 grp00000000006,,admins,open,who-admins,Who? Admins,,,,,,,,,,grp00000000006,grp00000000004,grp00000000005,,,,,,,,members,members,,,,,,,,,,,,,,,,,,,,,,

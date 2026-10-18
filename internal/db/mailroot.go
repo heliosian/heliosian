@@ -31,8 +31,8 @@ var listGroups = map[string][]string{
 	"newstudentfamilies":  {"parents"},
 	"parentsandstudents":  {"parents", "students"},
 	"community":           {"everyone"},
-	"chat":                {"chat"},
-	"chat2":               {"chat"},
+	"chat":                {"everyone"},
+	"chat2":               {"everyone"},
 }
 
 var bandLists = map[string]string{"hawksandfalcons": "halcons-parents", "jaysandravens": "jayvens-parents", "condorsandospreys": "cospreys-parents"}
