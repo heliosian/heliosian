@@ -51,10 +51,11 @@ How code is written in this repository, for coding agents and the people driving
 - Docs describe how things are today, and cover what is hard to derive from the code. No history unless it matters to the present, no dates, and no changelog framing ("added", "changed", "corrected"); the change story lives in git history. Plans belong in GitHub issues, not docs.
 - Point at where a value lives and how to read it - the command that prints it, the console page that holds it - never the value itself, which is stale the day it is copied.
 
-## Deploys
+## Verifying
 
-- Once a deploy comes up healthy (`docs/deploy.md`, Verifying a deploy), check each change it shipped against production: the commits between the revision live before the deploy and the new one, `git log <old sha>..<new sha>`, each revision's commit read from `gcloud builds list` by its image digest. Check data with `go run ./tools/q read` and pages with byre-hands `chrome`, signed in as ian in byre's Chrome on iso. Verification only reads; it never writes production data.
-- Report each change: what was verified, how, and what couldn't be verified and why.
+- Production is Cloud Run service `heliosian`, built by Cloud Build, in project `heliosian`, region `us-west1` (`docs/deploy.md`). The live commit is the one the serving revision's image was built from: the revision taking traffic from `gcloud run services describe heliosian --region us-west1 --project heliosian`, its image digest from `gcloud run revisions describe <revision> --region us-west1 --project heliosian`, and the build in `gcloud builds list --region us-west1 --project heliosian` whose image has that digest, its commit in `substitutions.COMMIT_SHA`.
+- Check data with `go run ./tools/q read`.
+- Check pages with byre-hands `chrome` in byre's Chrome on iso, where ian is signed in to every heliosian site.
 
 ## Git
 
