@@ -6,7 +6,7 @@ export const teamQueries = {
   led: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.leads (= kind "activity")))) (columns group))',
   chairs: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.managed_by (= kind "activity")))) (columns group))',
   taken: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "activity") (not (blank capacity))))) (columns group))',
-  photos: '(from PHOTO (where (in group (select GROUP.id (= kind "activity")))) (order order asc) (columns group))',
+  teamPhotos: '(from PHOTO (where (in group (select GROUP.id (= kind "activity")))) (order order asc) (columns group))',
 };
 
 const neededCount = 12;
@@ -69,7 +69,7 @@ export function teamWidget(data, now) {
     taken[m.group] = (taken[m.group] || 0) + 1;
   }
   const picture = {};
-  for (const p of rows(data, 'photos', 'PHOTO')) {
+  for (const p of rows(data, 'teamPhotos', 'PHOTO')) {
     picture[p.group] = picture[p.group] || p.id;
   }
   const on = {};
