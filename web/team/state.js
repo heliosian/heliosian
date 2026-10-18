@@ -204,7 +204,7 @@ export async function loadModel() {
     }
   }
   applyModel({
-    user: {id: viewer.id, email: emailOf(viewer), name: viewer.name_show, family},
+    user: {id: viewer.id, email: emailOf(viewer), name: viewer.name_show, initial: (viewer.name_show || '?')[0].toUpperCase(), photoUrl: photoOf(viewer), family},
     allowances: admin ? ['team.see-all', 'team.curate', 'team.configure', 'team.act-as-cochair'] : [],
     everyone: answers.everyone.result[0] || '',
     years: schoolYears(new Date()),
