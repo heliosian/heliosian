@@ -57,6 +57,7 @@ How code is written in this repository, for coding agents and the people driving
 - Verify the work the live commit carries first. Then wait for every build still queued or running (`gcloud builds list --region us-west1 --project heliosian --filter "status=QUEUED OR status=WORKING"`; waiting on one is in `docs/deploy.md`, Verifying a deploy) to finish, and verify the work those deploys carry against the new live commit.
 - Check data with `go run ./tools/q read`.
 - Check pages with byre-hands `chrome` in byre's Chrome on iso, where ian is signed in to every heliosian site.
+- A change only some viewers see (a room parent, a manager, a guest) is checked by viewing as one of them: Spoof Mode in the top bar's eye menu on pages, `go run ./tools/q --spoof <address> read` for data. Find someone who fits with `go run ./tools/q read`, and stop spoofing when done. "The signed-in person can't see it" is never a reason to leave a check unverified.
 
 ## Git
 
