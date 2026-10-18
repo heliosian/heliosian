@@ -107,11 +107,18 @@ type cond struct {
 	probeCol string
 	probe    *operand
 	probeSet func(f *frame) *valueSet
+	union    []branch
 }
 
 type probe struct {
 	col   string
 	value *operand
+}
+
+type branch struct {
+	col   string
+	value *operand
+	set   func(f *frame) *valueSet
 }
 
 type scan struct {
@@ -125,6 +132,7 @@ type scan struct {
 	probes   []probe
 	probeCol string
 	probeSet func(f *frame) *valueSet
+	union    []branch
 }
 
 type orderKey struct {
@@ -378,6 +386,12 @@ func (s *scan) pickProbe() {
 				return
 			}
 		}
+		for _, c := range s.conds {
+			if c.union != nil && slices.ContainsFunc(c.union, func(b branch) bool { return s.enum(b.col) }) == enum {
+				s.union = c.union
+				return
+			}
+		}
 	}
 }
 
@@ -391,6 +405,34 @@ func (s *scan) candidates(f *frame) []store.Row {
 		out := []store.Row{}
 		for id := range s.probeSet(f).keys {
 			out = append(out, s.lookup(f, s.probeCol, id)...)
+		}
+		if !s.table.Generated {
+			byID := f.run.table(s.table.Name).rows.byID
+			slices.SortFunc(out, func(a, b store.Row) int { return byID[a["id"]] - byID[b["id"]] })
+		}
+		return out
+	}
+	if s.union != nil {
+		seen := map[string]bool{}
+		out := []store.Row{}
+		add := func(rows []store.Row) {
+			for _, row := range rows {
+				if !seen[row["id"]] {
+					seen[row["id"]] = true
+					out = append(out, row)
+				}
+			}
+		}
+		for _, b := range s.union {
+			if b.set != nil {
+				for id := range b.set(f).keys {
+					add(s.lookup(f, b.col, id))
+				}
+				continue
+			}
+			if v := b.value.eval(f); !v.blank {
+				add(s.lookup(f, b.col, v.s))
+			}
 		}
 		if !s.table.Generated {
 			byID := f.run.table(s.table.Name).rows.byID
@@ -516,7 +558,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 				}
 			}
 			return false
-		}, cheap: cheap}, nil
+		}, cheap: cheap, union: unionOf(conds)}, nil
 	case "not":
 		if len(args) != 1 {
 			return cond{}, s.errorf("not takes one condition")
@@ -752,6 +794,23 @@ func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 	return out, nil
 }
 
+func unionOf(conds []cond) []branch {
+	out := []branch{}
+	for _, c := range conds {
+		switch {
+		case c.probe != nil:
+			out = append(out, branch{col: c.probeCol, value: c.probe})
+		case c.probeSet != nil:
+			out = append(out, branch{col: c.probeCol, set: c.probeSet})
+		case c.union != nil:
+			out = append(out, c.union...)
+		default:
+			return nil
+		}
+	}
+	return out
+}
+
 func comparable(s *sexp, a, b typ) error {
 	if a.class != b.class {
 		return s.errorf("can't compare %s with %s", a, b)
@@ -907,7 +966,7 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 	exact := x.kind == Order && ct.kind == Order
 	inner.key += fmt.Sprintf("\x00%t", exact)
 	spec := &selectSpec{inner: inner, column: c, exact: exact, guarded: guarded}
-	fused := inner.constant && guarded && len(inner.probes) == 0 && inner.probeSet == nil
+	fused := inner.constant && guarded && len(inner.probes) == 0 && inner.probeSet == nil && inner.union == nil
 	if fused {
 		cx.selects = append(cx.selects, spec)
 	}

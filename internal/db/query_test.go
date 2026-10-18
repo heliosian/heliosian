@@ -359,6 +359,42 @@ func TestInAConstantSelectProbes(t *testing.T) {
 	}
 }
 
+func TestAnOrOfProbesProbesEachBranch(t *testing.T) {
+	m := sample(t).Model()
+	for _, c := range []struct {
+		src    string
+		probes bool
+	}{
+		{`(from MEMBER (where (= member "yes") (or (= person @viewer) (in person (household @viewer)))) (columns group person))`, true},
+		{`(from MEMBER (where (= member "yes") (or (in group (select WIDGET.visible_to)) (in group (select APP.visible_to)) (in group (select GROUP.visible_to (in parent (select WIDGET.group)))))) (columns group person))`, true},
+		{`(from DOCUMENT_GROUP (where (= relation "sent_to") (or (in document (select DOCUMENT.id (= kind "mail") (blank parent) (>= published "2000-01-01"))) (in document (select TODO.document @t (exists TODO_MARK (= todo @t) (= person @viewer)))))) (columns document group))`, true},
+		{`(from MEMBER (where (or (in group (select GROUP.id (= kind "party"))) (in group (select GROUP.waitlist (= kind "party"))))))`, true},
+		{`(from MEMBER (where (or (= group "grp00000000020") (in group (select GROUP.id (= kind "family"))))))`, true},
+		{`(from MEMBER (where (or (= group "grp00000000020") (and (= member "yes") (in group (select GROUP.id (= kind "family")))))))`, false},
+	} {
+		q := mustParse(t, c.src)
+		if probes := q.scan.union != nil; probes != c.probes {
+			t.Errorf("%s probes each branch %v, want %v", c.src, probes, c.probes)
+		}
+		walked := strings.Replace(c.src, "(or ", "(or false ", 1)
+		if mustParse(t, walked).scan.union != nil {
+			t.Fatalf("%s still probes", walked)
+		}
+		answered := false
+		for _, viewer := range []string{"", student, parent, staff, guest} {
+			got := ids(runAs(t, m, viewer, c.src).Rows(), "id")
+			want := ids(runAs(t, m, viewer, walked).Rows(), "id")
+			if !slices.Equal(got, want) {
+				t.Errorf("as %q: %s answers %v, walking the table %v", viewer, c.src, got, want)
+			}
+			answered = answered || len(want) > 0
+		}
+		if !answered {
+			t.Errorf("%s answers nothing for any viewer", c.src)
+		}
+	}
+}
+
 func TestASelectNamesItsRow(t *testing.T) {
 	m := sample(t).Model()
 	named := mustParse(t, `(from MEMBER (where (in group (select GROUP.id @f (= @f.kind "family")))))`)
