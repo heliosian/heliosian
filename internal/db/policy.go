@@ -214,7 +214,7 @@ const PolicySource = `
 (define (sees_mail @g)
   (or (manages @g)
       (and (not (blank @g.visible_to))
-           (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer)))))
+           (in @g (select EFFECTIVE_MEMBER.group (= person @viewer))))))
 
 ; @d or a document it sits under was sent to a group whose mail the viewer sees, or it is no mail and was sent to no group
 (define (document_visible @d)
