@@ -272,7 +272,7 @@ export function groupActive(item) {
   return parts[0] === 'groups' && Boolean(parts[1]) && (parts[1] === item.id || parts[1].toLowerCase() === item.slug.toLowerCase());
 }
 
-export function fillNav(nav, {here = '', lists, family = null, redraw}) {
+export function fillNav(nav, {here = '', lists, family = null, newList = false, redraw}) {
   const open = navOpen();
   const toggle = key => {
     setNavOpen(key, !open[key]);
@@ -298,6 +298,9 @@ export function fillNav(nav, {here = '', lists, family = null, redraw}) {
   }
   for (const item of listPageRows) {
     pageRow(tools, item);
+  }
+  if (newList) {
+    tools.append(railRow({href: '/new', icon: 'plus', label: 'New Email List'}, location.pathname === '/new'));
   }
   drawNavSections(tools, navSections(lists), {
     href: groupPathOf,

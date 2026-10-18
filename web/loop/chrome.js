@@ -5,7 +5,6 @@ import {fillNav as drawRail} from '/rail.js';
 
 const items = [
   {href: '/', icon: 'app', label: 'My Email Lists'},
-  {href: '/new', icon: 'plus', label: 'New Email List'},
 ];
 
 function tabLink(item) {
@@ -17,6 +16,7 @@ function tabLink(item) {
 function fillNav(nav) {
   drawRail(nav, {
     lists: state.model ? state.model.nav : {tags: [], lists: []},
+    newList: true,
     redraw: fillNav,
   });
 }

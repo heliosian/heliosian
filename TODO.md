@@ -14,8 +14,6 @@
 
 - My Email Lists' intro says every list is an address
   "Each email list is an address at loop.heliosian.com…" (`web/loop/pages/groups.js:62`), but every group is a list and only those with a slug have an address, so the grid rightly shows cards with none (3D Printer, Coffee Carts, …). The sentence is what's wrong.
-- New Email List button on the shared rail
-  Loop's one allowed rail customization (`web/common/rail.js`); today it is a tab in Loop's tab bar (`web/loop/chrome.js:8`) and a header button on My Email Lists.
 - Who?'s and Loop's group pages converging into one page, as the rail did
   Who?'s is `listPage` (`web/who/pages/list.js`), Loop's `groupPage` (`web/loop/pages/group.js`); they share only the rail and the route shape.
 
