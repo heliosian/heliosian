@@ -1,0 +1,53 @@
+# Re-encode pronunciation recordings to AAC M4A off the upload path (#196)
+
+byre task cdd04c7b5693, "Store pronunciation recordings in a format an iPhone plays", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Store pronunciation recordings in a format an iPhone plays".
+Full transcripts: the events of task cdd04c7b5693 in byre (GET /api/events?task_id=cdd04c7b5693).
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Converts new WebM/Opus and Ogg/Opus pronunciation uploads to AAC-LC in M4A using pure Go codecs, updates the API documentation, and removes the TODO item. Adds conversion tests and updates the upload authorization test; these targeted tests pass.
+
+- Existing WebM/Ogg pronunciation recordings have no migration path and remain unplayable on an iPhone.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Pronunciation uploads now retain a private original and use a background worker to produce mono AAC/M4A recordings for playback. The change adds audio decoders, conversion tests, schema and policy updates, and changes deletion to clear the original recording.
+
+- Uploaded WAV sample rates can cause an unbounded resampling allocation and exhaust server memory.
+- Existing recordings never enter the conversion queue and cannot be deleted through the updated UI without a data migration.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Pronunciation uploads now retain a private original and asynchronously produce mono 48 kHz AAC recordings in M4A containers. The change adds pure Go audio decoding and encoding, updates write permissions and deletion, and tests conversion and authorized uploads.
+
+- Existing recordings are skipped by conversion and cannot be deleted through the updated control.
+- Saving can reload before conversion completes and leave the recording absent until a manual refresh.
+
+## Decisions
+
+### How should the existing 107 recordings get moved over, now that a tool in `local/` won't survive the merge?
+
+**Background.** After this change, each person or family has two recording columns:
+- `pronunciation_original`: new and private. It holds the file exactly as uploaded.
+- `pronunciation`: the file people play. The server makes it from the original as an AAC M4A, mono, 48 kHz, 64 kbps.
+
+Today 85 `PERSON` rows and 22 family `GROUP` rows have a `pronunciation` but nothing in the new column (61 MP3s and 2 M4As in `gs://heliosian-media/pronunciation/`). Each of them has to have its current file copied into `pronunciation_original` once, so the server remakes the playable file from it.
+
+My plan was the one-off tool `local/pronunciationoriginals`, run after the deploy. As you said, `local/` is untracked, so the merge deletes the tool with the worktree.
+
+**Example row:** `peryDHPDJfsedP` has `pronunciation = pronunciation/4fa35602….mp3` (MP3, 3.72 s) and `pronunciation_original` empty. After the move it should have `pronunciation_original = pronunciation/4fa35602….mp3`, then `pronunciation = pronunciation/<new>.m4a` (AAC mono 48 kHz, 3.73 s, ~30 KB) once the worker remakes it.
+
+- (*) The server adopts it at start
+  When the new server starts and queues work for the photo-and-recording worker, a row with a `pronunciation` but no `pronunciation_original` is written as one batch, with `pronunciation_original` set to that file and `pronunciation` blanked. The worker then remakes each recording. About 8 lines in `Pictures.Start`, plus a test that starts from a row in the old shape.
+  - For `peryDHPDJfsedP`: the first boot of the new revision sets `pronunciation_original = pronunciation/4fa35602….mp3`, and a fraction of a second later `pronunciation = pronunciation/<new>.m4a`.
+  - There is no step for you to run. It also closes the delete gap the reviewer raised: by the time anyone can press delete, every row has an original.
+  - The code stays after the move as a permanent rule: a recording with no original becomes its own original. Once the move is done no row matches, but it would also catch a `pronunciation` someone typed into the sheet by hand.
+- ( ) I copy the tool into your main checkout
+  I copy `local/pronunciationoriginals` to `~/work/heliosian/heliosian/local/`, and you run `go run ./local/pronunciationoriginals` there after the deploy. No server code changes.
+  - For `peryDHPDJfsedP`: same result, but only once you run it. Until then the row has no original, so pressing delete on it leaves the old recording in place.
+  - This means I write into a checkout outside this task, and you have a manual step after the deploy.
+
+ian@fc.run chose: I copy the tool into your main checkout
