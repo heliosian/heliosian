@@ -1,0 +1,21 @@
+# invoice view
+
+byre task 59940af494ec, "invoice view", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task 59940af494ec in byre (GET /api/events?task_id=59940af494ec).
+
+## Summary
+
+- **Question:** where Celebrate's "to be invoiced" view went. It was the old Admin › Money › Invoicing tab, which read the sheet's INVOICING ledger and had a "Not yet invoiced" filter, a "still to invoice" total and a CSV download (`/api/celebrate/invoices.csv`). Commit `54c3c9b4` (move Celebrate's pages onto the data model) replaced it with a Payments tab (`paymentsCard` in `web/celebrate/pages/admin.js`). Payments filters on `PAYMENT.status` (Owed/Requested/Paid/Cancelled). Nothing filters on a blank `stripe_invoice`, and the CSV export is gone, server endpoint included.
+- **Bug found:** ian, a super admin, couldn't see the Payments tab. The tab itself worked, but Celebrate never showed the Admin Tools link. `me()` in `web/common/data.js` builds the viewer's `<app>.admins` allowances from a hardcoded `adminApps` list, `['who','team','when','home']`, added in `c759479b`. The list left out `celebrate` and `birthday`, which both have /admin pages, so `shell.js` hid Admin Tools on those sites.
+- **Fix:** added `celebrate` and `birthday` to `adminApps`. Checked by running the new meAdmin query against production with `tools/q`, which names all six apps. Not checked in a browser.
+- **Left out (offered, not asked for):** a "Not yet invoiced" filter on Payments (blank `stripe_invoice`), bringing back the CSV export, and the payment rows wrapping onto a second line: `.invoice-ledger-row` has 5 grid columns but each row now holds 7 items.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Restores the Admin Tools navigation entry for Celebrate administrators by including Celebrate in the shared administrator lookup. This makes the existing Payments page and its Owed filter discoverable again. The same lookup also restores Birthdays’ Admin Tools entry for its administrators.
+
+No significant findings.
