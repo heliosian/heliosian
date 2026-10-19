@@ -1,0 +1,29 @@
+# Check row-free read grants once per run and include each row once
+
+byre task 29c5d45aaf02, "Resources' DOCUMENT tab takes seconds to load", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Resources' DOCUMENT tab takes seconds to load".
+Full transcripts: the events of task 29c5d45aaf02 in byre (GET /api/events?task_id=29c5d45aaf02).
+
+## Summary
+
+Set out to speed up Helios Admin Resources' DOCUMENT tab, which loads all ~60k DOCUMENT rows with every reference included. In production it took ~13.5–14s to appear: ~3s server (redact ~1.0s, include ~1.1s, encode ~0.5s), ~0.5–1.6s download, and ~8s in the browser (measured in byre's Chrome: grid build ~2.6s, first layout ~1.8s, `setState` → `reorder()` ~1.7s).
+
+Built (ian picked "option 1 plus the reorder fix"):
+- `internal/db/policy.go`: grants that cannot read the row (`read *`, `read * (*)`, or a bare `true`) are marked `free`. `run.everyRow` tries a table's or column's free grants once per run; when they hold, `readable`/`columnReadable` skip the per-row/per-cell check and cache, so a super admin pays nothing per row or per cell. The per-cell cache map (about 1.3M entries for this query) was the bulk of redact's cost.
+- `internal/db/query.go`: includes keep a `whole` set of rows already held whole (earlier includes, and answered rows when the query names no columns) and don't read-check, redact or merge them again. That covers the DOCUMENT→DOCUMENT `parent`/`source`/`terminal` includes.
+- `web/admin/grid.js`: `sortBy` returns early when the sort is unchanged, so restoring URL state no longer re-appends every row.
+- `docs/queryspeed.md` describes both server changes.
+
+Measured on a production snapshot (laptop): server ~0.36–0.55s against 2.6–3.1s in prod (the laptop is ~3× faster at encoding, so expect ~1.2–1.5s in prod), with the same answer size; `setState` 1.7s → 0. The full page went to 5.4–9.6s locally against 13.5–14s in prod before.
+
+Deliberately left out: building only the rows the tree shows (roots-only list, or lazy expand with server-side filters), which is the remaining ~4s of browser work for 60k rows of which ~6.4k show. ian declined it because the page is admin-only.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Speeds up resource queries by caching row-independent read grants and reusing fully included rows within each result. Avoids rebuilding the grid’s row order when the requested sort is unchanged, updates query-performance documentation, and removes the TODO item. Targeted query, include, and access-policy tests pass.
+
+No significant findings.
