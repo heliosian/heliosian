@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,8 +185,11 @@ func postRecording(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, a
 func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
-	sound := []byte("a webm recording")
-	name := "pronunciation/" + blob.Name(sound, "webm")
+	sound, err := os.ReadFile("../blob/testdata/chrome.webm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := "pronunciation/" + blob.Name(sound, "webm")
 	for _, c := range []struct {
 		table, field, id string
 	}{
@@ -199,19 +204,27 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
 		}
-		if row, _ := s.Model().Table(c.table).Get(c.id); row["pronunciation"] != name || out.Result[0] != c.id {
-			t.Fatalf("the %s's pronunciation reads %q, answered %+v", c.field, row["pronunciation"], out)
+		if row, _ := s.Model().Table(c.table).Get(c.id); row["pronunciation_original"] != original || out.Result[0] != c.id {
+			t.Fatalf("the %s's original reads %q, answered %+v", c.field, row["pronunciation_original"], out)
+		}
+		row := made(t, s, c.table, c.id, "pronunciation")
+		content, mimeType, err := pics.bucket.Get(context.Background(), row["pronunciation"])
+		if err != nil || mimeType != "audio/mp4" || !strings.HasSuffix(row["pronunciation"], ".m4a") {
+			t.Fatalf("the made recording %s is %s: %v", row["pronunciation"], mimeType, err)
+		}
+		if _, err := blob.ReencodeRecording("audio/mp4", content); err != nil {
+			t.Fatalf("the made recording does not decode: %v", err)
 		}
 	}
-	if found, err := pics.bucket.Exists(context.Background(), name); err != nil || !found {
-		t.Fatalf("the recording is not in the bucket: %v", err)
+	if found, err := pics.bucket.Exists(context.Background(), original); err != nil || !found {
+		t.Fatalf("the original is not in the bucket: %v", err)
 	}
 
 	other := []byte("someone else's name")
-	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": staff}, "audio/webm", other); rec.Code != http.StatusForbidden {
+	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": staff}, "audio/mpeg", other); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent records a stranger's name: %d %s", rec.Code, rec.Body.String())
 	}
-	if found, _ := pics.bucket.Exists(context.Background(), "pronunciation/"+blob.Name(other, "webm")); found {
+	if found, _ := pics.bucket.Exists(context.Background(), "pronunciation/"+blob.Name(other, "mp3")); found {
 		t.Fatal("a refused recording was stored")
 	}
 	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": student}, "application/octet-stream", other); rec.Code != http.StatusBadRequest {

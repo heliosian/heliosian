@@ -20,6 +20,8 @@ var (
 	cropColumns  = []string{"crop_left", "crop_top", "crop_width", "crop_height"}
 	photoInputs  = append([]string{"original"}, cropColumns...)
 	photoOutputs = []string{"reencode", "crop", "thumbnail"}
+
+	recordingTables = []string{"PERSON", "GROUP"}
 )
 
 type Pictures struct {
@@ -38,7 +40,7 @@ func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
 	go func() {
 		for range in.wake {
 			for _, d := range in.take() {
-				if remake(d.change) {
+				if remake(d.change) || rerecord(d.change) {
 					p.enqueue(d.change.New["id"])
 				}
 			}
@@ -56,14 +58,30 @@ func (p *Pictures) Start() {
 			queued++
 		}
 	}
-	slog.Info("pictures: queued photos not ready at startup", "queued", queued)
+	recordings := 0
+	for _, table := range recordingTables {
+		for _, row := range p.s.Model().Table(table).All() {
+			if row["pronunciation_original"] != "" && row["pronunciation"] == "" {
+				p.enqueue(row["id"])
+				recordings++
+			}
+		}
+	}
+	slog.Info("pictures: queued photos and recordings not ready at startup", "queued", queued, "recordings", recordings)
 }
 
 func remake(c Change) bool {
-	if c.New == nil {
+	if c.Table != "PHOTO" || c.New == nil {
 		return false
 	}
 	return c.Old == nil || slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] })
+}
+
+func rerecord(c Change) bool {
+	if !slices.Contains(recordingTables, c.Table) || c.New == nil || c.New["pronunciation_original"] == "" {
+		return false
+	}
+	return c.Old == nil || c.Old["pronunciation_original"] != c.New["pronunciation_original"]
 }
 
 func (p *Pictures) enqueue(id string) {
@@ -125,19 +143,64 @@ func cropBox(row store.Row) (image.Rectangle, bool, error) {
 
 func (p *Pictures) store(ctx context.Context, content []byte) (string, error) {
 	name := "photos/" + blob.Name(content, "jpg")
+	return name, p.put(ctx, name, "image/jpeg", content)
+}
+
+func (p *Pictures) put(ctx context.Context, name, mimeType string, content []byte) error {
 	held, err := p.bucket.Exists(ctx, name)
 	if err != nil || held {
-		return name, err
+		return err
 	}
-	return name, p.bucket.Put(ctx, name, "image/jpeg", content)
+	return p.bucket.Put(ctx, name, mimeType, content)
 }
 
 func (p *Pictures) make(id string) error {
+	m := p.s.Model()
+	if row, ok := m.Table("PHOTO").Get(id); ok {
+		return p.makePhoto(id, row)
+	}
+	for _, table := range recordingTables {
+		if row, ok := m.Table(table).Get(id); ok {
+			return p.makeRecording(table, id, row)
+		}
+	}
+	return nil
+}
+
+func (p *Pictures) makeRecording(table, id string, row store.Row) error {
 	ctx := context.Background()
-	row, ok := p.s.Model().Table("PHOTO").Get(id)
-	if !ok {
+	if row["pronunciation_original"] == "" {
 		return nil
 	}
+	src, declared, err := p.bucket.Get(ctx, row["pronunciation_original"])
+	if err != nil {
+		return err
+	}
+	mimeType, _, ok := blob.AudioType(declared)
+	if !ok {
+		return fmt.Errorf("%s is stored as %s, not a recording type", row["pronunciation_original"], declared)
+	}
+	out, err := blob.ReencodeRecording(mimeType, src)
+	if err != nil {
+		return err
+	}
+	name := "pronunciation/" + blob.Name(out, "m4a")
+	if err := p.put(ctx, name, "audio/mp4", out); err != nil {
+		return err
+	}
+	_, err = p.queue.Transact(ctx, access.System("pictures"), func(tx *store.Tx) error {
+		now, ok := p.s.In(tx).Table(table).Get(id)
+		if !ok || now["pronunciation_original"] != row["pronunciation_original"] || now["pronunciation"] == name {
+			return nil
+		}
+		_, err := stageEdits(p.s, tx, Env{System: "pictures"}, []Edit{{Set: id, Cells: map[string]any{"pronunciation": name}}}, "pictures", true)
+		return err
+	})
+	return err
+}
+
+func (p *Pictures) makePhoto(id string, row store.Row) error {
+	ctx := context.Background()
 	src, _, err := p.bucket.Get(ctx, row["original"])
 	if err != nil {
 		return err

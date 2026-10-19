@@ -1,16 +1,21 @@
 module heliosian
 
-go 1.27
+go 1.27.0
 
 require (
 	github.com/anthropics/anthropic-sdk-go v1.72.0
 	github.com/chromedp/cdproto v0.0.0-20260714215040-dc233986426f
 	github.com/chromedp/chromedp v0.16.0
 	github.com/google/jsonschema-go v0.4.3
+	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/lmittmann/tint v1.2.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/pdfcpu/pdfcpu v0.16.1
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+	github.com/tphakala/go-aac v0.7.1
+	github.com/tphakala/go-m4a v0.7.0
+	github.com/tphakala/go-opus v1.2.1
+	github.com/tphakala/go-wav v1.1.0
 	golang.org/x/image v0.46.0
 	golang.org/x/net v0.59.0
 	google.golang.org/api v0.293.0
@@ -47,6 +52,7 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect
+	github.com/tphakala/simd v1.11.0 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 // indirect

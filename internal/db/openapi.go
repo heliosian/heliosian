@@ -302,7 +302,7 @@ func spec() schema {
 					"required": []string{"recording"},
 					"properties": schema{
 						"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)}, "group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
-						"recording": schema{"type": "string", "contentMediaType": "audio/*", "description": "Typed by its part's Content-Type: WebM, MP4, MP3, Ogg or WAV audio."},
+						"recording": schema{"type": "string", "contentMediaType": "audio/*", "description": "Typed by its part's Content-Type: WebM, MP4, MP3, Ogg or WAV audio. Kept as sent in pronunciation_original; the server then makes pronunciation, an AAC M4A, from it."},
 					},
 				}}}},
 				"responses": refusals(schema{"200": answers("The PERSON or GROUP and the recording's hash.", "Stored"), "400": failure("Not a supported recording, or neither or both of person and group.")}),

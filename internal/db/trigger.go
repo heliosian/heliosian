@@ -26,6 +26,8 @@ var stagedTriggers = []stagedTrigger{
 	{table: "PERSON", fire: personFamilyNames},
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
+	{table: "PERSON", fire: recordingNotMade},
+	{table: "GROUP", fire: recordingNotMade},
 	{table: "GROUP", fire: servingNames},
 	{table: "GROUP", fire: groupSlugMoved},
 	{table: "GROUP", fire: hiddenFor},
@@ -51,6 +53,8 @@ var committedTriggers = []committedTrigger{
 	{table: "MEMBER", to: mailInbox},
 	{table: "GROUP", to: mailInbox},
 	{table: "PHOTO", to: picturesInbox},
+	{table: "PERSON", to: picturesInbox},
+	{table: "GROUP", to: picturesInbox},
 	{table: "GROUP", to: searchInbox},
 	{table: "PERSON", to: searchInbox},
 	{table: "DOCUMENT", to: searchInbox},
@@ -436,6 +440,13 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
+}
+
+func recordingNotMade(_ *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.New["pronunciation"] == "" || c.Old["pronunciation_original"] == c.New["pronunciation_original"] {
+		return nil, nil
+	}
+	return []Edit{{Set: c.New["id"], Cells: map[string]any{"pronunciation": ""}}}, nil
 }
 
 func unchecked(*Model, Change) error {

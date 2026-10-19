@@ -17,9 +17,6 @@ Last verified: bff8f634
 
 # Issues
 
-- Store pronunciation recordings in a format an iPhone plays
-  Chrome uploads pronunciations as WebM/Opus, which an iPhone can't play. Convert WebM and Ogg recordings to MP4/AAC on upload through `/api/do/pronunciation`, and convert the ones already stored.
-  Issue: https://github.com/heliosian/heliosian/issues/196
 - Add sample pronunciation recordings in WebM/Opus and MP4/AAC
   The sample data has no pronunciation recordings, so nothing in development has a play button. Add synthesized recordings in WebM, MP4 and MP3 for a few sample people and one family group, and document them in `docs/dev.md`.
   Issue: https://github.com/heliosian/heliosian/issues/194

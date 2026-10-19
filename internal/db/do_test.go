@@ -306,6 +306,22 @@ func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
 	}
 }
 
+func TestChangingARecordingsOriginalBlanksWhatWasMade(t *testing.T) {
+	old := store.Row{"id": "per00000000099", "pronunciation_original": "pronunciation/a.webm", "pronunciation": "pronunciation/b.m4a"}
+	for _, original := range []string{"pronunciation/c.mp3", ""} {
+		changed := maps.Clone(old)
+		changed["pronunciation_original"] = original
+		if edits, _ := recordingNotMade(nil, Change{Table: "PERSON", Old: old, New: changed}); len(edits) != 1 || edits[0].Cells["pronunciation"] != "" {
+			t.Fatalf("an original of %q left the made recording: %v", original, edits)
+		}
+	}
+	renamed := maps.Clone(old)
+	renamed["pronouns"] = "they/them"
+	if edits, _ := recordingNotMade(nil, Change{Table: "PERSON", Old: old, New: renamed}); len(edits) != 0 {
+		t.Fatalf("another column blanked the made recording: %v", edits)
+	}
+}
+
 func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)

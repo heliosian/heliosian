@@ -120,21 +120,21 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		updated := maps.Clone(old)
-		updated["pronunciation"] = "pronunciation/" + rec.name
+		updated["pronunciation_original"] = "pronunciation/" + rec.name
 		if err := m.Authorize(env, Change{Table: table, Old: old, New: updated}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := pics.bucket.Put(r.Context(), updated["pronunciation"], rec.mimeType, rec.content); err != nil {
+		if err := pics.bucket.Put(r.Context(), updated["pronunciation_original"], rec.mimeType, rec.content); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation": updated["pronunciation"]}}}})
+		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation_original": updated["pronunciation_original"]}}}})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "system", env.System, "of", id, "name", updated["pronunciation"])
+		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "system", env.System, "of", id, "name", updated["pronunciation_original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(rec.name, "."+rec.ext)})
 	})
 	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {

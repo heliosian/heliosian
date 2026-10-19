@@ -330,7 +330,7 @@ const PolicySource = `
 ; a person or someone in their family writes their pronouns
 (set PERSON.pronouns (self_or_household @old))
 ; a person or someone in their family records how their name is said
-(set PERSON.pronunciation (self_or_household @old))
+(set PERSON.pronunciation_original (self_or_household @old))
 ; a person or someone in their family writes their about-me words
 (set PERSON.facts (self_or_household @old))
 ; a person or someone in their family dates their about-me words
@@ -436,7 +436,7 @@ const PolicySource = `
 ; a family's managers write the words under its photo
 (set GROUP.description (and (= @old.kind "family") (manages @old)))
 ; a family's managers record how its name is said
-(set GROUP.pronunciation (and (= @old.kind "family") (manages @old)))
+(set GROUP.pronunciation_original (and (= @old.kind "family") (manages @old)))
 ; anyone but a guest makes a plain group of their own, a tag, run by a group they are in or, until they name one, by nobody
 (insert GROUP
   (and (own_group @new) (= @new.status "open") (= @new.added_by @viewer) (!= @viewer.source "guest")
@@ -782,7 +782,7 @@ const PolicySource = `
 ; write anyone's pronouns
 (set PERSON.pronouns (admin_of "who"))
 ; record how anyone's name is said
-(set PERSON.pronunciation (admin_of "who"))
+(set PERSON.pronunciation_original (admin_of "who"))
 ; write anyone's about-me words
 (set PERSON.facts (admin_of "who"))
 ; date anyone's about-me words
@@ -802,7 +802,7 @@ const PolicySource = `
 ; write the words under any family's photo
 (set GROUP.description (and (admin_of "who") (= @old.kind "family")))
 ; record how any family's name is said
-(set GROUP.pronunciation (and (admin_of "who") (= @old.kind "family")))
+(set GROUP.pronunciation_original (and (admin_of "who") (= @old.kind "family")))
 ; a classroom's or grade's color
 (set GROUP.color (and (admin_of "who") (in @old.kind "classroom" "grade")))
 ; a classroom's or grade's place among the others

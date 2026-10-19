@@ -226,7 +226,7 @@ function deletePronunciationIcon(id, status) {
   button.type = 'button';
   button.title = 'Delete pronunciation';
   button.append(svg('trash'));
-  button.addEventListener('click', () => saveCells(id, {pronunciation: ''}, status));
+  button.addEventListener('click', () => saveCells(id, {pronunciation_original: ''}, status));
   return button;
 }
 
