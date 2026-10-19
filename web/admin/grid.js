@@ -251,6 +251,9 @@ export function grid(table, answer, ids, changed, always = []) {
     walk('');
   };
   const sortBy = next => {
+    if (next?.column === sort?.column && next?.dir === sort?.dir) {
+      return;
+    }
     sort = next;
     for (const [i, th] of [...head.children].entries()) {
       th.dataset.sort = sort?.column === columns[i] ? (sort.dir === 1 ? 'asc' : 'desc') : '';

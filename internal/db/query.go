@@ -73,6 +73,7 @@ type run struct {
 	now     time.Time
 	rows    map[cellKey]bool
 	columns map[cellKey]bool
+	every   map[cellKey]bool
 	memo    map[string]any
 	fusable map[string][]*selectSpec
 	filling map[*selectSpec]bool
@@ -1356,7 +1357,7 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 }
 
 func (m *Model) bareRun(whole bool, now time.Time) *run {
-	return &run{m: m, whole: whole, now: wallClock(now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
+	return &run{m: m, whole: whole, now: wallClock(now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, every: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
 }
 
 func (m *Model) newRun(env Env) *run {
@@ -1439,6 +1440,7 @@ func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	out := Result{Table: table, IDs: []string{}, Resources: map[string]map[string]store.Row{table: {}}}
 	guarded := q.scan.guarded
 	redacting, including := span.Tally("redact"), span.Tally("include")
+	whole := map[cellKey]bool{}
 	for _, row := range rows {
 		start := time.Now()
 		answered := row
@@ -1451,13 +1453,16 @@ func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 		redacting.Add(time.Since(start))
 		out.IDs = append(out.IDs, row["id"])
 		merge(out.Resources, table, answered)
+		if q.columns == nil {
+			whole[cellKey{table: table, id: row["id"]}] = true
+		}
 		start = time.Now()
 		for _, p := range q.include {
 			from := row
 			if guarded {
 				from = r.redact(q.scan.table, row, p.steps[:1])
 			}
-			r.includePath(guarded, from, p.steps, out.Resources)
+			r.includePath(guarded, from, p.steps, out.Resources, whole)
 		}
 		including.Add(time.Since(start))
 	}
@@ -1531,13 +1536,18 @@ func (q *Query) sorted(rows []store.Row, top *frame) []store.Row {
 	return out
 }
 
-func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[string]map[string]store.Row) {
+func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[string]map[string]store.Row, whole map[cellKey]bool) {
 	if len(steps) == 0 {
 		return
 	}
 	c := steps[0]
-	target := r.table(c.Target)
 	id := row[c.Name]
+	key := cellKey{table: c.Target, id: id}
+	if whole[key] {
+		r.includePath(guarded, into[c.Target][id], steps[1:], into, whole)
+		return
+	}
+	target := r.table(c.Target)
 	next, ok := target.Get(id)
 	if id == "" || !ok || (guarded && !r.readable(target.Table(), next)) {
 		return
@@ -1546,7 +1556,8 @@ func (r *run) includePath(guarded bool, row store.Row, steps []Column, into map[
 		next = r.redact(target.Table(), next, nil)
 	}
 	merge(into, c.Target, next)
-	r.includePath(guarded, next, steps[1:], into)
+	whole[key] = true
+	r.includePath(guarded, next, steps[1:], into, whole)
 }
 
 func wallClock(t time.Time) time.Time {

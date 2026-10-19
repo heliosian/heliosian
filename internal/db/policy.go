@@ -1297,6 +1297,7 @@ type grant struct {
 	comment string
 	gated   bool
 	every   bool
+	free    bool
 }
 
 type policySet struct {
@@ -1467,7 +1468,8 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			return nil, nil, err
 		}
 		actor, _ := splitActor(form.list[2])
-		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment, gated: head == "read" && actor != nil})
+		free := !form.list[2].isList && form.list[2].kind == atomName && form.list[2].text == "true"
+		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment, gated: head == "read" && actor != nil, free: free})
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
 		if err := cx.parts(&described, form.list[2], sc); err != nil {
 			return nil, nil, err
@@ -1544,7 +1546,7 @@ func (cx *compiler) wildcard(form *sexp, d *Clause, out *policySet) error {
 		return err
 	}
 	actor, _ := splitActor(form.list[2])
-	g := grant{cond: c, comment: d.Comment, gated: head == "read" && actor != nil}
+	g := grant{cond: c, comment: d.Comment, gated: head == "read" && actor != nil, free: true}
 	for _, t := range Tables {
 		switch {
 		case head == "read":
@@ -1584,7 +1586,7 @@ func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (con
 		for _, t := range Tables {
 			for _, col := range t.Columns {
 				if !col.Private {
-					out.read[t.Name+"."+col.Name] = append(out.read[t.Name+"."+col.Name], grant{cond: c, comment: comment, every: true})
+					out.read[t.Name+"."+col.Name] = append(out.read[t.Name+"."+col.Name], grant{cond: c, comment: comment, every: true, free: true})
 				}
 			}
 		}
@@ -1611,7 +1613,7 @@ func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (con
 			return cond{}, item.errorf("%s.%s is private, kept from every view but the whole tables by the consent step", t.Name, col.Name)
 		}
 		key := t.Name + "." + col.Name
-		out.read[key] = append(out.read[key], grant{cond: c, comment: comment})
+		out.read[key] = append(out.read[key], grant{cond: c, comment: comment, free: open})
 		if open {
 			out.open[key] = true
 		}
@@ -1672,7 +1674,7 @@ func (r *run) check(name string, grants []grant, f *frame) bool {
 }
 
 func (r *run) readable(t *Table, row store.Row) bool {
-	if r.system != "" {
+	if r.system != "" || r.everyRow(t, "") {
 		return true
 	}
 	key := cellKey{table: t.Name, id: row["id"]}
@@ -1690,12 +1692,35 @@ func (r *run) columnReadable(t *Table, row store.Row, c Column) bool {
 		// The consent step strips private columns from every view but the whole tables.
 		return true
 	}
+	if r.everyRow(t, c.Name) {
+		return true
+	}
 	key := cellKey{table: t.Name, column: c.Name, id: row["id"]}
 	if seen, ok := r.columns[key]; ok {
 		return seen
 	}
 	held := r.check(t.Name+" columns", policies.read[t.Name+"."+c.Name], &frame{table: t, row: row, name: "row", run: r})
 	r.columns[key] = held
+	return held
+}
+
+func (r *run) everyRow(t *Table, column string) bool {
+	key := cellKey{table: t.Name, column: column}
+	if held, ok := r.every[key]; ok {
+		return held
+	}
+	name, policy := t.Name, t.Name
+	if column != "" {
+		name, policy = t.Name+" columns", t.Name+"."+column
+	}
+	free := []grant{}
+	for _, g := range policies.read[policy] {
+		if g.free {
+			free = append(free, g)
+		}
+	}
+	held := r.check(name, free, &frame{run: r})
+	r.every[key] = held
 	return held
 }
 

@@ -15,11 +15,6 @@ Last verified: bff8f634
 - Family names are recomputed on every PERSON and MEMBER change
   `personFamilyNames` and `memberFamilyName` (`internal/db/trigger.go`) have no column guard, so a phone-number edit recomputes the names of every family the person is in and writes nothing. A guard on the columns `familyName` reads (`name_long`, `hidden`, `deactivated`, `consent`, `source`, the grade columns) would skip that; unmeasured.
 
-# Helios Admin
-
-- Resources' DOCUMENT tab takes seconds to load
-  Its one query (`scan` in `web/admin/resources/start.js:31`) reads all ~60,000 DOCUMENT rows with every reference included and answers 24 MB (7 MB on the wire). Its trace: about 2.8s on the server, of which redact ~1.0s, include ~1.1s and encode ~0.5s; the policies take ~0.2s, and `document_visible` is never reached for a super admin. The browser saw ~4s waiting plus ~0.6s downloading.
-
 # Issues
 
 - Store pronunciation recordings in a format an iPhone plays
