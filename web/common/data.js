@@ -1,6 +1,6 @@
 import {queries} from '/rail.js';
 
-const adminApps = ['who', 'team', 'when', 'home'];
+const adminApps = ['who', 'team', 'when', 'home', 'celebrate', 'birthday'];
 
 export async function me() {
   const a = await queries({
