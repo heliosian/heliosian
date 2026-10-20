@@ -50,9 +50,6 @@ Last verified: bff8f634
 - Add Mike Orlando's high school counseling Google Calendar as a source in Helios When
   Add the HS counseling Google Calendar as a Helios When source, with its events tagged and aimed at the high school classrooms. It needs the calendar's address and sharing confirmed by Mike.
   Issue: https://github.com/heliosian/heliosian/issues/176
-- Serve through an external HTTPS load balancer
-  Mutual TLS for system clients like the Veracross import needs an external HTTPS load balancer, since Cloud Run never passes client certificates to the container. Move the domains onto it, restrict ingress to it, and set up a CA for client certificates.
-  Issue: https://github.com/heliosian/heliosian/issues/174
 - Show a loop email's actual message to the list's members and managers
   Loop pages show only an email's metadata, though the raw message is stored. Show the rendered message and its attachments to the list's members and managers.
   Issue: https://github.com/heliosian/heliosian/issues/168
