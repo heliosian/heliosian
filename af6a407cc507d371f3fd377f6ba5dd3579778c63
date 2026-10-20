@@ -1,0 +1,107 @@
+# Spec and test every /api/do call, drop guest, rename unsubscribe (#180)
+
+byre task 77eaf5d6bc8e, "Audit /api/do endpoints", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Audit /api/do endpoints".
+Full transcripts: the events of task 77eaf5d6bc8e in byre (GET /api/events?task_id=77eaf5d6bc8e).
+
+## Summary
+
+Audited the 19 `/api/do/` calls (issue #180) for naming, request and response shapes, who may call each, whether each should be a call at all, OpenAPI coverage and tests. ian picked all seven proposed fixes:
+
+- Dropped `/api/do/guest`, which repeated `person-at` plus an insert. Loop now does what Celebrate already did: `person-at` first, then the new guest's `PERSON`, `PERSON_EMAIL` and `MEMBER` rows in one save batch, so a failed save leaves no orphan guest.
+- Renamed `unsubscribe` to `subscription` (`subscription.go`), since the call also resubscribes. A call with no person behind it now gets 403 instead of 400.
+- OpenAPI now describes all 18 calls. `TestTheSpecDescribesEveryDoCall` scans the package source for `/api/do/` route literals, leaving out `openapi.go` after a review finding, and fails both ways: a route the spec leaves out, or a spec path nothing registers.
+- Corrected the claim, in the docs and the spec, that compose runs "on the admin host alone": anyone in the directory can call it, within their hourly Claude allowance.
+- Added tests for the calls nothing tested: `subscription`, `fetched`, the `describe-*` and `compose` checks before Claude is called, `report-draft` and `file-report`, `person-at`, and a Loop list made with a new guest in one batch.
+- Removed the always-blank `env.System` log fields from the do handlers; compose's rate limit is keyed on the viewer alone.
+- Every `/api/do/` JSON body is now read with `serve.Decode`, which answers a generic 400 or 413 instead of each call's own hint.
+
+Kept as they were: the call names, which mix nouns and verb phrases (renaming them breaks outside callers for little gain), and the response shapes, which are already consistent.
+
+Found and left out:
+- `serve.Decode` caps bodies at 256 KB while a wiki page may be 1 MB, so a large wiki save gets 413. This was already true before the task.
+- `docs/admin/admin.md` also wrongly says `GET /api/queues` runs "on the admin host alone".
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Audits the /api/do API by documenting the remaining endpoints in OpenAPI, standardizing JSON decoding, renaming unsubscribe to subscription, and replacing guest creation with ordinary batched writes. Updates Loop and documentation and adds endpoint authorization and behavior tests. The internal/db test suite passes.
+
+- The OpenAPI coverage test counts specification entries as registered routes, hiding stale endpoint documentation.
+
+### Snapshot 4, codex gpt-6.1-sol: done
+
+Audits the `/api/do/` surface by documenting every registered verb in OpenAPI, standardizing JSON decoding, and expanding authorization and behavior tests. Renames unsubscribe to subscription and replaces the guest-creation verb with address lookup plus ordinary batched writes, including Loop’s callers and documentation.
+
+No significant findings.
+
+## Decisions
+
+### Which of these `/api/do/` fixes should I make?
+
+**What this is.** The TODO item "Audit /api/do endpoints" (issue #180) asks for a review of the `/api/do/` calls: naming, request/response shapes, who may call each, whether each should be a call at all, OpenAPI coverage and tests. `/api/do/` holds the imperative calls that do more than `POST /api/q`'s plain batches of row writes. Every `/api/` route is mounted on every host (`docs/api.md`), and each call works out who may use it for itself. Every call goes through `caller()` (`internal/db/http.go`), which lets in anyone in the directory (by session or bearer token).
+
+I've finished the review and changed nothing yet. There are **19 calls**. The full inventory is below; the fixes worth making are the choices.
+
+<details><summary>Inventory: all 19 calls</summary>
+
+| Call | File | Who may call it beyond "in the directory" | Writes? | In OpenAPI | Test over HTTP |
+|---|---|---|---|---|---|
+| photo | do.go | PHOTO insert policy | yes | ✓ | ✓ |
+| pronunciation | do.go | PERSON/GROUP set policy | yes | ✓ | ✓ |
+| file | do.go | DOCUMENT insert policy | yes | ✓ | ✓ |
+| fetched | do.go | CONTENT/DOCUMENT policy | yes | ✓ | ✗ |
+| person-at | do.go | anyone (answers even people the caller can't read) | no | ✓ | ✗ |
+| guest | guest.go | PERSON insert policy | yes | ✗ | ✓ |
+| unsubscribe | unsubscribe.go | the viewer's own membership; writes as `mailer` | yes | ✗ | ✗ (edits tested directly) |
+| wiki | wiki.go | DOCUMENT policy | yes | ✗ | ✗ (saveWiki tested directly) |
+| search | search.go | read policies | no | ✓ | ✓ |
+| compose | compose.go | anyone, rate-limited | no (Claude) | ✓ | ✗ |
+| draft-members | draft.go | checkDraft | no | ✗ | ✓ |
+| describe-group | draft.go | checkDraft | no (Claude) | ✗ | ✗ |
+| describe-activity | draft.go | anyone | no (Claude) | ✗ | ✗ |
+| describe-charity | draft.go | Birthdays team | no (Claude) | ✗ | ✗ |
+| invite | invitations.go | hosts, or whoever brought the guest | yes | ✗ | ✓ |
+| guest-mail | invitations.go | hosts | yes (mail) | ✗ | ✓ |
+| add-guests | invitations.go | hosts, or anyone when `join` is `others` | yes | ✗ | ✓ |
+| report-draft | feedback.go | super admin | no | ✗ | ✗ |
+| file-report | feedback.go | super admin | yes (GitHub) | ✗ | ✗ |
+
+**Things I'd leave alone:**
+- **Names.** They mix nouns (`photo`, `file`, `wiki`) and verb phrases (`person-at`, `add-guests`, `file-report`). Each one still says what it does, and renaming breaks any outside caller for no gain in behavior. (I found no Swift code calling `/api/do/`, but the tools under `tools/` do call some of them.)
+- **Response shapes.** Calls that write answer `{"result": [ids]}`, plus `hash` for stored bytes or `sent` for mail, which is consistent. The read and Claude calls answer their own objects, which fits.
+- **Should each be a call at all.** Every call except `guest` (see the choices) does something a plain `/api/q` batch can't: it stores bytes, calls Claude or GitHub, sends mail, writes as a system (`unsubscribe`), or answers without read access (`person-at`).
+</details>
+
+- [x] Describe every call in OpenAPI, and test that none is missing
+  Today `GET /api/openapi.json` describes 7 of the 19 calls (`photo`, `pronunciation`, `file`, `fetched`, `person-at`, `search`, `compose`). I'd add the other 12 to `spec()` in `internal/db/openapi.go`, with request and response schemas read off each handler's struct. For example, `unsubscribe` would take `{"group": "grp…", "subscribed": false}` and answer `{"result": ["grp…"]}`. I'd also add a test that mounts every registration (`Register`, `RegisterSearch`, `RegisterDrafts`, `RegisterCompose`, `RegisterInvitations`, `RegisterTriage`) and fails on any `/api/do/` route that `spec()` doesn't describe. Adding a call later without its spec entry then turns the suite red.
+- [x] Drop `/api/do/guest`; Loop adds guests the way Celebrate already does
+  There are two ways to turn an address into a guest. **Celebrate** (`web/celebrate/edit.js`) calls `person-at`, then inserts the guest's `PERSON` and `PERSON_EMAIL` rows in the same batch as the ticket. **Loop** (`web/loop/pages/group.js` `addGuests`) calls `/api/do/guest` once per guest, which runs the same `personAt` lookup and inserts the same two rows, and then writes the `MEMBER` rows in a second batch.
+  Adding the guest sam@example.org to a list, today in Loop:
+  ```
+  POST /api/do/guest {"email":"sam@example.org","name":"Sam"} → {"result":["per_new"]}   (guest written now)
+  POST /api/q {"batch":[{"insert":"MEMBER","row":{"group":"grp…","person":"per_new","member":"yes"}}]}
+  ```
+  After the change:
+  ```
+  POST /api/do/person-at {"address":"sam@example.org"} → {"person":""}
+  POST /api/q {"batch":[{"insert":"PERSON","as":"g","row":{"source":"guest","name_long_override":"Sam"}},
+                        {"insert":"PERSON_EMAIL","row":{"person":"@g","address":"sam@example.org","primary":true,"source":"guest"}},
+                        {"insert":"MEMBER","row":{"group":"grp…","person":"@g","member":"yes"}}]}
+  ```
+  One path instead of two, and `guest.go` goes away. A failed membership write no longer leaves an orphan guest behind. People see no difference.
+- [x] Make compose's docs match who can actually call it
+  `docs/admin/admin.md` and the OpenAPI description both say `compose` runs "on the admin host alone". In fact it is on every host, like every `/api/` route, and anyone in the directory can call it, within their hourly Claude allowance. It only writes a query, never runs one, so I'd change the wording to "anyone in the directory, counted against their hourly Claude allowance" rather than add an admin check.
+- [x] Rename `unsubscribe` to `subscription`
+  `POST /api/do/unsubscribe {"group":"grp…","subscribed":true}` re-subscribes, which is what Loop's toggle sends when someone turns a list back on (`web/loop/pages/group.js` line 807). It would become `POST /api/do/subscription` with the same body. I'd also have it answer 403 instead of 400 when there's no person behind the call (today it says "only a person unsubscribes" with a 400). Loop's page is the only caller.
+- [x] Test the calls nothing tests today
+  The handler checks for `person-at`, `unsubscribe` (not in the group → 404), `describe-charity` (not on the Birthdays team → 403), `describe-activity`, `compose` (no words → 400), `report-draft` and `file-report` (not a super admin → 403, already filed → 409) and `fetched` (not a linked document still to fetch → 400) run in no test. The Claude and GitHub calls would only be tested up to the point where they'd be called, since the tests never reach Claude or GitHub.
+- [x] Drop the always-blank `system` fields
+  `caller()` never sets `Env.System`, so the `"system", env.System` log fields in `photo`, `pronunciation`, `file`, `fetched` and `compose` always log `system=""`. `compose`'s rate-limit key `env.Viewer+env.System` is just the viewer. I'd remove the fields and key the limit on `env.Viewer`. Nothing anyone sees changes.
+- [ ] Read every JSON body with `serve.Decode`
+  `wiki` reads its body with `serve.Decode`. The other 13 JSON calls each repeat `json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit))` with their own error text. A malformed body sent to `search` answers 400 `send {"words": "…", "limits": {"DOCUMENT": 10}}: invalid character…`; through `serve.Decode` it would answer 400 `bad request body` (or 413 when too large). This is consistent but removes the hints, so I'm not recommending it.
+
+ian@fc.run checked: Describe every call in OpenAPI, and test that none is missing; Drop `/api/do/guest`; Loop adds guests the way Celebrate already does; Make compose's docs match who can actually call it; Rename `unsubscribe` to `subscription`; Test the calls nothing tests today; Drop the always-blank `system` fields; Read every JSON body with `serve.Decode`
