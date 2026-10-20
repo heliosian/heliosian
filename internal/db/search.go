@@ -1217,8 +1217,7 @@ func RegisterSearch(mux *http.ServeMux, s *Store, x *Searcher, tokens auth.Token
 			Words  string         `json:"words"`
 			Limits map[string]int `json:"limits"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&asked); err != nil {
-			serve.Error(w, r, access.Invalid("send {\"words\": \"…\", \"limits\": {\"DOCUMENT\": 10}}: %v", err))
+		if !serve.Decode(w, r, &asked) {
 			return
 		}
 		if strings.TrimSpace(asked.Words) == "" {

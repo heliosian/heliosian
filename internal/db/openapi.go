@@ -148,6 +148,22 @@ func failure(description string) schema {
 	return schema{"description": description, "content": schema{"text/plain": schema{"schema": schema{"type": "string"}}}}
 }
 
+func jsonBody(required []string, properties schema) schema {
+	return schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
+		"type":       "object",
+		"required":   required,
+		"properties": properties,
+	}}}}
+}
+
+func object(description string, required []string, properties schema) schema {
+	return schema{"description": description, "content": schema{"application/json": schema{"schema": schema{
+		"type":       "object",
+		"required":   required,
+		"properties": properties,
+	}}}}
+}
+
 func refusals(out schema) schema {
 	out["401"] = failure("A bearer token this server did not issue, has expired, or was signed out.")
 	out["403"] = failure("The caller is in no person's row, a spoof by someone who is not a super admin, or a write the policies refuse.")
@@ -250,6 +266,31 @@ func spec() schema {
 	schemas["SearchBundle"] = schema{"type": "object", "required": []string{"refs"}, "properties": schema{
 		"refs": schema{"type": "array", "items": schema{"$ref": "#/components/schemas/SearchRef"}, "description": "At most five matching extracts that belong together, best first: an email's or file's own, one per source however many extracts it was read in, and near-identical copies from emails or files that started no result of their own."},
 	}}
+	schemas["Sent"] = schema{"type": "object", "required": []string{"result", "sent"}, "properties": schema{
+		"result": schema{"type": "array", "items": schema{"type": "string"}, "description": "The invitation MESSAGE written, for invite; empty otherwise."},
+		"sent":   schema{"type": "integer", "description": "How many people mail was queued for."},
+	}}
+	schemas["Draft"] = schema{"type": "object", "properties": schema{
+		"list":      schema{"type": "string", "pattern": idPattern(GroupPrefix), "description": "The email list the draft edits, when it is saved already; the caller must run it."},
+		"name":      schema{"type": "string", "description": "The draft's name, for describe-group."},
+		"ruleWords": schema{"type": "array", "items": schema{"type": "string"}, "description": "Each rule in words, for describe-group."},
+		"rules": schema{"type": "array", "description": "RULE rows without a group, in order.", "items": schema{"type": "object", "properties": schema{
+			"exclude": schema{"type": "boolean"}, "target": schema{"type": "string"}, "person": schema{"type": "string"},
+			"search": schema{"type": "string"}, "replace_with": schema{"type": "string"}, "within": schema{"type": "string"},
+		}}},
+		"members": schema{"type": "array", "description": "People put on the draft or kept off it by hand.", "items": schema{"type": "object", "required": []string{"person", "member"}, "properties": schema{
+			"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)},
+			"member": schema{"type": "string", "enum": []string{"yes", "excluded"}},
+		}}},
+	}}
+	described := func(about string) schema {
+		return object("Claude's description of "+about+".", []string{"description"}, schema{"description": schema{"type": "string"}})
+	}
+	claudeFailures := func(out schema) schema {
+		out["429"] = failure("Too many Claude calls from this person this hour.")
+		out["502"] = failure("Claude could not answer right now.")
+		return refusals(out)
+	}
 	crop := schema{"type": "integer", "minimum": 0}
 	paths := schema{
 		"/api/q": schema{
@@ -396,7 +437,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Write a query from a description",
-				"description": "On the admin host alone. Asks Claude for a query in the language answering the words, and answers what it understood them to ask for and the query, blank when it found none. Nothing is run.",
+				"description": "For anyone in the directory, counted against their hourly Claude allowance. Asks Claude for a query in the language answering the words, and answers what it understood them to ask for and the query, blank when it found none. Nothing is run.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":       "object",
 					"required":   []string{"words"},
@@ -410,6 +451,197 @@ func spec() schema {
 					}}}},
 					"400": failure("No words, or Claude refused or could not answer."),
 					"429": failure("Too many Claude calls from this person this hour."),
+				}),
+			},
+		},
+		"/api/do/subscription": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Subscribe the caller to an email list's mail, or unsubscribe them",
+				"description": "For someone in the group or already unsubscribed from it. Unsubscribing puts the caller in the list's unsubscribed group, made at the first unsubscribe; subscribing takes them out. They stay a member either way. Written as the mailer.",
+				"requestBody": jsonBody([]string{"group"}, schema{
+					"group":      schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+					"subscribed": schema{"type": "boolean", "description": "true to get the list's mail again, false or absent to stop it."},
+				}),
+				"responses": refusals(schema{
+					"200": answers("The group.", "Written"),
+					"400": failure("A body that is not JSON."),
+					"404": failure("No open group the caller is in or unsubscribed from."),
+				}),
+			},
+		},
+		"/api/do/wiki": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Save a wiki page and its side cards",
+				"description": "Stores each body as markdown content and writes the page's DOCUMENT, a new one when document is blank, with its side cards as child DOCUMENTs in the order sent. When sides is sent, it is the whole set: a side card with no id is new and one left out is removed; without it, the side cards stay as they are.",
+				"requestBody": jsonBody([]string{"name"}, schema{
+					"document": schema{"type": "string", "pattern": "^$|" + idPattern(DocumentPrefix), "description": "The page to save over, blank for a new page."},
+					"parent":   schema{"type": "string", "pattern": "^$|" + idPattern(DocumentPrefix), "description": "The page it sits under, blank for the top."},
+					"slug":     schema{"type": "string"},
+					"name":     schema{"type": "string"},
+					"body":     schema{"type": "string", "description": "Markdown, at most " + strconv.Itoa(wikiLimit) + " bytes."},
+					"sides": schema{"type": "array", "items": schema{"type": "object", "required": []string{"name"}, "properties": schema{
+						"id":   schema{"type": "string", "pattern": "^$|" + idPattern(DocumentPrefix)},
+						"name": schema{"type": "string"},
+						"body": schema{"type": "string"},
+					}}},
+				}),
+				"responses": refusals(schema{
+					"200": answers("The page's DOCUMENT and its body's hash.", "Stored"),
+					"400": failure("No title, a body too long, a bad slug or parent, or a body that is not JSON."),
+				}),
+			},
+		},
+		"/api/do/draft-members": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Work out whom an unsaved email list would hold",
+				"description": "Answers the draft's effective members, each with why, and how many people each rule picks out. Writes nothing. Refused unless the caller may see the members of every group a rule names and every person named, and runs list when one is given.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": component("Draft")}}},
+				"responses": refusals(schema{
+					"200": object("Who the draft holds.", []string{"members", "ruleCounts"}, schema{
+						"members": schema{"type": "array", "items": schema{"type": "object", "required": []string{"person", "reasons"}, "properties": schema{
+							"person":  schema{"type": "string"},
+							"name":    schema{"type": "string", "description": "Their name, when the caller may see them."},
+							"reasons": schema{"type": "array", "items": schema{"type": "object", "properties": schema{"rule": schema{"type": "integer", "description": "An index into the rules sent."}, "added": schema{"type": "boolean"}}}},
+						}}},
+						"ruleCounts": schema{"type": "array", "items": schema{"type": "integer"}, "description": "How many people each rule picks out, in the rules' order."},
+					}),
+					"400": failure("A member that is neither yes nor excluded, or a body that is not JSON."),
+				}),
+			},
+		},
+		"/api/do/describe-group": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Have Claude describe an unsaved email list",
+				"description": "Takes the same draft as draft-members, with its name and its rules in words, checked the same way, and answers a description Claude writes from them and from a tally of who the draft holds by role, grade and classroom.",
+				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": component("Draft")}}},
+				"responses":   claudeFailures(schema{"200": described("the list"), "400": failure("A description too long, or a body that is not JSON.")}),
+			},
+		},
+		"/api/do/describe-activity": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Have Claude describe a volunteer activity being written",
+				"requestBody": jsonBody([]string{}, schema{
+					"title": schema{"type": "string"}, "parent": schema{"type": "string"}, "category": schema{"type": "string"},
+					"when": schema{"type": "string"}, "notes": schema{"type": "string"},
+				}),
+				"responses": claudeFailures(schema{"200": described("the activity"), "400": failure("A description too long, or a body that is not JSON.")}),
+			},
+		},
+		"/api/do/describe-charity": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Have Claude look a charity up",
+				"description": "For the Birthdays team alone (birthday_team). Answers a sentence on the charity and its donation link.",
+				"requestBody": jsonBody([]string{"name"}, schema{"name": schema{"type": "string"}, "url": schema{"type": "string", "description": "The charity's site, when known."}}),
+				"responses": claudeFailures(schema{
+					"200": object("The charity's sentence and donation link.", []string{"description", "url"}, schema{"description": schema{"type": "string"}, "url": schema{"type": "string"}}),
+					"400": failure("No name, or a body that is not JSON."),
+					"404": failure("Claude found no such charity."),
+				}),
+			},
+		},
+		"/api/do/invite": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Send a guest list's invitation to people waiting for it",
+				"description": "For an event, party or activity the caller can see. The hosts (runs_list) send it to anyone waiting, or to everyone waiting when people is empty, and may mark it sent without mailing it (skip); anyone else sends it only to people they brought.",
+				"requestBody": jsonBody([]string{"group"}, schema{
+					"group":  schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+					"people": schema{"type": "array", "items": schema{"type": "string", "pattern": idPattern(PersonPrefix)}},
+					"skip":   schema{"type": "boolean"},
+				}),
+				"responses": refusals(schema{
+					"200": answers("The invitation MESSAGE and how many it went to.", "Sent"),
+					"400": failure("Someone not waiting for the invitation, or a body that is not JSON."),
+					"404": failure("No event, party or activity the caller can see."),
+				}),
+			},
+		},
+		"/api/do/guest-mail": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Mail a guest list",
+				"description": "For the hosts (runs_list). reminder and message go to the people invited whose answer is in to (yes, no, or none for no answer) or who are named in people; update goes to everyone invited but those who said no; cancel sets the group's status to cancelled and, with notify, mails everyone invited.",
+				"requestBody": jsonBody([]string{"group", "kind"}, schema{
+					"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+					"kind":    schema{"type": "string", "enum": []string{"reminder", "message", "update", "cancel"}},
+					"to":      schema{"type": "array", "items": schema{"type": "string", "enum": []string{"yes", "no", "none"}}},
+					"people":  schema{"type": "array", "items": schema{"type": "string", "pattern": idPattern(PersonPrefix)}},
+					"subject": schema{"type": "string"},
+					"text":    schema{"type": "string", "maxLength": maxGuestWords},
+					"notify":  schema{"type": "boolean"},
+				}),
+				"responses": refusals(schema{
+					"200": answers("How many it went to.", "Sent"),
+					"400": failure("An unknown kind, words too long, a reminder or message with no subject or words, or a body that is not JSON."),
+					"404": failure("No event, party or activity the caller can see."),
+				}),
+			},
+		},
+		"/api/do/add-guests": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Add people to a guest list",
+				"description": "For the hosts (runs_list), or anyone when the group's join is others and they are eligible. Each person is someone the caller can see, by ID, or someone from outside, by name and address: the person already holding the address, else a new guest. With family, two or more new guests become one family. Anyone added who has an address and no invitation yet is sent one, always for someone not a host and with send for a host.",
+				"requestBody": jsonBody([]string{"group", "people"}, schema{
+					"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+					"people": schema{"type": "array", "items": schema{"type": "object", "properties": schema{
+						"person": schema{"type": "string", "pattern": "^$|" + idPattern(PersonPrefix)},
+						"name":   schema{"type": "string"},
+						"email":  schema{"type": "string", "format": "email"},
+					}}},
+					"guest_of": schema{"type": "string", "pattern": "^$|" + idPattern(PersonPrefix), "description": "Who brings them: the caller or someone in their household, unless the caller is a host."},
+					"family":   schema{"type": "boolean"},
+					"answer":   schema{"type": "string", "enum": []string{"", "yes"}, "description": "yes to answer yes for everyone added."},
+					"send":     schema{"type": "boolean"},
+				}),
+				"responses": refusals(schema{
+					"200": answers("How many invitations were sent.", "Sent"),
+					"400": failure("No one named, an address that is not one, an answer other than yes, or a body that is not JSON."),
+					"404": failure("No event, party or activity the caller can see, or a person they can't."),
+				}),
+			},
+		},
+		"/api/do/report-draft": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Draft a GitHub issue from a report",
+				"description": "For super admins alone. Writes nothing.",
+				"requestBody": jsonBody([]string{"report"}, schema{"report": schema{"type": "string", "pattern": idPattern(prefixOf("REPORT"))}}),
+				"responses": refusals(schema{
+					"200": object("The draft issue.", []string{"title", "body", "type", "labels", "repo", "filer"}, schema{
+						"title": schema{"type": "string"}, "body": schema{"type": "string"}, "type": schema{"type": "string"},
+						"labels": schema{"type": "array", "items": schema{"type": "string"}},
+						"repo":   schema{"type": "string"},
+						"filer":  schema{"type": "boolean", "description": "Whether this server can file on GitHub."},
+					}),
+					"400": failure("A body that is not JSON."),
+					"404": failure("No such report."),
+				}),
+			},
+		},
+		"/api/do/file-report": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "File a report as a GitHub issue",
+				"description": "For super admins alone. Files the issue as given and marks the report filed.",
+				"requestBody": jsonBody([]string{"report", "title", "type"}, schema{
+					"report": schema{"type": "string", "pattern": idPattern(prefixOf("REPORT"))},
+					"title":  schema{"type": "string"}, "body": schema{"type": "string"}, "type": schema{"type": "string"},
+					"labels": schema{"type": "array", "items": schema{"type": "string"}},
+				}),
+				"responses": refusals(schema{
+					"200": object("The issue filed.", []string{"issue"}, schema{"issue": schema{"type": "string"}}),
+					"400": failure("No title or type, too long, an email address left in, or a body that is not JSON."),
+					"404": failure("No such report."),
+					"409": failure("The report is filed already."),
+					"502": failure("GitHub would not take the issue."),
+					"503": failure("Filing on GitHub is not set up on this server."),
 				}),
 			},
 		},

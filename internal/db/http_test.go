@@ -90,11 +90,9 @@ func TestTokens(t *testing.T) {
 
 func TestGuestsNeverSignIn(t *testing.T) {
 	s, queue := sampleWithQueue(t)
-	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
-	r := httptest.NewRequest(http.MethodPost, "/api/do/guest", strings.NewReader(`{"email": "coach@example.net", "name": "Pat Coach"}`))
-	rec := httptest.NewRecorder()
-	auth.Fixed(superAdmin, mux).ServeHTTP(rec, r)
+	rec := send(t, s, queue, http.MethodPost, "application/json", superAdmin, `{"batch": [
+		{"insert": "PERSON", "as": "g", "row": {"source": "guest", "name_long_override": "Pat Coach"}},
+		{"insert": "PERSON_EMAIL", "row": {"person": "@g", "address": "coach@example.net", "primary": true, "source": "guest"}}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("adding a guest got %d %s", rec.Code, rec.Body.String())
 	}

@@ -379,8 +379,7 @@ func (f *Feedback) RegisterTriage(mux *http.ServeMux, appName func(key string) s
 			return nil, reportRequest{}, actor, env, false
 		}
 		var in reportRequest
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&in); err != nil {
-			serve.Error(w, r, access.Invalid("send the report as JSON: %v", err))
+		if !serve.Decode(w, r, &in) {
 			return nil, reportRequest{}, actor, env, false
 		}
 		report, ok := m.Table("REPORT").Get(in.Report)

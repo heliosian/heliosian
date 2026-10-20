@@ -2,8 +2,12 @@ package db
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	gotoken "go/token"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -70,6 +74,46 @@ func TestTheSpecDescribesTheQueryAPI(t *testing.T) {
 	}
 	if got := spec.Components.Schemas["MEMBER"].Properties["member"].Enum; !slices.Contains(got, "excluded") {
 		t.Errorf("MEMBER.member enum %v", got)
+	}
+}
+
+func TestTheSpecDescribesEveryDoCall(t *testing.T) {
+	route := regexp.MustCompile(`^"(?:POST )?(/api/do/[a-z-]+)"$`)
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registered := map[string]bool{}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") || name == "openapi.go" {
+			continue
+		}
+		f, err := parser.ParseFile(gotoken.NewFileSet(), name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == gotoken.STRING {
+				if m := route.FindStringSubmatch(lit.Value); m != nil {
+					registered[m[1]] = true
+				}
+			}
+			return true
+		})
+	}
+	if len(registered) == 0 {
+		t.Fatal("found no /api/do/ routes in the source")
+	}
+	spec := served(t)
+	for path := range registered {
+		if _, ok := spec.Paths[path]["post"]; !ok {
+			t.Errorf("the spec does not describe POST %s", path)
+		}
+	}
+	for path := range spec.Paths {
+		if strings.HasPrefix(path, "/api/do/") && !registered[path] {
+			t.Errorf("the spec describes %s, which nothing registers", path)
+		}
 	}
 }
 

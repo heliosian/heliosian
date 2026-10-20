@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -142,8 +141,7 @@ func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Toke
 		var asked struct {
 			Words string `json:"words"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&asked); err != nil {
-			serve.Error(w, r, access.Invalid("send {\"words\": \"…\"}: %v", err))
+		if !serve.Decode(w, r, &asked) {
 			return
 		}
 		words := strings.TrimSpace(asked.Words)
@@ -151,7 +149,7 @@ func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Toke
 			serve.Error(w, r, access.Invalid("words is required"))
 			return
 		}
-		if !c.limit.Allow(env.Viewer+env.System, at) {
+		if !c.limit.Allow(env.Viewer, at) {
 			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", claude.ErrTooMany))
 			return
 		}
@@ -165,7 +163,7 @@ func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Toke
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "compose", "viewer", env.Viewer, "system", env.System, "words", words, "query", out.Query, "took", time.Since(start).Round(time.Millisecond))
+		slog.InfoContext(r.Context(), "compose", "viewer", env.Viewer, "words", words, "query", out.Query, "took", time.Since(start).Round(time.Millisecond))
 		serve.Write(w, r, http.StatusOK, out)
 	})
 }

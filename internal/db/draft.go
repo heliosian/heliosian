@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"maps"
@@ -209,8 +208,7 @@ var roleWord = map[string]string{"students": "Student", "staff": "Staff", "paren
 
 func readDraft(w http.ResponseWriter, r *http.Request) (groupDraft, bool) {
 	var d groupDraft
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&d); err != nil {
-		serve.Error(w, r, access.Invalid("send the draft as JSON: %v", err))
+	if !serve.Decode(w, r, &d) {
 		return groupDraft{}, false
 	}
 	return d, true
@@ -280,8 +278,7 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 			return
 		}
 		var body activityDraft
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&body); err != nil {
-			serve.Error(w, r, access.Invalid("send the activity as JSON: %v", err))
+		if !serve.Decode(w, r, &body) {
 			return
 		}
 		facts := describe.ActivityFacts{Title: body.Title, Parent: body.Parent, Category: body.Category, When: body.When, Notes: body.Notes}
@@ -309,8 +306,7 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 			return
 		}
 		var body charityDraft
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&body); err != nil {
-			serve.Error(w, r, access.Invalid("send the charity as JSON: %v", err))
+		if !serve.Decode(w, r, &body) {
 			return
 		}
 		name := strings.TrimSpace(body.Name)

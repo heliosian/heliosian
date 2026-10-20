@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
@@ -12,23 +11,22 @@ import (
 	"heliosian/internal/store"
 )
 
-func registerUnsubscribe(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
-	mux.HandleFunc("POST /api/do/unsubscribe", func(w http.ResponseWriter, r *http.Request) {
+func registerSubscription(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
+	mux.HandleFunc("POST /api/do/subscription", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, tokens, now())
 		if !ok {
 			return
 		}
 		if env.Viewer == "" {
-			serve.Error(w, r, access.Invalid("only a person unsubscribes"))
+			serve.Error(w, r, access.Forbidden("only a person subscribes or unsubscribes"))
 			return
 		}
 		var asked struct {
 			Group      string `json:"group"`
 			Subscribed bool   `json:"subscribed"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&asked); err != nil {
-			serve.Error(w, r, access.Invalid("send {\"group\": \"…\", \"subscribed\": false}: %v", err))
+		if !serve.Decode(w, r, &asked) {
 			return
 		}
 		g, found := m.Table("GROUP").Get(asked.Group)

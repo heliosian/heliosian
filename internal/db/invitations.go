@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -58,8 +57,7 @@ func RegisterInvitations(mux, api *http.ServeMux, s *Store, queue *store.Queue, 
 				return
 			}
 			body := ask()
-			if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(body); err != nil {
-				serve.Error(w, r, access.Invalid("send the request as JSON: %v", err))
+			if !serve.Decode(w, r, body) {
 				return
 			}
 			out, err := run(r.Context(), m, env, actor, body)

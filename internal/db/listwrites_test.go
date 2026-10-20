@@ -8,6 +8,26 @@ import (
 	"heliosian/internal/access"
 )
 
+func TestALoopListIsMadeWithANewGuestOnIt(t *testing.T) {
+	const everyone = "grp00000000004"
+	s, queue := sampleWithQueue(t)
+	ids, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{
+		{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "name": "Coaches Managers", "status": "open", "added_by": parent}},
+		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": parent, "member": "yes"}},
+		{Insert: "GROUP", As: "list", Row: map[string]any{"kind": "group", "name": "Coaches", "slug": "coaches", "status": "open", "listed": true, "members_visible_to": everyone, "posting": "members", "replying": "members", "managed_by": "@managers", "added_by": parent}},
+		{Insert: "PERSON", As: "guest0", Row: map[string]any{"source": "guest", "name_long_override": "Pat Coach"}},
+		{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@guest0", "address": "coach@example.net", "primary": true, "source": "guest"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@list", "person": "@guest0", "member": "yes"}},
+	}})
+	if err != nil {
+		t.Fatalf("a parent can't make a list with a new guest on it in one batch: %v", err)
+	}
+	if !s.Model().effectivelyIn(ids[3], ids[4]) {
+		t.Error("the new guest is not on the new list")
+	}
+}
+
 func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	const everyone, hummingbirds, hummingbirdsParents, nightManagers, picnic, picnicManagers = "grp00000000004", "grp00000000010", "grp00000000030", "grp00000000513", "grp00000000040", "grp00000000041"
 	s, queue := sampleWithQueue(t)

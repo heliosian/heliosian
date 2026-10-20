@@ -602,15 +602,22 @@ function aliasEdits(ed, group) {
   return edits;
 }
 
-async function addGuests(ed, group) {
+async function guestEdits(ed, group) {
   const edits = [];
-  for (const x of ed.draft.guests) {
-    const {result} = await api('POST', '/api/do/guest', {email: x.email, name: x.name});
-    edits.push({insert: 'MEMBER', row: {group, person: result[0], member: 'yes'}});
+  for (const [i, x] of ed.draft.guests.entries()) {
+    const {person} = await api('POST', '/api/do/person-at', {address: x.email});
+    if (person) {
+      edits.push({insert: 'MEMBER', row: {group, person, member: 'yes'}});
+      continue;
+    }
+    const as = `guest${i}`;
+    edits.push(
+      {insert: 'PERSON', as, row: x.name ? {source: 'guest', name_long_override: x.name} : {source: 'guest'}},
+      {insert: 'PERSON_EMAIL', row: {person: '@' + as, address: x.email, primary: true, source: 'guest'}},
+      {insert: 'MEMBER', row: {group, person: '@' + as, member: 'yes'}},
+    );
   }
-  if (edits.length) {
-    await write(edits);
-  }
+  return edits;
 }
 
 async function makeGroup(ed) {
@@ -636,11 +643,9 @@ async function makeGroup(ed) {
   if (draft.visibility === 'members') {
     edits.push({set: '@list', cells: {visible_to: '@list'}});
   }
-  edits.push(...ruleEdits(ed, '@list'), ...handEdits(ed, '@list'), ...aliasEdits(ed, '@list'));
+  edits.push(...ruleEdits(ed, '@list'), ...handEdits(ed, '@list'), ...aliasEdits(ed, '@list'), ...await guestEdits(ed, '@list'));
   const {result} = await write(edits);
-  const id = result[edits.findIndex(e => e.as === 'list')];
-  await addGuests(ed, id);
-  return id;
+  return result[edits.findIndex(e => e.as === 'list')];
 }
 
 async function changeGroup(ed) {
@@ -661,11 +666,10 @@ async function changeGroup(ed) {
     cells.slug = draft.slug;
   }
   const edits = Object.keys(cells).length ? [{set: g.id, cells}] : [];
-  edits.push(...ruleEdits(ed, g.id), ...handEdits(ed, g.id), ...aliasEdits(ed, g.id));
+  edits.push(...ruleEdits(ed, g.id), ...handEdits(ed, g.id), ...aliasEdits(ed, g.id), ...await guestEdits(ed, g.id));
   if (edits.length) {
     await write(edits);
   }
-  await addGuests(ed, g.id);
 }
 
 function askKeepAddress(old, then) {
@@ -804,7 +808,7 @@ function unsubscribeButton(g) {
   const toggle = button(g.unsubscribed ? 'Resubscribe' : 'Unsubscribe', null, 'button button-secondary', async () => {
     toggle.disabled = true;
     try {
-      await api('POST', '/api/do/unsubscribe', {group: g.id, subscribed: g.unsubscribed});
+      await api('POST', '/api/do/subscription', {group: g.id, subscribed: g.unsubscribed});
       await load();
       toast(g.unsubscribed ? 'Resubscribed' : 'Unsubscribed');
     } catch (err) {

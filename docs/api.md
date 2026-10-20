@@ -6,7 +6,7 @@ Every app's pages read and write the data model, and nothing else, through the s
 
 `internal/app.NewCore` (`internal/app/wiring.go`) builds one router for `/api/`, and `Core.Handlers` sends every request whose path starts `/api/` to it, whichever host it came to, after the sign-in gate and request logging (`withAPI` in `internal/app/server.go`). An app's own mux never sees an `/api/` path, so a route there would never be reached: every API route is on every host, and a page calls its own origin whatever app it is. Each route checks for itself who may use it; none relies on the host it was reached through. The router holds:
 
-- the data model's API (`db.Register` in `internal/db/http.go`): `QUERY` and `POST /api/q`, the `/api/do/` calls that act on any data (`photo`, `pronunciation`, `file`, `fetched`, `person-at`, `guest`, `unsubscribe`, `wiki`), `GET /api/blob/{id}/{column}`, `GET /api/openapi.json`, `GET /api/policies` and `GET /api/explain/{id}`;
+- the data model's API (`db.Register` in `internal/db/http.go`): `QUERY` and `POST /api/q`, the `/api/do/` calls that act on any data (`photo`, `pronunciation`, `file`, `fetched`, `person-at`, `subscription`, `wiki`), `GET /api/blob/{id}/{column}`, `GET /api/openapi.json`, `GET /api/policies` and `GET /api/explain/{id}`;
 - search, `POST /api/do/search` (`db.RegisterSearch`);
 - the drafting calls (`db.RegisterDrafts` in `internal/db/draft.go`): `POST /api/do/draft-members`, the rule editor's preview of whom a draft holds, and `describe-group`, `describe-activity` and `describe-charity`, Claude's descriptions;
 - the guest-list calls, `POST /api/do/invite`, `/api/do/add-guests` and `/api/do/guest-mail` (`RegisterInvitations`, `docs/datamodel.md`, Guest lists);

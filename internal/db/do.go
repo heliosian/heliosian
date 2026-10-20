@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -37,8 +36,7 @@ type stored struct {
 
 func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	registerWiki(mux, s, queue, pics, tokens, now)
-	registerGuest(mux, s, queue, tokens, now)
-	registerUnsubscribe(mux, s, queue, tokens, now)
+	registerSubscription(mux, s, queue, tokens, now)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
@@ -86,7 +84,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "system", env.System, "person", person, "group", group, "original", row["original"])
+		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "person", person, "group", group, "original", row["original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
 	})
 	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +132,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "system", env.System, "of", id, "name", updated["pronunciation_original"])
+		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "of", id, "name", updated["pronunciation_original"])
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(rec.name, "."+rec.ext)})
 	})
 	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +176,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a file", "viewer", env.Viewer, "system", env.System, "document", document, "hash", hash, "kind", root["kind"], "mime", mimeType)
+		slog.InfoContext(r.Context(), "added a file", "viewer", env.Viewer, "document", document, "hash", hash, "kind", root["kind"], "mime", mimeType)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{document}, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/person-at", func(w http.ResponseWriter, r *http.Request) {
@@ -189,8 +187,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		var ask struct {
 			Address string `json:"address"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&ask); err != nil {
-			serve.Error(w, r, access.Invalid("send the request as JSON: %v", err))
+		if !serve.Decode(w, r, &ask) {
 			return
 		}
 		serve.Write(w, r, http.StatusOK, map[string]string{"person": m.personAt(ask.Address)})
@@ -216,7 +213,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "filled a linked document", "viewer", env.Viewer, "system", env.System, "document", id, "hash", answer.Hash, "fetch", answer.Fetch, "why", answer.Why)
+		slog.InfoContext(r.Context(), "filled a linked document", "viewer", env.Viewer, "document", id, "hash", answer.Hash, "fetch", answer.Fetch, "why", answer.Why)
 		serve.Write(w, r, http.StatusOK, answer)
 	})
 }

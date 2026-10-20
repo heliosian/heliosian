@@ -41,9 +41,6 @@ Last verified: bff8f634
 - Audit GCS buckets and object path layout
   The media bucket's prefixes have accreted over time. Check that each one still needs to be separate, that naming is consistent and nothing is orphaned, and that `docs/storage.md` matches.
   Issue: https://github.com/heliosian/heliosian/issues/181
-- Audit /api/do endpoints
-  The `/api/do/` verbs grew one at a time. Review them for consistent naming and shapes, who may call each, whether each should be a verb at all, OpenAPI coverage and tests.
-  Issue: https://github.com/heliosian/heliosian/issues/180
 - Extract an image of each page of a PDF document
   No picture of any PDF page is kept. Render each page to an image, stored as a child document, using a pure-Go renderer.
   Issue: https://github.com/heliosian/heliosian/issues/179

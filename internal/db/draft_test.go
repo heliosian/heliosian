@@ -14,34 +14,42 @@ import (
 	"heliosian/internal/describe"
 )
 
-func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
+func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	mux := http.NewServeMux()
 	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
-	ask := func(as, body string) (int, string) {
+	personAt := func(as, address string) string {
 		t.Helper()
-		r := httptest.NewRequest(http.MethodPost, "/api/do/guest", strings.NewReader(body))
-		rec := httptest.NewRecorder()
-		auth.Fixed(as, mux).ServeHTTP(rec, r)
-		var out written
-		json.Unmarshal(rec.Body.Bytes(), &out)
-		if len(out.Result) == 0 {
-			return rec.Code, ""
+		rec := doCall(t, mux, as, "/api/do/person-at", `{"address": "`+address+`"}`)
+		var out struct {
+			Person string `json:"person"`
 		}
-		return rec.Code, out.Result[0]
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); rec.Code != http.StatusOK || err != nil {
+			t.Fatalf("person-at answered %d %s", rec.Code, rec.Body)
+		}
+		return out.Person
 	}
-	code, coach := ask("maya.lindqvist@example.org", `{"email": "Coach@Example.net", "name": "Pat  Coach"}`)
-	if code != http.StatusOK || coach == "" {
-		t.Fatalf("a super admin can't add a guest: %d", code)
+	addGuest := func(as, address string) *httptest.ResponseRecorder {
+		t.Helper()
+		return send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [
+			{"insert": "PERSON", "as": "g", "row": {"source": "guest", "name_long_override": "Pat Coach"}},
+			{"insert": "PERSON_EMAIL", "row": {"person": "@g", "address": "`+address+`", "primary": true, "source": "guest"}}]}`)
 	}
+	if got := personAt(superAdmin, "coach@example.net"); got != "" {
+		t.Fatalf("an address nobody holds answered %s", got)
+	}
+	if rec := addGuest(superAdmin, "coach@example.net"); rec.Code != http.StatusOK {
+		t.Fatalf("a super admin can't add a guest: %d %s", rec.Code, rec.Body)
+	}
+	coach := personAt(superAdmin, " Coach@Example.net ")
 	if p, _ := s.Model().Table("PERSON").Get(coach); p["source"] != "guest" || p["name_long_override"] != "Pat Coach" {
 		t.Fatalf("the guest reads %v", p)
 	}
-	if _, again := ask("maya.lindqvist@example.org", `{"email": "coach@example.net"}`); again != coach {
-		t.Fatalf("the same address made a second guest: %s", again)
+	if got := personAt("rowan.ashdown@example.org", "coach@example.net"); got != coach {
+		t.Fatalf("someone who can't read the guest was answered %q", got)
 	}
-	if _, rowan := ask("maya.lindqvist@example.org", `{"email": "rowan.ashdown@example.org"}`); rowan != parent {
-		t.Fatalf("a directory address answered %s", rowan)
+	if got := personAt(superAdmin, "rowan.ashdown@example.org"); got != parent {
+		t.Fatalf("a directory address answered %s", got)
 	}
 	apply(t, s, queue, []Edit{
 		{Delete: memberRow(t, s, "grp00000000513", parent)},
@@ -49,12 +57,12 @@ func TestAGuestIsFoundOrAddedByAddress(t *testing.T) {
 		{Delete: memberRow(t, s, "grp00000020075", parent)},
 		{Set: tacoNight, Cells: map[string]any{"join": "none"}},
 	})
-	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusForbidden {
-		t.Fatalf("someone who runs no group, with no party to bring a guest to, added a guest: %d", code)
+	if rec := addGuest("rowan.ashdown@example.org", "friend@example.net"); rec.Code != http.StatusForbidden {
+		t.Fatalf("someone who runs no group, with no party to bring a guest to, added a guest: %d", rec.Code)
 	}
 	apply(t, s, queue, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "direct"}}})
-	if code, _ := ask("rowan.ashdown@example.org", `{"email": "friend@example.net"}`); code != http.StatusOK {
-		t.Fatalf("someone who sees a party they could buy at can't add a guest to bring: %d", code)
+	if rec := addGuest("rowan.ashdown@example.org", "friend@example.net"); rec.Code != http.StatusOK {
+		t.Fatalf("someone who sees a party they could buy at can't add a guest to bring: %d %s", rec.Code, rec.Body)
 	}
 }
 
