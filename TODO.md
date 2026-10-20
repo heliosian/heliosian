@@ -53,9 +53,6 @@ Last verified: bff8f634
 - Show a loop email's actual message to the list's members and managers
   Loop pages show only an email's metadata, though the raw message is stored. Show the rendered message and its attachments to the list's members and managers.
   Issue: https://github.com/heliosian/heliosian/issues/168
-- Add hca@ as a valid account for logging in
-  Allow the hca@ account to sign in to Heliosian sites and host events, to help with the newsletter and sending invites.
-  Issue: https://github.com/heliosian/heliosian/issues/165
 - Uploaded photos are stored and served with their EXIF metadata, including GPS location
   Uploaded images are served with their EXIF metadata, GPS location included. Keep the original unserved, serve a re-encoded copy with no metadata, and move cropping to the server.
   Issue: https://github.com/heliosian/heliosian/issues/159
