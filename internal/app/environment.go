@@ -8,7 +8,6 @@ import (
 	run "google.golang.org/api/run/v2"
 
 	"heliosian/internal/artifacts"
-	"heliosian/internal/blob"
 	"heliosian/internal/db"
 	"heliosian/internal/env"
 	"heliosian/internal/feedback"
@@ -75,8 +74,8 @@ func listMail(sessionKey string) db.ListMailConfig {
 	return db.ListMailConfig{Sender: mail.NewMailgun(mailgunKey(), ""), SigningKey: mailgunSigningKey(), Key: []byte(sessionKey), Base: "https://loop.heliosian.com"}
 }
 
-func artifactsMail(bucket *blob.Bucket) artifacts.Inbox {
-	return artifacts.Inbox{SigningKey: mailgunSigningKey(), Bucket: bucket}
+func artifactsMail() artifacts.Inbox {
+	return artifacts.Inbox{SigningKey: mailgunSigningKey()}
 }
 
 func ImageSearchKeys() imagesearch.Search {

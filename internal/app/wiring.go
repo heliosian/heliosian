@@ -369,7 +369,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Asker:         ask.NewClaude(anthropicKey),
 		Composer:      db.NewComposer(anthropicKey, spend),
 		Embedder:      embedder,
-		ArtifactsMail: artifactsMail(bucket),
+		ArtifactsMail: artifactsMail(),
 		Ops:           OpsDeps(github, env.Required("ANTHROPIC_ADMIN_KEY")),
 		Hooks:         ops.Hooks{GitHubSecret: []byte(env.Required("GITHUB_WEBHOOK_SECRET")), Audience: "https://admin." + site + ops.BuildHookPath, PushAccount: runtimeAccount},
 	})

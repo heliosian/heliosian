@@ -174,7 +174,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		ListMail:      db.ListMailConfig{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},
 		Asker:         ask.NewClaude("sample"),
 		Embedder:      embedder,
-		ArtifactsMail: artifacts.Inbox{Bucket: bucket},
+		ArtifactsMail: artifacts.Inbox{},
 		Composer:      db.NewComposer("sample", claude.NewLimiter()),
 		Ops:           app.OpsDeps(&feedback.GitHubApp{ID: "sample", PrivateKey: githubKey}, "sample"),
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},

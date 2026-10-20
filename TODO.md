@@ -12,6 +12,9 @@ Last verified: bff8f634
 
 # Data model
 
+- Keep every stored byte in CONTENT
+  Only documents and mail keep their bytes as `CONTENT` rows under `content/`. Every other Blob cell names an object in a folder of its own: `PHOTO.original`, `reencode`, `crop` and `thumbnail` under `photos/`, `PERSON` and `GROUP` `pronunciation_original` and `pronunciation` under `pronunciation/`, `GROUP.flyer` in an app image folder, `REPORT.screenshot` under `feedback/`. Image search keeps its records, previews and imported pictures under `stock/` by source ID, wiki pages name their pictures under `wiki-images/`, and the app image folders (`imageFolders`) hold uploads a page posts again to `/api/do/photo`, plus `-thumb.jpg` objects beside them.
+  Make each of those a reference to a `CONTENT` row: Blob columns become `CONTENT` refs, the stock record holds the `CONTENT` IDs of its preview and picture, wiki pages name pictures by `CONTENT` ID, and uploads become `CONTENT` rows, so the app image folders, `imageFolders`, the per-app folder routes and the `-thumb.jpg` objects go. `CONTENT`'s read policy gains a clause for each referencing column, keeping `PHOTO.original` and `pronunciation_original` private. The content sweeper then deletes whatever nothing references, which also clears the 1,735 unreferenced objects in `photos/`. Move the existing objects with a one-off `local/` tool run after the deploy.
 - Family names are recomputed on every PERSON and MEMBER change
   `personFamilyNames` and `memberFamilyName` (`internal/db/trigger.go`) have no column guard, so a phone-number edit recomputes the names of every family the person is in and writes nothing. A guard on the columns `familyName` reads (`name_long`, `hidden`, `deactivated`, `consent`, `source`, the grade columns) would skip that; unmeasured.
 
@@ -38,9 +41,6 @@ Last verified: bff8f634
 - Give documents thumbnails
   Documents have no preview image. Make a thumbnail for images, PDFs and fetched pages in a worker off the request path, probably attached to `CONTENT`.
   Issue: https://github.com/heliosian/heliosian/issues/182
-- Audit GCS buckets and object path layout
-  The media bucket's prefixes have accreted over time. Check that each one still needs to be separate, that naming is consistent and nothing is orphaned, and that `docs/storage.md` matches.
-  Issue: https://github.com/heliosian/heliosian/issues/181
 - Extract an image of each page of a PDF document
   No picture of any PDF page is kept. Render each page to an image, stored as a child document, using a pure-Go renderer.
   Issue: https://github.com/heliosian/heliosian/issues/179
