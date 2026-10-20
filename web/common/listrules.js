@@ -4,7 +4,7 @@ import {queries} from '/rail.js';
 
 const whoWords = {'': 'the people', parents: 'their parents', children: 'their children', household: 'their households'};
 
-const kindWords = {group: 'group', classroom: 'classroom', grade: 'grade', band: 'band', crew: 'crew', department: 'department', activity: 'activity', party: 'party', event: 'event'};
+const kindWords = {group: 'group', classroom: 'classroom', grade: 'grade', gradeband: 'gradeband', crew: 'crew', department: 'department', activity: 'activity', party: 'party', event: 'event'};
 
 const roleSlugs = ['students', 'parents', 'staff', 'adults'];
 

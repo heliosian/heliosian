@@ -35,7 +35,7 @@ var listGroups = map[string][]string{
 	"chat2":               {"everyone"},
 }
 
-var bandLists = map[string]string{"hawksandfalcons": "halcons-parents", "jaysandravens": "jayvens-parents", "condorsandospreys": "cospreys-parents"}
+var gradebandLists = map[string]string{"hawksandfalcons": "halcons-parents", "jaysandravens": "jayvens-parents", "condorsandospreys": "cospreys-parents"}
 
 var schoolYear = regexp.MustCompile(`^\d{4}-\d{2}\.`)
 
@@ -151,7 +151,7 @@ func (m *Model) mailGroups(list string) ([]string, error) {
 	if slugs, ok := listGroups[name]; ok {
 		return m.groupsWhere(func(g map[string]string) bool { return g["kind"] == "group" && slices.Contains(slugs, g["slug"]) }, len(slugs), name)
 	}
-	if slug, ok := bandLists[name]; ok {
+	if slug, ok := gradebandLists[name]; ok {
 		return m.groupsWhere(func(g map[string]string) bool { return g["kind"] == "group" && g["slug"] == slug }, 1, name)
 	}
 	room := schoolYear.ReplaceAllString(name, "")

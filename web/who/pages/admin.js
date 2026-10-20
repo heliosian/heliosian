@@ -27,8 +27,8 @@ async function fetchState() {
     q('(from PERSON (where (!= source "guest") (in id (members (slug "everyone")))) (order name_sort asc))'),
     q('(from PERSON_EMAIL (where primary))'),
     q('(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group))'),
-    q('(from GROUP (where (or (in kind "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))'),
-    q('(from MEMBER (where (in group (select GROUP.id (= kind "group") (= parent.kind "band")))))'),
+    q('(from GROUP (where (or (in kind "classroom" "grade" "gradeband" "crew" "department") (and (= kind "group") (= parent.kind "gradeband")))) (order order asc name asc))'),
+    q('(from MEMBER (where (in group (select GROUP.id (= kind "group") (= parent.kind "gradeband")))))'),
     q('(from PHOTO (where ready (or (= group.kind "classroom") (= group.kind "grade"))) (order order asc))'),
     q('(from SETTING (where (= app "platform")))'),
   ]);
@@ -61,7 +61,7 @@ async function fetchState() {
     groups: byId(groupRows),
     classrooms: ofKind('classroom'),
     grades: ofKind('grade'),
-    bands: ofKind('band'),
+    gradebands: ofKind('gradeband'),
     crews: ofKind('crew'),
     departments: ofKind('department'),
     roomParents: groupRows.filter(g => g.kind === 'group' && g.parent),
@@ -125,7 +125,7 @@ function swatch(title, value) {
 }
 
 function staffColorCard() {
-  const node = card('Staff color', 'Used for staff, and for anyone else (like a parent) with no grade-band color to inherit.');
+  const node = card('Staff color', 'Used for staff, and for anyone else (like a parent) with no gradeband color to inherit.');
   const row = el('div', 'image-row');
   const status = el('span', 'status');
   const input = swatch('Staff color', setting('Staff Color').value);
@@ -416,7 +416,7 @@ const studentOverrides = () => overridesPanel({
 
 const parentOverrides = () => overridesPanel({
   title: 'Find a parent',
-  hint: 'Override a parent’s names and phone, and make them a band’s room parent. The phone override is never shown back here: leave it blank to keep it, and the field shows what the directory shows.',
+  hint: 'Override a parent’s names and phone, and make them a gradeband’s room parent. The phone override is never shown back here: leave it blank to keep it, and the field shows what the directory shows.',
   filter: p => p.isParent,
   fields: [...nameFields, 'phone_override'],
   roomParent: true,

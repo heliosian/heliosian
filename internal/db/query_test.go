@@ -55,11 +55,11 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 	m := sample(t).Model()
 	root := trace.New("test")
-	bands := `(select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band"))))`
+	gradebands := `(select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "gradeband"))))`
 	queries := []*Query{}
 	for _, src := range []string{
-		`(from EFFECTIVE_MEMBER (where (in group ` + bands + `)) (columns group person))`,
-		`(from GROUP @g (where (in id ` + bands + `) (sidebar_group @g)))`,
+		`(from EFFECTIVE_MEMBER (where (in group ` + gradebands + `)) (columns group person))`,
+		`(from GROUP @g (where (in id ` + gradebands + `) (sidebar_group @g)))`,
 		`(from GROUP @g (where (sidebar_group @g) (= kind "event")))`,
 		`(from GROUP @g (where (implementation_only @g)))`,
 	} {
@@ -81,7 +81,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 		}
 	}
 	if passes["GROUP"] != 1 {
-		t.Errorf("GROUP was scanned %d times for the bands select, want once: %v", passes["GROUP"], passes)
+		t.Errorf("GROUP was scanned %d times for the gradebands select, want once: %v", passes["GROUP"], passes)
 	}
 	for _, table := range []string{"RULE", "APP", "WIDGET", "PERSON"} {
 		if passes[table] != 0 {
@@ -506,7 +506,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("Who? admins are %v", got)
 	}
 	if got := effective(t, s, "grp00000000012"); !slices.Equal(got, []string{"per00000000001", "per00000000003", "per00000020009", "per00000020024", "per00000020036", "per00000020043", "per00000020054", "per00000020068", "per00000020081", "per00000020090"}) {
-		t.Fatalf("the Jayvens band, through its grades and classrooms, holds %v", got)
+		t.Fatalf("the Jayvens gradeband, through its grades and classrooms, holds %v", got)
 	}
 	if got := effective(t, s, "grp00000000040"); !slices.Equal(got, []string{"per00000000002", "per00000000003", "per00000000004"}) {
 		t.Fatalf("the picnic holds %v", got)

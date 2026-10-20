@@ -85,7 +85,7 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 		{"helios_whoami", `{}`, []string{`"id":"` + rowan + `"`, `"roles":["parent"]`, `"Ashdown Family"`, `"Juni Ashdown"`, `"roles":["student"]`, `"International Night"`, `"lead":true`, `"rowan@example.com"`}, false},
 		{"helios_find_people", `{"role": "staff"}`, []string{`"Maya Lindqvist"`, `"job_title":"Teacher"`, `"classroom":"Hummingbirds"`, `"email":"maya.lindqvist@example.org"`}, false},
 		{"helios_find_people", `{}`, []string{"name at least one"}, true},
-		{"helios_classroom", `{"name": "Hummingbirds"}`, []string{`"band":"Jayvens"`, `"color":"#5b8def"`, `"grades":["3","4"]`, `"teachers":[{"id":"` + maya, `"Robins"`, `"Juni Ashdown"`, `"Jayvens Room Parents"`, `"Rowan Ashdown"`}, false},
+		{"helios_classroom", `{"name": "Hummingbirds"}`, []string{`"gradeband":"Jayvens"`, `"color":"#5b8def"`, `"grades":["3","4"]`, `"teachers":[{"id":"` + maya, `"Robins"`, `"Juni Ashdown"`, `"Jayvens Room Parents"`, `"Rowan Ashdown"`}, false},
 		{"helios_classroom", `{}`, []string{`"Hummingbirds"`, `"Maya Lindqvist"`}, false},
 		{"helios_classroom", `{"name": "Penguins"}`, []string{"no classroom named"}, true},
 		{"helios_group", `{"id": "` + ashdown + `"}`, []string{`"roles":["parent"]`, `"roles":["student"]`, `"memberCount":4`}, false},

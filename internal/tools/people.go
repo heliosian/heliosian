@@ -397,12 +397,12 @@ type crewOut struct {
 	Students []member `json:"students"`
 }
 
-type bandGroup struct {
+type gradebandGroup struct {
 	named
 	Members []member `json:"members"`
 }
 
-var classroom = define("helios_classroom", "Looking at a classroom", "One Helios School classroom by name: its band, color and grades, its teachers with their job titles, its crews each with its teachers and students, its students with their grade and crew, and its band's own groups with their members - the band's room parents. Without a name, every classroom in brief with its band and teachers.", func(c *call, in classroomIn) (any, error) {
+var classroom = define("helios_classroom", "Looking at a classroom", "One Helios School classroom by name: its gradeband, color and grades, its teachers with their job titles, its crews each with its teachers and students, its students with their grade and crew, and its gradeband's own groups with their members - the gradeband's room parents. Without a name, every classroom in brief with its gradeband and teachers.", func(c *call, in classroomIn) (any, error) {
 	name := strings.TrimSpace(in.Name)
 	conds := where(eq("kind", "classroom"))
 	if name != "" {
@@ -422,12 +422,12 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 			if err != nil {
 				return nil, err
 			}
-			out = append(out, map[string]any{"classroom": c.named("GROUP", room), "band": res.Resources["GROUP"][room["parent"]]["name"], "color": room["color"], "teachers": teachers})
+			out = append(out, map[string]any{"classroom": c.named("GROUP", room), "gradeband": res.Resources["GROUP"][room["parent"]]["name"], "color": room["color"], "teachers": teachers})
 		}
 		return out, nil
 	}
 	room := rooms[0]
-	band := res.Resources["GROUP"][room["parent"]]
+	gradeband := res.Resources["GROUP"][room["parent"]]
 	teachers, err := c.inClassroom("classroom", room["id"], "staff")
 	if err != nil {
 		return nil, err
@@ -459,9 +459,9 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 		}
 		crews = append(crews, crewOut{named: c.named("GROUP", crew), Teachers: crewTeachers, Students: crewStudents})
 	}
-	bandGroups := []bandGroup{}
-	if band != nil {
-		under, _, err := c.rows(scan("GROUP", where(eq("parent", band["id"]), eq("kind", "group")), asc("name")))
+	gradebandGroups := []gradebandGroup{}
+	if gradeband != nil {
+		under, _, err := c.rows(scan("GROUP", where(eq("parent", gradeband["id"]), eq("kind", "group")), asc("name")))
 		if err != nil {
 			return nil, err
 		}
@@ -470,12 +470,12 @@ var classroom = define("helios_classroom", "Looking at a classroom", "One Helios
 			if err != nil {
 				return nil, err
 			}
-			bandGroups = append(bandGroups, bandGroup{named: c.named("GROUP", g), Members: members})
+			gradebandGroups = append(gradebandGroups, gradebandGroup{named: c.named("GROUP", g), Members: members})
 		}
 	}
-	out := map[string]any{"classroom": c.named("GROUP", room), "color": room["color"], "grades": grades, "teachers": teachers, "crews": crews, "students": students, "bandGroups": bandGroups}
-	if band != nil {
-		out["band"] = band["name"]
+	out := map[string]any{"classroom": c.named("GROUP", room), "color": room["color"], "grades": grades, "teachers": teachers, "crews": crews, "students": students, "gradebandGroups": gradebandGroups}
+	if gradeband != nil {
+		out["gradeband"] = gradeband["name"]
 	}
 	return out, nil
 })

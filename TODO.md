@@ -35,9 +35,6 @@ Last verified: bff8f634
 - Wiki: keep each page's edit history
   Wiki saves overwrite the page's content and the old version is swept away. Record every save as a revision, with a History view, diffs between revisions, and restore.
   Issue: https://github.com/heliosian/heliosian/issues/184
-- Say "gradeband" everywhere the code, data, prompts and docs say "band" or "grade band"
-  The grade-pair groups are called band, grade band, GradeBand and Gradeband in different places. Use "gradeband" everywhere, including renaming the `GROUP.kind` value `band` to `gradeband` and moving existing rows over.
-  Issue: https://github.com/heliosian/heliosian/issues/183
 - Give documents thumbnails
   Documents have no preview image. Make a thumbnail for images, PDFs and fetched pages in a worker off the request path, probably attached to `CONTENT`.
   Issue: https://github.com/heliosian/heliosian/issues/182

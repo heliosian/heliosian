@@ -21,7 +21,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 
 - **Copies that disagree.** Two copies of one helper that now behave differently, such as a size limit, how a blank cell is read, whether spaces are trimmed, whether an address needs an `@`, a default duration, a timeout, or a status code. Each difference is either a parameter that should be explicit or a bug in one copy. The finding says which.
 - **Values that vary by app when nothing chose them.** z-indexes, drawer widths, hover shades, toast durations, which log fields get written, which fields a response returns.
-- **Rules re-derived in a second place.** Ask's tools, the share cards, the toolbar badges and the calendar's linked events each restate what the owning app decides: visibility, "full", date parsing, bands. Put the two side by side against the same input and check they give the same answer.
+- **Rules re-derived in a second place.** Ask's tools, the share cards, the toolbar badges and the calendar's linked events each restate what the owning app decides: visibility, "full", date parsing, gradebands. Put the two side by side against the same input and check they give the same answer.
 - **The same fact checked two ways.** Admin rights checked with alias resolution in one app and against the raw sign-in address in another. Permission rules decided separately in each copy instead of once.
 
 ### Layering

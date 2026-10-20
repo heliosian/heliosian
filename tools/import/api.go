@@ -64,13 +64,13 @@ func (c client) read() (*state, error) {
 	if st.photos, _, err = c.table("PHOTO"); err != nil {
 		return nil, err
 	}
-	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "band", "department"), roleGroup("kind", "slug"), parentsGroup("kind", "slug"))); err != nil {
+	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "gradeband", "department"), roleGroup("kind", "slug"), parentsGroup("kind", "slug"))); err != nil {
 		return nil, err
 	}
 	if st.members, _, err = c.table("MEMBER", or(in("group.kind", "family"), roleGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
-	if st.rules, _, err = c.table("RULE", or(in("group.kind", "band"), parentsGroup("group.kind", "group.slug"))); err != nil {
+	if st.rules, _, err = c.table("RULE", or(in("group.kind", "gradeband"), parentsGroup("group.kind", "group.slug"))); err != nil {
 		return nil, err
 	}
 	if st.aliases, _, err = c.table("ALIAS"); err != nil {

@@ -6,13 +6,13 @@ import {photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeopl
 import {fromURL, breadcrumbs} from '../crumbs.js';
 import {render, notFound} from '/router.js';
 
-function gradesOf(band) {
-  return model.grades.filter(g => g.parent === band.id);
+function gradesOf(gradeband) {
+  return model.grades.filter(g => g.parent === gradeband.id);
 }
 
-function bandGroups() {
-  const groups = model.bands
-    .map(band => ({band, grades: gradesOf(band)}))
+function gradebandGroups() {
+  const groups = model.gradebands
+    .map(gradeband => ({gradeband, grades: gradesOf(gradeband)}))
     .filter(group => group.grades.length)
     .sort((a, b) => model.grades.indexOf(a.grades[0]) - model.grades.indexOf(b.grades[0]));
   for (const group of groups) {
@@ -97,9 +97,9 @@ function counted(n) {
 function renderClassroomsList(list) {
   const q = state.q;
   let count = 0;
-  for (const group of bandGroups()) {
+  for (const group of gradebandGroups()) {
     const rows = model.classrooms
-      .filter(c => c.parent === group.band.id)
+      .filter(c => c.parent === group.gradeband.id)
       .filter(c => c.name.toLowerCase().includes(q));
     if (!rows.length) {
       continue;
@@ -119,7 +119,7 @@ function renderClassroomsList(list) {
 function renderGradesList(list) {
   const q = state.q;
   let count = 0;
-  for (const group of bandGroups()) {
+  for (const group of gradebandGroups()) {
     const rows = group.grades.filter(g => g.name.toLowerCase().includes(q));
     if (!rows.length) {
       continue;
@@ -156,8 +156,8 @@ function kidsSummary(parent) {
 function renderRoomParents(list) {
   const q = state.q;
   let count = 0;
-  for (const group of bandGroups()) {
-    const parents = roomParentsOf(group.band).filter(p => p.name_show.toLowerCase().includes(q));
+  for (const group of gradebandGroups()) {
+    const parents = roomParentsOf(group.gradeband).filter(p => p.name_show.toLowerCase().includes(q));
     if (!parents.length) {
       continue;
     }

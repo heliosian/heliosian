@@ -97,7 +97,7 @@ export function buildCalendar(a) {
   const household = rowsOf(a.household, 'PERSON');
   const nameOf = id => id === me.id ? 'You' : ((household.find(p => p.id === id) || {}).name_short || 'Someone');
   const classroomRows = rowsOf(a.classrooms, 'GROUP');
-  const classrooms = classroomRows.map(c => ({id: c.id, name: c.name, slug: c.slug, band: c.parent ? a.classrooms.resources.GROUP[c.parent].name : '', grades: [], crews: []}));
+  const classrooms = classroomRows.map(c => ({id: c.id, name: c.name, slug: c.slug, gradeband: c.parent ? a.classrooms.resources.GROUP[c.parent].name : '', grades: [], crews: []}));
   const classroomName = Object.fromEntries(classrooms.map(c => [c.id, c.name]));
   const photos = by(rowsOf(a.photos, 'PHOTO'), 'group');
   const imageOf = id => photos[id] ? `/api/blob/${photos[id][0].id}/image` : '';

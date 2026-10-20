@@ -485,7 +485,7 @@ func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
 }
 
 var (
-	schoolKinds   = []string{"classroom", "crew", "grade", "band", "department"}
+	schoolKinds   = []string{"classroom", "crew", "grade", "gradeband", "department"}
 	schoolColumns = []string{"grade_override", "vc_grade", "classroom_override", "vc_classroom", "crew_override", "vc_crew", "department_override", "vc_department", "deactivated"}
 )
 

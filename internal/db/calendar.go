@@ -40,11 +40,11 @@ var School = func() *time.Location {
 type CalendarRows map[string][]map[string]string
 
 type Classroom struct {
-	ID     string
-	Name   string
-	Band   string
-	Grades []string
-	Crews  []string
+	ID        string
+	Name      string
+	Gradeband string
+	Grades    []string
+	Crews     []string
 }
 
 type Category struct {
@@ -124,9 +124,9 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 			continue
 		}
 		c.Grades = append(c.Grades, grade)
-		if g, ok := gradeGroups["grade-"+strings.ToLower(grade)]; ok && c.Band == "" {
-			if band, ok := groups[g["parent"]]; ok {
-				c.Band = band["name"]
+		if g, ok := gradeGroups["grade-"+strings.ToLower(grade)]; ok && c.Gradeband == "" {
+			if gradeband, ok := groups[g["parent"]]; ok {
+				c.Gradeband = gradeband["name"]
 			}
 		}
 	}
@@ -178,21 +178,21 @@ func (v *Vocabulary) DayTypeNames() []string {
 
 func (v *Vocabulary) Glossary() string {
 	b := &strings.Builder{}
-	b.WriteString("Helios School is a K-8 school. Students belong to a homeroom classroom named for a bird. Two classrooms make a grade band whose name is a portmanteau of the two classroom names. Lower School is Kindergarten through Grade 4 and Middle School is Grade 5 through Grade 8.\n\nBands and their classrooms:\n")
-	bands := []string{}
+	b.WriteString("Helios School is a K-8 school. Students belong to a homeroom classroom named for a bird. Two classrooms make a gradeband whose name is a portmanteau of the two classroom names. Lower School is Kindergarten through Grade 4 and Middle School is Grade 5 through Grade 8.\n\nGradebands and their classrooms:\n")
+	gradebands := []string{}
 	for _, c := range v.Classrooms {
-		if c.Band != "" && !slices.Contains(bands, c.Band) {
-			bands = append(bands, c.Band)
+		if c.Gradeband != "" && !slices.Contains(gradebands, c.Gradeband) {
+			gradebands = append(gradebands, c.Gradeband)
 		}
 	}
-	for _, band := range bands {
+	for _, gradeband := range gradebands {
 		parts := []string{}
 		for _, c := range v.Classrooms {
-			if c.Band == band {
+			if c.Gradeband == gradeband {
 				parts = append(parts, c.Name+" (grades "+strings.Join(c.Grades, ", ")+")")
 			}
 		}
-		fmt.Fprintf(b, "- %s = %s\n", band, strings.Join(parts, " + "))
+		fmt.Fprintf(b, "- %s = %s\n", gradeband, strings.Join(parts, " + "))
 	}
 	b.WriteString("\nClassrooms with crews (a crew is a smaller group within a classroom, written as crew then classroom):\n")
 	for _, c := range v.Classrooms {
@@ -202,13 +202,13 @@ func (v *Vocabulary) Glossary() string {
 	}
 	b.WriteString(`
 Vocabulary seen in event titles:
-- K or Kinder means Kindergarten. "1/2", "3/4", "5/6", "7/8" name grade pairs, which are bands. "8th Grade" means Grade 8. LS is Lower School, MS is Middle School.
-- A singular band name (Cosprey, Hegret, Jayven, Halcon) means the band.
+- K or Kinder means Kindergarten. "1/2", "3/4", "5/6", "7/8" name grade pairs, which are gradebands. "8th Grade" means Grade 8. LS is Lower School, MS is Middle School.
+- A singular gradeband name (Cosprey, Hegret, Jayven, Halcon) means the gradeband.
 - CoL or COL is a Celebration of Learning, a showcase where students present their work to families.
 - ILP is an Individual Learning Plan conference between a family and teachers.
 - MAP is the MAP Growth assessment students take.
 - BTSN or Back to School Night is an evening for parents.
-- CAFE is a morning coffee for the parents of one band or classroom.
+- CAFE is a morning coffee for the parents of one gradeband or classroom.
 - Beacon Wellness is the school's counseling program; its chats are for parents.
 - HCA is the Helios Community Association, the parent association; its events are for parents and families.
 - PD or Professional Development is a day or half day staff work while students stay home or leave early.
@@ -227,7 +227,7 @@ func (v *Vocabulary) classifierSystem() string {
 	return v.Glossary() + `
 You classify events from the school calendar for a family-facing app. For each event, using only its title, dates, location and description:
 
-- classrooms: the classrooms the event concerns, as the narrowest set the event supports: a band's two classrooms when the title names a band, a grade pair, or both classrooms; one classroom when it names one; the Lower School or Middle School classrooms when it says LS or MS; every classroom when nothing narrows it.
+- classrooms: the classrooms the event concerns, as the narrowest set the event supports: a gradeband's two classrooms when the title names a gradeband, a grade pair, or both classrooms; one classroom when it names one; the Lower School or Middle School classrooms when it says LS or MS; every classroom when nothing narrows it.
 - who: "families" when students and their families take part; "parents" when adults attend without students, such as a parent coffee, a parent education session or an HCA meeting; "staff" when it is for staff only.
 - category: the one of these the event is, Misc only when no other fits. Schedule is only for an event about the school day itself; an event that also changes the school day, such as a conference with an early dismissal, takes its own category and gives the day type:
 ` + described.String() + `- dayType: for an all-day event only, the day type it imposes on the students it applies to, or "None". "No School" for holidays, breaks and professional development days; "Early Dismissal" for early dismissal and half days; any other listed type only when the title says so plainly. An event with a time of day, or one that merely happens on a school day, is "None".

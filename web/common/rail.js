@@ -79,7 +79,7 @@ export function navQueries() {
     navManaged: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
     navJoined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,
     navMine: '(from EFFECTIVE_MEMBER (where (= person @viewer)) (columns group))',
-    navRooms: '(from GROUP (where (= kind "group") (= parent.kind "band") (in id (select EFFECTIVE_MEMBER.group (= person @viewer)))) (include parent) (columns name slug parent path))',
+    navRooms: '(from GROUP (where (= kind "group") (= parent.kind "gradeband") (in id (select EFFECTIVE_MEMBER.group (= person @viewer)))) (include parent) (columns name slug parent path))',
   };
 }
 
@@ -155,13 +155,13 @@ export function navLists(answers) {
       start: dated ? dated.start : '',
     };
   });
-  const bands = answers.navRooms.resources.GROUP || {};
+  const gradebands = answers.navRooms.resources.GROUP || {};
   const rooms = rowsOf(answers.navRooms, 'GROUP');
   const shownElsewhere = new Set([...rooms, ...tagRows].map(g => g.id));
   const kept = lists.filter(l => !shownElsewhere.has(l.id));
   for (const g of rooms) {
-    const band = bands[g.parent];
-    kept.push({key: 'list:' + g.id, id: g.id, name: `${band ? band.name : g.name} Families`, kind: 'room', slug: g.slug || '', path: g.path, run: true, member: true, start: ''});
+    const gradeband = gradebands[g.parent];
+    kept.push({key: 'list:' + g.id, id: g.id, name: `${gradeband ? gradeband.name : g.name} Families`, kind: 'room', slug: g.slug || '', path: g.path, run: true, member: true, start: ''});
   }
   return {tags, lists: kept};
 }

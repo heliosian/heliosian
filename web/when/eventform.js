@@ -1,4 +1,4 @@
-import {state, tagGroups, bands, classroomNames, eventDates, addDays, parseDate} from './state.js';
+import {state, tagGroups, gradebands, classroomNames, eventDates, addDays, parseDate} from './state.js';
 import {addressSuggest} from '/address.js';
 import {queries} from '/rail.js';
 import {addEvent, editEvent, setPicture} from './writes.js';
@@ -207,8 +207,8 @@ export function eventForm({from = null, shift = 0, edit = null, override = false
       }
       paintRooms();
     }));
-    for (const band of bands()) {
-      for (const c of band.classrooms) {
+    for (const gradeband of gradebands()) {
+      for (const c of gradeband.classrooms) {
         roomChips.append(chip(c.name, rooms.has(c.name), () => {
           if (rooms.has(c.name)) {
             rooms.delete(c.name);

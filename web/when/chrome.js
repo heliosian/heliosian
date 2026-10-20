@@ -1,4 +1,4 @@
-import {state, me, today, bands, tagGroups, defaultTags, savedView, searchResults, findSearch, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
+import {state, me, today, gradebands, tagGroups, defaultTags, savedView, searchResults, findSearch, eventTint, timeLine, weekdayShort, parseDate, selectedClassrooms, toggleClassroom, setClassrooms, classroomNames, myClassrooms, tagIds, selectedTags, toggleTag, setTags, resetFilters, filtersAreDefault, colorOf, hiddenMatches, hiddenClassroomMatches, feedClassrooms, feedTags, showsFeed, setActiveFeed, activeFeed, allCalendars, defaultFeed, myEvents} from './state.js';
 import {feedMark, emojiPicker} from './dom.js';
 import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
@@ -380,8 +380,8 @@ function filterRow(label, actions, chips) {
 function classroomChips() {
   const selected = selectedClassrooms();
   const chips = [];
-  for (const band of bands()) {
-    for (const c of band.classrooms) {
+  for (const gradeband of gradebands()) {
+    for (const c of gradeband.classrooms) {
       const on = selected.includes(c.name);
       const room = chip(c.name, on, () => {
         toggleClassroom(c.name);

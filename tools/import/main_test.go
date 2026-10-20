@@ -275,24 +275,24 @@ func TestImportAgainstTheSample(t *testing.T) {
 	groups := s.Model().Table("GROUP")
 	for classroom, title := range map[string]string{"grp00000000010": "Jayvens", wren["vc_classroom"]: "Hummingbirds"} {
 		c, _ := groups.Get(classroom)
-		band, _ := groups.Get(c["parent"])
-		if band["kind"] != "band" || band["name"] != title {
-			t.Fatalf("classroom %s sits under %v, not the %s band", c["name"], band, title)
+		gradeband, _ := groups.Get(c["parent"])
+		if gradeband["kind"] != "gradeband" || gradeband["name"] != title {
+			t.Fatalf("classroom %s sits under %v, not the %s gradeband", c["name"], gradeband, title)
 		}
 		under := []string{}
-		for _, g := range groups.Referencing("parent", band["id"]) {
+		for _, g := range groups.Referencing("parent", gradeband["id"]) {
 			if g["kind"] == "grade" || g["kind"] == "classroom" {
 				under = append(under, g["id"])
 			}
 		}
 		targets := []string{}
-		for _, r := range s.Model().Table("RULE").Referencing("group", band["id"]) {
+		for _, r := range s.Model().Table("RULE").Referencing("group", gradeband["id"]) {
 			targets = append(targets, r["target"])
 		}
 		slices.Sort(under)
 		slices.Sort(targets)
 		if len(under) == 0 || !slices.Equal(targets, under) {
-			t.Fatalf("the %s band's rules target %v, not its grades and classrooms %v", title, targets, under)
+			t.Fatalf("the %s gradeband's rules target %v, not its grades and classrooms %v", title, targets, under)
 		}
 	}
 	for _, g := range grades {
@@ -313,8 +313,8 @@ func TestImportAgainstTheSample(t *testing.T) {
 	}
 	x.entries = append(x.entries, entry{role: student, name: "Ada Ashdown", grade: "4", classroom: "Oak"})
 	x.households = append(x.households, householdRow{adults: []int{1, 2}, kid: len(x.entries) - 1, address: "12 Elm St"})
-	if _, err := planned(c, x); err == nil || !strings.Contains(err.Error(), "Oak has students in the Hummingbirds and Jayvens bands") {
-		t.Fatalf("a classroom spanning two bands: %v", err)
+	if _, err := planned(c, x); err == nil || !strings.Contains(err.Error(), "Oak has students in the Hummingbirds and Jayvens gradebands") {
+		t.Fatalf("a classroom spanning two gradebands: %v", err)
 	}
 	x.entries, x.households = x.entries[:len(x.entries)-1], x.households[:len(x.households)-1]
 	family, _ := s.Model().Table("GROUP").Get("grp00000000020")

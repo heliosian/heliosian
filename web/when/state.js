@@ -259,15 +259,15 @@ export function classroomIds() {
   return state.model.classrooms.map(c => c.id);
 }
 
-export function bands() {
+export function gradebands() {
   const out = [];
   for (const c of state.model.classrooms) {
-    let band = out.find(b => b.name === (c.band || c.name));
-    if (!band) {
-      band = {name: c.band || c.name, classrooms: []};
-      out.push(band);
+    let gradeband = out.find(b => b.name === (c.gradeband || c.name));
+    if (!gradeband) {
+      gradeband = {name: c.gradeband || c.name, classrooms: []};
+      out.push(gradeband);
     }
-    band.classrooms.push(c);
+    gradeband.classrooms.push(c);
   }
   return out;
 }
@@ -639,13 +639,13 @@ export function audienceWords(e) {
     return ['Everyone'];
   }
   const out = [];
-  for (const band of bands()) {
-    const mine = band.classrooms.filter(c => e.classrooms.includes(c.name));
+  for (const gradeband of gradebands()) {
+    const mine = gradeband.classrooms.filter(c => e.classrooms.includes(c.name));
     if (!mine.length) {
       continue;
     }
-    if (mine.length === band.classrooms.length && band.classrooms.length > 1) {
-      out.push(band.name);
+    if (mine.length === gradeband.classrooms.length && gradeband.classrooms.length > 1) {
+      out.push(gradeband.name);
     } else {
       out.push(...mine.map(c => c.name));
     }

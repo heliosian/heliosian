@@ -102,7 +102,7 @@ func (s schoolData) named(kind, name string) store.Row {
 
 func (t *turn) school() (schoolData, error) {
 	s := schoolData{groups: map[string]store.Row{}, teachers: map[string][]string{}, studentGrade: map[string][]string{}}
-	groups, _, err := t.rows(`(from GROUP (where (in kind "band" "grade" "classroom" "crew" "department")) (order name asc))`)
+	groups, _, err := t.rows(`(from GROUP (where (in kind "gradeband" "grade" "classroom" "crew" "department")) (order name asc))`)
 	if err != nil {
 		return s, err
 	}
@@ -262,21 +262,21 @@ func documentLines(t *turn, docs []document) string {
 
 func (t *turn) lingo(s schoolData) (string, error) {
 	b := &strings.Builder{}
-	b.WriteString("## The school as the data has it\n\nGrades and their bands:\n")
-	bands := []store.Row{}
+	b.WriteString("## The school as the data has it\n\nGrades and their gradebands:\n")
+	gradebands := []store.Row{}
 	for _, g := range sortedGroups(s.groups) {
 		switch g["kind"] {
 		case "grade":
 			fmt.Fprintf(b, "- %s: %s\n", g["name"], s.groups[g["parent"]]["name"])
-		case "band":
-			bands = append(bands, g)
+		case "gradeband":
+			gradebands = append(gradebands, g)
 		}
 	}
-	b.WriteString("\nBands (its grades; its classrooms):\n")
-	for _, band := range bands {
+	b.WriteString("\nGradebands (its grades; its classrooms):\n")
+	for _, gradeband := range gradebands {
 		grades, rooms := []string{}, []string{}
 		for _, g := range sortedGroups(s.groups) {
-			if g["parent"] != band["id"] {
+			if g["parent"] != gradeband["id"] {
 				continue
 			}
 			switch g["kind"] {
@@ -286,9 +286,9 @@ func (t *turn) lingo(s schoolData) (string, error) {
 				rooms = append(rooms, g["name"])
 			}
 		}
-		fmt.Fprintf(b, "- %s (%s; %s)\n", band["name"], strings.Join(grades, ", "), strings.Join(rooms, ", "))
+		fmt.Fprintf(b, "- %s (%s; %s)\n", gradeband["name"], strings.Join(grades, ", "), strings.Join(rooms, ", "))
 	}
-	b.WriteString("\nClassrooms (its link; band; the grades of its students; its teachers; its crews and their teachers):\n")
+	b.WriteString("\nClassrooms (its link; gradeband; the grades of its students; its teachers; its crews and their teachers):\n")
 	for _, room := range s.classrooms {
 		line := fmt.Sprintf("- %s (%s; %s; %s", room["name"], t.href(room), s.groups[room["parent"]]["name"], strings.Join(s.studentGrade[room["id"]], ", "))
 		if teachers := s.teachers[room["id"]]; len(teachers) > 0 {
@@ -461,7 +461,7 @@ func (t *turn) viewerBlock(s schoolData, v *viewer) string {
 	roles := []string{}
 	for _, g := range v.Groups {
 		switch g.Kind {
-		case "classroom", "crew", "grade", "band", "department":
+		case "classroom", "crew", "grade", "gradeband", "department":
 			continue
 		}
 		line := fmt.Sprintf("- in %s (%s", g.Name, g.Kind)

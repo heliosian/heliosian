@@ -66,7 +66,7 @@ type household struct {
 	family  string
 }
 
-var grades = []struct{ code, title, band string }{
+var grades = []struct{ code, title, gradeband string }{
 	{"K", "Kindergarten", "Hummingbirds"},
 	{"1", "Grade 1", "Halcons"},
 	{"2", "Grade 2", "Halcons"},
@@ -107,15 +107,15 @@ type planner struct {
 	batch   []write
 	web     map[int]websiteRow
 
-	classroomBands map[string]string
-	everyone       string
+	classroomGradebands map[string]string
+	everyone            string
 
 	groupWrites, personWrites, emailWrites, slugWrites, familyWrites []write
 	memberDeletes, memberInserts, memberSets                         []write
 }
 
 func plan(x *export, st *state) (*planner, error) {
-	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}, web: map[int]websiteRow{}, classroomBands: map[string]string{}}
+	p := &planner{x: x, st: st, claimed: map[string]*identity{}, counts: map[string]int{}, groups: table{rows: map[string]row{}}, web: map[int]websiteRow{}, classroomGradebands: map[string]string{}}
 	for _, id := range st.groups.order {
 		p.groups.add(id, st.groups.rows[id])
 	}
@@ -137,7 +137,7 @@ func plan(x *export, st *state) (*planner, error) {
 	if err := p.people(households); err != nil {
 		return nil, err
 	}
-	p.bandRules()
+	p.gradebandRules()
 	p.parentsGroups()
 	for _, id := range p.ids {
 		if err := p.emails(id); err != nil {
@@ -463,18 +463,18 @@ func (p *planner) ensureGrades() {
 		if p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], slug) }) != "" {
 			continue
 		}
-		band := p.findGroup(func(r row) bool { return r["kind"] == "band" && strings.EqualFold(r["name"], g.band) })
-		if band == "" {
-			band = p.newGroup(row{"kind": "band", "name": g.band})
+		gradeband := p.findGroup(func(r row) bool { return r["kind"] == "gradeband" && strings.EqualFold(r["name"], g.gradeband) })
+		if gradeband == "" {
+			gradeband = p.newGroup(row{"kind": "gradeband", "name": g.gradeband})
 		}
-		p.newGroup(row{"kind": "grade", "slug": slug, "name": g.title, "parent": band})
+		p.newGroup(row{"kind": "grade", "slug": slug, "name": g.title, "parent": gradeband})
 	}
 }
 
 func (p *planner) parentsGroups() {
 	for _, target := range slices.Clone(p.groups.order) {
 		t := p.groups.rows[target]
-		if !slices.Contains([]string{"grade", "classroom", "band"}, t["kind"]) || t["slug"] == "" {
+		if !slices.Contains([]string{"grade", "classroom", "gradeband"}, t["kind"]) || t["slug"] == "" {
 			continue
 		}
 		slug := t["slug"] + "-parents"
@@ -519,15 +519,15 @@ func plainTarget(r row) bool {
 	return r["target"] != ""
 }
 
-func (p *planner) bandRules() {
-	for _, band := range p.groups.order {
-		if p.groups.rows[band]["kind"] != "band" {
+func (p *planner) gradebandRules() {
+	for _, gradeband := range p.groups.order {
+		if p.groups.rows[gradeband]["kind"] != "gradeband" {
 			continue
 		}
 		want := map[string]bool{}
 		for _, g := range p.groups.order {
 			r := p.groups.rows[g]
-			if r["parent"] == band && (r["kind"] == "grade" || r["kind"] == "classroom") {
+			if r["parent"] == gradeband && (r["kind"] == "grade" || r["kind"] == "classroom") {
 				want[g] = true
 			}
 		}
@@ -535,7 +535,7 @@ func (p *planner) bandRules() {
 		held := map[string]bool{}
 		for _, rid := range p.st.rules.order {
 			r := p.st.rules.rows[rid]
-			if r["group"] != band {
+			if r["group"] != gradeband {
 				continue
 			}
 			if plainTarget(r) && want[r["target"]] && !held[r["target"]] {
@@ -544,7 +544,7 @@ func (p *planner) bandRules() {
 				continue
 			}
 			p.groupWrites = append(p.groupWrites, write{Delete: rid})
-			p.counts["band rules removed"]++
+			p.counts["gradeband rules removed"]++
 		}
 		missing := []string{}
 		for _, g := range p.groups.order {
@@ -555,13 +555,13 @@ func (p *planner) bandRules() {
 		slices.Sort(orders)
 		filled := store.Order(append(orders, make([]string, len(missing))...))
 		for i, g := range missing {
-			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": band, "order": filled[len(orders)+i], "target": g}})
-			p.counts["band rules added"]++
+			p.groupWrites = append(p.groupWrites, write{Insert: "RULE", Row: row{"group": gradeband, "order": filled[len(orders)+i], "target": g}})
+			p.counts["gradeband rules added"]++
 		}
 	}
 }
 
-func (p *planner) bandOf(grade string) (string, error) {
+func (p *planner) gradebandOf(grade string) (string, error) {
 	slug := "grade-" + strings.ToLower(grade)
 	g := p.findGroup(func(r row) bool { return r["kind"] == "grade" && strings.EqualFold(r["slug"], slug) })
 	if g == "" {
@@ -571,27 +571,27 @@ func (p *planner) bandOf(grade string) (string, error) {
 }
 
 func (p *planner) classroom(name, grade string) (string, error) {
-	band, err := p.bandOf(grade)
+	gradeband, err := p.gradebandOf(grade)
 	if err != nil {
 		return "", err
 	}
 	id := p.findGroup(func(r row) bool { return r["kind"] == "classroom" && strings.EqualFold(r["name"], name) })
 	if id == "" {
-		id = p.newGroup(row{"kind": "classroom", "name": name, "parent": band, "slug": strings.ToLower(name)})
+		id = p.newGroup(row{"kind": "classroom", "name": name, "parent": gradeband, "slug": strings.ToLower(name)})
 	}
 	if current := p.groups.rows[id]; current["slug"] != strings.ToLower(current["name"]) {
 		current["slug"] = strings.ToLower(current["name"])
 		p.groupWrites = append(p.groupWrites, write{Set: id, Cells: row{"slug": current["slug"]}})
 		p.counts["classroom slugs set"]++
 	}
-	if seen, ok := p.classroomBands[id]; ok && seen != band {
-		return "", fmt.Errorf("classroom %s has students in the %s and %s bands", name, p.groups.rows[seen]["name"], p.groups.rows[band]["name"])
+	if seen, ok := p.classroomGradebands[id]; ok && seen != gradeband {
+		return "", fmt.Errorf("classroom %s has students in the %s and %s gradebands", name, p.groups.rows[seen]["name"], p.groups.rows[gradeband]["name"])
 	}
-	p.classroomBands[id] = band
-	if current := p.groups.rows[id]; current["parent"] != band {
-		current["parent"] = band
-		p.groupWrites = append(p.groupWrites, write{Set: id, Cells: row{"parent": band}})
-		p.counts["classroom bands set"]++
+	p.classroomGradebands[id] = gradeband
+	if current := p.groups.rows[id]; current["parent"] != gradeband {
+		current["parent"] = gradeband
+		p.groupWrites = append(p.groupWrites, write{Set: id, Cells: row{"parent": gradeband}})
+		p.counts["classroom gradebands set"]++
 	}
 	return id, nil
 }

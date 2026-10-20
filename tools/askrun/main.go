@@ -32,7 +32,7 @@ var questions = []string{
 	"When is the last day of school this year?",
 	"Are there any half days in the next month?",
 	"Who teaches my kids?",
-	"Who are the room parents for my child's band?",
+	"Who are the room parents for my child's gradeband?",
 	"Which classrooms are in Middle School?",
 	"Who is the school nurse?",
 	"Who works in the front office?",

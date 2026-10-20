@@ -756,11 +756,11 @@ const PolicySource = `
 ; override anyone's sort name
 (set PERSON.name_sort_override (admin_of "who"))
 ; every directory group and plain group, pending too
-(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "band" "crew" "department")))
+(read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "gradeband" "crew" "department")))
 ; every directory group's and plain group's memberships, but who hid something
-(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (hides group))))
+(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
 ; every directory group's and plain group's effective members, but who hid something
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "band" "crew" "department") (not (hides group))))
+(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
 ; every person's emails, deactivated too
@@ -791,10 +791,10 @@ const PolicySource = `
 (set PERSON.photo_updated (admin_of "who"))
 ; take anyone out of every view and sign-in; putting them back is for super admins in import mode
 (set PERSON.hidden (admin_of "who"))
-; make someone a band's room parent
-(insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "band") (= @new.member "yes")))
-; stop someone being a band's room parent
-(delete MEMBER (and (admin_of "who") (= @old.group.kind "group") (= @old.group.parent.kind "band")))
+; make someone a gradeband's room parent
+(insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "gradeband") (= @new.member "yes")))
+; stop someone being a gradeband's room parent
+(delete MEMBER (and (admin_of "who") (= @old.group.kind "group") (= @old.group.parent.kind "gradeband")))
 ; override any family's address
 (set GROUP.address_override (and (admin_of "who") (= @old.kind "family")))
 ; override any family's phone

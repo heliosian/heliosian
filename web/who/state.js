@@ -22,7 +22,7 @@ export const model = {
   families: [],
   classrooms: [],
   grades: [],
-  bands: [],
+  gradebands: [],
   crews: [],
   departments: [],
   roomParents: [],
@@ -168,9 +168,9 @@ export async function loadModel() {
       people: `(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
       addresses: '(from PERSON_EMAIL (where primary) (columns person address))',
       pictures: '(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (in kind "family" "classroom" "grade"))))) (order order asc) (columns person group order reencode crop_left crop_top crop_width crop_height))',
-      groups: '(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) (order order asc name asc))',
+      groups: '(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "gradeband" "crew" "department") (and (= kind "group") (= parent.kind "gradeband")))) (order order asc name asc))',
       members: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns group person))',
-      effective: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band")))))) (include group) (columns group person))',
+      effective: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "gradeband")))))) (include group) (columns group person))',
       coords: '(from GEOCODE)',
       settings: '(from SETTING (where (= app "platform")))',
       tagMembers: `(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))) (columns group person))`,
@@ -220,7 +220,7 @@ export async function loadModel() {
   model.families = ofKind('family');
   model.classrooms = ofKind('classroom');
   model.grades = ofKind('grade').sort((a, b) => gradeRank(a) - gradeRank(b));
-  model.bands = ofKind('band');
+  model.gradebands = ofKind('gradeband');
   model.crews = ofKind('crew');
   model.departments = ofKind('department');
   model.roomParents = groupRows.filter(g => g.kind === 'group');
@@ -333,8 +333,8 @@ function loadLists(managed, joined, mineAnswer) {
     };
   }
   for (const g of room) {
-    const band = groupById[g.parent];
-    const kids = model.people.filter(p => isStudent(p) && bandOf(p) === band);
+    const gradeband = groupById[g.parent];
+    const kids = model.people.filter(p => isStudent(p) && gradebandOf(p) === gradeband);
     const ids = new Set();
     for (const k of kids) {
       ids.add(k.id);
@@ -344,7 +344,7 @@ function loadLists(managed, joined, mineAnswer) {
         }
       }
     }
-    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${band.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', group: g, rsvp: '', run: true, member: true, start: '', people: [...ids], guests: []};
+    lists[listKey(g.id)] = {key: listKey(g.id), id: g.id, name: `${gradeband.name} Families`, kind: 'room', slug: '', groupSlug: g.slug || '', group: g, rsvp: '', run: true, member: true, start: '', people: [...ids], guests: []};
   }
 }
 
@@ -486,7 +486,7 @@ export function departmentName(p) {
   return d ? d.name : '';
 }
 
-export function bandOf(p) {
+export function gradebandOf(p) {
   const g = gradeOf(p);
   return g ? groupById[g.parent] || null : null;
 }
@@ -503,13 +503,13 @@ export function gradeByKey(key) {
   return model.grades.find(g => groupKey(g) === key) || null;
 }
 
-export function roomParentsOf(band) {
-  const group = model.roomParents.find(g => g.parent === band.id);
+export function roomParentsOf(gradeband) {
+  const group = model.roomParents.find(g => g.parent === gradeband.id);
   return group ? peopleOf(membersByGroup[group.id] || []) : [];
 }
 
-export function roomParentsGroup(band) {
-  return model.roomParents.find(g => g.parent === band.id) || null;
+export function roomParentsGroup(gradeband) {
+  return model.roomParents.find(g => g.parent === gradeband.id) || null;
 }
 
 export function gradeNameColor(name) {
