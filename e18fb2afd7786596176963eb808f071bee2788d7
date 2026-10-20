@@ -1,0 +1,36 @@
+# Add sample pronunciation recordings in WebM, MP4 and MP3 (closes #194)
+
+byre task 28276433d60f, "Add sample pronunciation recordings in WebM/Opus and MP4/AAC", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Add sample pronunciation recordings in WebM/Opus and MP4/AAC".
+Full transcripts: the events of task 28276433d60f in byre (GET /api/events?task_id=28276433d60f).
+
+## Summary
+
+Issue #194: the sample data had no pronunciation recordings, so nothing in development had a play button.
+
+**What was built**
+- Four synthesized name recordings under `sampledata/bucket/pronunciation/`. Each is named by its SHA-256, the same way `/api/do/pronunciation` names uploads.
+  - Rowan Ashdown (`per00000000002`, the sample parent): WebM/Opus.
+  - Siobhán O'Neill (`per00000020026`, an unusual name, spoken from a phonetic spelling): WebM/Opus.
+  - Étienne Moreau (`per00000020048`, French voice): MP3.
+  - Ashdown Family (`grp00000000020`, the sample parent's family): MP4/AAC, stored as `.m4a`.
+- The rows set `pronunciation_original`. The picture worker makes the M4A `pronunciation` at startup, the same way sample photos carry only their originals.
+- This was checked in the sample server: all four M4As were made, served as `audio/mp4` and decoded in Chrome, and the family page shows its play pill.
+- `docs/dev.md` describes which rows have recordings and in which formats.
+- A `tools/q` test used `pronunciation` as its example of an empty column; it now uses `vc_job_title`.
+
+**Key decisions**
+- **Voices:** made with espeak-ng (the repo is public, and that output is free to commit), then encoded with ffmpeg. Neither tool is used by the server.
+- **Column:** the issue predates #196 and said to set `pronunciation`; since #196 the server makes that column, so the fixtures set `pronunciation_original` instead.
+- **No inheritance:** the issue mentions `inheritPronunciation`, which no longer exists. A family's recording only shows on its own family page.
+
+**Left out**
+Whether the iPhone plays these recordings is for heliosian-ios#9 and #17.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds synthesized pronunciation recordings for three sample people and the Ashdown family, covering WebM/Opus, MP4/AAC, and MP3. References the originals in the sample CSVs for the existing worker to convert, documents the fixtures, updates the query display test, and removes the completed TODO item.
+
+No significant findings.
