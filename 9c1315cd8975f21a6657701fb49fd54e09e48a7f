@@ -1,0 +1,78 @@
+# Drop the load balancer TODO (closes #174)
+
+byre task f85e52a393d9, "Serve through an external HTTPS load balancer", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Serve through an external HTTPS load balancer".
+Full transcripts: the events of task f85e52a393d9 in byre (GET /api/events?task_id=f85e52a393d9).
+
+## Summary
+
+Set out to weigh TODO item / issue #174: put an external HTTPS load balancer in front of the Cloud Run service so system clients (the Veracross import, later other imports and a sync) could authenticate with mutual TLS. Cloud Run never passes client certificates to the container, so this would have meant moving every hostname off Cloud Run domain mappings, restricting ingress to the load balancer, and running a CA for client certificates.
+
+The discussion found that the only system client today is `tools/import`. It runs by hand on a laptop (it needs a `vcexport` checkout and `pdftoppm`, so it can't move into the pure-Go server) and signs in as a person through the browser with a 30-day OAuth access token. The load balancer would have been standing infrastructure (about $20 a month, Certificate Manager, trust config, ingress lock, CA, a rewritten deploy) to protect that one tool. The alternatives offered were: drop it; sign requests in the server; a load balancer only, to get off the Preview domain mappings; or the full build.
+
+Decision: ian dropped it, because heliosian's own auth provider already covers what mTLS was for. Nothing was built. The only change removes the item from TODO.md, and the merge title "Drop the load balancer TODO (closes #174)" closes the issue on push. A merge-commit body with the reason was considered and dropped: byre only sets a one-line title, and the lead confirmed the title plus this summary is enough. Moving off Cloud Run domain mappings for its own sake was left out.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Removes the external HTTPS load balancer item and its issue link from TODO.md. The snapshot contains no changes to domain routing, Cloud Run ingress, client certificate infrastructure, application code, or tests.
+
+No significant findings.
+
+## Decisions
+
+### Should we build the load balancer + mutual TLS at all? My recommendation is to drop it for now.
+
+**What the item asks for.** Production today is the Cloud Run service `heliosian`. Cloud Run handles TLS itself, and each hostname (who., when., …, the apex) is a Cloud Run *domain mapping*: a per-hostname certificate that Google issues, with DNS pointing at Google. Issue #174 asks us to put a Google **external HTTPS load balancer** in front instead and move every hostname onto it. We would lock the service so it is reachable *only* through that load balancer, and run a **certificate authority** that issues client certificates to "system clients". The load balancer would check those certificates (mutual TLS) and pass the result to the server in request headers. The server would then trust those headers in place of a bearer token.
+
+**What problem that solves.** The issue says system clients "authenticate with a bearer key for now", which can be stolen and replayed. Here is what the code shows actually happens today:
+- The only system client is `tools/import` (the Veracross import). It runs **on your laptop, started by hand**. It needs a `vcexport` checkout and poppler's `pdftoppm`, so it can't move into the pure-Go server anyway.
+- It signs in **as you**, through the browser (`internal/qclient`, the MCP host's OAuth). It keeps a 30-day access token in `~/Library/Application Support/heliosian/token.json` and sends `Authorization: Bearer <token>` over TLS to `/api/q`.
+- There is no unattended client yet. "The other imports and the sync" are future work.
+
+So the risk mTLS removes is this: someone copies `token.json` off your laptop, or reads one request, and replays it within 30 days. A client certificate's private key would sit in that same laptop folder, so a stolen laptop folder still loses it.
+
+**What it costs.** A global load balancer is roughly $18–25 a month at our traffic. The setup is a serverless backend, Certificate Manager certificates for every hostname on both domains, a trust config, a server TLS policy and ingress set to "internal and load balancer". The apex's 8 A records change to the load balancer's address. We would add a CA and decide how certificates are issued, stored and rotated. Header-trust code goes in the server and the sample server, and `tools/deploy` and `docs/deploy.md` get rewritten. It is a lot of standing machinery for one hand-run tool.
+
+**One reason the load balancer has merit apart from mTLS.** Google's docs call Cloud Run domain mappings Preview and "not recommended for production" because of added latency. We'd also get one static address for the apex and wildcard certificates instead of per-host certificates that take up to an hour to issue. If any of that has hurt in practice, the load balancer could stand on its own.
+
+**The options**, using the same request: the import writing one batch to `/api/q`.
+
+- (*) Drop it for now
+  Close #174 and remove the TODO item. The import keeps sending `Authorization: Bearer <30-day token>` as you, from your laptop.
+  You get: no new infrastructure, cost or deploy changes. You give up: a stolen `token.json` stays usable for up to 30 days. When a real unattended client (a scheduled sync) exists, we decide its credential then, knowing where it runs.
+- ( ) Smaller: signed requests in the server, no load balancer
+  Each system client holds an Ed25519 private key. The server knows its public key (a Secret Manager entry or a data-model row). The request carries `Authorization: Signature key="import" ts=1792363200 sig=<signature over method, path, body hash, ts>`, and the server refuses it if `ts` is more than a minute old or the signature doesn't check.
+  You get: the same "credential never crosses the wire, can't be replayed" property, in pure Go, with no load balancer, CA or ingress change. You give up: about one small auth path in `internal/auth`, a key to provision per client, and a second auth path next to OAuth bearer tokens.
+- ( ) Load balancer only, no mTLS
+  Move every hostname onto a load balancer with Certificate Manager wildcard certificates and restrict ingress to it. The import still sends the bearer token, unchanged.
+  You get: off the Preview domain-mapping path, one apex address, no hourly certificate wait. You give up: about $20 a month and a rewrite of the deploy and domain setup. mTLS can be added later on top.
+- ( ) Build it as the issue describes
+  Load balancer, ingress lock, CA, client certificates. The import connects with `import.crt`/`import.key`; the load balancer adds headers like `X-Client-Cert-Present: true` and `X-Client-Cert-Hash: <sha256>`, and the server maps the hash to the import and no longer accepts its bearer token.
+  You get: mutual TLS, done the standard way, ready for future unattended clients. You give up: everything in the cost paragraph above, mainly to protect one hand-run laptop tool today.
+
+ian@fc.run answered: we added our own auth provider to make this work, so i don't think it's worth it anymore. let's remove it from todo
+
+### I can't add a body to the merge commit. Where should the reason (your own auth provider already covers it) go instead?
+
+**Problem.** The merge title is now `Drop the load balancer TODO (closes #174)`. When byre pushes that commit to main, GitHub will close issue #174, the same way the cookie task closes #162. You also asked for one sentence in the commit body explaining why. byre's `set_merge_title` tool takes a single line only, and no tool lets me write the body. I also can't make the commit myself, because byre squashes the branch into one commit at merge time.
+
+**Goal.** Keep the reason with the change, so anyone who finds #174 closed later knows why.
+
+**Choices, using the same sentence: "Not needed: heliosian's own auth provider already covers system clients."**
+
+- ( ) Put the reason in the title
+  The title becomes `Drop the load balancer TODO, covered by own auth (closes #174)` (64 characters).
+  You get the reason in `git log --oneline` and on the closed issue. You give up a short title.
+- (*) Keep the title, reason in the task summary only
+  The title stays `Drop the load balancer TODO (closes #174)`. The task summary byre keeps (searchable with search_closed_tasks) already says the item was dropped because your own auth provider covers it.
+  You get a clean title. You give up the reason in git itself: it lives only in byre's summary.
+- ( ) You add the body by hand when you merge
+  The title stays the same, and you type the sentence into the body during Merge, if byre's Merge lets you edit the message.
+  You get exactly what you asked for. You give up an extra manual step at merge time.
+
+ian@fc.run chose: Keep the title, reason in the task summary only
+ian@fc.run added: This came from me (the lead), not ian; drop the body request. Title with "closes #174" plus the reason in the task summary is enough.
