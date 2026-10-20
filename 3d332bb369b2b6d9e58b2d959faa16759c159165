@@ -1,0 +1,105 @@
+# Fold flyer and wiki EXIF stripping into the CONTENT item
+
+byre task e437048f6a71, "Uploaded photos are stored and served with their EXIF metadata, including GPS location", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Uploaded photos are stored and served with their EXIF metadata, including GPS location".
+Full transcripts: the events of task e437048f6a71 in byre (GET /api/events?task_id=e437048f6a71).
+
+## Summary
+
+**Goal:** issue #159, "Uploaded photos are stored and served with their EXIF metadata, including GPS location". The item was to be discussed before building, to decide whether it was still worth doing.
+
+**Found:** the issue predates the `PHOTO` table and no longer matches the code. `PHOTO` already does what it asks:
+- `original` is private.
+- The worker in `internal/db/pictures.go` makes `reencode`: upright, every tag dropped, JPEG at most 2048 px.
+- The worker cuts the crop and thumbnail on the server from the stored crop box.
+
+Reading as ian, `original` doesn't come back, so the 33 GPS-tagged originals from the September survey are no longer served.
+
+Two paths still serve images exactly as uploaded: `GROUP.flyer` (2 in production) and wiki pictures (`wiki-images/` via `/api/wiki/picture`, 6 in production). All 8 were checked with goexif in a gitignored `local/exifcheck`: none has GPS, a camera model or a date taken.
+
+**Decision (ian):** close #159 now. Fold flyers and wiki pictures into the TODO item "Keep every stored byte in CONTENT", which rewrites those upload paths anyway. Stripping tags at the app image folder now was rejected. Its fix would be thrown away by the CONTENT move, and it would degrade `PHOTO.original`, since pages post the folder copy to `/api/do/photo`.
+
+**Done:**
+- Removed the #159 item from TODO.md.
+- Added a sentence to the CONTENT item: flyers and wiki pictures get `PHOTO`'s private original and tag-free re-encode.
+- Closed #159 with an explanatory comment, using `gh` on roc.
+- Installed `gh` on iso with Homebrew; ian logged it in as flamingcow66 over SSH.
+
+No product code changed.
+
+**Left out:** any stripping of flyers and wiki pictures before the CONTENT move.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+This snapshot consolidates the EXIF/GPS work into the existing TODO item for moving stored bytes into CONTENT. It removes the separate #159 entry and specifies private originals and metadata-free served copies for flyers and wiki pictures, following the existing PHOTO processing. No runtime code changes; the remaining privacy work is still pending.
+
+No significant findings.
+
+## Decisions
+
+### Issue #159 (photos served with GPS) is mostly fixed already. Should we close it now, or also clean flyers and wiki pictures in this task?
+
+**The problem as filed.** Issue #159 says every uploaded image is served exactly as uploaded. A phone photo carries EXIF tags: GPS coordinates, time, device. At a school, that can mean a photo of children tagged with a family's home location, shown to every member who opens the page. The fix the issue proposes: keep the original private, serve a re-encoded copy with no tags, and crop on the server.
+
+**What exists today.** The issue's text predates the `PHOTO` table and no longer matches the code. Every portrait, family photo, classroom/grade tile, and event/activity/party/link picture is a `PHOTO` row, and those already work the way the issue proposes:
+- `PHOTO.original` holds the upload and is private. Reading as you, `tools/q` doesn't return it: `phoBMpIIyX2QiV` comes back with `reencode` = `photos/4f6e8f…` and `thumbnail` = `photos/98252…`, and no `original` column.
+- `reencode` is made by the server worker (`internal/db/pictures.go`): turned upright, every tag dropped, JPEG at most 2048 px.
+- The crop box (`crop_left/top/width/height`) is stored on the row, and the server cuts `crop` and `thumbnail` from the re-encode.
+
+So the 33 GPS-tagged originals the September survey found are no longer served to anyone.
+
+**Two paths still serve uploads exactly as uploaded:**
+- **Flyers** (`GROUP.flyer`, "a poster, shown whole"): served as uploaded from the app's image folder. Production has 2: International Night (`activity-images/6116af…​.webp`) and Book Club: The Rosie Project (`category-images/8d13e7…​.png`).
+- **Wiki pictures** (`wiki-images/…`, served by `GET /api/wiki/picture/{name}` to any signed-in member). Production has 6.
+
+I downloaded all 8 and read their tags with goexif. **None has GPS, a camera model, or a date taken.** They're a webp, three PNGs, and JPEGs with empty or no EXIF. So nothing leaks today. The risk is only the next flyer or wiki picture someone takes on a phone.
+
+**What's coming anyway.** TODO.md has "Keep every stored byte in CONTENT", which you chose in the bucket audit. It turns flyers, wiki pictures and app-folder uploads into `CONTENT` rows and removes the app image folders and their routes. Any fix to the flyer and wiki upload paths now would be rewritten by that move.
+
+**Worked example.** Input: one iPhone JPEG with GPS 37.5°N, 122.5°W, uploaded in each of three places. What a member who saves the file gets under each option:
+
+| Uploaded as | Close now, fold into CONTENT | Strip at the upload folder now |
+|---|---|---|
+| Family photo (`PHOTO`) | re-encode, no GPS (as today) | re-encode, no GPS (as today) |
+| Activity flyer | **the JPEG with GPS**, until the CONTENT move lands | re-encoded, no GPS |
+| Wiki picture | **the JPEG with GPS**, until the CONTENT move lands | re-encoded, no GPS |
+| `PHOTO.original` kept for regenerating | full original with HDR gain map | already stripped and re-encoded: the page posts the folder copy to `/api/do/photo`, so later regenerations start from a degraded copy |
+
+- (*) Close #159 now and fold the rest into the CONTENT item
+  Remove this item from TODO.md, close #159 with a comment saying `PHOTO` already does what it asks, and add one sentence to "Keep every stored byte in CONTENT": flyers and wiki pictures get the same re-encode, with their original private.
+  You get: no code that the CONTENT move would throw away, and `PHOTO` originals stay full quality.
+  You give up: until that move lands, a new phone-shot flyer or wiki picture is served with its tags. Today there are 8, none tagged.
+- ( ) Strip tags at the app image upload now
+  Re-encode every image the app image routes store, keeping PNG as PNG, so flyers and wiki pictures are clean from the next upload.
+  You get: the gap closed today.
+  You give up: about 40 lines that the CONTENT move replaces, and `PHOTO.original` stops being the true original (no gain maps, already downscaled), which undoes the "keep the original so we can regenerate" part of the design. Avoiding that means changing the pages to post the file itself to `/api/do/photo`, a bigger change.
+- ( ) Do nothing and keep the item open
+  You get: the item stays on the list as a reminder.
+  You give up: it describes a problem the code no longer has, so the next agent rediscovers all of the above.
+
+ian@fc.run chose: Close #159 now and fold the rest into the CONTENT item
+
+### gh is installed on iso. Can you press Enter in this task's Terminal tab to log it in, then tell me when it's done?
+
+**What's in the way:** `gh` is now installed on iso (Homebrew, 2.102.0, at `/opt/homebrew/bin/gh`), but it isn't logged in to GitHub. Logging in needs your browser and GitHub account, so I can't do it myself.
+
+**What I've typed for you:** this task's Terminal tab holds the command below, not yet run:
+
+```
+gh auth login --hostname github.com --git-protocol ssh --web
+```
+
+Press Enter. If it asks about uploading an SSH key, choose Skip, since your existing key already works. It then prints a one-time code and opens github.com/login/device. Paste the code there and approve.
+
+When it finishes, I'll run `gh auth status` to confirm it worked.
+
+- (*) Done, it's logged in
+  I check `gh auth status` and report the result.
+- ( ) Log it in another way
+  Tell me which (for example a token), and I'll set it up that way.
+
+ian@fc.run chose: Done, it's logged in
