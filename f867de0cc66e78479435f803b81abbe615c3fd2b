@@ -1,0 +1,23 @@
+# exclude test files
+
+byre task a8c500f0f9e5, "exclude test files", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task a8c500f0f9e5 in byre (GET /api/events?task_id=a8c500f0f9e5).
+
+## Summary
+
+**Goal:** stop pushes that touch only tests from building and deploying production. da364c4 changed only `TODO.md`, `docs/datamodel.md`, `internal/db/released_test.go` and `internal/db/testdata/released/0.1.json`, yet it deployed. The `build-main` Cloud Build trigger's `includedFiles` contains `internal/**`, which matched the test file and the testdata.
+
+**What was built:**
+- **Trigger:** `build-main` (us-west1, project heliosian) now has `ignoredFiles: **/*_test.go, **/testdata/**`. Cloud Build drops ignored files before it checks the included ones, so a push with any real source change still builds. No production code reads a testdata directory, so the image is unaffected.
+- **How it was applied:** the trigger's settings live only in GCP. The `export` command isn't in the installed gcloud's GA commands (it wanted the beta component), so the full config was rebuilt from `gcloud builds triggers describe` and loaded with `gcloud builds triggers import`. The settings echoed back matched the old ones plus `ignoredFiles`.
+- **Docs:** `docs/deploy.md` now says tests and `testdata/` are ignored.
+
+**Not done:** not tested on a real push yet; the next push that touches only tests is the first check.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Updates the deployment documentation to describe exclusions for Go test files and testdata directories. The live Cloud Build trigger confirms both ignore patterns are configured, so commits containing only docs, TODOs, tools, or tests do not trigger deployment.
+
+No significant findings.
