@@ -47,7 +47,7 @@ func TestReadShowsTables(t *testing.T) {
 			t.Errorf("the output lacks %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out.String(), "pronunciation") {
+	if strings.Contains(out.String(), "vc_job_title") {
 		t.Errorf("a column no row fills is shown:\n%s", out)
 	}
 

@@ -1,6 +1,6 @@
 id,source,vc_name,vc_legal_name,vc_name_long,name_long_override,vc_name_short,name_short_override,vc_name_sort,name_sort_override,slug,vc_grade,grade_override,vc_classroom,classroom_override,vc_crew,crew_override,vc_department,department_override,vc_job_title,job_title_override,vc_phone,phone_override,phone_consent,vc_phone_visibility,address_consent,vc_address_visibility,pronouns,pronunciation,facts,facts_updated,photo_updated,vc_bio,birthday,consent,hidden,deactivated,signed_out,birthday_participation,pronunciation_original
 per00000000001,veracross,Juni (Juniper) Ashdown,Juniper Ashdown,Juni Ashdown,,Juni,,"Ashdown, Juni",,,3,,grp00000000010,,grp00000000501,,,,,,,,shared,,shared,,,,,,,,,listed,,,
-per00000000002,veracross,Rowan Ashdown,Rowan Ashdown,Rowan Ashdown,,Rowan,,"Ashdown, Rowan",,rowan.ashdown,,,,,,,,,,,,,withheld,,shared,,,,,,,,,listed,,,
+per00000000002,veracross,Rowan Ashdown,Rowan Ashdown,Rowan Ashdown,,Rowan,,"Ashdown, Rowan",,rowan.ashdown,,,,,,,,,,,,,withheld,,shared,,,,,,,,,listed,,,,,pronunciation/2adf897ead250938f61e10dbbd5d9cf857abe86b4477731ac2bd5f2305422423.webm
 per00000000003,veracross,Maya Lindqvist,Maya Lindqvist,Maya Lindqvist,,Maya,,"Lindqvist, Maya",,maya.lindqvist,,,grp00000000010,,,,,,Teacher,,,,shared,,shared,,,,,,,,1985-04-12,listed,,,
 per00000000004,guest,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 per00000020001,veracross,Imogen Achterberg,Imogen Achterberg,Imogen Achterberg,,Imogen,,"Achterberg, Imogen",,imogen.achterberg,,,,,,,grp00000020038,,Head of School,,650-555-0100,,shared,,shared,,she/her,,,,2026-08-25,,2000-08-20,listed,,,
@@ -28,7 +28,7 @@ per00000020022,veracross,Lucía García,Lucía García,Lucía García,,Lucía,,"
 per00000020023,veracross,Daniel Reyes,Daniel Reyes,Daniel Reyes,,Daniel,,"Reyes, Daniel",,daniel.reyes,,,,,,,,,,,650-555-0122,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020024,veracross,Mateo García-Reyes,Mateo García-Reyes,Mateo García-Reyes,,Mateo,,"García-Reyes, Mateo",,,4,,grp00000020017,,grp00000020018,,,,,,650-555-0123,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020025,veracross,Sofía García-Reyes,Sofía García-Reyes,Sofía García-Reyes,,Sofía,,"García-Reyes, Sofía",,,K,,grp00000020003,,grp00000020004,,,,,,650-555-0124,,shared,,shared,,,,,,2026-08-25,,,listed,,,
-per00000020026,veracross,Siobhán O'Neill,Siobhán O'Neill,Siobhán O'Neill,,Siobhán,,"O'Neill, Siobhán",,siobhan.oneill,,,,,,,,,,,650-555-0125,,shared,,shared,,she/her,,,,2026-08-25,,,listed,,,
+per00000020026,veracross,Siobhán O'Neill,Siobhán O'Neill,Siobhán O'Neill,,Siobhán,,"O'Neill, Siobhán",,siobhan.oneill,,,,,,,,,,,650-555-0125,,shared,,shared,,she/her,,,,2026-08-25,,,listed,,,,,pronunciation/a9ec485c59ee9c35c103224c3701f8429976f67c475e1b136de0dcf25141ec3e.webm
 per00000020027,veracross,Cian O'Neill,Cian O'Neill,Cian O'Neill,,Cian,,"O'Neill, Cian",,,2,,grp00000020012,,grp00000020013,,,,,,650-555-0126,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020028,veracross,Miriam Hart,Miriam Hart,Miriam Hart,,Miriam,,"Hart, Miriam",,miriam.hart,,,,,,,,,,,650-555-0127,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020029,veracross,Joel Hart,Joel Hart,Joel Hart,,Joel,,"Hart, Joel",,joel.hart,,,,,,,,,,,650-555-0128,,shared,,shared,,,,,,2026-08-25,,,listed,,,
@@ -50,7 +50,7 @@ per00000020044,veracross,Kavya Patel,Kavya Patel,Kavya Patel,,Kavya,,"Patel, Kav
 per00000020045,veracross,Rohan Patel,Rohan Patel,Rohan Patel,,Rohan,,"Patel, Rohan",,rohan.patel,,,,,,,,,,,650-555-0144,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020046,veracross,Diya Patel,Diya Patel,Diya Patel,,Diya,,"Patel, Diya",,diya.patel,6,,grp00000020023,,grp00000020025,,,,,,650-555-0145,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020047,veracross,Katherine Moreau,Katherine Moreau,Katherine Moreau,Kit Moreau,Katherine,Kit,"Moreau, Katherine","Moreau, Kit",katherine.moreau,,,,,,,,,,,650-555-0146,,shared,,shared,,,,,,2026-08-25,,,listed,,,
-per00000020048,veracross,Étienne Moreau,Étienne Moreau,Étienne Moreau,,Étienne,,"Moreau, Étienne",,etienne.moreau,,,,,,,,,,,650-555-0147,,shared,,shared,,,,,,2026-08-25,,,listed,,,
+per00000020048,veracross,Étienne Moreau,Étienne Moreau,Étienne Moreau,,Étienne,,"Moreau, Étienne",,etienne.moreau,,,,,,,,,,,650-555-0147,,shared,,shared,,,,,,2026-08-25,,,listed,,,,,pronunciation/b3cf5d6a2051dc307a409f63dd3fcf99608698c3aca6634ea75e1f97a803a396.mp3
 per00000020049,veracross,Margaux Moreau,Margaux Moreau,Margaux Moreau,,Margaux,,"Moreau, Margaux",,,2,,grp00000020009,,grp00000020011,,,,,,650-555-0148,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020050,veracross,Haruki Sato,Haruki Sato,Haruki Sato,,Haruki,,"Sato, Haruki",,haruki.sato,,,,,,,,,,,650-555-0149,,shared,,shared,,,,,,2026-08-25,,,listed,,,
 per00000020051,veracross,Emi Sato,Emi Sato,Emi Sato,,Emi,,"Sato, Emi",,emi.sato,,,,,,,,,,,650-555-0150,,shared,,shared,,,,,,2026-08-25,,,listed,,,
