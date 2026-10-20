@@ -1,0 +1,29 @@
+# Word the approval page for the iPhone app's edits (closes #192)
+
+byre task 2f11a1aef8b2, "Word the approval page for the iPhone app, which changes things", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Word the approval page for the iPhone app, which changes things".
+Full transcripts: the events of task 2f11a1aef8b2 in byre (GET /api/events?task_id=2f11a1aef8b2).
+
+## Summary
+
+Issue #192: the OAuth approval page (`web/mcp/authorize.html`) told every client it "wants to read" and "can change nothing". That is untrue of the iPhone app, which makes edits.
+
+- **What changed:** the request description that `internal/mcp/oauth.go` returns to the page now carries a flag, `changes`. It is true when the redirect is one of the app redirects listed in `appRedirects` (today only `com.heliosian.Heliosian:/oauth`). When the flag is set, `authorize.js` replaces "read" with "use" and "can change nothing" with "can change what you can change". Other clients keep the read-only wording.
+- **Why this way:** a single yes/no flag decided from `appRedirects` was the simplest way to word the page per client, as the TODO item asked. No per-client wording table was added.
+- **Rename on the page:** at ian's request the page now says "Heliosian" instead of "Helios" in the title, the heading and both sentences.
+- **Test:** the existing iPhone-app sign-in test in `internal/mcp/mcp_test.go` now also checks the flag.
+- **Left out:** the new wording was never checked in a browser. The MCP resource name "Helios School" was left alone, since it names the school.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The OAuth approval page now uses the requested redirect’s membership in appRedirects to describe the iPhone app as able to change what the signed-in person can change. Other clients retain the read-only wording. The change extends the app authorization test and removes the completed TODO item.
+
+No significant findings.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+The OAuth approval response identifies the iPhone app using its redirect in `appRedirects`. The page then says the app can change what the signed-in person can change, while other clients retain the read-only wording. The change updates the app approval test and removes the completed TODO item. Validation: `timeout 30 go test ./internal/mcp` passed.
+
+No significant findings.
