@@ -1,0 +1,13 @@
+# Give split PDF documents first_page and last_page columns (closes #177)
+
+byre task e2f16b0bfd14, "Give documents page ranges", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Give documents page ranges".
+Full transcripts: the events of task e2f16b0bfd14 in byre (GET /api/events?task_id=e2f16b0bfd14).
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds first_page and last_page columns to documents and populates them when splitting PDFs. Search and similar-document refs expose the ranges, the admin search page displays them, and Ask's tool instructions tell it to cite them. The TODO item is removed.
+
+- Existing PDF splits never receive page ranges, so their search results and Ask citations remain without pages.
