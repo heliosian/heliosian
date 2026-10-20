@@ -1,0 +1,30 @@
+# Stop deleting the host-only session cookie (closes #162)
+
+byre task 8394308a4033, "After 2026-10-08: stop deleting the host-only session cookie", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "After 2026-10-08: stop deleting the host-only session cookie".
+Full transcripts: the events of task 8394308a4033 in byre (GET /api/events?task_id=8394308a4033).
+
+## Summary
+
+Removed the transitional deletion of the old host-only session cookie (issue #162). That cookie predates scoping the session cookie to the shared domain, and no live session used it after 2026-10-08.
+
+- `setSession` (`internal/auth/auth.go`) now only sets the session cookie for `cookieDomain(r.Host)`. `logout` deletes the session and spoof cookies on that same domain only. On dev hosts that is the host-only cookie, which is what they use.
+- The `logoutDomains` helper and its test `TestLogoutDomains` were deleted, since nothing calls the helper any more. `cookieDomain` keeps its own test.
+- The sign-out and sign-in tests were renamed to `TestLogoutClearsTheDomain` and `TestSignInSetsOneCookie`. They now expect only the domain cookie.
+- The `docs/dev.md` sentence explaining the host-only deletion was replaced with one line. The item was removed from TODO.md.
+
+Nothing was deliberately left out.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Removes the expired host-only cookie cleanup from sign-in and sign-out, leaving cookies scoped through the existing domain selection. Updates the authentication tests and developer documentation, and removes the completed TODO item. The authentication package tests pass.
+
+No significant findings.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Removes the expired host-only cookie cleanup from sign-in and sign-out, leaving cookies scoped to the configured domain (or the current host for local development). Updates the cookie tests and developer documentation, and removes the completed TODO item. Auth package tests pass with `timeout 30 go test ./internal/auth`.
+
+No significant findings.
