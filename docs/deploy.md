@@ -10,7 +10,7 @@ A push to `main` on `github.com/heliosian/heliosian` is meant to deploy producti
 - Push the SHA tag to Artifact Registry: `us-west1-docker.pkg.dev/heliosian/heliosian/heliosian`.
 - `gcloud run deploy heliosian --image …:<sha>` — image only, so every other service setting persists from the last full deploy.
 
-It builds only when a push touches what the image is made from: the server's Go source and modules, `web/`, the Dockerfile and `.dockerignore`, listed in the trigger's `includedFiles`. A push of docs, `TODO.md` or `tools/` alone deploys nothing. A new top-level source directory has to be added to that list. `.gcloudignore` has no part in this: it shapes only `gcloud builds submit` uploads, which a trigger never makes.
+It builds only when a push touches what the image is made from: the server's Go source and modules, `web/`, the Dockerfile and `.dockerignore`, listed in the trigger's `includedFiles`. Tests (`*_test.go`) and `testdata/` directories are listed in its `ignoredFiles`, since the server binary never contains them. A push of docs, `TODO.md`, `tools/` or tests alone deploys nothing. A new top-level source directory has to be added to that list. `.gcloudignore` has no part in this: it shapes only `gcloud builds submit` uploads, which a trigger never makes.
 
 The trigger has to name its build service account (the project's default compute service account) explicitly; trigger creation in this project refuses to infer one. The trigger itself is the only record of what a build does — this page says what it needs to do, never what it does — so read it, and the recent builds with each one's outcome beside it, rather than this page:
 
