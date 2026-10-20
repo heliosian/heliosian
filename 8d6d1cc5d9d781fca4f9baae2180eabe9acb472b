@@ -1,0 +1,204 @@
+# Audit GCS buckets and object path layout
+
+byre task 44a5953857f5, "Audit GCS buckets and object path layout", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Audit GCS buckets and object path layout".
+Full transcripts: the events of task 44a5953857f5 in byre (GET /api/events?task_id=44a5953857f5).
+
+## Summary
+
+**Goal (issue #181):** audit the `heliosian-media` GCS bucket's prefixes: are they still needed and consistently named, is anything orphaned, and does `docs/storage.md` match.
+
+**How:** a one-off read-only tool (`local/bucketaudit`, git-ignored) loaded every data-model sheet, listed all ~70k objects, and classified each by whether a Blob cell, a wiki page's markdown or any cell hash names it. Every prefix was also traced to the code that writes and reads it. The only other bucket, `heliosian_cloudbuild`, is Cloud Build's own.
+
+**Findings:**
+- Dead prefixes: `artifacts/` (old Ask store), `logos/` (removed Appearance panel), `calendar/` (pre-CONTENT calendar PDF), `stock/Pexels/` (old stock naming).
+- The app image folders (`link-`, `activity-`, `party-`, `category-images/`) are upload staging: the page posts each upload again to `/api/do/photo` as `photos/`, so only `GROUP.flyer` names anything in them.
+- Nothing deletes replaced photos and recordings: 1,735 unreferenced objects in `photos/`, plus 3,725 legacy `photos/*-thumb.jpg` that nothing reads.
+- `stock/` names objects by source ID with no extension, and keeps a second copy of each imported picture.
+- `feedback/` (report screenshots) exists in code but is empty in production.
+
+**Done:**
+- The dead prefixes are deleted (ian ran the `gcloud storage rm`).
+- The seven Appearance `SETTING` rows are deleted with `tools/q`.
+- The unused `artifacts.Inbox.Bucket` is removed.
+- `docs/storage.md` gained a "The media bucket" section per prefix, and two wrong IO-paragraph claims are fixed (about `PutMedia` thumbnails and about writing before commit).
+
+**Decisions:**
+- ian kept `content/`'s extension-less names: the row's `mime` is the type.
+- ian rejected renaming `stock/`. He wants every stored byte in the CAS (`CONTENT` rows), with Blob cells, stock records, wiki pictures and uploads all referencing `CONTENT`. He chose the full form (CONTENT refs plus a per-column read policy) over a lighter "Blob cells name `content/<hash>`, no row" variant.
+- That move is filed as one TODO item, "Keep every stored byte in CONTENT"; it also covers sweeping the orphans.
+
+**Left out:** the CONTENT move itself and its migration, and any orphan cleanup before that move. `blob.Media` looked dead but `internal/app/server.go` uses it, so it stays.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds a media-bucket section to docs/storage.md describing active prefixes, their writers and references, naming, and object retention. No code or TODO changes are included.
+
+- The required TODO.md removal is missing.
+- The naming overview incorrectly claims bucket-wide content addressing and deduplication.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Adds a media-bucket inventory to docs/storage.md, describing object naming, app upload folders, stock/search objects, and retention behavior. No storage implementation or TODO changes are included.
+
+- The bucket inventory omits the active `feedback/` screenshot prefix.
+- The required removal of the audit item from TODO.md is missing.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Adds a media-bucket inventory to docs/storage.md, describing object naming, writers, consumers, and deletion behavior for each prefix. It also documents retained uploads and media that become unreferenced.
+
+- The required removal of the GCS audit item from TODO.md is missing.
+
+### Snapshot 5, codex gpt-6.1-sol: done
+
+Documents the media bucket’s prefixes, naming conventions, writers, references and cleanup behavior. Records two follow-up cleanup tasks and removes the unused Cloud Storage bucket dependency from the artifacts inbox. Targeted blob and image-search tests and vet checks for app wiring and the local server pass.
+
+- The completed audit item remains in TODO.md despite the task’s explicit removal requirement.
+
+### Snapshot 9, codex gpt-6.1-sol: done
+
+Documents the media bucket’s active prefixes, naming rules, writers, references, and deletion behavior. Removes an unused bucket dependency from the artifacts inbox configuration, replaces the completed audit TODO with a follow-up for consolidating stored bytes into CONTENT, and records existing orphaned photo objects there.
+
+No significant findings.
+
+## Decisions
+
+### The media bucket audit is done. Which of these cleanups should this task make? (Pick any; the rest I'll add to TODO.md or drop, as you say.)
+
+**What I audited.** Production's `heliosian-media` bucket has 13 top-level folders (69,952 objects). I wrote a one-off tool (`local/bucketaudit`, git-ignored, read-only) that loads every data-model sheet, lists every object, and checks each object against every Blob cell (`PHOTO.original`, `CONTENT.blob`, `GROUP.flyer`, …) and against the hashes in cells and wiki pages. I also traced every folder to the code that writes it. `docs/storage.md` had no account of the folders at all; I've added a "The media bucket" section that describes the 6 kinds of folder today's code uses (that part is done, whatever you pick here).
+
+<details><summary>Per-folder results</summary>
+
+| folder | size | objects | named by a row | written by today's code |
+|---|---|---|---|---|
+| content/ | 10.69 GiB | 34,757 | 34,739 (`CONTENT.blob`), 18 unnamed | yes |
+| search/ | 1.27 GiB | 13,946 | none by design (the searcher prunes its own) | yes |
+| photos/ | 991 MiB | 8,192 | 6,457 (with thumbs), **1,735 unnamed** | yes |
+| activity-images/ | 161 MiB | 798 | 2 (one flyer + thumb) | yes (staging copies) |
+| stock/ | 120 MiB | 5,272 | none (image-search cache) | yes |
+| artifacts/ | 66 MiB | 6,482 | none | **no** |
+| party-images/ | 38 MiB | 116 | none | yes (staging copies) |
+| link-images/ | 21 MiB | 126 | none | yes (staging copies) |
+| category-images/ | 13 MiB | 106 | 2 (one flyer + thumb) | yes (staging copies) |
+| pronunciation/ | 4.3 MiB | 124 | 122, 2 unnamed | yes |
+| wiki-images/ | 2.8 MiB | 12 | 6 in wiki markdown, 6 unnamed | yes |
+| logos/ | 1.4 MiB | 20 | none in a Blob cell | **no** |
+| calendar/ | 253 KiB | 1 | none | **no** |
+
+The other bucket in the project, `heliosian_cloudbuild`, is Cloud Build's own.
+</details>
+
+- [x] Delete the three dead folders and what still points at them
+  No code has read or written these since the moves to the data model:
+  - `artifacts/`: 6,482 JSON objects, 66 MiB, e.g. `artifacts/000166b3…c6ac-f6781cff13fa7887.json` (7 KiB, 2026-09-17). Left over from Helios Ask's old document store. The `Bucket` field of `artifacts.Inbox` (`internal/artifacts/inbox.go`) is set and never read; I'd delete it.
+  - `logos/`: 20 objects, 1.4 MiB, from the removed Appearance panel. Seven `SETTING` rows from that panel are still there and nothing reads them: `who` Logo = `logos/f37d00c4…png`, `who` Sidebar Color / Sidebar Color 2 = `#005866`, `home` Sidebar Color = `#022427`, Sidebar Color 2 = `#0f4e54`, Page Color = `#f9f9f9`, Page Color 2 = `#ffffff`. I'd delete them with `tools/q`.
+  - `calendar/`: 1 PDF, `calendar/cf11d90f…ea2.pdf` (253 KiB). The same bytes are already at `content/cf11d90f…ea2`, which a `CONTENT` row names.
+  - `stock/Pexels/`: 76 records in an old naming scheme, e.g. `stock/Pexels/10330428.json` (263 B), which today's code never looks up (it uses `stock/<sha256>.json`).
+  You'd run the bucket delete yourself, since it's a bulk production write. I'd type this into the terminal for you: `gcloud storage rm --recursive gs://heliosian-media/artifacts/ gs://heliosian-media/logos/ gs://heliosian-media/calendar/ gs://heliosian-media/stock/Pexels/`
+- [x] Add to TODO.md: delete replaced and orphaned objects
+  Only the content sweeper and the searcher ever delete. When a photo is replaced or deleted, or the worker remakes its crop or thumbnail, the old objects stay in the bucket. Today that's 1,735 unnamed objects in `photos/` (e.g. `photos/00bdc8f1…7b98.jpg`, 17 KiB, 2026-10-01, which no `PHOTO` cell names), 2 in `pronunciation/` (e.g. `pronunciation/3503f94a…fe6f.mp3`, 2026-08-25), and 18 in `content/` (e.g. `content/1c927470…392f`, 6.75 MiB, 2026-10-07, which no `CONTENT` row names; probably an object written before a commit that then failed). The fix would be for the sweeper to delete an object once no cell names it. That's real design work, so a TODO item, not part of this task.
+- [x] Add to TODO.md: stop keeping the app image folders' upload copies
+  `link-images/`, `activity-images/`, `party-images/` and `category-images/` (233 MiB) exist only so that a page can upload a picture, fetch it back and post it to `/api/do/photo`, which writes the same bytes again under `photos/`. For example, `activity-images/00521e3d…a6c8.png` and `photos/00521e3d…a6c8.png` are identical, and only the second is named (`PHOTO.original`). Of their 1,146 objects, only 2 flyers (`GROUP.flyer`) are named directly. The simpler shape would be for an upload to be held in memory only (`blob.Store` already serves it from there), with flyers made through a `do` endpoint like photos, so these folders go away and the 5 per-app folders stop being a concept. Also design work, so a TODO item.
+- [ ] Make the stock and content names match the rest
+  `stock/` names thumbnails `stock/<id>-thumb` and imported pictures `stock/<id>`, with no extension, while every other picture is `<hash>.<ext>` with a `<hash>-thumb.jpg` beside it. `content/<hash>` has no extension either, but that's deliberate, because the `CONTENT` row's `mime` carries the type. Changing stock's names would orphan the 5,196 cached objects for a cosmetic gain. I recommend leaving it.
+
+ian@fc.run checked: Delete the three dead folders and what still points at them; Add to TODO.md: delete replaced and orphaned objects; Add to TODO.md: stop keeping the app image folders' upload copies; Make the stock and content names match the rest
+
+### For "make the stock and content names match the rest": should `content/` objects get extensions too, or only `stock/`?
+
+You checked "Make the stock and content names match the rest". In the media bucket, every picture is named `<sha256>.<ext>`, with `<sha256>-thumb.jpg` beside it. Two folders don't follow that:
+- **`content/`** holds every document's bytes (34,757 objects, 10.7 GiB). Each object is `content/<sha256>` with no extension, and its type is in the `mime` column of the `CONTENT` row that names it.
+- **`stock/`** is image search's cache. It names objects by an ID (a hash of the source and the source's picture ID), not by their bytes, and uses no extension except on the records.
+
+The item's text called `content/`'s missing extension deliberate and only proposed changing `stock/`. So I'm checking before I rename 10.7 GiB.
+
+Real example: `CONTENT` row `cntcIMMRPajGGz`, `mime` = `application/pdf`, size 259,292.
+
+- (*) Rename stock only; leave content as it is
+  `CONTENT.blob` stays `content/cf11d90fb0f2…ea2`, and the row's `mime` keeps saying it's a PDF. No migration.
+- ( ) Give content objects extensions too
+  `CONTENT.blob` becomes `content/cf11d90fb0f2…ea2.pdf`. A one-off tool in `local/` would copy all 34,757 objects to the new names and set `blob` on 34,739 `CONTENT` rows; you'd run it after the deploy. It needs a fixed extension for every `mime` in use (`message/rfc822` → `.eml`, `text/markdown` → `.md`, `text/html` → `.html`, …). Every writer of `content/` (mail intake, invitations, fetcher, extractor, wiki, calendar import) would then build the name from the type.
+
+ian@fc.run chose: Rename stock only; leave content as it is
+
+### To give stock pictures extensions, should import stop keeping its own copy of the picture under `stock/`?
+
+You checked "Make the stock and content names match the rest". Image search (the "Find an image" picker) keeps three objects per stock hit, all named by an ID that hashes the source and its picture ID. Real example, ID `343713c6…101f`:
+- `stock/343713c6…101f.json`: the hit's record (source URLs, credit)
+- `stock/343713c6…101f-thumb`: the source's thumbnail, any image type, no extension
+- `stock/343713c6…101f`: the full picture, 189,655 bytes, no extension, kept when someone imports it
+
+Importing then stores the same bytes again in the app's folder under their own hash: `wiki-images/1645a6d7…b0.jpg` (189,655 bytes).
+
+Both choices make the thumbnail `stock/<id>-thumb.jpg`, re-encoded to JPEG with the same `blob.Thumbnail` every other thumbnail uses, so its name never depends on what the source sent. The question is the full picture. Its name has to come from the ID, because import looks it up by ID before it has any bytes.
+
+- (*) Drop stock's copy of the picture
+  Import downloads from the source each time and keeps only the app-folder copy (`wiki-images/1645a6d7…b0.jpg`), which it already writes. `stock/` then holds only `<id>.json` and `<id>-thumb.jpg`. A second import of the same hit downloads again; imports are limited to 20 an hour per person. Unsplash's download notice then goes out on every import, which is what its guidelines ask for.
+- ( ) Keep the copy as `stock/<id>.<ext>`
+  The picture becomes `stock/343713c6…101f.jpg`. Import finds it by listing `stock/343713c6…101f.`, which also matches the `.json` record, and picks the one that isn't JSON: one bucket list call per import, and a little more code.
+
+Either way, the existing 2,523 old `-thumb` objects and 23 extension-less pictures would be deleted by hand after the deploy (a `gcloud storage rm` I'd type into the terminal for you).
+
+ian@fc.run answered: super confused by these choices. do better describing the problem, the goals, and the tradeoffs
+
+### When someone picks a stock picture, should the server keep its own copy under `stock/`, or only the copy in the app's folder?
+
+**How it works today.** In "Find an image", someone searches and the server asks Unsplash, Pexels and Pixabay. For each hit it keeps two things in `stock/`: a small record of the hit (`stock/<id>.json`) and the source's preview image (`stock/<id>-thumb`). When the person picks a hit, the server downloads the full picture and saves it **twice**:
+1. as `stock/<id>`. This copy is read only if someone picks the same hit again, so the server can skip downloading it a second time.
+2. in the app's folder, named for its bytes with an extension. This is the copy the page actually uses.
+
+Real example: the hit `343713c6…101f` was picked once. Its picture is in the bucket both as `stock/343713c6…101f` and as `wiki-images/1645a6d7…b0.jpg`, both 189,655 bytes.
+
+**Goal.** You picked "make the stock names match the rest": everywhere else, a file has an extension and its preview is `<name>-thumb.jpg`.
+
+**The preview needs no decision.** I'll always convert it to JPEG and name it `stock/<id>-thumb.jpg`.
+
+**The full picture needs one.** The server looks that copy up by the hit's ID *before* downloading anything, so it can't know whether the name ends `.jpg` or `.png`.
+
+- (*) Keep only the app-folder copy
+  Drop copy 1. The picture lives only at `wiki-images/1645a6d7…b0.jpg`, which already has an extension. `stock/` then holds only records and previews.
+  Cost: if two people pick the same hit, the server downloads it twice (about 200 KB each; picks are limited to 20 an hour per person). Today `stock/` holds 23 such copies, 5.3 MB.
+  Gain: less code, and one kind of object fewer to name and clean up.
+- ( ) Keep both copies, adding an extension to the `stock/` one
+  Copy 1 becomes `stock/343713c6…101f.jpg`. To find it, the server first lists everything starting `stock/343713c6…101f.` and skips the `.json` record.
+  Cost: an extra bucket call on every pick, and the lookup code.
+  Gain: a repeat pick of the same hit skips the download.
+
+Either way, after the deploy the old-named objects (2,523 previews and 23 pictures) get deleted by a command I'd type into the terminal for you.
+
+ian@fc.run answered: this is stupid. we have an entire CAS. all we need is the search record, which points at the CAS
+
+### Mostly yes, but I'd do the move in a lighter form than I wrote. Which shape do you want me to put in TODO.md for "use the CAS for every stored byte"?
+
+**Is it reasonable?** The direction is: one place for every stored byte, everything else referencing it, nothing orphaned. Today that's spread across 7 folders, 3 thumbnail schemes, and per-app upload folders that copy their bytes again into `photos/`. Collapsing that is right.
+
+But the plan I wrote has a weak spot. It makes every picture and recording a **`CONTENT` row**, and `CONTENT`'s read policy only knows documents and mail (`internal/db/policy.go:584`). It would need a new clause for each column that points at it. Some of those columns are private (`PHOTO.original`, `pronunciation_original`), so a mistake there leaks someone's GPS-tagged original. That's real policy work and risk, and what does the row buy for a photo? Its `mime` and `size` are already in GCS's object metadata, and dedupe already comes from naming by hash.
+
+What we actually need from "the CAS" is three things: one folder, named by hash; references by hash; and a sweeper that deletes what nothing references. A row per object isn't required for any of them.
+
+Same real input for each option: `PHOTO` row with `original` = `photos/00521e3d…a6c8.png`, and stock hit `343713c6…101f`, whose picture is stored twice today (`stock/343713c6…101f` and `wiki-images/1645a6d7…b0.jpg`).
+
+- (*) Light: every Blob cell names `content/<hash>`, with no row
+  `PHOTO.original` = `content/00521e3d…a6c8`; the object's type is its GCS content-type.
+  Stock record `stock/343713c6…101f.json` holds `"picture": "content/1645a6d7…b0"`; a flyer or wiki picture names `content/1645a6d7…b0` the same way.
+  The sweeper deletes a `content/` object that no Blob cell, `CONTENT` row, stock record or wiki page names.
+  Read access stays exactly as today: `/api/blob/{id}/{column}` checks the cell's own row and column.
+  Goes away: `photos/`, `pronunciation/`, `feedback/`, the five app folders, `imageFolders`, the per-app routes, `-thumb.jpg` objects (thumbnails become their own Blob cells, as `PHOTO.thumbnail` already is).
+- ( ) Full: every Blob cell becomes a reference to a `CONTENT` row
+  `PHOTO.original` = `cntQ3x…` (an ID), pointing at a `CONTENT` row {`hash` 00521e3d…, `blob` `content/00521e3d…a6c8`, `mime` image/png, `size` …}.
+  The stock record holds `"picture": "cntR7y…"`.
+  The existing content sweeper deletes rows no reference reaches, then their objects.
+  Read access: `CONTENT` gets a policy clause for each referencing column (`PHOTO.original`, `PHOTO.crop`, `GROUP.flyer`, `REPORT.screenshot`, …), keeping the private ones private.
+  Costs about 7,000 more rows in the documents sheet, and one extra lookup per picture shown.
+
+Either way it's a feature-sized change plus a one-off `local/` migration you'd run after the deploy, so I'd make it **one TODO item** (it replaces the two I added: "Delete media objects no cell names any more" and "Stop keeping the app image folders' upload copies"). Then this task lands as it is:
+- the `docs/storage.md` bucket section
+- the dead `artifacts/`, `logos/` and `calendar/` folders gone
+- the seven `SETTING` rows gone
+- `artifacts.Inbox.Bucket` removed
+- plus deleting the unused `blob.Media` and fixing the doc's `PutMedia` sentence
+
+ian@fc.run chose: Full: every Blob cell becomes a reference to a `CONTENT` row
