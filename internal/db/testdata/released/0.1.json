@@ -1,0 +1,18 @@
+{
+  "who.viewer": "(from PERSON (where (= id @viewer)) (columns source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug grade classroom crew department job_title phone pronouns pronunciation facts facts_updated photo_updated))",
+  "who.people": "(from PERSON (where (in id (members (slug \"everyone\"))) (not hidden)) (order name_sort asc) (columns source vc_legal_name name_long_override name_long name_short_override name_short name_sort_override name_sort name_show slug grade classroom crew department job_title phone pronouns pronunciation facts facts_updated photo_updated))",
+  "who.addresses": "(from PERSON_EMAIL (where primary) (columns person address))",
+  "who.pictures": "(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (in kind \"family\" \"classroom\" \"grade\"))))) (order order asc) (columns person group order ready thumbnail image crop_left crop_top crop_width crop_height))",
+  "who.groups": "(from GROUP @g (where (!= status \"closed\") (or (in kind \"family\" \"classroom\" \"grade\" \"gradeband\" \"crew\" \"department\") (and (= kind \"group\") (= parent.kind \"gradeband\")))) (order order asc name asc) (columns parent kind slug name description color pronunciation order address phone))",
+  "who.members": "(from MEMBER (where (= member \"yes\") (in group (select GROUP.id (= kind \"family\")))) (columns group person))",
+  "who.effective": "(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug \"students\" \"parents\" \"staff\") (and (= kind \"group\") (= parent.kind \"gradeband\")))))) (include group) (columns group person))",
+  "who.coords": "(from GEOCODE)",
+  "who.settings": "(from SETTING (where (= app \"platform\")))",
+  "who.tags": "(from GROUP @g (where (own_group @g) (not (blank managed_by)) (!= status \"closed\") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)) (include managed_by) (columns name managed_by))",
+  "who.tagManagers": "(from MEMBER (where (= member \"yes\") (in group (select GROUP.managed_by @g (own_group @g) (not (blank managed_by)) (!= status \"closed\") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)))) (columns group person))",
+  "who.managed": "(from GROUP @g (where (or (blank start) (and (not (blank end)) (>= end today)) (and (blank end) (>= start today))) (manages @g) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))",
+  "who.joined": "(from GROUP @g (where (or (blank start) (and (not (blank end)) (>= end today)) (and (blank end) (>= start today))) (or (in id (select EFFECTIVE_MEMBER.group (= person @viewer))) (in rsvp_yes (select EFFECTIVE_MEMBER.group (= person @viewer)))) (or (!= kind \"event\") (not (blank rsvp_yes))) (not (manages @g)) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))",
+  "who.mine": "(from EFFECTIVE_MEMBER (where (= person @viewer)) (columns group))",
+  "who.tagMembers": "(from MEMBER (where (= member \"yes\") (in group \"grp00000000041\")) (include person) (columns group person))",
+  "who.listMembers": "(from EFFECTIVE_MEMBER (where (in group \"grp00000000041\")) (include person) (columns group person))"
+}

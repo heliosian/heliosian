@@ -20,9 +20,6 @@ Last verified: bff8f634
 
 # Issues
 
-- Keep the queries released iOS builds send parsing
-  Released iPhone builds send fixed queries, and a renamed or removed column makes them fail with a 400. Check in each released version's queries under `internal/db` testdata and add a test that parses them all with `db.Parse`.
-  Issue: https://github.com/heliosian/heliosian/issues/189
 - Wiki: comments on specific passages of a page
   Readers can't respond to a wiki page. Let them comment on a selected passage or the whole page, with replies, resolving, and notifications to the author and the people in a thread.
   Issue: https://github.com/heliosian/heliosian/issues/185
