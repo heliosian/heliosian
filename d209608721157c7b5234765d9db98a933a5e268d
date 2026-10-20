@@ -1,0 +1,74 @@
+# Rename band and grade band to gradeband everywhere (closes #183)
+
+byre task e62f4f3e23ff, "Say \"gradeband\" everywhere the code, data, prompts and docs say \"band\" or \"grade band\"", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Say \"gradeband\" everywhere the code, data, prompts and docs say \"band\" or \"grade band\"".
+Full transcripts: the events of task e62f4f3e23ff in byre (GET /api/events?task_id=e62f4f3e23ff).
+
+## Summary
+
+**Goal (#183):** the grade-pair groups (Hummingbirds, Halcons, Jayvens, Cospreys, Hegrets) were called band, grade band, GradeBand and Gradeband in different places. Use "gradeband" everywhere, including the `GROUP.kind` value.
+
+**Built:**
+- **Schema and policy:** the `GROUP.kind` enum value `band` became `gradeband`, with the policies (Who? admin reads, room-parent insert/delete) and the trigger's `schoolKinds` following.
+- **Import:** `tools/import` (`gradebandRules`, `gradebandOf`, `classroomGradebands`, count labels).
+- **Prompts:** Ask's prompt.md and lingo; the calendar classifier's glossary and `Classroom.Gradeband`; the `helios_classroom` MCP tool's description and output keys (`gradeband`, `gradebandGroups`).
+- **Mail:** `gradebandLists` in mailroot.go.
+- **Web:** Who? (state, classrooms, admin), When (`gradebands()`, chips, audience words), the shared rail, calendar.js and listrules.js.
+- **Sample data, tests and docs:** sample GROUP.csv, tests, and every doc that meant a grade pair.
+
+**Production data:** the server refuses to load (at startup) or swap in (on refresh) any row whose enum value it doesn't know, so the data and the deploy can't simply go in sequence. ian chose to edit the five `kind` cells in the Groups sheet just before deploying, and had the agent do it. They were set with `go run ./tools/sheets set --tab GROUP --keycol id --col kind --value gradeband` (dry run first, then `--apply`) and read back. Between that edit and the deploy, the old revision's refreshes fail but it keeps serving.
+
+**Rejected:** a two-deploy transition with both enum values (it leaves two names for one thing for a while) and a `local/` tool (overkill for five cells).
+
+**Left alone on purpose:** "band" that means a visual strip (`ticket-band`, `pending-band`, `gala-band`, the family band, `--amber-band`) and the search index's LSH `searchBand`, since neither is a grade pair.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Renames the school grade-pair terminology to gradeband across the schema, queries, prompts, browser models, importer, documentation and sample data, and removes the TODO item. Tests for internal/db, internal/ask, internal/tools and tools/import pass.
+
+- Existing stored `band` rows have no migration and fail validation under the new schema.
+- The school mailing-list mapping still uses `bandLists` in code and documentation.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+Renames the school grade-pair concept to gradeband across schema values, queries, policies, import code, prompts, frontend models, documentation and sample data. Removes the corresponding TODO item. Existing production rows have not yet been migrated.
+
+- Existing production `band` rows are not migrated; the new enum rejects them and prevents the data model from loading.
+
+### Snapshot 4, codex gpt-6.1-sol: running
+
+## Decisions
+
+### How should production's five `GROUP` rows with `kind` = `band` become `gradeband`, given the server won't load a kind it doesn't know?
+
+**Background.** This task renames the grade-pair groups (Hummingbirds, Halcons, Jayvens, Cospreys, Hegrets) from "band" to "gradeband" everywhere. That covers the `GROUP.kind` enum value, policies, queries in Who?/When/rail, the import, Ask's prompt, the calendar classifier's glossary, the `helios_classroom` tool's output keys (`gradeband`, `gradebandGroups`), sample data and docs. The code is done and tests pass. The only thing left is the production data.
+
+**The problem.** The server checks every row against the schema's enum when it builds the model (`buildRows` in `internal/db/model.go`). At startup a bad row means it refuses to start. On a refresh, a bad row means it keeps its old model and logs `refresh` errors. Today's server knows only `band`; the new code knows only `gradeband`. So whichever goes first, data or deploy, the server running at that moment sees a kind it rejects.
+
+The rows, from `go run ./tools/q read '(from GROUP (where (= kind "band")) (columns name slug status))'`:
+```
+grplchvH2I51n2  open              Hummingbirds
+grprxLwULof3E7  open    halcons   Halcons
+grprWCz98cR1cl  open    jayvens   Jayvens
+grpLh9EegxW1GY  open    cospreys  Cospreys
+grpOiILm5K2OYe  open    hegrets   Hegrets
+```
+Each needs its `kind` cell in the Groups sheet's GROUP tab to change from `band` to `gradeband`. The current server's `/api/q` refuses `gradeband` as "not one of", so `q write` can't do it. It has to be a direct edit to the sheet.
+
+**Goal.** The five rows say `gradeband`, the new revision starts cleanly, and nobody sees a broken page.
+
+- (*) Edit the five cells in the sheet just before deploying
+  You (or I, if you OK writing the sheet) change those five `kind` cells from `band` to `gradeband` in the Groups spreadsheet, then deploy this branch right away.
+  What happens: the old revision keeps serving on the model it already has. Its refreshes fail and are logged until the new revision takes over, so hand edits to the sheets made in those few minutes wait until then. The new revision loads `gradeband` and starts.
+  You get: one merge, five cells, no extra code. You give up: a few minutes of failed-refresh log lines, and the edit has to happen close to the deploy.
+- ( ) A one-off tool in `local/gradeband/` that makes the same five edits through the Sheets API
+  Same order and same effect as editing the sheet by hand. You run `go run ./local/gradeband` just before the deploy. It prints each row as it changes it, e.g. `grprxLwULof3E7 Halcons: band -> gradeband`.
+  You get: no hand edits in the sheet. You give up: a tool written and run for five cells. It lives in the gitignored `local/`, so you'd copy it into your main checkout.
+- ( ) Two deploys with a transition
+  First merge a change that lets the enum hold both `band` and `gradeband`, with the code treating them alike. Then move the rows with `q write`, then merge this change, which drops `band`.
+  You get: no window of failed refreshes. You give up: two merges, and a stretch where the code carries two names for one thing, the double path the code rules avoid.
+
+ian@fc.run chose: Edit the five cells in the sheet just before deploying
+ian@fc.run added: you do it
