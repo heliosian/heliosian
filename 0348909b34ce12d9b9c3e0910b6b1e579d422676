@@ -1,0 +1,39 @@
+# Return people to the page they asked for after sign-in (closes #175)
+
+byre task e13a49dfbc33, "Return people to the page they asked for after a forced sign-in", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Return people to the page they asked for after a forced sign-in".
+Full transcripts: the events of task e13a49dfbc33 in byre (GET /api/events?task_id=e13a49dfbc33).
+
+## Summary
+
+Set out to fix issue #175: after a forced sign-in from the login splash, `Auth.login` always sent people to `/`, so the page they had asked for was lost.
+
+**Built**
+- The splash is served at whatever address someone asked for. `web/public/common/login.js` now sends that address along with the sign-in: Google posts to `/auth/login?next=<path + query + #fragment>`.
+- `internal/auth/auth.go`:
+  - `returnPath` accepts `next` only when it is a path on the same host. It rejects full URLs, `//…` and `/\…` addresses, anything with control characters, and an empty value; those all go to `/`.
+  - `signIn` (the end of `login`) sets the session cookie, then writes the `Location` header and the 303 itself.
+- `TestSignInReturnsOnlyToThisSite` checks the real response's code and `Location`.
+- `docs/dev.md` has one sentence on the return path in its sign-in section.
+
+**Key decisions**
+- The path rides as a query parameter on Google's login address, not in a cookie, so each tab carries its own path. The fallback, if Google's popup sign-in ever refuses a query string there, is a short-lived cookie set with the splash.
+- No `http.Redirect`: it tidies up `..` segments in everything before `?`, fragment included. A reviewer showed it turned `/p#/../\evil.com` into `/\evil.com`, which browsers send to another site, so the `Location` header is written as checked.
+
+**Left out or unverified**
+- No real Google sign-in was tried, so it's unconfirmed that Google accepts the query string on its login address.
+- The issue's comments weren't read, because `gh` wasn't available.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+The login splash carries the requested path, query, and fragment into the sign-in POST, and the server redirects there after setting the session. The change also documents the behavior and removes the TODO item.
+
+- The redirect helper can turn an accepted URL fragment into an external destination after sign-in.
+
+### Snapshot 2, codex gpt-6.1-sol: done
+
+The login splash carries the requested path, query string, and fragment into the sign-in POST. After authentication, the server redirects to that path, rejects external or malformed destinations, and defaults to `/`. The change adds redirect tests, documents the flow, and removes the TODO item. Validation: `timeout 30 go test ./internal/auth` passed; a live Google sign-in was not exercised.
+
+No significant findings.
