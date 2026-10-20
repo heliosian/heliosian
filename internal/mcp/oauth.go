@@ -204,6 +204,7 @@ type described struct {
 	Client   string `json:"client"`
 	Redirect string `json:"redirect"`
 	Email    string `json:"email"`
+	Changes  bool   `json:"changes"`
 }
 
 type onward struct {
@@ -225,7 +226,7 @@ func (s *Server) describe(r *http.Request, in pending) (described, error) {
 	if err != nil {
 		return described{}, err
 	}
-	return described{Client: a.client.Name, Redirect: destination(a.redirect), Email: auth.RealEmail(r)}, nil
+	return described{Client: a.client.Name, Redirect: destination(a.redirect), Email: auth.RealEmail(r), Changes: appRedirects[a.redirect] != ""}, nil
 }
 
 func destination(redirect string) string {

@@ -23,9 +23,6 @@ Last verified: bff8f634
 - Add sample pronunciation recordings in WebM/Opus and MP4/AAC
   The sample data has no pronunciation recordings, so nothing in development has a play button. Add synthesized recordings in WebM, MP4 and MP3 for a few sample people and one family group, and document them in `docs/dev.md`.
   Issue: https://github.com/heliosian/heliosian/issues/194
-- Word the approval page for the iPhone app, which changes things
-  The OAuth approval page says the client "wants to read" and "can change nothing", which is untrue of the iPhone app, since it makes edits. Word the page per client from `appRedirects`, so the app's page says it can change what you can change.
-  Issue: https://github.com/heliosian/heliosian/issues/192
 - Keep the queries released iOS builds send parsing
   Released iPhone builds send fixed queries, and a renamed or removed column makes them fail with a 400. Check in each released version's queries under `internal/db` testdata and add a test that parses them all with `db.Parse`.
   Issue: https://github.com/heliosian/heliosian/issues/189

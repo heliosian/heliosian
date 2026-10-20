@@ -24,6 +24,10 @@ async function start() {
     $('client').textContent = about.client;
     $('email').textContent = about.email;
     $('redirect').textContent = about.redirect;
+    if (about.changes) {
+      $('verb').textContent = 'use';
+      $('power').textContent = 'can change what you can change';
+    }
     $('ask').hidden = false;
   } catch (err) {
     fail(err);

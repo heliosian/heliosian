@@ -359,7 +359,7 @@ func TestTheAppSignsInThroughItsOwnRedirect(t *testing.T) {
 	query := strings.Replace(f.authorizeQuery(client, challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape(app), 1)
 	body, _ := json.Marshal(map[string]string{"query": query})
 	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
-	if status, about := f.post(t, "/api/mcp/request", "application/json", string(body), same); status != http.StatusOK || about["redirect"] != "the Heliosian app" || about["client"] != "Heliosian for iOS" {
+	if status, about := f.post(t, "/api/mcp/request", "application/json", string(body), same); status != http.StatusOK || about["redirect"] != "the Heliosian app" || about["client"] != "Heliosian for iOS" || about["changes"] != true {
 		t.Fatalf("the approval page answered %d: %v", status, about)
 	}
 	status, out = f.post(t, "/api/mcp/deny", "application/json", string(body), same)
