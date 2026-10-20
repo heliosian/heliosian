@@ -28,6 +28,16 @@ func StartSweeper(s *Store, queue *store.Queue, bucket *blob.Bucket) {
 	x.in.wake.poke()
 }
 
+func PauseSweeper(s *Store) {
+	in := s.Model().services.inbox(sweepInbox)
+	slog.Info("sweep: paused")
+	go func() {
+		for range in.wake {
+			in.take()
+		}
+	}()
+}
+
 func (x *sweeper) run() {
 	for range x.in.wake {
 		x.in.take()

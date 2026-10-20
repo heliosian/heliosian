@@ -403,7 +403,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartDigest(core.Data, core.Queue, bucket, anthropicKey, time.Now)
-			db.StartSweeper(core.Data, core.Queue, bucket)
+			db.PauseSweeper(core.Data)
 			db.StartFetcher(core.Data, core.Queue, bucket)
 			db.StartGeocoder(core.Data, core.Queue, geocoder)
 		}()
