@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -269,8 +270,21 @@ func (a *Auth) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "account is not in the school domain", http.StatusForbidden)
 		return
 	}
+	a.signIn(w, r, email)
+}
+
+func (a *Auth) signIn(w http.ResponseWriter, r *http.Request, email string) {
 	a.setSession(w, r, email)
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	w.Header().Set("Location", returnPath(r.URL.Query().Get("next")))
+	w.WriteHeader(http.StatusSeeOther)
+}
+
+func returnPath(next string) string {
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") || strings.HasPrefix(next, "/\\") {
+		return "/"
+	}
+	return next
 }
 
 func setCookie(w http.ResponseWriter, name, value, domain string, maxAge int) {

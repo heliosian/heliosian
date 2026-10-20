@@ -4,7 +4,7 @@ const {clientId} = await res.json();
 const onload = document.createElement('div');
 onload.id = 'g_id_onload';
 onload.setAttribute('data-client_id', clientId);
-onload.setAttribute('data-login_uri', location.origin + '/auth/login');
+onload.setAttribute('data-login_uri', location.origin + '/auth/login?next=' + encodeURIComponent(location.pathname + location.search + location.hash));
 onload.setAttribute('data-hosted_domain', 'heliosschool.org');
 onload.setAttribute('data-auto_prompt', 'false');
 

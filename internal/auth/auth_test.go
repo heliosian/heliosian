@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"strings"
 	"testing"
@@ -132,6 +133,32 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 	}
 	if len(s.ended) != 0 {
 		t.Errorf("signed out %v, want no one", s.ended)
+	}
+}
+
+func TestSignInReturnsOnlyToThisSite(t *testing.T) {
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
+	for next, want := range map[string]string{
+		"":                          "/",
+		"/":                         "/",
+		"/p/abc":                    "/p/abc",
+		"/g/staff?tab=2#top":        "/g/staff?tab=2#top",
+		"/p#/../\\evil.com":         "/p#/../\\evil.com",
+		"/p/../\\evil.com":          "/p/../\\evil.com",
+		"https://evil.com/":         "/",
+		"//evil.com/":               "/",
+		"/\\evil.com":               "/",
+		"evil.com":                  "/",
+		"javascript:alert(1)":       "/",
+		"/\t/evil.com":              "/",
+		"https://who.heliosian.com": "/",
+	} {
+		req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/auth/login?next="+url.QueryEscape(next), nil)
+		rec := httptest.NewRecorder()
+		a.signIn(rec, req, "parent@heliosschool.org")
+		if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != want {
+			t.Errorf("next %q: got %d to %q, want 303 to %q", next, rec.Code, rec.Header().Get("Location"), want)
+		}
 	}
 }
 
