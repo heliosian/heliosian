@@ -56,9 +56,6 @@ Last verified: bff8f634
 - Add hca@ as a valid account for logging in
   Allow the hca@ account to sign in to Heliosian sites and host events, to help with the newsletter and sending invites.
   Issue: https://github.com/heliosian/heliosian/issues/165
-- After 2026-10-08: stop deleting the host-only session cookie
-  `setSession` and `logout` still delete the old host-only session cookie, which no live session uses after 2026-10-08. Remove that deletion and update the tests that cover it.
-  Issue: https://github.com/heliosian/heliosian/issues/162
 - Uploaded photos are stored and served with their EXIF metadata, including GPS location
   Uploaded images are served with their EXIF metadata, GPS location included. Keep the original unserved, serve a re-encoded copy with no metadata, and move cropping to the server.
   Issue: https://github.com/heliosian/heliosian/issues/159

@@ -31,31 +31,6 @@ func TestPublicPaths(t *testing.T) {
 	}
 }
 
-func TestLogoutDomains(t *testing.T) {
-	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
-	cases := map[string][]string{
-		"who.heliosian.com":         {"", "heliosian.com"},
-		"hca.heliosian.com:443":     {"", "heliosian.com"},
-		"heliosian.com":             {"", "heliosian.com"},
-		"www.heliosian.com":         {"", "heliosian.com"},
-		"who.heliosiandev.com:8080": {""},
-		"localhost:8080":            {""},
-	}
-	for host, want := range cases {
-		got := a.logoutDomains(host)
-		if len(got) != len(want) {
-			t.Errorf("%s: got %v, want %v", host, got, want)
-			continue
-		}
-		for i := range want {
-			if got[i] != want[i] {
-				t.Errorf("%s: got %v, want %v", host, got, want)
-				break
-			}
-		}
-	}
-}
-
 func everyone(string) bool { return true }
 
 type sessions struct {
@@ -80,7 +55,7 @@ func (s *sessions) SignOut(_ context.Context, email string) error {
 	return nil
 }
 
-func TestLogoutClearsEveryDomain(t *testing.T) {
+func TestLogoutClearsTheDomain(t *testing.T) {
 	ended := noSessions()
 	a := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, ended)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
@@ -103,8 +78,8 @@ func TestLogoutClearsEveryDomain(t *testing.T) {
 		domains[c.Name][c.Domain] = true
 	}
 	for name, cleared := range domains {
-		if !cleared["heliosiandev.com"] || !cleared[""] || len(cleared) != 2 {
-			t.Errorf("%s: cleared domains %v, want host-only and the domain", name, cleared)
+		if !cleared["heliosiandev.com"] || len(cleared) != 1 {
+			t.Errorf("%s: cleared domains %v, want the domain alone", name, cleared)
 		}
 	}
 }
@@ -249,7 +224,7 @@ func TestLoginPageFillsEachApp(t *testing.T) {
 	}
 }
 
-func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
+func TestSignInSetsOneCookie(t *testing.T) {
 	key := []byte("key")
 	a := New("heliosian.com", "client", key, Login{Title: "Helios Who?"}, everyone, nil, noSessions())
 	set := func(host string) map[string]*http.Cookie {
@@ -267,8 +242,8 @@ func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
 		return out
 	}
 	got := set("who.heliosian.com")
-	if len(got) != 2 || got["heliosian.com"] == nil || got[""] == nil {
-		t.Fatalf("who: set cookies for domains %v, want the domain and a host-only deletion", got)
+	if len(got) != 1 || got["heliosian.com"] == nil {
+		t.Fatalf("who: set cookies for domains %v, want the domain alone", got)
 	}
 	if c := got["heliosian.com"]; c.MaxAge != int(sessionLength.Seconds()) || !c.HttpOnly || !c.Secure || c.SameSite != http.SameSiteLaxMode {
 		t.Errorf("who: domain cookie %+v, want the session", c)
@@ -277,9 +252,6 @@ func TestSignInDeletesTheHostOnlyCopy(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: cookieName, Value: got["heliosian.com"].Value})
 	if email := a.sessionEmail(req); email != "parent@heliosschool.org" {
 		t.Errorf("who: the set cookie reads as %q", email)
-	}
-	if c := got[""]; c.MaxAge != -1 || c.Value != "" {
-		t.Errorf("who: host-only cookie %+v, want a deletion", c)
 	}
 	got = set("who.heliosiandev.com:8080")
 	if len(got) != 1 || got[""] == nil || got[""].MaxAge != int(sessionLength.Seconds()) {

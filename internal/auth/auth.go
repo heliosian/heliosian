@@ -301,22 +301,7 @@ func setCookie(w http.ResponseWriter, name, value, domain string, maxAge int) {
 }
 
 func (a *Auth) setSession(w http.ResponseWriter, r *http.Request, email string) {
-	domain := a.cookieDomain(r.Host)
-	setCookie(w, cookieName, Token(a.key, email, time.Now()), domain, int(sessionLength.Seconds()))
-	for _, other := range a.logoutDomains(r.Host) {
-		if other == domain {
-			continue
-		}
-		setCookie(w, cookieName, "", other, -1)
-	}
-}
-
-func (a *Auth) logoutDomains(host string) []string {
-	domains := []string{""}
-	if domain := a.cookieDomain(host); domain != "" {
-		domains = append(domains, domain)
-	}
-	return domains
+	setCookie(w, cookieName, Token(a.key, email, time.Now()), a.cookieDomain(r.Host), int(sessionLength.Seconds()))
 }
 
 func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
@@ -328,10 +313,9 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sign-out not recorded", http.StatusInternalServerError)
 		return
 	}
-	for _, domain := range a.logoutDomains(r.Host) {
-		for _, name := range []string{cookieName, spoofCookie} {
-			setCookie(w, name, "", domain, -1)
-		}
+	domain := a.cookieDomain(r.Host)
+	for _, name := range []string{cookieName, spoofCookie} {
+		setCookie(w, name, "", domain, -1)
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
