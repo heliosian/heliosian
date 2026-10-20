@@ -1,0 +1,54 @@
+# Drop the hca@ sign-in item from TODO.md (closes #165)
+
+byre task 64df2aee9479, "Add hca@ as a valid account for logging in", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Add hca@ as a valid account for logging in".
+Full transcripts: the events of task 64df2aee9479 in byre (GET /api/events?task_id=64df2aee9479).
+
+## Summary
+
+Issue #165 (from gaylemcd) asked for the shared HCA mailbox, hca@heliosschool.org, to be able to sign in to the Heliosian sites and host events, to help with the newsletter and cafe invites.
+
+What I found: to sign in, an address has to be a Google account in the heliosschool.org domain (`internal/auth/auth.go`) and also a `PERSON_EMAIL` row on an active, visible `PERSON` (`Model.SignedIn` in `internal/db/http.go`). No hca@ address existed, and no hand-added people exist at all. So it could have been done as data only: one hand-added "HCA" person with that address. That only works if hca@ is a real Google account and not a Google Group. Invite emails show the hosts' names as the sender and send replies to the hosts' addresses (`invitemail.go`), so an "HCA" host would have meant invites "From: HCA", with replies going to hca@.
+
+Decision: ian chose not to build it. Board members already sign in as themselves and can write the newsletter and send invites. A role-account "person" would show up in Who? search, edits would be credited to "HCA" instead of whoever made them, and everyone using it would share one login. A code-level "role account" concept was also rejected as too much machinery. Issue #165 was closed as not planned with that explanation, and this branch only removes the item from TODO.md.
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Removes the TODO item proposing sign-in and event hosting for hca@. No application behavior or tests change; the task commit records that the human chose not to build the feature after discussion.
+
+No significant findings.
+
+## Decisions
+
+### Should we let hca@heliosschool.org sign in and host events, and if so, as a data change only (an "HCA" person row) or not at all?
+
+**The problem.** Issue #165 (from gaylemcd): the HCA wants its shared mailbox, hca@heliosschool.org, to sign in to the Heliosian sites and host events, "to make it easier to write the newsletter and send cafe invites." Today hca@ can't get in.
+
+**Why it can't today.** Sign-in has two gates (`internal/auth/auth.go`, `internal/db/http.go` `SignedIn`):
+1. Google sign-in must be a heliosschool.org Workspace account. hca@ passes this **only if it is a real Workspace user, not a Google Group**. I can't see Workspace from here; if it's a group, nothing we do in Heliosian lets it sign in.
+2. The address must be a `PERSON_EMAIL` row (a person's email address) on an active, non-hidden `PERSON`. I checked: no address containing "hca" exists, and there are no hand-added (`source=manual`) people at all — every person today comes from Veracross or is a guest.
+
+So **no code is needed**: adding one `PERSON` row ("HCA", source manual) with `PERSON_EMAIL` hca@heliosschool.org, plus membership in the groups whose rights it needs (e.g. Helios Weekly Newsletter Managers, When Admins or just whatever lets it add events), lets it sign in and host.
+
+**What actually changes for people** is mostly the invite mail. An invitation's sender name is the hosts' names joined, and replies go to the hosts' addresses (`invitemail.go`: `FromName = joinNames(hosts)`, `ReplyTo = hosts' addresses`). For a cafe invite:
+
+| | From name | Replies go to |
+|---|---|---|
+| Today, a board member hosts | that person's name, e.g. "Gayle …" | their own inbox |
+| hca@ hosts | "HCA" | hca@heliosschool.org |
+| board member + HCA co-host | "Gayle … and HCA" | both |
+
+**Doubts.** A role account isn't a person: "HCA" would turn up in Who? search and anywhere people are listed by name, a shared login means writes are attributed to "HCA" rather than whoever did them, and the session is shared by whoever knows the password. Hiding the row (`hidden`) isn't an option — hidden people are refused at sign-in.
+
+- (*) Data only: add an "HCA" person
+  One manual `PERSON` + `PERSON_EMAIL` hca@heliosschool.org, put in the groups it needs; done with a `local/` tool or by hand, no server code. Invites it hosts go out "From: HCA", replies to hca@. Costs: an "HCA" entry in Who? search, edits attributed to "HCA", and it only works if hca@ is a Workspace user. I'd first confirm that and ask which groups it joins.
+- ( ) Don't build it
+  Board members keep signing in as themselves, which already lets them write the newsletter and host invites; they can set hca@ as a co-host's address only once it is a person, so invites stay in personal names. Close #165 with that explanation.
+- ( ) A real "role account" concept in code
+  Teach the server a kind of account that isn't a person (no Who? presence, own badge). Much more machinery for one mailbox; I don't recommend it.
+
+ian@fc.run chose: Don't build it
