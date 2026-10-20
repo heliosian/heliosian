@@ -1,0 +1,121 @@
+# Pause the content sweeper for the CONTENT move
+
+byre task 74d51e309121, "Keep every stored byte in CONTENT", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Keep every stored byte in CONTENT".
+Full transcripts: the events of task 74d51e309121 in byre (GET /api/events?task_id=74d51e309121).
+
+## Reviews
+
+### Snapshot 1,  : skipped
+
+### Snapshot 4, codex gpt-6.1-sol: done
+
+Replaces the production content sweeper with a worker that discards sweep notifications. No storage schema, upload, image-serving, migration, or TODO changes are included.
+
+- Production sweeping is disabled, retaining unreferenced CONTENT rows and objects indefinitely.
+- The requested CONTENT conversion, image sanitization, migration, and TODO removal are missing.
+
+## Decisions
+
+### Image search's cache can't be made of `CONTENT` rows the way the TODO item says, because the sweeper would delete them. Which should image search do instead?
+
+**The problem.** The TODO item "Keep every stored byte in CONTENT" says the stock record (`stock/<id>.json` in the media bucket) should hold the `CONTENT` IDs of its preview and its picture. But the content sweeper (`internal/db/sweep.go`) deletes any `CONTENT` row that no row *in the sheets* references, and it wakes on every commit that touches `CONTENT`. A JSON file in the bucket isn't a row, so a preview's `CONTENT` row would be deleted within seconds of being written, and the next search would fetch and write it again.
+
+**What image search keeps today** (counted in production just now): 2,698 records, 2,525 previews and 24 imported pictures under `stock/`, 126 MB. Each search asks up to 3 libraries for 24 hits each, so up to 72 hits, and the server fetches all their previews in the background. Here is one real record, `stock/ffee645a…c12c.json`:
+```json
+{"source":"Unsplash","sourceId":"ripR_L5OFfY",
+ "thumb":"https://images.unsplash.com/photo-1644696327659-…&w=400",
+ "url":"https://images.unsplash.com/photo-1644696327659-…&w=1080",
+ "download":"https://api.unsplash.com/photos/ripR_L5OFfY/download?…",
+ "credit":"Photo by The Good Funeral Guide on Unsplash","license":"Unsplash License",
+ "context":"https://unsplash.com/photos/…-ripR_L5OFfY"}
+```
+Its preview sits beside it as `stock/ffee645a…c12c-thumb`.
+
+**The goal.** Every byte the server keeps is a `CONTENT` row that something references, and nothing is kept that nothing references. Either way, a picked picture becomes a `CONTENT` row only when the `PHOTO` (or flyer, or wiki picture) that uses it is written. Pages post the picture straight to that call, so no upload or import ever sits as an unreferenced `CONTENT` row waiting to be swept. That replaces today's per-app upload folders.
+
+**For the record above, a search for "coat drive" and picking this hit:**
+
+- (*) Keep no stock bytes
+  The record stays as it is, a JSON in `stock/`, holding no `CONTENT` IDs. The preview `stock/ffee645a…-thumb` isn't stored: the server fetches it from Unsplash's `thumb` address when the search grid asks for it and answers it with a year's browser cache. Picking the hit fetches the 1080px `url` from Unsplash and hands the bytes to the page. When the page saves the group's picture, `/api/do/photo` makes one `CONTENT` row for it, referenced by `PHOTO.original`.
+  The migration deletes the 2,525 previews and 24 pictures under `stock/`.
+  **You get:** no sheet writes per search, and nothing stored that nothing names. **You give up:** previews load from the library each time a server process first sees a hit, not from our bucket. The grid may be slightly slower right after a deploy, and a library that's down shows broken previews.
+- ( ) A STOCK table
+  `stock/<id>.json` becomes a row in a new `STOCK` table in Data: Documents: `{source: Unsplash, source_id: ripR_L5OFfY, credit: "Photo by The Good Funeral Guide on Unsplash", license, context, url, download, preview: con…, picture: con… once imported}`. The sweeper then sees `preview` and `picture` as references and keeps them.
+  The migration writes 2,698 `STOCK` rows plus 2,549 `CONTENT` rows.
+  **You get:** previews stay cached in the bucket for good, as the TODO intended. **You give up:** every search writes up to 72 `STOCK` and 72 `CONTENT` rows into the sheet, in chunks, off the request path. The sheet grows by roughly 144 rows a search, forever, for pictures nobody picked. That cache has no end, so it would also need a rule for when rows go.
+
+ian@fc.run chose: A STOCK table
+
+### Wiki pictures need a row that references them, or the sweeper deletes them. Should they become PHOTO rows of the wiki page?
+
+**The problem.** The TODO item "Keep every stored byte in CONTENT" says wiki pages should name their pictures by `CONTENT` ID, and that a wiki picture should get `PHOTO`'s treatment: a private original as uploaded, plus a re-encode with every EXIF and GPS tag dropped, which is what's served (issue #159). But a page names its pictures only inside its markdown. The content sweeper (`internal/db/sweep.go`) only sees references in sheet rows, never inside markdown bytes, so a picture's `CONTENT` row with no row naming it is deleted within seconds. The original and the re-encode each need a row column that holds them.
+
+**Today** (production, just now): 43 wiki pages, 3 of which name a picture, 12 objects in `wiki-images/`. For example, the page `docwsi7bPlEKXO` "Room Parent Guide" contains
+```markdown
+![](/api/wiki/picture/f6003662be5e165688ecb85e70d19e6e1088bdc9f6c4086aa8dd8ce04bfafb09.jpg)
+```
+and `GET /api/wiki/picture/{name}` serves `wiki-images/f600…fb09.jpg` exactly as uploaded, tags and all, to anyone signed in.
+
+**The goal.** The original and the re-encode are both `CONTENT` rows held by a row. Only the tag-free re-encode is served. `wiki-images/` and `/api/wiki/picture/` go away.
+
+**The same picture on "Room Parent Guide", each way:**
+
+- (*) A PHOTO of the page
+  `PHOTO` gains a `document` column, so a photo is of a person, a group or a wiki page, exactly one. The picture becomes `PHOTO pho… {document: docwsi7bPlEKXO, original: con…(the jpg as uploaded)}`. The existing photo worker makes its `reencode` and `thumbnail`, and the markdown becomes `![](/api/blob/pho…/image)`. That address serves the re-encode, and the original stays private as every photo's does. It's read by whoever reads the page.
+  Inserting a picture posts it to `/api/do/photo` with the page. On a page that has never been saved, the editor saves it first. Saving the page deletes the page's photos its markdown no longer names.
+  **You get:** the worker, policies and blob address photos already use, with nothing new to keep tags out. **You give up:** the markdown names a `PHOTO` ID rather than a `CONTENT` ID, as the TODO worded it. For about a second after an upload, until the worker finishes, the picture shows blank in the editor's preview.
+- ( ) A picture document under the page
+  `DOCUMENT` gains a relation `picture` and a private `original` column. The picture becomes a child `DOCUMENT doc… {parent: docwsi7bPlEKXO, relation: picture, original: con…(as uploaded), content: con…(the re-encode)}`. The server makes the re-encode during the upload request, and the markdown becomes `![](/api/blob/con…/blob)`, naming the re-encode's `CONTENT` ID as the TODO says.
+  Uploading on a page never saved waits until its first save, in the same way.
+  **You get:** the markdown names the `CONTENT` ID itself. **You give up:** a second way to keep an original and a re-encode, beside `PHOTO`'s. The upload request also re-encodes a phone photo while the person waits, which can pass 750ms for a large one.
+
+ian@fc.run chose: A PHOTO of the page
+
+### The new server can't load the sheets until old object names are turned into `CONTENT` IDs, and the old server's sweeper deletes `CONTENT` rows written before then. How should the cutover go?
+
+**The problem.** The task "Keep every stored byte in CONTENT" turns every picture, recording, flyer and screenshot cell into a reference to a `CONTENT` row. Today those cells hold object names. Here is a real row:
+```
+PHOTO phojHXoRbOUTwh  group grptjPchFA3Eeh
+  original  photos/3ca5414d875b…   reencode  photos/27c63c897e12…   thumbnail photos/dafcfb7d1fd2…
+```
+Once the columns become references, a cell holding `photos/3ca5…` is refused, so the new revision fails to start on today's sheets, and Cloud Run keeps the old revision serving. So the cells must hold `CONTENT` IDs (`con…`) before the new revision can start.
+
+But the cells can't be converted while the old revision runs normally. The old sweeper deletes every `CONTENT` row that no reference column names, and in the old schema these cells aren't reference columns. It would delete the new `CONTENT` rows, and their `content/` objects, as soon as it saw them. It sees sheet edits on its 30-minute refresh, and sees writes through `/api/q` at once. Your standing preference is a one-off `local/` tool you run after the deploy, which can't hold here as-is.
+
+**The goal.** Every row is converted once, with real names, and nothing is lost.
+
+**The same row, each way:**
+
+- (*) Convert the sheets between a failed start and a redeploy
+  1. Push. The new revision fails to start, and the old one keeps serving.
+  2. You run `go run ./local/contentmove`. It copies each object to `content/<sha256>` and writes the `CONTENT` rows and new cells straight into the sheets in chunks of about 20, printing progress, outside the server, so no change log rows. The row becomes `original con…A  reencode con…B  thumbnail con…C`, and likewise for recordings, flyers (moved to `flyer_original`), report screenshots, the `STOCK` rows and the wiki `PHOTO`s.
+  3. You redeploy the same image. It loads, and the old revision stops.
+  The old `photos/` etc. objects stay until a final `--cleanup` run after the new revision is serving, which deletes those folders.
+  **You get:** the column names stay as they are. **You give up:** the conversion skips the change log. If the old revision's 30-minute refresh lands between steps 2 and 3, its sweeper deletes the new `CONTENT` rows. Running the tool again repairs that, since the originals are still in place. A photo someone adds in that window does the same thing, and a rerun fixes it too.
+- ( ) New column names, converted after the deploy
+  The references get new names, so the old cells sit untouched beside them and both revisions load. For example, `PHOTO.original/reencode/crop/thumbnail` become `upload/upright/cropped/thumb`, and `pronunciation_original/pronunciation` become `recording/recording_m4a`. After the deploy, you run the tool through `/api/q`, chunked and in the change log. It reads the old cells, fills the new ones, and drops the old columns at the end. The row becomes `upload con…A  upright con…B  thumb con…C`.
+  **You get:** your usual run-after-deploy tool, with nothing outside the server. **You give up:** worse names for good, and every picture and recording blank from the deploy until the tool finishes.
+
+ian@fc.run answered: can we just neuter the sweeper in one release, push it, do all the work, then push the new version?
+
+### The sweeper pause is ready as release 1. May I land it on main now with merge_to_main, so it deploys before I build the rest on this branch?
+
+**Where this stands.** You asked to "neuter the sweeper in one release, push it, do all the work, then push the new version" for the task "Keep every stored byte in CONTENT". This branch now holds only that release-1 change:
+- `internal/app/wiring.go`: production no longer calls `db.StartSweeper`. It calls a new `db.PauseSweeper`, which logs `sweep: paused` once and then drains the sweeper's trigger inbox without deleting anything, so the inbox doesn't grow.
+- `internal/db/sweep.go`: adds `PauseSweeper`. The sweeper code and its tests are unchanged and still pass (`TestUnreferencedContentIsSwept`, `TestContentIsSweptInBatches`).
+
+**Why it has to land on its own first.** byre squashes a branch into one commit, and merge_to_main lands everything on the branch so far. So release 1 has to go now, before I add the schema change, or the two would deploy together.
+
+**The plan after that, in order:**
+1. Release 1 deploys, and nothing sweeps `CONTENT`.
+2. You run `local/contentmove`'s first step through the running server (`/api/q`, chunks of about 20, progress printed). For each photo, recording, flyer and screenshot cell, it copies the object to `content/<sha256>`, adds a `CONTENT` row, and sets the cell to its `con…` ID. Today's code accepts any name in those cells. From then until step 3, those pictures and recordings show broken, because release-1 code still reads the cell as an object name.
+3. Release 2 (this branch) deploys with the reference columns, the `STOCK` table and wiki `PHOTO`s, and the sweeper back on.
+4. You run the tool's second step, which fills `STOCK`, makes the wiki pages' `PHOTO`s, moves flyers to `flyer_original`, and finally deletes the old folders.
+
+- (*) Land it now
+  I call merge_to_main with "Pause the content sweeper for the CONTENT move", then go on with release 2.
+- ( ) You land it
+  You click Merge on a separate task or do it yourself, and I wait.
+
+ian@fc.run chose: Land it now
