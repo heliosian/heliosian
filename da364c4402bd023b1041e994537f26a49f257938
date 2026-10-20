@@ -1,0 +1,109 @@
+# Parse the queries released iPhone builds send in a test (closes #189)
+
+byre task 42cd80294ea4, "Keep the queries released iOS builds send parsing", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Keep the queries released iOS builds send parsing".
+Full transcripts: the events of task 42cd80294ea4 in byre (GET /api/events?task_id=42cd80294ea4).
+
+## Summary
+
+Set out to keep the fixed queries released iPhone builds (heliosian-ios) send from breaking when the server's schema changes (issue #189).
+
+- `internal/db/released_test.go`: `TestReleasedQueriesParse` runs every query in every `internal/db/testdata/released/<version>.json` through `db.Parse`, the same check `/api/q` makes. Each file maps a query name (section first, e.g. `who.people`) to its text. A failure names the version, the query and the reason. The test fails outright if it finds no files. Policy definitions (`sidebar_group`, `manages`) come from the server's compiled policy source, so a released query that calls one also guards that definition.
+- No iPhone build had been released. ian chose to check in `0.1.json` with the queries heliosian-ios `main` sends, as a placeholder that can be deleted once a real version is checked in.
+- Writing those queries down showed the guard working: the server's `band` → `gradeband` rename (#183) had already broken two of Who?'s load queries. ian asked for the Swift fix too and approved the push. heliosian-ios commit 2becb3e on `main` updates `Queries.swift` and `Directory.swift`, regenerates the row types with `tools/rows` (which also brought in other schema drift: `INBOX` removed, `BIRTHDAY`, `PAYMENT`, `TODO` and `TODO_MARK` added, href columns on `GROUP`), updates `RowsTests`, and re-records the test recordings. The iOS tools hardcode dev port 8080.
+- `docs/datamodel.md` (Queries) says a released query is a promise, where the promises are listed, and that a version is dropped by deleting its file once the request log's `User-Agent` counts allow it.
+- Left out: the heliosian-ios release step that writes the version file automatically. Checking in a version is still done by hand.
+
+## Reviews
+
+### Snapshot 1, codex gpt-6.1-sol: done
+
+Adds a versioned JSON fixture of iOS 1.0 queries and a test that parses every released-query fixture with db.Parse. Documents the fixture format and release compatibility policy.
+
+- The new regression test fails on two iOS 1.0 queries using the removed `band` enum value.
+- The required removal of issue #189 from TODO.md is missing.
+
+### Snapshot 3, codex gpt-6.1-sol: done
+
+Checks in 16 iPhone app queries in a versioned JSON fixture and adds a test that parses every released-query fixture against the current database schema. Documents the compatibility workflow and removes the completed TODO item. The focused parsing test passes.
+
+No significant findings.
+
+## Decisions
+
+### No iPhone build has been released yet, so there's no released version to check in. What should `internal/db/testdata/released/` hold for now?
+
+**The problem.** This task adds a test so the server can't stop accepting a query a released iPhone build sends. Each release of heliosian-ios is meant to leave a file of its queries in `internal/db/testdata/released/<version>.json`, and the new test `TestReleasedQueriesParse` runs every query in every file through `db.Parse`, the same check `/api/q` makes before running a query. The test, the file format and the `docs/datamodel.md` paragraph are written. But nothing has been released (no tags or releases in heliosian-ios; the app is version 1.0, build 1), so there's no released version to check in.
+
+**What I found.** I wrote down the 16 queries heliosian-ios `main` sends today (`Who/Queries.swift` and `Who/Lists.swift`, with a sample group ID in place of the two interpolated ones) and ran the test on them. Two of them fail already. Yesterday's rename of the GROUP kind `band` to `gradeband` (d2096087, closes #183) broke the app's directory load:
+
+```
+version 1.0, query who.groups: at 86: "band" is not one of family, classroom, grade, gradeband, crew, ...
+  (from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "band" "crew" "department") (and (= kind "group") (= parent.kind "band")))) ...)
+version 1.0, query who.effective: at 138: "band" is not one of family, classroom, grade, gradeband, ...
+  (from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "band")))))) ...)
+```
+
+That's exactly the break this test is for. It costs nobody anything yet, since no build is out, but heliosian-ios `main` needs `band` → `gradeband` in both queries before its first TestFlight build.
+
+**The goal.** The test should guard real promises from the first release on, and never pass because it found nothing to check.
+
+- (*) Check in 1.0 as the first build will send it
+  `internal/db/testdata/released/1.0.json` holds today's 16 queries, with `band` changed to `gradeband` in `who.groups` and `who.effective`. The test passes, and from now on it holds the server to the queries the first TestFlight build will send. heliosian-ios has to make the same rename before it builds, and its release step overwrites this file with what it actually ships.
+  You get: the guard starts working now, and it catches the next rename like #183.
+  You give up: the file describes a build that doesn't exist yet. If 1.0 ships different queries, the file is wrong until the release overwrites it.
+- ( ) Check in no file until the first release
+  The directory stays empty (git keeps only a `.gitkeep`), and the test passes with zero versions instead of failing. heliosian-ios's first release adds `1.0.json`.
+  You get: the folder only ever holds builds that really shipped.
+  You give up: the test checks nothing until then. A rename between now and the first build, like #183, gets through. A wrong path in the test would also pass silently.
+
+ian@fc.run chose: Check in 1.0 as the first build will send it
+ian@fc.run added: how about check in an 0.1 now with corrected queries, so we know we can delete it later. also, fix the swift files
+
+### The Swift fixes for the `band` → `gradeband` rename are done and tested in a clone of heliosian-ios. Should I push them to heliosian-ios `main`?
+
+**The problem.** Yesterday's server change renamed the GROUP kind `band` to `gradeband` (d2096087, #183). heliosian-ios `main` still asks for `"band"` in two of Who?'s load queries, so the directory load gets a 400 from today's server. You asked me to fix the Swift files. The fix exists only in a clone in my session's scratch folder (`/private/tmp/claude-501/-Users-flamingcow-Library-Application-Support-byre-worktrees-a66a22bbdc9a-42cd80294ea4/65479026-926f-4ebb-b060-5836c6b2f2aa/scratchpad/ios`). byre doesn't manage that repo, so nothing lands unless I push it, and the folder goes away when this session ends.
+
+**What changed, following the iOS repo's own `docs/dev.md`:**
+- `Who/Queries.swift`: `"band"` becomes `"gradeband"` in the `groups` and `effective` queries (the same text the server's new `internal/db/testdata/released/0.1.json` holds).
+- `Who/Directory.swift`: `bands = of(.band)` becomes `of(.gradeband)`.
+- `tools/rows` regenerated the row types from the dev server's `/api/openapi.json`. Besides `Kind.band` → `Kind.gradeband`, this picked up every schema change since the app last synced: `INBOX` is gone; `BIRTHDAY`, `PAYMENT`, `TODO` and `TODO_MARK` are new; `GROUP` gains `path`, `href` and the per-app hrefs; and `PERSON`, `DOCUMENT`, `MEMBER` and `BIRTHDAY_YEAR` columns changed. `RowsTests.swift` lists the new tables and drops `InboxRow`, as the docs say to.
+- `tools/record` re-recorded `Recordings/tables.json` and Who?'s `Recordings/load.json` from the sample server.
+
+**Tests:** all 37 `HeliosAPI` tests pass under `swift test`, and `WhoTests` passes in the iPhone simulator via `xcodebuild`, both against the dev server.
+
+**Departure:** the iOS tools have the dev server's port 8080 hardcoded, so I ran the dev server on 8080 rather than this task's ports, one short `startserver --run` per step.
+
+<details><summary>Diff summary</summary>
+
+```
+ Packages/Helios/Sources/Who/Directory.swift        |    2 +-
+ Packages/Helios/Sources/Who/Queries.swift          |    6 +-
+ .../Helios/Tests/WhoTests/Recordings/load.json     |   42 +-
+ .../Sources/HeliosAPI/Rows/BirthdayYearRow.swift   |   18 +-
+ .../Sources/HeliosAPI/Rows/DocumentRow.swift       |   16 +
+ .../Sources/HeliosAPI/Rows/GroupRow.swift          |   16 +-
+ .../Sources/HeliosAPI/Rows/InboxRow.swift          |   15 -
+ .../Sources/HeliosAPI/Rows/MemberRow.swift         |    4 -
+ .../Sources/HeliosAPI/Rows/PersonRow.swift         |   19 +
+ .../HeliosAPI/Sources/HeliosAPI/Rows/Tables.swift  |    5 +-
+ .../Tests/HeliosAPITests/Recordings/tables.json    | 3803 ++++++++++++++++++--
+ .../HeliosAPI/Tests/HeliosAPITests/RowsTests.swift |    5 +-
+ new: Rows/BirthdayRow.swift, PaymentRow.swift, TodoRow.swift, TodoMarkRow.swift
+```
+</details>
+
+- (*) Commit and push to heliosian-ios main
+  One commit, "Follow the server's band → gradeband rename and regenerate the row types", pushed to `main` after `git pull --rebase`.
+  You get: the app works against today's server right away.
+  You give up: no review step before it lands, and the regenerated schema drift lands in the same commit as the rename.
+- ( ) Push a branch and open a PR
+  The same commit on a `gradeband` branch, with a PR on heliosian-ios.
+  You get: a chance to look at the diff, including the schema drift, before it lands.
+  You give up: `main` keeps getting the 400 until you merge it.
+- ( ) Don't push; copy the clone into ~/work
+  I copy the clone to `~/work/heliosian-ios` with the changes uncommitted, for you to review and commit.
+  You get: full control of the commit.
+  You give up: one more manual step.
+
+ian@fc.run chose: Commit and push to heliosian-ios main
