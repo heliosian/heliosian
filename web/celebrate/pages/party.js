@@ -150,7 +150,7 @@ function attendeesSection(p) {
   section.append(head);
   if (n) {
     const list = el('div');
-    let byFamily = true;
+    let byFamily = false;
     const paint = () => {
       if (!byFamily) {
         const grid = el('div', 'person-cards');

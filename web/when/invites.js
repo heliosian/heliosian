@@ -211,7 +211,7 @@ export function comingCard(e, view, refresh) {
     card.append(el('div', 'side-line coming-privacy', view.listPrivate ? 'Only the hosts see this list.' : 'Everyone who opens the event sees this list.'));
   }
   const grid = el('div', 'coming-grid');
-  let byFamily = true;
+  let byFamily = false;
   let current = rows;
   const unsent = r => view.host && r.pending && r.email && !r.answer;
   const groups = [

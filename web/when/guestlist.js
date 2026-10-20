@@ -34,7 +34,7 @@ function onGuestList(id) {
 
 export async function fetchInvites(e) {
   const id = JSON.stringify(e.id);
-  const [a] = await Promise.all([queries({
+  const [a, index] = await Promise.all([queries({
     group: `(from GROUP (where (= id ${id})) (columns kind name managed_by visible_to members_visible_to join eligible flyer auto_invite rsvp_yes rsvp_no added_by status))`,
     runs: `(from GROUP @g (where (= id ${id}) (runs_list @g)) (columns kind))`,
     hostGroup: `(from GROUP (where (in id (select GROUP.managed_by (= id ${id})))) (columns visible_to))`,
@@ -49,6 +49,7 @@ export async function fetchInvites(e) {
     people: `(from PERSON (where ${onGuestList(id)}) (columns name_show name_short source grade classroom slug))`,
     emails: `(from PERSON_EMAIL (where primary (in person (select PERSON.id ${onGuestList(id)}))) (columns person address))`,
     household: '(from PERSON (where (in id (household @viewer))) (columns name_show))',
+    families: '(from GROUP (where (= kind "family")) (columns name slug who_href))',
     notify: '(from PERSON_SETTING (where (= person @viewer) (= app "when") (= key "notify_hosts")) (columns value))',
   }), directory()]);
   const g = rowsOf(a.group, 'GROUP')[0];
@@ -77,10 +78,16 @@ export async function fetchInvites(e) {
   for (const pid of Object.keys(people)) {
     names.people[pid] = nameOf(pid);
   }
+  const families = Object.fromEntries(rowsOf(a.families, 'GROUP').map(f => [f.id, f]));
+  const familyOf = id => {
+    const f = (index.families[id] || []).map(fid => families[fid]).find(Boolean);
+    return f ? {key: f.slug || f.id, name: f.name, href: f.who_href, photo: photoOf({id: f.id})} : null;
+  };
   const rowFor = pid => {
     const d = dir[pid];
     const p = people[pid] || d || {};
     const m = memberOf[pid];
+    const family = familyOf(pid) || (m && m.guest_of ? familyOf(m.guest_of) : null);
     const copy = copies[pid];
     const answer = answers[pid];
     const onList = effective.has(pid) || Boolean(copy);
@@ -98,6 +105,7 @@ export async function fetchInvites(e) {
       invited: onList, sent: Boolean(copy), pending: onList && !copy, opened: m ? m.opened || '' : '',
       memberRow: m || null, byRule: Boolean(byRule), byHand: Boolean(m && m.member === 'yes'), via: byRule && !(m && m.member === 'yes') ? 'group:' + byRule : '',
       guestOf: m && m.guest_of ? m.guest_of : '', guestOfName: m && m.guest_of ? nameOf(m.guest_of) : '',
+      household: family ? family.key : m && m.guest_of ? m.guest_of : pid, familyHref: family ? family.href : '', familyName: family ? family.name : '', familyPhoto: family ? family.photo : '',
       invitedBy: m && m.added_by && !host ? nameOf(m.added_by) : '', invitedAt: m ? m.added || '' : '',
       mine: host || household.has(pid) || Boolean(m && m.guest_of && household.has(m.guest_of)),
       ticket: isParty(e) && m && m.member === 'yes' ? (paid.has(pid) ? 'ticket' : 'free') : '',
