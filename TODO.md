@@ -47,9 +47,6 @@ Last verified: bff8f634
 - Add DOCUMENT.superseded_by, with a trigger that keeps it one hop
   Nothing marks a document as replaced by a newer one. Add a `superseded_by` reference, with a trigger that keeps chains flat, and refuse cycles on load.
   Issue: https://github.com/heliosian/heliosian/issues/178
-- Give documents page ranges
-  Split PDF `pages` documents record their page range only in their name. Add page-range columns so search hits and Ask citations can point at a page.
-  Issue: https://github.com/heliosian/heliosian/issues/177
 - Add Mike Orlando's high school counseling Google Calendar as a source in Helios When
   Add the HS counseling Google Calendar as a Helios When source, with its events tagged and aimed at the high school classrooms. It needs the calendar's address and sharing confirmed by Mike.
   Issue: https://github.com/heliosian/heliosian/issues/176

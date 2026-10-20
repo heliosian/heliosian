@@ -98,8 +98,8 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 		{Insert: "CONTENT", As: "first", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "60"}},
 		{Insert: "CONTENT", As: "second", Row: map[string]any{"hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}},
 		{Insert: "DOCUMENT", As: "updates", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Updates", "extracted": "2026-02-12 01:48:03"}},
-		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@first", "name": "pages 1–20 of 25", "extracted": "2026-02-12 01:48:03"}},
-		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@second", "name": "pages 21–25 of 25", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@first", "name": "pages 1–20 of 25", "first_page": "1", "last_page": "20", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "pages", "parent": "@updates", "content": "@second", "name": "pages 21–25 of 25", "first_page": "21", "last_page": "25", "extracted": "2026-02-12 01:48:03"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Updates again"}},
 	})
 	copied := ids[6]
@@ -107,9 +107,9 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 	made(t, s, "DOCUMENT", copied, "extracted")
 	names := []string{}
 	for _, child := range children(s, copied) {
-		names = append(names, child["relation"]+" "+child["name"])
+		names = append(names, child["relation"]+" "+child["name"]+": "+child["first_page"]+" to "+child["last_page"])
 	}
-	equalLines(t, "the copy's children", names, []string{"pages pages 1–20 of 25", "pages pages 21–25 of 25"})
+	equalLines(t, "the copy's children", names, []string{"pages pages 1–20 of 25: 1 to 20", "pages pages 21–25 of 25: 21 to 25"})
 }
 
 func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {

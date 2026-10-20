@@ -110,14 +110,16 @@ type SearchChunk struct {
 }
 
 type SearchRef struct {
-	Extract  string  `json:"extract"`
-	Document string  `json:"document"`
-	Source   string  `json:"source,omitempty"`
-	Href     string  `json:"href,omitempty"`
-	Terminal string  `json:"terminal"`
-	Name     string  `json:"name"`
-	Summary  string  `json:"summary"`
-	Score    float64 `json:"score,omitempty"`
+	Extract   string  `json:"extract"`
+	Document  string  `json:"document"`
+	Source    string  `json:"source,omitempty"`
+	Href      string  `json:"href,omitempty"`
+	FirstPage int     `json:"first_page,omitempty"`
+	LastPage  int     `json:"last_page,omitempty"`
+	Terminal  string  `json:"terminal"`
+	Name      string  `json:"name"`
+	Summary   string  `json:"summary"`
+	Score     float64 `json:"score,omitempty"`
 }
 
 type SearchResult struct {
@@ -132,6 +134,7 @@ type SearchResult struct {
 type SearchRow struct {
 	Table, Head, Input, Object, Name, Href, When string
 	Source, SourceLine, SourceHref, Terminal     string
+	FirstPage, LastPage                          int
 	NameOnly                                     bool
 	named, source                                store.Row
 }
@@ -238,7 +241,7 @@ func (m *Model) groupsBelow(id string) []string {
 func (m *Model) documentsUnder(id string) []string {
 	out := []string{id}
 	docs := m.Table("DOCUMENT")
-	for _, column := range []string{"terminal", "source"} {
+	for _, column := range []string{"terminal", "source", "parent"} {
 		for _, d := range docs.Referencing(column, id) {
 			out = append(out, d["id"])
 		}
@@ -394,7 +397,10 @@ func (m *Model) documentSearchRow(row store.Row, texts map[string]string) (Searc
 	if name == "" {
 		name = terminal["id"]
 	}
-	return SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], named: terminal, source: source}, true
+	parent, _ := docs.Get(row["parent"])
+	first, _ := strconv.Atoi(parent["first_page"])
+	last, _ := strconv.Atoi(parent["last_page"])
+	return SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], FirstPage: first, LastPage: last, named: terminal, source: source}, true
 }
 
 func (m *Model) sourceLine(source, terminal store.Row) string {
@@ -1172,7 +1178,7 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 }
 
 func (r SearchRow) ref(extract, summary string) SearchRef {
-	return SearchRef{Extract: extract, Document: r.Source, Source: r.SourceLine, Href: r.SourceHref, Terminal: r.Terminal, Name: r.Name, Summary: summary}
+	return SearchRef{Extract: extract, Document: r.Source, Source: r.SourceLine, Href: r.SourceHref, FirstPage: r.FirstPage, LastPage: r.LastPage, Terminal: r.Terminal, Name: r.Name, Summary: summary}
 }
 
 func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchRef, error) {

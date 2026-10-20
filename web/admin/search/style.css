@@ -44,6 +44,7 @@
 }
 
 .results li .kind,
+.results li .pages,
 .results li .score {
   margin-left: 8px;
   color: var(--faint);
@@ -61,6 +62,7 @@
   font-size: 13px;
 }
 
-.results li .ref a + a {
+.results li .ref a + a,
+.results li .ref .pages + a {
   margin-left: 8px;
 }

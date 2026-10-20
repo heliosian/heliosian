@@ -87,7 +87,7 @@ func spanName(first, last, total int) string {
 func pageChildren(p pdfPages, ranges []pageRange) []extracted {
 	out := []extracted{}
 	for _, r := range ranges {
-		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(r.first, r.last, p.total)})
+		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(r.first, r.last, p.total), firstPage: r.first, lastPage: r.last})
 	}
 	return out
 }

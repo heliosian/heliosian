@@ -551,6 +551,42 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 	}
 }
 
+func TestARefNamesThePagesItWasReadFrom(t *testing.T) {
+	s, queue, bucket, x := searcher(t)
+	if err := bucket.Put(t.Context(), "content/m1", "text/markdown", []byte("# Egg drop\n\nEach team drops one egg from the balcony.")); err != nil {
+		t.Fatal(err)
+	}
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "whole", Row: map[string]any{"hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}},
+		{Insert: "CONTENT", As: "run", Row: map[string]any{"hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}},
+		{Insert: "CONTENT", As: "text", Row: map[string]any{"hash": "m1", "blob": "content/m1", "mime": "text/markdown", "size": "52"}},
+		{Insert: "DOCUMENT", As: "rules", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Science Olympiad Rules", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", As: "pages", Row: map[string]any{"relation": "pages", "parent": "@rules", "content": "@run", "name": "pages 21–25 of 25", "first_page": "21", "last_page": "25", "extracted": "2026-02-12 01:48:03"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": "@pages", "content": "@text"}},
+	})
+	pages, extract := ids[4], ids[5]
+	makeAll(t, s, x)
+	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "science olympiad rules", testLimits)["DOCUMENT"]
+	if len(results) != 1 || len(results[0].Refs) != 1 {
+		t.Fatalf("the rules' result: %+v", results)
+	}
+	if ref := results[0].Refs[0]; ref.Extract != extract || ref.Document != ids[3] || ref.FirstPage != 21 || ref.LastPage != 25 {
+		t.Fatalf("the rules' ref: %+v, want %s read from pages 21 to 25 of %s", ref, extract, ids[3])
+	}
+	apply(t, s, queue, []Edit{{Set: pages, Cells: map[string]any{"first_page": "22"}}})
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		x.mu.RLock()
+		first := x.rows[extract].FirstPage
+		x.mu.RUnlock()
+		if first == 22 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the extract's row still starts at page %d after its run moved to 22", first)
+		}
+	}
+}
+
 func TestFingerprintsMeasureSharedText(t *testing.T) {
 	long := strings.Repeat("the class walked to the tide pools and counted sea stars before lunch ", 20)
 	if r := resemblance(fingerprint(long), fingerprint(long)); r != 1 {

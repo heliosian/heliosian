@@ -22,7 +22,11 @@ function ref(r) {
   const line = el('div', 'ref', '');
   const name = link(r.name || r.terminal, r.terminal);
   name.className = 'name';
-  line.append(name, link(r.source || 'itself', r.document), link('extract', r.extract), el('span', 'score', r.score), el('div', 'about', r.summary));
+  line.append(name, link(r.source || 'itself', r.document));
+  if (r.first_page) {
+    line.append(el('span', 'pages', r.first_page === r.last_page ? `page ${r.first_page}` : `pages ${r.first_page}–${r.last_page}`));
+  }
+  line.append(link('extract', r.extract), el('span', 'score', r.score), el('div', 'about', r.summary));
   return line;
 }
 

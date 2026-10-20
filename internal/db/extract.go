@@ -50,6 +50,7 @@ type extracted struct {
 	body                       []byte
 	mime, name, contentID, url string
 	title, skip                string
+	firstPage, lastPage        int
 }
 
 type extractFunc func(x *Extractor, ctx context.Context, m *Model, doc, content store.Row, raw []byte) ([]extracted, error)
@@ -312,6 +313,9 @@ func (x *Extractor) extract(id string) (int, error) {
 			}
 			if child.skip != "" {
 				row["fetch"], row["link"] = "skipped", child.skip
+			}
+			if child.firstPage != 0 {
+				row["first_page"], row["last_page"] = strconv.Itoa(child.firstPage), strconv.Itoa(child.lastPage)
 			}
 			w.add(Edit{Insert: "DOCUMENT", Row: row})
 		}

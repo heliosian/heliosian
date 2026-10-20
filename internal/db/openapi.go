@@ -247,14 +247,16 @@ func spec() schema {
 		"why":    schema{"type": "string", "description": "Why fetch was set."},
 	}}
 	schemas["SearchRef"] = schema{"type": "object", "required": []string{"extract", "document", "terminal", "name", "summary"}, "properties": schema{
-		"extract":  schema{"type": "string", "description": "The extract that matched."},
-		"document": schema{"type": "string", "description": "The document its text was read from: an attachment, an image, a linked page, an email's body, or the email or file itself."},
-		"source":   schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the email or file itself."},
-		"href":     schema{"type": "string", "description": "That document's address, when it has one."},
-		"terminal": schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
-		"name":     schema{"type": "string", "description": "That email's or file's name."},
-		"summary":  schema{"type": "string", "description": "The extract's summary."},
-		"score":    schema{"type": "number", "description": "What it ranked by: 1 when its email's or file's name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
+		"extract":    schema{"type": "string", "description": "The extract that matched."},
+		"document":   schema{"type": "string", "description": "The document its text was read from: an attachment, an image, a linked page, an email's body, or the email or file itself."},
+		"source":     schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the email or file itself."},
+		"href":       schema{"type": "string", "description": "That document's address, when it has one."},
+		"first_page": schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the first of its pages the extract was read from."},
+		"last_page":  schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the last of its pages the extract was read from."},
+		"terminal":   schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
+		"name":       schema{"type": "string", "description": "That email's or file's name."},
+		"summary":    schema{"type": "string", "description": "The extract's summary."},
+		"score":      schema{"type": "number", "description": "What it ranked by: 1 when its email's or file's name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
 	}}
 	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
 		"id":      schema{"type": "string", "description": "The group or person."},
