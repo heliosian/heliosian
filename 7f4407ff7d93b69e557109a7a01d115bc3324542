@@ -1,8 +1,8 @@
 # Stop deleting the host-only session cookie (closes #162)
 
-byre task 8394308a4033, "After 2026-10-08: stop deleting the host-only session cookie", created by ian@fc.run, merged by ian@fc.run.
+byre task tskvhYbrSGQmu3, "After 2026-10-08: stop deleting the host-only session cookie", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "After 2026-10-08: stop deleting the host-only session cookie".
-Full transcripts: the events of task 8394308a4033 in byre (GET /api/events?task_id=8394308a4033).
+Full transcripts: the events of task tskvhYbrSGQmu3 in byre (GET /api/events?task_id=tskvhYbrSGQmu3).
 
 ## Summary
 

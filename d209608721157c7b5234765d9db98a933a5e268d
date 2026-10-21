@@ -1,8 +1,8 @@
 # Rename band and grade band to gradeband everywhere (closes #183)
 
-byre task e62f4f3e23ff, "Say \"gradeband\" everywhere the code, data, prompts and docs say \"band\" or \"grade band\"", created by ian@fc.run, merged by ian@fc.run.
+byre task tskILMGBktgOWA, "Say \"gradeband\" everywhere the code, data, prompts and docs say \"band\" or \"grade band\"", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Say \"gradeband\" everywhere the code, data, prompts and docs say \"band\" or \"grade band\"".
-Full transcripts: the events of task e62f4f3e23ff in byre (GET /api/events?task_id=e62f4f3e23ff).
+Full transcripts: the events of task tskILMGBktgOWA in byre (GET /api/events?task_id=tskILMGBktgOWA).
 
 ## Summary
 

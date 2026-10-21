@@ -1,8 +1,8 @@
 # Spec and test every /api/do call, drop guest, rename unsubscribe (#180)
 
-byre task 77eaf5d6bc8e, "Audit /api/do endpoints", created by ian@fc.run, merged by ian@fc.run.
+byre task tskG7oByvBDtS5, "Audit /api/do endpoints", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Audit /api/do endpoints".
-Full transcripts: the events of task 77eaf5d6bc8e in byre (GET /api/events?task_id=77eaf5d6bc8e).
+Full transcripts: the events of task tskG7oByvBDtS5 in byre (GET /api/events?task_id=tskG7oByvBDtS5).
 
 ## Summary
 

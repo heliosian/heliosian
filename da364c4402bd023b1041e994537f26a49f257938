@@ -1,8 +1,8 @@
 # Parse the queries released iPhone builds send in a test (closes #189)
 
-byre task 42cd80294ea4, "Keep the queries released iOS builds send parsing", created by ian@fc.run, merged by ian@fc.run.
+byre task tsknKlXjXRXdUD, "Keep the queries released iOS builds send parsing", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Keep the queries released iOS builds send parsing".
-Full transcripts: the events of task 42cd80294ea4 in byre (GET /api/events?task_id=42cd80294ea4).
+Full transcripts: the events of task tsknKlXjXRXdUD in byre (GET /api/events?task_id=tsknKlXjXRXdUD).
 
 ## Summary
 
@@ -62,7 +62,7 @@ ian@fc.run added: how about check in an 0.1 now with corrected queries, so we kn
 
 ### The Swift fixes for the `band` → `gradeband` rename are done and tested in a clone of heliosian-ios. Should I push them to heliosian-ios `main`?
 
-**The problem.** Yesterday's server change renamed the GROUP kind `band` to `gradeband` (d2096087, #183). heliosian-ios `main` still asks for `"band"` in two of Who?'s load queries, so the directory load gets a 400 from today's server. You asked me to fix the Swift files. The fix exists only in a clone in my session's scratch folder (`/private/tmp/claude-501/-Users-flamingcow-Library-Application-Support-byre-worktrees-a66a22bbdc9a-42cd80294ea4/65479026-926f-4ebb-b060-5836c6b2f2aa/scratchpad/ios`). byre doesn't manage that repo, so nothing lands unless I push it, and the folder goes away when this session ends.
+**The problem.** Yesterday's server change renamed the GROUP kind `band` to `gradeband` (d2096087, #183). heliosian-ios `main` still asks for `"band"` in two of Who?'s load queries, so the directory load gets a 400 from today's server. You asked me to fix the Swift files. The fix exists only in a clone in my session's scratch folder (`/private/tmp/claude-501/-Users-flamingcow-Library-Application-Support-byre-worktrees-prjAPohz7r9P6C-tsknKlXjXRXdUD/sesAA9oGCs6fX6/scratchpad/ios`). byre doesn't manage that repo, so nothing lands unless I push it, and the folder goes away when this session ends.
 
 **What changed, following the iOS repo's own `docs/dev.md`:**
 - `Who/Queries.swift`: `"band"` becomes `"gradeband"` in the `groups` and `effective` queries (the same text the server's new `internal/db/testdata/released/0.1.json` holds).

@@ -1,8 +1,8 @@
 # Hold off listening until search's first index is built
 
-byre task 73a1e9d3e7ce, "Search answers empty for about a minute after each start", created by ian@fc.run, merged by ian@fc.run.
+byre task tskIbmJlpiOQwF, "Search answers empty for about a minute after each start", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Search answers empty for about a minute after each start".
-Full transcripts: the events of task 73a1e9d3e7ce in byre (GET /api/events?task_id=73a1e9d3e7ce).
+Full transcripts: the events of task tskIbmJlpiOQwF in byre (GET /api/events?task_id=tskIbmJlpiOQwF).
 
 ## Summary
 

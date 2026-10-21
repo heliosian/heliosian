@@ -1,8 +1,8 @@
 # Drop the committed-trigger column filter TODO; scans measured cheap
 
-byre task 8293913eed31, "Committed triggers wake every worker on a table for any change to it", created by ian@fc.run, merged by ian@fc.run.
+byre task tskZv0LOSKPXJL, "Committed triggers wake every worker on a table for any change to it", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Committed triggers wake every worker on a table for any change to it".
-Full transcripts: the events of task 8293913eed31 in byre (GET /api/events?task_id=8293913eed31).
+Full transcripts: the events of task tskZv0LOSKPXJL in byre (GET /api/events?task_id=tskZv0LOSKPXJL).
 
 ## Summary
 

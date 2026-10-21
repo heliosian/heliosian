@@ -1,8 +1,8 @@
 # Make href a generated column on PERSON, GROUP and DOCUMENT
 
-byre task 234d9d49f831, "A row's href depends on which columns the query asked for", created by ian@fc.run, merged by ian@fc.run.
+byre task tskcOf4HQTafQ6, "A row's href depends on which columns the query asked for", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "A row's href depends on which columns the query asked for".
-Full transcripts: the events of task 234d9d49f831 in byre (GET /api/events?task_id=234d9d49f831).
+Full transcripts: the events of task tskcOf4HQTafQ6 in byre (GET /api/events?task_id=tskcOf4HQTafQ6).
 
 ## Summary
 

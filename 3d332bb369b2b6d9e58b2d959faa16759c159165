@@ -1,8 +1,8 @@
 # Fold flyer and wiki EXIF stripping into the CONTENT item
 
-byre task e437048f6a71, "Uploaded photos are stored and served with their EXIF metadata, including GPS location", created by ian@fc.run, merged by ian@fc.run.
+byre task tskCzBNXjegZaH, "Uploaded photos are stored and served with their EXIF metadata, including GPS location", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Uploaded photos are stored and served with their EXIF metadata, including GPS location".
-Full transcripts: the events of task e437048f6a71 in byre (GET /api/events?task_id=e437048f6a71).
+Full transcripts: the events of task tskCzBNXjegZaH in byre (GET /api/events?task_id=tskCzBNXjegZaH).
 
 ## Summary
 

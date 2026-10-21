@@ -1,7 +1,7 @@
 # Verify deploys after they come up
 
-byre task 921e3efeb1d3, "Verify deploys after they come up", created by ian@fc.run, merged by ian@fc.run.
-Full transcripts: the events of task 921e3efeb1d3 in byre (GET /api/events?task_id=921e3efeb1d3).
+byre task tsk7vm1fbuocqB, "Verify deploys after they come up", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk7vm1fbuocqB in byre (GET /api/events?task_id=tsk7vm1fbuocqB).
 
 ## Summary
 

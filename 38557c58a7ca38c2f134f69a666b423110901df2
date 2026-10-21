@@ -1,8 +1,8 @@
 # Fix California Bluegrass Association's charity description
 
-byre task c1f82aa6461f, "California Bluegrass Association's description says \"California Birthday Association\"", created by ian@fc.run, merged by ian@fc.run.
+byre task tskI598rjkByY9, "California Bluegrass Association's description says \"California Birthday Association\"", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "California Bluegrass Association's description says \"California Birthday Association\"".
-Full transcripts: the events of task c1f82aa6461f in byre (GET /api/events?task_id=c1f82aa6461f).
+Full transcripts: the events of task tskI598rjkByY9 in byre (GET /api/events?task_id=tskI598rjkByY9).
 
 ## Summary
 

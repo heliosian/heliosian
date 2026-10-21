@@ -1,8 +1,8 @@
 # Check row-free read grants once per run and include each row once
 
-byre task 29c5d45aaf02, "Resources' DOCUMENT tab takes seconds to load", created by ian@fc.run, merged by ian@fc.run.
+byre task tsk6KJ6u3kf7y5, "Resources' DOCUMENT tab takes seconds to load", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Resources' DOCUMENT tab takes seconds to load".
-Full transcripts: the events of task 29c5d45aaf02 in byre (GET /api/events?task_id=29c5d45aaf02).
+Full transcripts: the events of task tsk6KJ6u3kf7y5 in byre (GET /api/events?task_id=tsk6KJ6u3kf7y5).
 
 ## Summary
 

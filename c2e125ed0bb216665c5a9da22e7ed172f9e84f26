@@ -1,8 +1,8 @@
 # Check household members' PHOTO sets against the stored row
 
-byre task 00c2d6b13192, "A household member's change to their photo is refused: original is required", created by ian@fc.run, merged by ian@fc.run.
+byre task tskthqZbd5hJTC, "A household member's change to their photo is refused: original is required", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "A household member's change to their photo is refused: original is required".
-Full transcripts: the events of task 00c2d6b13192 in byre (GET /api/events?task_id=00c2d6b13192).
+Full transcripts: the events of task tskthqZbd5hJTC in byre (GET /api/events?task_id=tskthqZbd5hJTC).
 
 ## Summary
 

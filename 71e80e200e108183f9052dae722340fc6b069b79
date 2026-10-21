@@ -1,8 +1,8 @@
 # Give split PDF documents first_page and last_page columns (closes #177)
 
-byre task e2f16b0bfd14, "Give documents page ranges", created by ian@fc.run, merged by ian@fc.run.
+byre task tskDbAA84BlSX4, "Give documents page ranges", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Give documents page ranges".
-Full transcripts: the events of task e2f16b0bfd14 in byre (GET /api/events?task_id=e2f16b0bfd14).
+Full transcripts: the events of task tskDbAA84BlSX4 in byre (GET /api/events?task_id=tskDbAA84BlSX4).
 
 ## Reviews
 

@@ -1,7 +1,7 @@
 # Verify workflow instructions
 
-byre task 5bf7bcdc5d5e, "Verify workflow instructions", created by ian@fc.run, merged by ian@fc.run.
-Full transcripts: the events of task 5bf7bcdc5d5e in byre (GET /api/events?task_id=5bf7bcdc5d5e).
+byre task tskB09gaPR7LED, "Verify workflow instructions", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskB09gaPR7LED in byre (GET /api/events?task_id=tskB09gaPR7LED).
 
 ## Summary
 
@@ -13,7 +13,7 @@ Set heliosian up for byre's "Verify" workflow, which now checks production separ
   3. The build in `gcloud builds list` with that digest under `results.images[].digest` has the commit in `substitutions.COMMIT_SHA`.
   
   It also says to check data with `go run ./tools/q read`, and pages with byre-hands `chrome` in byre's Chrome on iso, where ian is signed in to every heliosian site. It doesn't repeat the workflow's generic steps; that includes the read-only rule the old section had.
-- TODO.md: added `Last verified: 2f7a899` under the top heading. Task 921e3efeb1d3 verified everything through that commit.
+- TODO.md: added `Last verified: 2f7a899` under the top heading. Task tsk7vm1fbuocqB verified everything through that commit.
 - The three gcloud commands were run once on iso, read-only, and the output matched the text as written. On 2026-10-18 they led to live commit 139b54f, revision heliosian-01002-b8w.
 - Nothing in production was changed.
 

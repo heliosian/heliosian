@@ -1,8 +1,8 @@
 # Drop the load balancer TODO (closes #174)
 
-byre task f85e52a393d9, "Serve through an external HTTPS load balancer", created by ian@fc.run, merged by ian@fc.run.
+byre task tskt8ipHxuWO83, "Serve through an external HTTPS load balancer", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Serve through an external HTTPS load balancer".
-Full transcripts: the events of task f85e52a393d9 in byre (GET /api/events?task_id=f85e52a393d9).
+Full transcripts: the events of task tskt8ipHxuWO83 in byre (GET /api/events?task_id=tskt8ipHxuWO83).
 
 ## Summary
 

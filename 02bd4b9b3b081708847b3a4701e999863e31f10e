@@ -1,7 +1,7 @@
 # Verify deployed work, then queued deploys, in AGENTS.md
 
-byre task 26fb044de43c, "update the heliosian verify agents.md text to verify deployed work, then wait for queued deploys, then verify that", created by ian@fc.run, merged by ian@fc.run.
-Full transcripts: the events of task 26fb044de43c in byre (GET /api/events?task_id=26fb044de43c).
+byre task tskDBlcFyjDk9H, "update the heliosian verify agents.md text to verify deployed work, then wait for queued deploys, then verify that", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskDBlcFyjDk9H in byre (GET /api/events?task_id=tskDBlcFyjDk9H).
 
 ## Summary
 

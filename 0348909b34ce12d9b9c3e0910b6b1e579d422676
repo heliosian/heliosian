@@ -1,8 +1,8 @@
 # Return people to the page they asked for after sign-in (closes #175)
 
-byre task e13a49dfbc33, "Return people to the page they asked for after a forced sign-in", created by ian@fc.run, merged by ian@fc.run.
+byre task tskktBmZYGNcwA, "Return people to the page they asked for after a forced sign-in", created by ian@fc.run, merged by ian@fc.run.
 Started from the TODO item "Return people to the page they asked for after a forced sign-in".
-Full transcripts: the events of task e13a49dfbc33 in byre (GET /api/events?task_id=e13a49dfbc33).
+Full transcripts: the events of task tskktBmZYGNcwA in byre (GET /api/events?task_id=tskktBmZYGNcwA).
 
 ## Summary
 

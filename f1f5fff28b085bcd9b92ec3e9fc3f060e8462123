@@ -1,7 +1,7 @@
 # Verify production
 
-byre task 85cd4cc418c7, "Verify production: Verify", created by ian@fc.run, merged by ian@fc.run.
-Full transcripts: the events of task 85cd4cc418c7 in byre (GET /api/events?task_id=85cd4cc418c7).
+byre task tskYR9FiazfGfF, "Verify production: Verify", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskYR9FiazfGfF in byre (GET /api/events?task_id=tskYR9FiazfGfF).
 
 ## Summary
 
