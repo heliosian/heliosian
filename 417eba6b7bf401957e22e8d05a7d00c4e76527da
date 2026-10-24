@@ -1,0 +1,27 @@
+# Remove STOCK writes from image search and thumbnail responses
+
+byre task tsk4OSluI4PShJ, "Image picker latency", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Image search writes STOCK rows on the request path".
+Full transcripts: the events of task tsk4OSluI4PShJ in byre (GET /api/events?task_id=tsk4OSluI4PShJ).
+
+## Summary
+
+Remove sheet-write latency from image search and thumbnail responses. Search reserves stable STOCK IDs and saves new rows asynchronously in batches of 20, deduplicating overlapping searches. Live thumbnail requests and background prefetch share Stock.Preview, the same library fetch function, and in-flight bytes; previews display immediately and persist afterward through the existing Stock.Keep/CONTENT path. Full-image downloads start immediately on selection, then import saves through the chosen STOCK row. Readiness is tracked per batch, and background saves participate in shutdown queue draining.
+
+The initial change returned search results early but still delayed thumbnails until STOCK creation. Revised following the user's feedback to serve thumbnail bytes before persistence. Kept existing picker/import IDs and routes; pending reservations and preview bytes live in memory until their saves finish. Updated developer docs and removed the TODO item.
+
+Database/image-search tests, focused race checks, access-layer checks, and go vet passed. Regression tests block commits while verifying thumbnails return and full-image downloads start, then verify import completion after release and earlier-batch readiness while later batches are blocked. No deployment or production latency measurement; completed imports still require saving the selected image through STOCK. Requested merge from main reported already up to date, with no conflicts.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Image search now reserves stable STOCK IDs and returns library hits before writing the rows in background transactions. Thumbnail and import requests wait for pending rows, and overlapping searches reuse the same reservation. The change adds coverage for searches returning while another transaction is blocked and removes the completed TODO item.
+
+No significant findings.
+
+### Snapshot #2, reviewer "Review", codex gpt-6.1-sol: done
+
+Image search now reserves STOCK IDs and records the rows in background transactions, allowing results to return without waiting for storage. Thumbnails share an in-memory fetch and are served before their background save finishes; importing a selected hit can start downloading before its STOCK row commits. The change adds concurrency and latency regression tests and removes the TODO item.
+
+No significant findings.
