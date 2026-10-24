@@ -15,7 +15,7 @@ const (
 )
 
 type StockHit struct {
-	Source, SourceID, PreviewURL, URL, Download, Credit, License, Context string
+	Source, SourceID, PreviewURL, URL, Download, Context string
 }
 
 type Stock struct {
@@ -50,7 +50,7 @@ func (st *Stock) Remember(ctx context.Context, hits []StockHit) ([]string, error
 					continue
 				}
 				row := map[string]any{"source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL}
-				for col, v := range map[string]string{"download": h.Download, "credit": h.Credit, "license": h.License, "context": h.Context} {
+				for col, v := range map[string]string{"download": h.Download, "context": h.Context} {
 					if v != "" {
 						row[col] = v
 					}

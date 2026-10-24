@@ -243,9 +243,6 @@ func (s Search) searchUnsplash(ctx context.Context, q string) ([]result, error) 
 				HTML             string `json:"html"`
 				DownloadLocation string `json:"download_location"`
 			} `json:"links"`
-			User struct {
-				Name string `json:"name"`
-			} `json:"user"`
 		} `json:"results"`
 		Errors []string `json:"errors"`
 	}
@@ -262,7 +259,7 @@ func (s Search) searchUnsplash(ctx context.Context, q string) ([]result, error) 
 			hit: Hit{Width: p.Width, Height: p.Height, Title: p.Description},
 			rec: db.StockHit{
 				Source: "Unsplash", SourceID: p.ID, PreviewURL: p.URLs.Small, URL: p.URLs.Regular, Download: p.Links.DownloadLocation,
-				Credit: "Photo by " + p.User.Name + " on Unsplash", License: "Unsplash License", Context: p.Links.HTML,
+				Context: p.Links.HTML,
 			},
 		})
 	}
@@ -281,13 +278,12 @@ func (s Search) searchPexels(ctx context.Context, q string) ([]result, error) {
 	defer resp.Body.Close()
 	var body struct {
 		Photos []struct {
-			ID           int    `json:"id"`
-			Width        int    `json:"width"`
-			Height       int    `json:"height"`
-			URL          string `json:"url"`
-			Photographer string `json:"photographer"`
-			Alt          string `json:"alt"`
-			Src          struct {
+			ID     int    `json:"id"`
+			Width  int    `json:"width"`
+			Height int    `json:"height"`
+			URL    string `json:"url"`
+			Alt    string `json:"alt"`
+			Src    struct {
 				Large2x string `json:"large2x"`
 				Medium  string `json:"medium"`
 			} `json:"src"`
@@ -307,7 +303,7 @@ func (s Search) searchPexels(ctx context.Context, q string) ([]result, error) {
 			hit: Hit{Width: p.Width, Height: p.Height, Title: p.Alt},
 			rec: db.StockHit{
 				Source: "Pexels", SourceID: strconv.Itoa(p.ID), PreviewURL: p.Src.Medium, URL: p.Src.Large2x,
-				Credit: "Photo by " + p.Photographer + " on Pexels", License: "Pexels License", Context: p.URL,
+				Context: p.URL,
 			},
 		})
 	}
@@ -338,7 +334,6 @@ func (s Search) searchPixabay(ctx context.Context, q string) ([]result, error) {
 			ImageHeight   int    `json:"imageHeight"`
 			PageURL       string `json:"pageURL"`
 			Tags          string `json:"tags"`
-			User          string `json:"user"`
 			WebformatURL  string `json:"webformatURL"`
 			LargeImageURL string `json:"largeImageURL"`
 		} `json:"hits"`
@@ -352,7 +347,7 @@ func (s Search) searchPixabay(ctx context.Context, q string) ([]result, error) {
 			hit: Hit{Width: h.ImageWidth, Height: h.ImageHeight, Title: h.Tags},
 			rec: db.StockHit{
 				Source: "Pixabay", SourceID: strconv.Itoa(h.ID), PreviewURL: h.WebformatURL, URL: h.LargeImageURL,
-				Credit: "Image by " + h.User + " on Pixabay", License: "Pixabay Content License", Context: h.PageURL,
+				Context: h.PageURL,
 			},
 		})
 	}

@@ -609,7 +609,7 @@ const PolicySource = `
 ; every stock picture an image search answered with
 (read STOCK true)
 ; every column of a stock picture
-(read STOCK (id source source_id preview_url url download credit license context preview picture) true)
+(read STOCK (id source source_id preview_url url download context preview picture) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group

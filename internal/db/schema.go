@@ -611,7 +611,7 @@ var Tables = []Table{
 		Name:        "STOCK",
 		Sheet:       DocumentsSheet,
 		Unique:      []string{"source", "source_id"},
-		Description: "A picture a stock library answered an image search with: where it is, whose it is, and the preview and picture kept of it. Written only by the server.",
+		Description: "A picture a stock library answered an image search with: where it is and the preview and picture kept of it. Written only by the server.",
 		Columns: []Column{
 			ident(StockPrefix),
 			col("source", Text).required().about("The library: Unsplash, Pexels or Pixabay."),
@@ -619,8 +619,6 @@ var Tables = []Table{
 			col("preview_url", URL).required().about("The library's address of its small copy."),
 			col("url", URL).required().about("The library's address of the picture."),
 			col("download", URL).about("The address the library asks to be told of when the picture is used."),
-			col("credit", Text).about("Who to credit, as the library words it."),
-			col("license", Text).about("The library's license it is under."),
 			col("context", URL).about("Its page on the library's site."),
 			ref("preview", "CONTENT").about("The small copy, kept once fetched."),
 			ref("picture", "CONTENT").about("The picture, kept once someone picked it."),
