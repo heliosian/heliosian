@@ -436,7 +436,7 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 	if c.Old == nil || c.New == nil || c.New["ready"] == "" {
 		return nil, nil
 	}
-	if !slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] }) {
+	if !remake(c) {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
@@ -444,6 +444,9 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 
 func recordingNotMade(_ *Model, c Change) ([]Edit, error) {
 	if c.Old == nil || c.New == nil || c.New["pronunciation"] == "" || c.Old["pronunciation_original"] == c.New["pronunciation_original"] {
+		return nil, nil
+	}
+	if c.New["pronunciation_original"] != "" && !strings.HasPrefix(c.New["pronunciation_original"], "pronunciation/") {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"pronunciation": ""}}}, nil

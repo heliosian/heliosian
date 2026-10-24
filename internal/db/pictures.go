@@ -53,7 +53,7 @@ func (p *Pictures) Start() {
 	go p.run()
 	queued := 0
 	for _, row := range p.s.Model().Table("PHOTO").All() {
-		if row["ready"] == "" {
+		if row["ready"] == "" && strings.HasPrefix(row["original"], "photos/") {
 			p.enqueue(row["id"])
 			queued++
 		}
@@ -61,7 +61,7 @@ func (p *Pictures) Start() {
 	recordings := 0
 	for _, table := range recordingTables {
 		for _, row := range p.s.Model().Table(table).All() {
-			if row["pronunciation_original"] != "" && row["pronunciation"] == "" {
+			if strings.HasPrefix(row["pronunciation_original"], "pronunciation/") && row["pronunciation"] == "" {
 				p.enqueue(row["id"])
 				recordings++
 			}
@@ -71,14 +71,14 @@ func (p *Pictures) Start() {
 }
 
 func remake(c Change) bool {
-	if c.Table != "PHOTO" || c.New == nil {
+	if c.Table != "PHOTO" || c.New == nil || !strings.HasPrefix(c.New["original"], "photos/") {
 		return false
 	}
 	return c.Old == nil || slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] })
 }
 
 func rerecord(c Change) bool {
-	if !slices.Contains(recordingTables, c.Table) || c.New == nil || c.New["pronunciation_original"] == "" {
+	if !slices.Contains(recordingTables, c.Table) || c.New == nil || !strings.HasPrefix(c.New["pronunciation_original"], "pronunciation/") {
 		return false
 	}
 	return c.Old == nil || c.Old["pronunciation_original"] != c.New["pronunciation_original"]
@@ -169,7 +169,7 @@ func (p *Pictures) make(id string) error {
 
 func (p *Pictures) makeRecording(table, id string, row store.Row) error {
 	ctx := context.Background()
-	if row["pronunciation_original"] == "" {
+	if !strings.HasPrefix(row["pronunciation_original"], "pronunciation/") {
 		return nil
 	}
 	src, declared, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["pronunciation_original"]))
@@ -200,6 +200,9 @@ func (p *Pictures) makeRecording(table, id string, row store.Row) error {
 }
 
 func (p *Pictures) makePhoto(id string, row store.Row) error {
+	if !strings.HasPrefix(row["original"], "photos/") {
+		return nil
+	}
 	ctx := context.Background()
 	src, _, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["original"]))
 	if err != nil {

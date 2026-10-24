@@ -293,7 +293,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 }
 
 func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
-	old := store.Row{"id": "pho00000000099", "original": "a.png", "ready": "Yes"}
+	old := store.Row{"id": "pho00000000099", "original": "photos/a.png", "ready": "Yes"}
 	moved := maps.Clone(old)
 	moved["crop_left"] = "3"
 	if edits, _ := photoNotReady(nil, Change{Table: "PHOTO", Old: old, New: moved}); len(edits) != 1 || edits[0].Cells["ready"] != "" {
