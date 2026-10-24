@@ -15,6 +15,14 @@ import (
 
 const blobPath = "/api/blob/"
 
+func (m *Model) BlobName(cell string) string {
+	if table, _ := TableOf(cell); table == "CONTENT" {
+		row, _ := m.Table("CONTENT").Get(cell)
+		return row["blob"]
+	}
+	return cell
+}
+
 func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mimeType string, ok bool) {
 	defer span.End()
 	tableName, ok := TableOf(id)
@@ -32,7 +40,7 @@ func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mi
 	if !ok || !r.readable(t, row) {
 		return "", "", false
 	}
-	name = r.guardedCell(t, row, c)
+	name = m.BlobName(r.guardedCell(t, row, c))
 	if mime, ok := t.Column("mime"); ok {
 		mimeType = r.guardedCell(t, row, mime)
 	}

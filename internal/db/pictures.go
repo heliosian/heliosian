@@ -172,7 +172,7 @@ func (p *Pictures) makeRecording(table, id string, row store.Row) error {
 	if row["pronunciation_original"] == "" {
 		return nil
 	}
-	src, declared, err := p.bucket.Get(ctx, row["pronunciation_original"])
+	src, declared, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["pronunciation_original"]))
 	if err != nil {
 		return err
 	}
@@ -201,7 +201,7 @@ func (p *Pictures) makeRecording(table, id string, row store.Row) error {
 
 func (p *Pictures) makePhoto(id string, row store.Row) error {
 	ctx := context.Background()
-	src, _, err := p.bucket.Get(ctx, row["original"])
+	src, _, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["original"]))
 	if err != nil {
 		return err
 	}

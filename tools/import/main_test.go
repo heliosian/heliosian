@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -337,6 +338,21 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("Sam's address reads %v", email)
 	}
 
+	contents := map[string]string{}
+	for _, photo := range s.Model().Table("PHOTO").All() {
+		original := photo["original"]
+		hash := strings.TrimSuffix(path.Base(original), path.Ext(original))
+		if contents[hash] == "" {
+			ids, err := c.write([]write{{Insert: "CONTENT", Row: row{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": "1"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			contents[hash] = ids[0]
+		}
+		if _, err := c.write([]write{{Set: photo["id"], Cells: row{"original": contents[hash]}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if p, photos := importOnce(t, c, x); len(p.batch) != 0 || photos != 0 {
 		t.Fatalf("a second run changed %v and added %d photos: %v", p.counts, photos, p.batch)
 	}

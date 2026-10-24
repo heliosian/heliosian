@@ -73,7 +73,7 @@ func (iv *Invitations) extFlyer(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	raw, kind, err := iv.pics.bucket.Get(r.Context(), c.group["flyer"])
+	raw, kind, err := iv.pics.bucket.Get(r.Context(), iv.s.Model().BlobName(c.group["flyer"]))
 	if err != nil {
 		http.NotFound(w, r)
 		return

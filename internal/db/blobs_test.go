@@ -1,6 +1,7 @@
 package db
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -77,5 +78,42 @@ func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
 		if rec := fetchBlob(t, s, pics, reader, path, ""); rec.Code != http.StatusNotFound {
 			t.Errorf("%s: %d, want 404", path, rec.Code)
 		}
+	}
+}
+
+func TestPhotoThumbnailAcceptsAContentID(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, 5))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	id := out.Result[0]
+	row := made(t, s, "PHOTO", id, "thumbnail")
+	const reader = "rowan.ashdown@example.org"
+	old := fetchBlob(t, s, pics, reader, id+"/thumbnail", "")
+	if old.Code != http.StatusOK || old.Body.Len() == 0 {
+		t.Fatalf("old object name: %d %s", old.Code, old.Body.String())
+	}
+	content := apply(t, s, queue, []Edit{{Insert: "CONTENT", Row: map[string]any{"hash": "thumbnail", "blob": row["thumbnail"], "mime": "image/jpeg", "size": "1"}}})[0]
+	apply(t, s, queue, []Edit{{Set: id, Cells: map[string]any{"thumbnail": content}}})
+	got := fetchBlob(t, s, pics, reader, id+"/thumbnail", "")
+	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), old.Body.Bytes()) || got.Header().Get("ETag") != old.Header().Get("ETag") {
+		t.Fatalf("content id: %d %v", got.Code, got.Header())
+	}
+	if again := fetchBlob(t, s, pics, reader, id+"/thumbnail", old.Header().Get("ETag")); again.Code != http.StatusNotModified {
+		t.Fatalf("unchanged bytes: %d", again.Code)
+	}
+	if err := pics.bucket.Put(t.Context(), "content/thumbnail", "image/jpeg", old.Body.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	apply(t, s, queue, []Edit{{Set: content, Cells: map[string]any{"blob": "content/thumbnail"}}})
+	got = fetchBlob(t, s, pics, reader, id+"/thumbnail", "")
+	if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), old.Body.Bytes()) {
+		t.Fatalf("migrated object: %d %v", got.Code, got.Header())
 	}
 }

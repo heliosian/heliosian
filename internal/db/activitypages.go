@@ -154,13 +154,13 @@ func (t activityTree) timed(g store.Row) store.Row {
 func (t activityTree) picture(g store.Row) (string, bool) {
 	for _, n := range append([]store.Row{g}, t.above(g)...) {
 		if n["flyer"] != "" {
-			return n["flyer"], true
+			return t.m.BlobName(n["flyer"]), true
 		}
 		photos := t.m.Table("PHOTO").Referencing("group", n["id"])
 		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 		for _, p := range photos {
 			if p["image"] != "" {
-				return p["image"], false
+				return t.m.BlobName(p["image"]), false
 			}
 		}
 	}

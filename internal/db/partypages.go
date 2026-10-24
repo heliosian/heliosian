@@ -202,7 +202,7 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	name, whole := g["flyer"], true
+	name, whole := m.BlobName(g["flyer"]), true
 	if name == "" {
 		name, whole = m.groupPhoto(g["id"]), false
 	}
@@ -227,7 +227,7 @@ func (m *Model) groupPhoto(group string) string {
 	slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 	for _, ph := range photos {
 		if ph["image"] != "" {
-			return ph["image"]
+			return m.BlobName(ph["image"])
 		}
 	}
 	return ""

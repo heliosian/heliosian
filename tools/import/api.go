@@ -61,6 +61,9 @@ func (c client) read() (*state, error) {
 	if st.emails, _, err = c.table("PERSON_EMAIL"); err != nil {
 		return nil, err
 	}
+	if st.contents, _, err = c.table("CONTENT"); err != nil {
+		return nil, err
+	}
 	if st.photos, _, err = c.table("PHOTO"); err != nil {
 		return nil, err
 	}

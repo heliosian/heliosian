@@ -154,7 +154,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 
 func (m *Model) sharedPicture(g store.Row) (string, bool) {
 	if g["flyer"] != "" {
-		return g["flyer"], true
+		return m.BlobName(g["flyer"]), true
 	}
 	groups := m.Table("GROUP")
 	for n, ok := g, true; ok; n, ok = groups.Get(n["parent"]) {
@@ -162,7 +162,7 @@ func (m *Model) sharedPicture(g store.Row) (string, bool) {
 		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 		for _, ph := range photos {
 			if ph["image"] != "" {
-				return ph["image"], false
+				return m.BlobName(ph["image"]), false
 			}
 		}
 	}

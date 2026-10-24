@@ -32,3 +32,16 @@ func TestEveryEventIsShared(t *testing.T) {
 		}
 	}
 }
+
+func TestSharedFlyerAcceptsAContentID(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", Row: map[string]any{"hash": "flyer", "blob": "content/flyer", "mime": "image/png", "size": "1"}},
+	})
+	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"flyer": ids[0]}}})
+	m := s.Model()
+	g, _ := m.Table("GROUP").Get("grp00000000040")
+	if name, whole := m.sharedPicture(g); name != "content/flyer" || !whole {
+		t.Fatalf("shared flyer: %q, %v", name, whole)
+	}
+}
