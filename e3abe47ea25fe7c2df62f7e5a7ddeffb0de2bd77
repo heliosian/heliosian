@@ -1,0 +1,18 @@
+# Accept object names and CONTENT IDs in picture cells
+
+byre task tskeAZbvPIrgHu, "CONTENT interim readers", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskeAZbvPIrgHu in byre (GET /api/events?task_id=tskeAZbvPIrgHu).
+
+## Summary
+
+Release 1.5 bridges the CONTENT migration cutover, starting from main at c2aab42. Added one Model.BlobName method resolving CONTENT IDs to their blob object names while passing legacy object names through. Applied it to blob responses, activity/party/event share pictures, invitation flyers, and photo/recording worker inputs. Portrait import loads CONTENT and resolves original IDs before comparing portrait hashes. Existing upload writes remain unchanged, keeping this interim release minimal; contentmove cells must run again immediately before release 2 lands.
+
+Tests cover legacy and migrated thumbnail HTTP serving, ETag preservation when the resolved object is unchanged, shared flyer resolution, and portrait duplicate detection after migration. timeout 30 go test ./internal/db and ./tools/import, go vet ./..., gofmt and diff checks pass. Review finished. Requested git merge --no-ff --no-commit main reported already up to date, with no conflicts or additional edits. No production migration or deployment performed. Ian must deploy this release before contentmove cells; release 2 replaces the interim compatibility readers. Earlier landing attempts rejected refs/notes/byre as non-fast-forward; investigation did not change refs.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a Model helper that resolves either an object name or a CONTENT ID to a bucket object name, and applies it to blob serving, share cards, invitation flyers, and picture processing. Updates portrait import deduplication to resolve CONTENT references and adds compatibility tests for thumbnails, flyers, and imports. Reviewed by reading the diff and related readers; no builds or tests were run.
+
+No significant findings.
