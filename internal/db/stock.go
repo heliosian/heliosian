@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"heliosian/internal/access"
@@ -19,67 +20,132 @@ type StockHit struct {
 }
 
 type Stock struct {
-	s       *Store
-	queue   *store.Queue
-	bucket  *blob.Bucket
-	mu      sync.Mutex
-	pending map[string]chan struct{}
+	s           *Store
+	queue       *store.Queue
+	bucket      *blob.Bucket
+	mu          sync.Mutex
+	pending     map[string]chan struct{}
+	remembering map[string]*stockWrite
+	reserved    map[string]*stockWrite
+	previews    map[string]*stockPreview
 }
 
 func NewStock(s *Store, queue *store.Queue, bucket *blob.Bucket) *Stock {
-	return &Stock{s: s, queue: queue, bucket: bucket, pending: map[string]chan struct{}{}}
+	return &Stock{s: s, queue: queue, bucket: bucket, pending: map[string]chan struct{}{}, remembering: map[string]*stockWrite{}, reserved: map[string]*stockWrite{}, previews: map[string]*stockPreview{}}
 }
 
-func (st *Stock) Remember(ctx context.Context, hits []StockHit) ([]string, error) {
+type stockWrite struct {
+	id   string
+	hit  StockHit
+	done chan struct{}
+	err  error
+}
+
+func (st *Stock) Remember(hits []StockHit) []string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
 	ids := make([]string, len(hits))
+	fresh := []StockHit{}
+	writes := []*stockWrite{}
+	m := st.s.Model()
+	for i, h := range hits {
+		key := h.Source + "/" + h.SourceID
+		if row, ok := m.Table("STOCK").Find(h.Source, h.SourceID); ok {
+			ids[i] = row["id"]
+			continue
+		}
+		w, ok := st.remembering[key]
+		if !ok {
+			w = &stockWrite{id: Mint(StockPrefix, func(id string) bool {
+				return m.Has(id) || st.reserved[id] != nil
+			}), hit: h, done: make(chan struct{})}
+			st.remembering[key] = w
+			st.reserved[w.id] = w
+			fresh = append(fresh, h)
+			writes = append(writes, w)
+		}
+		ids[i] = w.id
+	}
+	if len(fresh) > 0 {
+		st.queue.Hold()
+		go func() {
+			defer st.queue.Release()
+			err := st.remember(context.Background(), fresh, writes)
+			if err != nil {
+				slog.Error("remember stock hits", "error", err)
+				st.finish(writes, err)
+			}
+		}()
+	}
+	return ids
+}
+
+func (st *Stock) finish(writes []*stockWrite, err error) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for _, w := range writes {
+		if st.reserved[w.id] != w {
+			continue
+		}
+		w.err = err
+		close(w.done)
+		delete(st.remembering, w.hit.Source+"/"+w.hit.SourceID)
+		delete(st.reserved, w.id)
+	}
+}
+
+func (st *Stock) wait(ctx context.Context, id string) error {
+	st.mu.Lock()
+	w := st.reserved[id]
+	st.mu.Unlock()
+	if w == nil {
+		return nil
+	}
+	select {
+	case <-w.done:
+		return w.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (st *Stock) remember(ctx context.Context, hits []StockHit, writes []*stockWrite) error {
 	for start := 0; start < len(hits); start += stockBatch {
 		chunk := hits[start:min(len(hits), start+stockBatch)]
 		_, err := st.queue.Transact(ctx, access.System(stockActor), func(tx *store.Tx) error {
-			m := st.s.In(tx)
 			edits := []Edit{}
-			added := map[string]int{}
-			at := map[int]int{}
 			for n, h := range chunk {
-				if row, ok := m.Table("STOCK").Find(h.Source, h.SourceID); ok {
-					ids[start+n] = row["id"]
-					continue
-				}
-				k := h.Source + "/" + h.SourceID
-				if e, ok := added[k]; ok {
-					at[start+n] = e
-					continue
-				}
 				row := map[string]any{"source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL}
 				for col, v := range map[string]string{"download": h.Download, "context": h.Context} {
 					if v != "" {
 						row[col] = v
 					}
 				}
-				added[k] = len(edits)
-				at[start+n] = len(edits)
-				edits = append(edits, Edit{Insert: "STOCK", Row: row})
+				edits = append(edits, Edit{Insert: "STOCK", Row: row, id: writes[start+n].id})
 			}
-			if len(edits) == 0 {
-				return nil
-			}
-			written, err := stageEdits(st.s, tx, Env{System: stockActor}, edits, stockActor, true)
-			if err != nil {
-				return err
-			}
-			for i, e := range at {
-				ids[i] = written[e]
-			}
-			return nil
+			_, err := stageEdits(st.s, tx, Env{System: stockActor}, edits, stockActor, true)
+			return err
 		})
 		if err != nil {
-			return nil, err
+			return err
 		}
+		st.finish(writes[start:start+len(chunk)], nil)
 	}
-	return ids, nil
+	return nil
 }
 
 func (st *Stock) Row(id string) (store.Row, bool) {
 	return st.s.Model().Table("STOCK").Get(id)
+}
+
+func (st *Stock) row(id string) (store.Row, bool) {
+	if row, ok := st.Row(id); ok {
+		return row, true
+	}
+	if w := st.reserved[id]; w != nil {
+		return store.Row{"id": id, "source": w.hit.Source, "source_id": w.hit.SourceID, "preview_url": w.hit.PreviewURL, "url": w.hit.URL, "download": w.hit.Download, "context": w.hit.Context}, true
+	}
+	return nil, false
 }
 
 func (st *Stock) Bytes(ctx context.Context, content string) ([]byte, string, error) {
@@ -87,8 +153,13 @@ func (st *Stock) Bytes(ctx context.Context, content string) ([]byte, string, err
 }
 
 func (st *Stock) Keep(ctx context.Context, id, column string, fetch func(store.Row) ([]byte, string, error)) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
 	for {
-		row, ok := st.Row(id)
+		st.mu.Lock()
+		row, ok := st.row(id)
+		st.mu.Unlock()
 		if !ok {
 			return "", false, blob.ErrNotFound
 		}
@@ -121,6 +192,9 @@ func (st *Stock) Keep(ctx context.Context, id, column string, fetch func(store.R
 func (st *Stock) fetch(ctx context.Context, id, column string, row store.Row, fetch func(store.Row) ([]byte, string, error)) (string, error) {
 	content, mimeType, err := fetch(row)
 	if err != nil {
+		return "", err
+	}
+	if err := st.wait(ctx, id); err != nil {
 		return "", err
 	}
 	kept, err := keepBytes(ctx, st.s.Model(), st.bucket, mimeType, content)

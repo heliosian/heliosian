@@ -30,7 +30,12 @@ func TestOverlappingSearchesRememberEachHitOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			answers[i], errs[i] = st.Remember(context.Background(), search)
+			answers[i] = st.Remember(search)
+			for _, id := range answers[i] {
+				if err := st.wait(context.Background(), id); err != nil {
+					errs[i] = err
+				}
+			}
 		}()
 	}
 	wg.Wait()

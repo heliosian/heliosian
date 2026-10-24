@@ -34,13 +34,35 @@ func picture(t *testing.T) []byte {
 
 func sampleStock(t *testing.T) (*db.Stock, *db.Store) {
 	t.Helper()
+	stock, s, _ := sampleStockQueue(t)
+	return stock, s
+}
+
+func sampleStockQueue(t *testing.T) (*db.Stock, *db.Store, *store.Queue) {
+	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
 	queue := store.NewQueue()
 	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return db.NewStock(s, queue, blob.NewMemoryBucket()), s
+	t.Cleanup(func() { <-queue.Drain() })
+	return db.NewStock(s, queue, blob.NewMemoryBucket()), s, queue
+}
+
+func waitPreview(t *testing.T, stock *db.Stock, id string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		row, _ := stock.Row(id)
+		if row["preview"] != "" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s has no persisted preview: %v", id, row)
+		}
+		time.Sleep(time.Millisecond)
+	}
 }
 
 func TestStockFetchedOnce(t *testing.T) {
@@ -57,13 +79,10 @@ func TestStockFetchedOnce(t *testing.T) {
 	defer provider.Close()
 	stock, s := sampleStock(t)
 	search := Search{Pexels: "key", UserAgent: "test", Stock: stock}
-	ids, err := stock.Remember(context.Background(), []db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	ids := stock.Remember([]db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}})
 	id := ids[0]
-	if again, err := stock.Remember(context.Background(), []db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}}); err != nil || again[0] != id {
-		t.Fatalf("the same hit remembered again: %v %v, want %s", again, err, id)
+	if again := stock.Remember([]db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}}); again[0] != id {
+		t.Fatalf("the same hit remembered again: %v, want %s", again, id)
 	}
 
 	thumb := func(query string) *httptest.ResponseRecorder {
@@ -83,9 +102,7 @@ func TestStockFetchedOnce(t *testing.T) {
 	if fetches["/thumb"] != 1 {
 		t.Errorf("thumbnail fetched %d times, want once", fetches["/thumb"])
 	}
-	if row, _ := stock.Row(id); row["preview"] == "" {
-		t.Errorf("the preview is not kept as content: %v", row)
-	}
+	waitPreview(t, stock, id)
 	if w := thumb("id=stk00000000000"); w.Code != http.StatusNotFound {
 		t.Errorf("unknown id: %d, want 404", w.Code)
 	}
@@ -148,10 +165,7 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		sourceID := letters(i)
 		hits = append(hits, db.StockHit{Source: "Pixabay", SourceID: sourceID, PreviewURL: provider.URL + "/" + sourceID, URL: provider.URL + "/full/" + sourceID})
 	}
-	ids, err := stock.Remember(context.Background(), hits)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ids := stock.Remember(hits)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -178,9 +192,7 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		t.Errorf("fetched %d thumbnails from the library, want %d", got, len(ids))
 	}
 	for _, id := range ids {
-		if row, _ := stock.Row(id); row["preview"] == "" {
-			t.Errorf("%s keeps no preview: %v", id, row)
-		}
+		waitPreview(t, stock, id)
 	}
 }
 

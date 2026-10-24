@@ -23,6 +23,7 @@ type Edit struct {
 	Cells  map[string]any `json:"cells,omitempty"`
 	Delete string         `json:"delete,omitempty"`
 	server bool
+	id     string
 }
 
 type Batch struct {
@@ -214,7 +215,10 @@ func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]s
 		}
 		for _, c := range t.Columns {
 			if c.Kind == ID && c.Required {
-				row[c.Name] = Mint(c.Prefix, m.Has)
+				row[c.Name] = w.id
+				if row[c.Name] == "" {
+					row[c.Name] = Mint(c.Prefix, m.Has)
+				}
 			}
 			if c.Default != "" && strings.TrimSpace(row[c.Name]) == "" {
 				row[c.Name] = c.Default

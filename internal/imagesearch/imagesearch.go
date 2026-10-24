@@ -139,10 +139,7 @@ func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
 	for _, res := range results {
 		records = append(records, res.rec)
 	}
-	ids, err := s.Stock.Remember(r.Context(), records)
-	if err != nil {
-		return nil, err
-	}
+	ids := s.Stock.Remember(records)
 	go s.prefetch(ids)
 	thumbPath := path.Dir(r.URL.Path) + "/thumb"
 	hits := []Hit{}
@@ -206,7 +203,7 @@ func (s Search) prefetch(ids []string) {
 		go func() {
 			defer wg.Done()
 			defer func() { <-slots }()
-			if _, _, err := s.Stock.Keep(context.Background(), id, "preview", s.fetchPreview); err != nil {
+			if _, _, err := s.Stock.Preview(context.Background(), id, s.fetchPreview); err != nil {
 				slog.Error("prefetch a stock preview", "stock", id, "error", err)
 			}
 		}()
@@ -395,7 +392,7 @@ func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	content, _, err := s.Stock.Keep(r.Context(), id, "preview", s.fetchPreview)
+	data, mimeType, err := s.Stock.Preview(r.Context(), id, s.fetchPreview)
 	if errors.Is(err, blob.ErrNotFound) {
 		http.NotFound(w, r)
 		return
@@ -403,12 +400,6 @@ func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.ErrorContext(r.Context(), "stock preview", "stock", id, "error", err)
 		http.Error(w, "could not fetch that picture", http.StatusBadGateway)
-		return
-	}
-	data, mimeType, err := s.Stock.Bytes(r.Context(), content)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "stock preview", "stock", id, "error", err)
-		http.Error(w, "could not read that picture", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", mimeType)

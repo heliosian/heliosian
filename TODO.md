@@ -12,9 +12,6 @@ Last verified: bff8f634
 
 # Data model
 
-- Image search writes STOCK rows on the request path
-  `GET /api/<app>/images/search` records every hit as a `STOCK` row (`db.Stock.Remember`, `internal/db/stock.go`) before answering, and a Documents-sheet write takes about 10 s, so a search answers in 10 s or more (38 s and 50 s measured while another write ran). Answer with the library's hits at once and write the `STOCK` rows after, off the request path; picking a hit still imports it through its `STOCK` row.
-
 - Family names are recomputed on every PERSON and MEMBER change
   `personFamilyNames` and `memberFamilyName` (`internal/db/trigger.go`) have no column guard, so a phone-number edit recomputes the names of every family the person is in and writes nothing. A guard on the columns `familyName` reads (`name_long`, `hidden`, `deactivated`, `consent`, `source`, the grade columns) would skip that; unmeasured.
 
