@@ -1,0 +1,28 @@
+# Preserve derived media during same-byte CONTENT migrations
+
+byre task tskBO3wZyWEJfK, "CONTENT worker fix", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskBO3wZyWEJfK in byre (GET /api/events?task_id=tskBO3wZyWEJfK).
+
+## Summary
+
+Prepared release 1.6 from release 1.5 (e3abe47) to prevent the old media worker from overwriting derived references during the separate CONTENT migration. Photo workers now own only originals beginning photos/; recording workers own only pronunciation/ originals. Prefix gates cover staged triggers, committed inbox decisions, startup queues and execution.
+
+Initially implemented the brief's same-byte hash comparison. Ian explicitly replaced that design with ownership based on the current original cell's prefix; the hash machinery was removed. All CONTENT originals are intentionally left alone, including different-byte originals and crop changes. Old-style changes still request processing, and removing a recording original still clears output. A review finding requesting restoration of hash comparisons was declined because it relied on the superseded requirement.
+
+Tests cover actual staged writes and committed inbox deliveries for PHOTO, PERSON and GROUP, same/different hash migrations, crop edits, old-style changes, insertion/deletion and execution guards. Database tests under timeout 30 and go vet ./... pass. Main was already up to date when merged before landing.
+
+No production migration or deployment was performed. The original CONTENT migration task and worktree were left untouched; Ian deploys the interim release before rerunning that migration.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+The change compares original photo and pronunciation references by content hash, so moving an original from an object name to a CONTENT row with the same bytes does not queue regeneration or clear readiness or recording output. It applies the comparison to workers and staged triggers, with tests for same-byte migrations, different-byte replacements, crop changes, and recording removal.
+
+No significant findings.
+
+### Snapshot #2, reviewer "Review", codex gpt-6.1-sol: done
+
+The change restricts photo and recording processing to originals named under `photos/` and `pronunciation/`. It applies that restriction to queue decisions, startup recovery, worker execution, and output-clearing triggers, with tests covering CONTENT references and legacy object names.
+
+- CONTENT originals suppress real photo, crop, and recording changes, leaving stale outputs and ready state.
