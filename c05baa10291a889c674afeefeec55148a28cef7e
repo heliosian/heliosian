@@ -1,0 +1,17 @@
+# Remove credit and license data from STOCK
+
+byre task tskG87MLFNDc2k, "Stock metadata cleanup", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Remove credit and license data from the STOCK sheet".
+Full transcripts: the events of task tskG87MLFNDc2k in byre (GET /api/events?task_id=tskG87MLFNDc2k).
+
+## Summary
+
+Remove STOCK credit and license columns from schema and read policy, StockHit persistence, all three image-search library decoders, sample CSV, and documentation; remove the originating TODO item. Full internal/db and internal/imagesearch tests pass. Production deletion is pending deployment: the current server still requires/writes these columns, so dropping them before deployment would break refreshes and image searches. A read-only production dry run with tools/sheets drop found 2,764 filled cells per column across 2,801 STOCK rows. After deployment run `go run ./tools/sheets drop --sheet "$DATA_DOCUMENTS_SHEET" --tab STOCK --columns credit,license --apply`, using the existing schema tool rather than a new migration.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Removes credit and license fields from the STOCK schema, read policy, sample sheet, and image-search records for all three providers. Updates the documentation and removes the completed TODO item. Review was limited to reading code; production sheet cleanup was not independently verified, and no builds or tests were run.
+
+No significant findings.
