@@ -153,14 +153,12 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
 	}
-	media := blob.New(bucket)
 	core := app.NewCore(app.Config{
 		Domain:        app.DevDomain + ":" + app.Port(),
 		Source:        dir,
 		Writer:        dir,
 		Geocoder:      geocode.New("sample"),
 		Bucket:        bucket,
-		Store:         media,
 		ChatKey:       []byte("sample"),
 		AccessKey:     []byte("sample"),
 		BrowserKey:    os.Getenv("GOOGLE_MAPS_BROWSER_KEY"),

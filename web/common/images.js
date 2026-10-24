@@ -3,12 +3,53 @@ import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {el, svg, toast} from '/elements.js';
 
+const held = new Map();
+const previews = new Map();
+
+export const pickedPattern = /upload:\d+|stock:stk[0-9A-Za-z]{11}/g;
+
+export function picked(name) {
+  return name.startsWith('upload:') || name.startsWith('stock:');
+}
+
+function appendPicture(form, field, name) {
+  if (name.startsWith('stock:')) {
+    form.append('stock', name.slice('stock:'.length));
+    return;
+  }
+  const file = held.get(name);
+  form.append(field, file, file.name || 'picture');
+}
+
+export async function postPhoto(of, name) {
+  const form = new FormData();
+  for (const [field, id] of Object.entries(of)) {
+    form.append(field, id);
+  }
+  appendPicture(form, 'photo', name);
+  return api('POST', '/api/do/photo', form);
+}
+
+export async function postFlyer(group, name) {
+  const form = new FormData();
+  form.append('group', group);
+  appendPicture(form, 'flyer', name);
+  return api('POST', '/api/do/flyer', form);
+}
+
 export function imageTools(apiBase, {state}) {
   async function uploadImage(file) {
-    const body = new FormData();
-    body.append('image', file);
-    const {name} = await api('POST', `${apiBase}/image`, body);
-    return {name, url: '/' + name};
+    const name = `upload:${held.size + 1}`;
+    held.set(name, file);
+    previews.set(name, URL.createObjectURL(file));
+    return {name, url: previews.get(name)};
+  }
+
+  function urlOf(name) {
+    if (name.startsWith('stock:')) {
+      return `${apiBase}/images/thumb?id=${name.slice('stock:'.length)}`;
+    }
+    return previews.get(name) || name;
   }
 
   async function uploadAndSave(save, file) {
@@ -48,9 +89,9 @@ export function imageTools(apiBase, {state}) {
       status.textContent = 'Importing…';
       tile.classList.add('is-picked');
       try {
-        const {name} = await api('POST', `${apiBase}/images/import`, {id: hit.id});
+        const {stock} = await api('POST', `${apiBase}/images/import`, {id: hit.id});
         shut();
-        await onPicked({name, url: '/' + name});
+        await onPicked({name: `stock:${stock}`, url: hit.thumb});
       } catch (err) {
         status.textContent = err.message;
         tile.classList.remove('is-picked');
@@ -213,5 +254,5 @@ export function imageTools(apiBase, {state}) {
     }};
   }
 
-  return {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker};
+  return {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker, urlOf};
 }

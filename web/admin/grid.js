@@ -4,8 +4,6 @@ import {tables, labelOf} from '/chrome.js';
 const blank = '\u0000blank';
 const numeric = new Set(['int', 'money', 'float']);
 const byCode = new Set(['id', 'order', 'date', 'moment']);
-const imageExt = /\.(jpe?g|png|gif|webp)$/i;
-const audioExt = /\.(webm|mp3|m4a|ogg|wav)$/i;
 
 export const all = await tables();
 export const byName = new Map(all.map(t => [t.name, t]));
@@ -29,12 +27,12 @@ function refLink(answer, target, id) {
   return a;
 }
 
-function blobCell(td, id, column, value, large) {
+function blobCell(td, id, column, value, mime, large) {
   const url = `/api/blob/${id}/${column.name}`;
   const a = link(url, 'blob', '');
   a.target = '_blank';
   td.title = value;
-  if (imageExt.test(value) && (large || column.name === 'thumbnail')) {
+  if (mime.startsWith('image/') && (large || column.name === 'thumbnail')) {
     const img = el('img', large ? 'blob-preview' : 'blob-thumb');
     img.src = url;
     img.loading = 'lazy';
@@ -43,7 +41,7 @@ function blobCell(td, id, column, value, large) {
     td.append(a);
     return td;
   }
-  if (large && audioExt.test(value)) {
+  if (large && mime.startsWith('audio/')) {
     const audio = el('audio');
     audio.controls = true;
     audio.preload = 'none';
@@ -51,7 +49,7 @@ function blobCell(td, id, column, value, large) {
     td.append(audio);
     return td;
   }
-  a.textContent = `${value.split('.').pop()} ↗`;
+  a.textContent = `${mime || 'open'} ↗`;
   td.append(a);
   return td;
 }
@@ -62,7 +60,10 @@ export function cell(answer, column, value, id, large) {
     return td;
   }
   if (column.kind === 'blob') {
-    return blobCell(td, id, column, value, large);
+    return blobCell(td, id, column, value, answer.resources.CONTENT?.[id]?.mime || '', large);
+  }
+  if (column.kind === 'ref' && column.relation === 'CONTENT' && answer.resources.CONTENT?.[value]) {
+    return blobCell(td, id, column, value, answer.resources.CONTENT[value].mime, large);
   }
   if (column.kind === 'ref') {
     td.append(refLink(answer, column.relation, value));

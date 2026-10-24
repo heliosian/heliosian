@@ -1,7 +1,7 @@
 import {state, me, activity, category, descendants, yearGroup, addingValue, write, formatWhen} from './state.js';
 import {known} from '/directory.js';
 import {keyBetween} from '/order.js';
-import {api} from '/api.js';
+import {picked, postPhoto, postFlyer} from '/images.js';
 
 function now() {
   return formatWhen(new Date(), true);
@@ -57,11 +57,14 @@ function treeOf(node) {
 
 export function activityCells(fields, node, edits) {
   const cells = {};
-  const copy = {title: 'name', description: 'description', start: 'start', end: 'end', timing: 'timing', location: 'location', prettyId: 'slug', flyer: 'flyer'};
+  const copy = {title: 'name', description: 'description', start: 'start', end: 'end', timing: 'timing', location: 'location', prettyId: 'slug'};
   for (const [from, to] of Object.entries(copy)) {
     if (fields[from] !== undefined) {
       cells[to] = fields[from];
     }
+  }
+  if (fields.flyer !== undefined && !picked(fields.flyer) && (!node || fields.flyer !== node.flyer)) {
+    cells.flyer_original = fields.flyer;
   }
   if (fields.start !== undefined) {
     cells.all_day = Boolean(fields.start) && fields.start.length === 10;
@@ -122,6 +125,9 @@ export async function saveActivity(fields) {
     if (edits.length) {
       await write(edits);
     }
+    if (fields.flyer && picked(fields.flyer)) {
+      await postFlyer(node.id, fields.flyer);
+    }
     if (fields.image !== undefined && fields.image !== node.image) {
       if (fields.image) {
         await setPicture(node.id, fields.image, node.image);
@@ -145,6 +151,9 @@ export async function saveActivity(fields) {
     edits.push({insert: 'MEMBER', row: {group: '@made', person: me().id, member: 'yes', added_by: me().id, added: now()}});
   }
   const ids = await write(edits);
+  if (fields.flyer && picked(fields.flyer)) {
+    await postFlyer(ids.result[made], fields.flyer);
+  }
   if (fields.image) {
     await setPicture(ids.result[made], fields.image, '');
   }
@@ -342,11 +351,7 @@ export async function deleteHeading(heading) {
 }
 
 export async function setPicture(groupId, name, old) {
-  const blob = await (await fetch('/' + name)).blob();
-  const form = new FormData();
-  form.append('group', groupId);
-  form.append('photo', blob, name.split('/').pop());
-  await api('POST', '/api/do/photo', form);
+  await postPhoto({group: groupId}, name);
   if (old) {
     await write([{delete: old}]);
   }

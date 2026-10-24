@@ -37,7 +37,7 @@ func TestRequestsTagsRecords(t *testing.T) {
 		slog.WarnContext(r.Context(), "inside", "n", 1)
 		w.WriteHeader(http.StatusTeapot)
 	})
-	h := auth.Fixed("Someone@heliosschool.org", Requests("who", func(string) bool { return false }, inner))
+	h := auth.Fixed("Someone@heliosschool.org", Requests("who", inner))
 	r := httptest.NewRequest("GET", "/people?x=1", nil)
 	r.Header.Set("X-Cloud-Trace-Context", "105445aa7843bc8bf206b12000100000/255;o=1")
 	h.ServeHTTP(httptest.NewRecorder(), r)
@@ -79,31 +79,6 @@ func TestRequestsTagsRecords(t *testing.T) {
 	summary, _ := request["httpRequest"].(map[string]any)
 	if summary["requestMethod"] != "GET" || summary["requestUrl"] != "/people?x=1" || summary["status"] != float64(418) {
 		t.Errorf("httpRequest = %v", summary)
-	}
-}
-
-func TestRequestsSkipsMediaRecords(t *testing.T) {
-	var out bytes.Buffer
-	logger := slog.New(handler{slog.NewJSONHandler(&out, nil)})
-	previous := slog.Default()
-	slog.SetDefault(logger)
-	defer slog.SetDefault(previous)
-
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.InfoContext(r.Context(), "served")
-	})
-	h := Requests("who", func(path string) bool { return path == "/photos/x.jpg" }, inner)
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/photos/x.jpg", nil))
-
-	var record map[string]any
-	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &record); err != nil {
-		t.Fatalf("expected exactly one record, got %q: %v", out.String(), err)
-	}
-	if record["msg"] != "served" || record["app"] != "who" {
-		t.Errorf("record = %v", record)
-	}
-	if _, ok := record["user"]; ok {
-		t.Errorf("user set with no session: %v", record)
 	}
 }
 

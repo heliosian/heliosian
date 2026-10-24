@@ -102,6 +102,7 @@ type SearchEntry struct {
 	Chunks      []SearchChunk `json:"chunks"`
 	Fingerprint []uint32      `json:"fingerprint,omitempty"`
 	Failures    int           `json:"failures,omitempty"`
+	generation  int64
 }
 
 type SearchChunk struct {
@@ -160,7 +161,7 @@ type SearchIndex struct {
 	rows    map[string]SearchRow
 	entries map[string]*SearchEntry
 	missing map[string]bool
-	dropped map[string]bool
+	dropped map[string]int64
 	full    bool
 	view    *searchView
 	version int
@@ -169,13 +170,17 @@ type SearchIndex struct {
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]bool{}, view: emptyView(), poke: newWake(), reindex: make(chan struct{}, 1)}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]int64{}, view: emptyView(), poke: newWake(), reindex: make(chan struct{}, 1)}
 }
 
 func (x *SearchIndex) drop(object string) {
 	x.mu.Lock()
+	if e := x.entries[object]; e != nil {
+		x.dropped[object] = e.generation
+	} else {
+		x.dropped[object] = 0
+	}
 	delete(x.entries, object)
-	x.dropped[object] = true
 	x.full = true
 	x.version++
 	x.mu.Unlock()
@@ -556,15 +561,18 @@ func (x *Searcher) follow() {
 	for range x.poke {
 		start := time.Now()
 		x.mu.Lock()
-		dropped := slices.Collect(maps.Keys(x.dropped))
+		dropped := maps.Clone(x.dropped)
 		clear(x.dropped)
 		full := x.full
 		x.full = false
 		x.mu.Unlock()
 		in := x.s.Model().services.inbox(searchInbox)
 		changes := in.take()
-		for _, hash := range dropped {
-			if err := x.bucket.Remove(context.Background(), hash); err != nil && !errors.Is(err, blob.ErrNotFound) {
+		for hash, generation := range dropped {
+			if generation == 0 {
+				continue
+			}
+			if err := x.bucket.Remove(context.Background(), hash, generation); err != nil {
 				slog.Error("search: remove a deleted entry", "object", hash, "error", err)
 			}
 		}
@@ -599,14 +607,14 @@ func (x *Searcher) follow() {
 		unknown := map[string]bool{}
 		for _, r := range rows {
 			wanted[r.Object] = true
-			if x.entries[r.Object] == nil && !x.missing[r.Object] && !x.dropped[r.Object] {
+			if _, gone := x.dropped[r.Object]; x.entries[r.Object] == nil && !x.missing[r.Object] && !gone {
 				unknown[r.Object] = true
 			}
 		}
-		removed := map[string]bool{}
+		removed := map[string]int64{}
 		for _, r := range x.rows {
-			if x.client != nil && !wanted[r.Object] {
-				removed[r.Object] = true
+			if e := x.entries[r.Object]; x.client != nil && !wanted[r.Object] && e != nil {
+				removed[r.Object] = e.generation
 			}
 		}
 		sweep := x.client != nil && !x.swept
@@ -631,7 +639,7 @@ func (x *Searcher) follow() {
 			slog.Info("search: remove the unwanted entries", "objects", len(removed))
 		}
 		for _, hash := range slices.Sorted(maps.Keys(removed)) {
-			if err := x.bucket.Remove(context.Background(), hash); err != nil {
+			if err := x.bucket.Remove(context.Background(), hash, removed[hash]); err != nil {
 				slog.Error("search: remove", "object", hash, "error", err)
 			}
 		}
@@ -738,7 +746,7 @@ func (x *Searcher) readTexts(m *Model, dirty map[string]bool) error {
 	return nil
 }
 
-func (x *Searcher) strays(wanted, removed map[string]bool) {
+func (x *Searcher) strays(wanted map[string]bool, removed map[string]int64) {
 	held, err := x.bucket.List(context.Background(), searchFolder+"/")
 	if err != nil {
 		slog.Error("search: list the entries", "error", err)
@@ -747,9 +755,9 @@ func (x *Searcher) strays(wanted, removed map[string]bool) {
 		x.mu.Unlock()
 		return
 	}
-	for _, hash := range held {
-		if !wanted[hash] {
-			removed[hash] = true
+	for _, o := range held {
+		if !wanted[o.Name] {
+			removed[o.Name] = o.Generation
 		}
 	}
 }
@@ -822,14 +830,14 @@ func loadAll[T any](n int, f func(i int) (T, error)) ([]T, []error) {
 }
 
 func (x *Searcher) load(hash string) (*SearchEntry, error) {
-	raw, _, err := x.bucket.Get(context.Background(), hash)
+	raw, generation, err := x.bucket.GetVersion(context.Background(), hash)
 	if errors.Is(err, blob.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	entry := &SearchEntry{}
+	entry := &SearchEntry{generation: generation}
 	if err := json.Unmarshal(raw, entry); err != nil {
 		return nil, fmt.Errorf("read %s: %w", hash, err)
 	}
@@ -897,13 +905,19 @@ func (x *Searcher) make() {
 			slog.Warn("search: make failed", "object", hash, "failures", entry.Failures, "error", err)
 		}
 		raw, _ := json.Marshal(entry)
-		if err := x.bucket.Put(context.Background(), hash, "application/json", raw); err != nil {
+		entry.generation, err = x.bucket.Put(context.Background(), hash, "application/json", raw, was.generation)
+		if errors.Is(err, blob.ErrChanged) {
+			x.reload(hash)
+			continue
+		}
+		if err != nil {
 			slog.Error("search: store", "object", hash, "error", err)
+			continue
 		}
 		x.mu.Lock()
 		if !x.missing[hash] && x.entries[hash] == nil {
 			x.mu.Unlock()
-			if err := x.bucket.Remove(context.Background(), hash); err != nil {
+			if err := x.bucket.Remove(context.Background(), hash, entry.generation); err != nil {
 				slog.Error("search: remove", "object", hash, "error", err)
 			}
 			continue
@@ -918,6 +932,33 @@ func (x *Searcher) make() {
 		x.signal()
 		slog.Info("search: made", "object", hash, "failures", entry.Failures, "took", time.Since(start).Round(time.Millisecond))
 	}
+}
+
+func (x *Searcher) reload(hash string) {
+	loaded, err := x.load(hash)
+	if err != nil {
+		slog.Error("search: reload an entry another writer stored", "object", hash, "error", err)
+		return
+	}
+	slog.Info("search: another writer stored the entry", "object", hash, "found", loaded != nil)
+	x.mu.Lock()
+	if x.entries[hash] == nil && !x.missing[hash] {
+		x.mu.Unlock()
+		return
+	}
+	if loaded == nil {
+		delete(x.entries, hash)
+		x.missing[hash] = true
+	} else {
+		x.entries[hash] = loaded
+		delete(x.missing, hash)
+	}
+	x.version++
+	if loaded == nil || loaded.unfinished() {
+		x.enqueue(hash)
+	}
+	x.mu.Unlock()
+	x.signal()
 }
 
 func (e *SearchEntry) unfinished() bool {

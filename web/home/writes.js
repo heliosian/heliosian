@@ -1,4 +1,5 @@
 import {api} from '/api.js';
+import {postPhoto} from '/images.js';
 import {keyBetween, movedKey} from '/order.js';
 import {ruleRow, ruleSaysSomething} from '/listrules.js';
 import {state} from './state.js';
@@ -101,11 +102,7 @@ export function audienceEdits(thing, name, draft) {
 }
 
 export async function setPicture(groupId, name, old) {
-  const blob = await (await fetch('/' + name)).blob();
-  const form = new FormData();
-  form.append('group', groupId);
-  form.append('photo', blob, name.split('/').pop());
-  await api('POST', '/api/do/photo', form);
+  await postPhoto({group: groupId}, name);
   if (old) {
     await write([{delete: old}]);
   }

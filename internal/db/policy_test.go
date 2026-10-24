@@ -70,7 +70,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 		"DOCUMENT":         {8, 9, 13, 13, 8},
 		"DOCUMENT_GROUP":   {0, 1, 7, 7, 0},
 		"TODO":             {0, 0, 4, 4, 0},
-		"CONTENT":          {6, 6, 6, 6, 6},
+		"CONTENT":          {6, 6, 6, 118, 6},
 		"MESSAGE":          {0, 0, 1, 1, 0},
 		"RECIPIENT":        {0, 0, 1, 1, 0},
 		"CHARITY":          {0, 0, 5, 5, 0},

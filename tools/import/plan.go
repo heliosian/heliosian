@@ -7,13 +7,11 @@ import (
 	"log/slog"
 	"maps"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 
-	"heliosian/internal/db"
 	"heliosian/internal/store"
 )
 
@@ -30,15 +28,15 @@ func (t *table) add(id string, r row) {
 }
 
 type state struct {
-	now      string
-	people   table
-	emails   table
-	photos   table
-	contents table
-	groups   table
-	members  table
-	rules    table
-	aliases  table
+	now       string
+	people    table
+	emails    table
+	photos    table
+	originals map[string]string
+	groups    table
+	members   table
+	rules     table
+	aliases   table
 }
 
 type write struct {
@@ -163,12 +161,7 @@ func (p *planner) portraits() ([]portrait, error) {
 	held := map[string]bool{}
 	for _, pid := range p.st.photos.order {
 		r := p.st.photos.rows[pid]
-		original := r["original"]
-		if table, _ := db.TableOf(original); table == "CONTENT" {
-			original = p.st.contents.rows[original]["blob"]
-		}
-		name := path.Base(original)
-		held[r["person"]+"/"+strings.TrimSuffix(name, path.Ext(name))] = true
+		held[r["person"]+"/"+p.st.originals[r["original"]]] = true
 	}
 	out := []portrait{}
 	for _, id := range p.ids {

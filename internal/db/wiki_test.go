@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
@@ -251,28 +251,72 @@ func TestWikiHiddenPages(t *testing.T) {
 	}
 }
 
-func TestWikiPicturesAreServed(t *testing.T) {
+func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	pics := newPictures(s, queue)
-	picture := pngOf(t, 4)
-	name := blob.Name(picture, "png")
-	if err := pics.bucket.Put(context.Background(), "wiki-images/"+name, "image/png", picture); err != nil {
+	ctx := context.Background()
+	page, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Field trips", Body: "Trips."})
+	if err != nil {
 		t.Fatal(err)
+	}
+	picture := pngOf(t, 4)
+	rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a parent adds a picture to a wiki page: %d %s", rec.Code, rec.Body.String())
+	}
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	photo := out.Result[0]
+	again := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
+	var second stored
+	if err := json.Unmarshal(again.Body.Bytes(), &second); again.Code != http.StatusOK || err != nil || len(second.Result) != 1 || second.Result[0] != photo {
+		t.Fatalf("the same picture placed on the page again, from a side card or a retried save: %d %s, want %s", again.Code, again.Body.String(), photo)
+	}
+	row := made(t, s, "PHOTO", photo, "ready")
+	if row["document"] != page || hashOf(s, row["original"]) != blob.Hash(picture) || row["image"] == "" {
+		t.Fatalf("the page's picture reads %v", row)
 	}
 	mux := http.NewServeMux()
 	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		auth.Fixed("rowan.ashdown@example.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		serveAs(mux, rec, httptest.NewRequest(http.MethodGet, path, nil), "maya.lindqvist@example.org")
 		return rec
 	}
-	if rec := get("/api/wiki/picture/" + name); rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" || rec.Body.Len() != len(picture) {
-		t.Fatalf("the picture answered %d %q, %d bytes", rec.Code, rec.Header().Get("Content-Type"), rec.Body.Len())
+	if rec := get("/api/blob/" + photo + "/image"); rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Fatalf("the picture's re-encode answered %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	for _, path := range []string{"/api/wiki/picture/" + strings.Repeat("b", 64) + ".png", "/api/wiki/picture/secret.png"} {
-		if rec := get(path); rec.Code != http.StatusNotFound {
-			t.Errorf("%s answered %d", path, rec.Code)
+	if rec := get("/api/blob/" + photo + "/original"); rec.Code != http.StatusNotFound {
+		t.Fatalf("the picture as uploaded answered %d", rec.Code)
+	}
+	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": "doc00000000001"}, "photo", pngOf(t, 5)); rec.Code != http.StatusForbidden {
+		t.Fatalf("a picture of a document that is no wiki page: %d %s", rec.Code, rec.Body.String())
+	}
+	keep := func(body string) {
+		t.Helper()
+		if _, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Document: page, Name: "Field trips", Body: body}); err != nil {
+			t.Fatal(err)
 		}
+	}
+	other, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Museums", Body: "Downtown."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copied := "![](/api/blob/" + photo + "/image)"
+	for _, borrowed := range []wikiPage{{Document: other, Name: "Museums", Body: copied}, {Name: "Zoo", Body: copied}, {Document: other, Name: "Museums", Body: "Downtown.", Sides: []wikiSide{{Name: "Card", Body: copied}}}} {
+		if _, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, borrowed); err == nil {
+			t.Fatalf("a page borrowed another page's picture: %+v", borrowed)
+		}
+	}
+	keep("---\nheader_image: /api/blob/" + photo + "/image\n---\nTrips.")
+	if _, ok := s.Model().Table("PHOTO").Get(photo); !ok {
+		t.Fatal("a picture the page names was deleted")
+	}
+	keep("Trips.")
+	if _, ok := s.Model().Table("PHOTO").Get(photo); ok {
+		t.Fatal("a picture the page no longer names was kept")
 	}
 }
 
@@ -325,13 +369,16 @@ func TestWikiPages(t *testing.T) {
 		t.Fatalf("a guest's page: %v", err)
 	}
 	sum := sha256.Sum256([]byte("a guest's words"))
+	if _, err := (&sweeper{s: s, queue: queue, bucket: pics.bucket}).sweepObjects(ctx, time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	if found, _ := pics.bucket.Exists(ctx, "content/"+hex.EncodeToString(sum[:])); found {
-		t.Fatal("a refused page left its bytes")
+		t.Fatal("a refused page's bytes outlived the sweep")
 	}
 	if _, err := save(parent, wikiPage{Name: "  ", Body: "no title"}); err == nil {
 		t.Fatal("a page with no title was saved")
 	}
-	if err := written(parent, Edit{Insert: "CONTENT", Row: map[string]any{"hash": "abc", "blob": "photos/private.jpg", "mime": wikiMime, "size": "3"}}); err == nil {
+	if err := written(parent, Edit{Insert: "CONTENT", Row: map[string]any{"hash": "abc", "blob": "content/abc", "mime": wikiMime, "size": "3"}}); err == nil {
 		t.Fatal("a person inserted content of their own naming")
 	}
 	if err := written(student, Edit{Delete: id}); err == nil {

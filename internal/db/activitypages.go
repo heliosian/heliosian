@@ -119,7 +119,7 @@ func (a *ActivityPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	name, whole := tr.picture(g)
 	var picture []byte
 	if name != "" {
-		content, _, err := a.bucket.Get(r.Context(), name)
+		content, _, err := tr.m.contentBytes(r.Context(), a.bucket, name)
 		if err != nil && !errors.Is(err, blob.ErrNotFound) {
 			slog.ErrorContext(r.Context(), "activity pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
 		}
@@ -154,13 +154,13 @@ func (t activityTree) timed(g store.Row) store.Row {
 func (t activityTree) picture(g store.Row) (string, bool) {
 	for _, n := range append([]store.Row{g}, t.above(g)...) {
 		if n["flyer"] != "" {
-			return t.m.BlobName(n["flyer"]), true
+			return n["flyer"], true
 		}
 		photos := t.m.Table("PHOTO").Referencing("group", n["id"])
 		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 		for _, p := range photos {
 			if p["image"] != "" {
-				return t.m.BlobName(p["image"]), false
+				return p["image"], false
 			}
 		}
 	}

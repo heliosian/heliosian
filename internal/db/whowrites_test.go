@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/textproto"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -133,11 +132,11 @@ func TestWhoWrites(t *testing.T) {
 		{"Who?'s admin captions any family's photo", staff, change(t, s, "GROUP", []string{"grp00000000020"}, store.Row{"description": "Us"}), true},
 		{"a parent colors a classroom", parent, change(t, s, "GROUP", []string{"grp00000000010"}, store.Row{"color": "#000000"}), false},
 		{"Who?'s admin colors a classroom", staff, change(t, s, "GROUP", []string{"grp00000000010"}, store.Row{"color": "#000000"}), true},
-		{"a parent adds a child's photo", parent, insert("PHOTO", store.Row{"person": student, "original": "photos/a.png"}), true},
-		{"a parent adds a stranger's photo", parent, insert("PHOTO", store.Row{"person": staff, "original": "photos/a.png"}), false},
-		{"a parent adds their family's photo", parent, insert("PHOTO", store.Row{"group": "grp00000000020", "original": "photos/a.png"}), true},
-		{"a parent adds a classroom's tile", parent, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "photos/a.png"}), false},
-		{"Who?'s admin adds a classroom's tile", staff, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "photos/a.png"}), true},
+		{"a parent adds a child's photo", parent, insert("PHOTO", store.Row{"person": student, "original": "cnt0000000000a"}), true},
+		{"a parent adds a stranger's photo", parent, insert("PHOTO", store.Row{"person": staff, "original": "cnt0000000000a"}), false},
+		{"a parent adds their family's photo", parent, insert("PHOTO", store.Row{"group": "grp00000000020", "original": "cnt0000000000a"}), true},
+		{"a parent adds a classroom's tile", parent, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "cnt0000000000a"}), false},
+		{"Who?'s admin adds a classroom's tile", staff, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "cnt0000000000a"}), true},
 		{"a parent adds a greeting", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": parent}), true},
 		{"a parent adds a greeting as someone else", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": staff}), false},
 		{"a guest adds a greeting", guest, insert("GREETING", store.Row{"name": "Hi", "added_by": guest}), false},
@@ -189,7 +188,7 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	original := "pronunciation/" + blob.Name(sound, "webm")
+	original := blob.Hash(sound)
 	for _, c := range []struct {
 		table, field, id string
 	}{
@@ -204,19 +203,19 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 			t.Fatal(err)
 		}
-		if row, _ := s.Model().Table(c.table).Get(c.id); row["pronunciation_original"] != original || out.Result[0] != c.id {
+		if row, _ := s.Model().Table(c.table).Get(c.id); hashOf(s, row["pronunciation_original"]) != original || out.Hash != original || out.Result[0] != c.id {
 			t.Fatalf("the %s's original reads %q, answered %+v", c.field, row["pronunciation_original"], out)
 		}
 		row := made(t, s, c.table, c.id, "pronunciation")
-		content, mimeType, err := pics.bucket.Get(context.Background(), row["pronunciation"])
-		if err != nil || mimeType != "audio/mp4" || !strings.HasSuffix(row["pronunciation"], ".m4a") {
-			t.Fatalf("the made recording %s is %s: %v", row["pronunciation"], mimeType, err)
+		content, mimeType := contentOf(t, s, pics, row["pronunciation"])
+		if mimeType != "audio/mp4" {
+			t.Fatalf("the made recording %s is %s", row["pronunciation"], mimeType)
 		}
 		if _, err := blob.ReencodeRecording("audio/mp4", content); err != nil {
 			t.Fatalf("the made recording does not decode: %v", err)
 		}
 	}
-	if found, err := pics.bucket.Exists(context.Background(), original); err != nil || !found {
+	if found, err := pics.bucket.Exists(context.Background(), "content/"+original); err != nil || !found {
 		t.Fatalf("the original is not in the bucket: %v", err)
 	}
 
@@ -224,7 +223,7 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": staff}, "audio/mpeg", other); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent records a stranger's name: %d %s", rec.Code, rec.Body.String())
 	}
-	if found, _ := pics.bucket.Exists(context.Background(), "pronunciation/"+blob.Name(other, "mp3")); found {
+	if found, _ := pics.bucket.Exists(context.Background(), "content/"+blob.Hash(other)); found {
 		t.Fatal("a refused recording was stored")
 	}
 	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": student}, "application/octet-stream", other); rec.Code != http.StatusBadRequest {

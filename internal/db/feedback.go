@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -36,7 +35,6 @@ const (
 	feedbackPerWindow      = 5
 	feedbackWindow         = 10 * time.Minute
 	screenshotLimit        = 10 << 20
-	screenshotFolder       = "feedback"
 	screenshotStoreTimeout = time.Minute
 	issueTitleLimit        = 200
 	issueBodyLimit         = 60000
@@ -76,8 +74,8 @@ type feedbackSubmission struct {
 }
 
 type screenshot struct {
-	name, mimeType string
-	content        []byte
+	mimeType string
+	content  []byte
 }
 
 func (f *Feedback) Register(mux *http.ServeMux, domain string, appName func(key string) string) {
@@ -134,7 +132,7 @@ func (f *Feedback) file(w http.ResponseWriter, r *http.Request, app, appName str
 		"app": app, "kind": in.Kind, "summary": summary, "details": strings.TrimSpace(in.Details),
 		"url": clipText(in.URL, 1000), "page": clipText(in.Page, 200), "browser": clipText(r.UserAgent(), 400),
 		"viewport": clipText(in.Viewport, 40), "screen": clipText(in.Screen, 40), "language": clipText(in.Language, 40),
-		"time_zone": clipText(in.Timezone, 80), "errors": strings.Join(clipErrors(in.Errors), "\n"), "screenshot": shot.name,
+		"time_zone": clipText(in.Timezone, 80), "errors": strings.Join(clipErrors(in.Errors), "\n"),
 		"status": "new", "added_by": env.Viewer, "added": now.In(School).Format(cells.StampFormat),
 	}
 	ids, err := Write(r.Context(), f.s, f.queue, access.System(feedbackActor), Env{System: feedbackActor, Now: now}, Batch{Batch: []Edit{{Insert: "REPORT", Row: row}}})
@@ -143,7 +141,7 @@ func (f *Feedback) file(w http.ResponseWriter, r *http.Request, app, appName str
 		http.Error(w, "we couldn't take the report just now; please try again in a moment", http.StatusServiceUnavailable)
 		return
 	}
-	slog.InfoContext(r.Context(), "feedback: saved", "id", ids[0], "kind", in.Kind, "summary", summary, "screenshot", shot.name)
+	slog.InfoContext(r.Context(), "feedback: saved", "id", ids[0], "kind", in.Kind, "summary", summary, "screenshot", len(shot.content))
 	go f.finish(ids[0], appName, actor.Email, shot)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -162,22 +160,39 @@ func readScreenshot(r *http.Request) (screenshot, error) {
 		return screenshot{}, fmt.Errorf("we couldn't read that screenshot")
 	}
 	mimeType := http.DetectContentType(content)
-	ext, ok := blob.ImageExtensions[mimeType]
-	if !ok {
+	if _, ok := blob.ImageExtensions[mimeType]; !ok {
 		return screenshot{}, fmt.Errorf("a screenshot has to be a picture: PNG, JPEG, GIF or WebP")
 	}
-	return screenshot{name: screenshotFolder + "/" + blob.Name(content, ext), mimeType: mimeType, content: content}, nil
+	return screenshot{mimeType: mimeType, content: content}, nil
+}
+
+func (f *Feedback) keepScreenshot(id string, shot screenshot) error {
+	ctx, cancel := context.WithTimeout(context.Background(), screenshotStoreTimeout)
+	defer cancel()
+	kept, err := keepBytes(ctx, f.s.Model(), f.bucket, shot.mimeType, shot.content)
+	if err != nil {
+		return err
+	}
+	_, err = f.queue.Transact(ctx, access.System(feedbackActor), func(tx *store.Tx) error {
+		w := &pendingWrites{}
+		content, err := stageContent(f.s.In(tx), w, map[string]string{}, kept)
+		if err != nil {
+			return err
+		}
+		w.add(Edit{Set: id, Cells: map[string]any{"screenshot": content}})
+		_, err = stageEdits(f.s, tx, Env{System: feedbackActor}, w.edits, feedbackActor, true)
+		return err
+	})
+	return err
 }
 
 func (f *Feedback) finish(id, appName, email string, shot screenshot) {
 	attachments := []mail.Attachment{}
-	if shot.name != "" {
-		ctx, cancel := context.WithTimeout(context.Background(), screenshotStoreTimeout)
-		defer cancel()
-		if err := f.bucket.Put(ctx, shot.name, shot.mimeType, shot.content); err != nil {
-			slog.Error("feedback: storing the screenshot failed", "error", err, "id", id, "name", shot.name)
+	if shot.content != nil {
+		if err := f.keepScreenshot(id, shot); err != nil {
+			slog.Error("feedback: storing the screenshot failed", "error", err, "id", id)
 		}
-		attachments = append(attachments, mail.Attachment{Name: "screenshot" + path.Ext(shot.name), ContentType: shot.mimeType, Content: shot.content})
+		attachments = append(attachments, mail.Attachment{Name: "screenshot." + blob.ImageExtensions[shot.mimeType], ContentType: shot.mimeType, Content: shot.content})
 	}
 	m := f.s.Model()
 	report, ok := m.Table("REPORT").Get(id)

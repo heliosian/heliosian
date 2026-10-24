@@ -26,8 +26,8 @@ var stagedTriggers = []stagedTrigger{
 	{table: "PERSON", fire: personFamilyNames},
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
-	{table: "PERSON", fire: recordingNotMade},
-	{table: "GROUP", fire: recordingNotMade},
+	{table: "PERSON", fire: madeNotMade},
+	{table: "GROUP", fire: madeNotMade},
 	{table: "GROUP", fire: servingNames},
 	{table: "GROUP", fire: groupSlugMoved},
 	{table: "GROUP", fire: hiddenFor},
@@ -46,6 +46,7 @@ var deleteTriggers = []stagedTrigger{
 	{fire: aliasesGone},
 	{table: "DOCUMENT", fire: toDosGone},
 	{table: "DOCUMENT", fire: linksGone},
+	{table: "DOCUMENT", fire: photosGone},
 	{table: "TODO", fire: marksGone},
 }
 
@@ -76,6 +77,10 @@ var committedTriggers = []committedTrigger{
 	{table: "MESSAGE", to: sweepInbox},
 	{table: "REPORT", to: sweepInbox},
 	{table: "ALIAS", to: sweepInbox},
+	{table: "PHOTO", to: sweepInbox},
+	{table: "PERSON", to: sweepInbox},
+	{table: "GROUP", to: sweepInbox},
+	{table: "STOCK", to: sweepInbox},
 	{table: "PERSON", to: warmInbox},
 	{table: "PERSON_EMAIL", to: warmInbox},
 	{table: "PHOTO", to: warmInbox},
@@ -436,20 +441,34 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 	if c.Old == nil || c.New == nil || c.New["ready"] == "" {
 		return nil, nil
 	}
-	if !remake(c) {
+	if !slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] }) {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
 }
 
-func recordingNotMade(_ *Model, c Change) ([]Edit, error) {
-	if c.Old == nil || c.New == nil || c.New["pronunciation"] == "" || c.Old["pronunciation_original"] == c.New["pronunciation_original"] {
+func madeNotMade(_ *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil {
 		return nil, nil
 	}
-	if c.New["pronunciation_original"] != "" && !strings.HasPrefix(c.New["pronunciation_original"], "pronunciation/") {
+	blank := map[string]any{}
+	for _, m := range madeColumns {
+		if m.table == c.Table && c.New[m.made] != "" && c.Old[m.original] != c.New[m.original] {
+			blank[m.made] = ""
+		}
+	}
+	if len(blank) == 0 {
 		return nil, nil
 	}
-	return []Edit{{Set: c.New["id"], Cells: map[string]any{"pronunciation": ""}}}, nil
+	return []Edit{{Set: c.New["id"], Cells: blank}}, nil
+}
+
+func photosGone(m *Model, c Change) ([]Edit, error) {
+	out := []Edit{}
+	for _, row := range m.Table("PHOTO").Referencing("document", c.Old["id"]) {
+		out = append(out, Edit{Delete: row["id"]})
+	}
+	return out, nil
 }
 
 func unchecked(*Model, Change) error {

@@ -17,7 +17,7 @@ func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	page := []byte(`<html><body><p>Hot lunch starts Monday.</p><img src="https://example.org/menu.png"></body></html>`)
-	if err := bucket.Put(t.Context(), "content/p1", "text/html; charset=utf-8", page); err != nil {
+	if _, err := bucket.Put(t.Context(), "content/p1", "text/html; charset=utf-8", page, 0); err != nil {
 		t.Fatal(err)
 	}
 	linked := apply(t, s, queue, []Edit{

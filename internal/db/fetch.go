@@ -2,9 +2,7 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
 	"crypto/tls"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -314,33 +312,25 @@ func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
 }
 
 func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
-	sum := sha256.Sum256(got.body)
-	hash := hex.EncodeToString(sum[:])
-	name := "content/" + hash
-	stored := false
-	if _, held := f.s.Model().Table("CONTENT").Find(hash, got.mime); !held {
-		if err := f.bucket.Put(ctx, name, got.mime, got.body); err != nil {
-			return err
-		}
-		stored = true
+	kept, err := keepBytes(ctx, f.s.Model(), f.bucket, got.mime, got.body)
+	if err != nil {
+		return err
 	}
-	committed := false
-	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
+	_, err = f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
 		open := f.still(tx, ids)
 		if len(open) == 0 {
 			return nil
 		}
 		w := &pendingWrites{}
-		content := stageContent(f.s.In(tx), w, map[string]string{}, hash, got.mime, len(got.body))
+		content, err := stageContent(f.s.In(tx), w, map[string]string{}, kept)
+		if err != nil {
+			return err
+		}
 		for _, id := range open {
 			w.add(Edit{Set: id, Cells: map[string]any{"content": content}})
 		}
-		_, err := stageEdits(f.s, tx, Env{System: fetchActor}, w.edits, fetchActor, true)
-		committed = err == nil
+		_, err = stageEdits(f.s, tx, Env{System: fetchActor}, w.edits, fetchActor, true)
 		return err
 	})
-	if stored && (err != nil || !committed) {
-		dropUnheld(f.s, f.bucket, []string{name})
-	}
 	return err
 }

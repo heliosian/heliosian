@@ -1,10 +1,10 @@
-import {state, page, pagePath, segmentOf, editPath, childrenOf, pageCount, hasChildren, trail, under, mine, sidesOf, body, save, remove, picturePath, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
+import {state, page, pagePath, segmentOf, editPath, childrenOf, pageCount, hasChildren, trail, under, mine, sidesOf, body, save, remove, placePictures, splitHeader, joinHeader, setHeader, firstSentence, headerFor, listed, setHidden} from './state.js';
 import {card} from '/cardgrid.js';
 import {el, svg, link, button, toast, imageThumb} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {navigate, load, notFound} from '/router.js';
 import {render} from '/markdown.js';
-import {imageTools} from '/images.js';
+import {imageTools, pickedPattern} from '/images.js';
 import {detailHero, heroImageBar} from '/heroimage.js';
 import {openModal, closeModal} from '/modal.js';
 import {field, text as textInput} from '/form.js';
@@ -96,7 +96,7 @@ function headerSaver(p, hero) {
   return async name => {
     hero.querySelector('.hero-image-bar').replaceChildren(el('span', 'hero-image-status', 'Saving…'));
     try {
-      await setHeader(p.id, name ? picturePath + name.split('/').pop() : '');
+      await setHeader(p.id, name ? await placePictures(p.id, name) : '');
       await load();
       toast(name ? 'Header image saved' : 'Header image removed');
     } catch (err) {
@@ -316,7 +316,7 @@ function imageInserter(textarea, label) {
     insert.disabled = true;
     try {
       const {name} = await tools.uploadImage(picked);
-      const markdown = `![](/api/wiki/picture/${name.split('/').pop()})`;
+      const markdown = `![](${name})`;
       const at = textarea.selectionStart;
       const before = textarea.value.slice(0, at);
       const after = textarea.value.slice(textarea.selectionEnd);
@@ -446,12 +446,12 @@ function headerEditor(query) {
   let header = '';
   const wrap = el('div', 'detail-hero wiki-header-edit');
   const draw = () => {
-    const picture = header ? imageThumb(header, '', 'detail-hero-image') : el('div', 'wiki-header-empty', 'No header image');
+    const picture = header ? imageThumb(tools.urlOf(header), '', 'detail-hero-image') : el('div', 'wiki-header-empty', 'No header image');
     const save = async name => {
-      header = name ? picturePath + name.split('/').pop() : '';
+      header = name;
       draw();
     };
-    wrap.replaceChildren(picture, heroImageBar({image: header, imageUrl: header, query: query(), tools, save}));
+    wrap.replaceChildren(picture, heroImageBar({image: header, imageUrl: tools.urlOf(header), query: query(), tools, save}));
   };
   draw();
   return {
@@ -590,12 +590,25 @@ export function editPage(id) {
       text.disabled = false;
     }).catch(err => toast(err.message));
   }
+  let created = '';
   form.addEventListener('submit', async e => {
     e.preventDefault();
     saveButton.disabled = true;
     try {
       await cards.ready;
-      const saved = await save(p ? p.id : '', parent.value, slug.value.trim(), title.value, joinHeader(header.value(), text.value), cards.value());
+      let markdown = joinHeader(header.value(), text.value);
+      const sides = cards.value();
+      let id = p ? p.id : created;
+      if (!id && [markdown, ...sides.map(side => side.body)].some(md => md.match(pickedPattern))) {
+        created = id = (await save('', parent.value, slug.value.trim(), title.value, '', [])).result[0];
+      }
+      if (id) {
+        markdown = await placePictures(id, markdown);
+        for (const side of sides) {
+          side.body = await placePictures(id, side.body);
+        }
+      }
+      const saved = await save(id, parent.value, slug.value.trim(), title.value, markdown, sides);
       await load();
       navigate(pagePath(page(saved.result[0])));
       toast('Saved');

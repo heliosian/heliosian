@@ -39,7 +39,7 @@ func TestHeliosianAdminsKeepTheFrontPage(t *testing.T) {
 	}
 	pictures := []Edit{}
 	for _, group := range []string{sectionGroup, link[0]} {
-		picture := Edit{Insert: "PHOTO", Row: map[string]any{"group": group, "original": "photos/mark.png", "order": "m"}}
+		picture := Edit{Insert: "PHOTO", Row: map[string]any{"group": group, "original": "cnt00000030001", "order": "m"}}
 		if _, err := write(parent, picture); err == nil {
 			t.Errorf("a parent gave %s a picture", group)
 		}
@@ -49,7 +49,7 @@ func TestHeliosianAdminsKeepTheFrontPage(t *testing.T) {
 		}
 		pictures = append(pictures, Edit{Delete: made[0]})
 	}
-	if _, err := write(student, Edit{Insert: "PHOTO", Row: map[string]any{"group": "grp00000000030", "original": "photos/mark.png", "order": "m"}}); err == nil {
+	if _, err := write(student, Edit{Insert: "PHOTO", Row: map[string]any{"group": "grp00000000030", "original": "cnt00000030001", "order": "m"}}); err == nil {
 		t.Error("a Heliosian admin gave a parents list a picture")
 	}
 	audience := []Edit{

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -34,7 +35,7 @@ func pngOf(t *testing.T, size int) []byte {
 
 func newPictures(s *Store, queue *store.Queue) *Pictures {
 	p := NewPictures(s, queue, blob.NewMemoryBucket())
-	p.Start()
+	go p.run()
 	return p
 }
 
@@ -117,17 +118,28 @@ func made(t *testing.T, s *Store, table, id, column string) store.Row {
 	}
 }
 
-func thumbOf(t *testing.T, pics *Pictures, name string) string {
+func contentOf(t *testing.T, s *Store, pics *Pictures, content string) ([]byte, string) {
 	t.Helper()
-	content, _, err := pics.bucket.Get(context.Background(), name)
+	data, mimeType, err := s.Model().contentBytes(context.Background(), pics.bucket, content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	thumb, err := blob.Thumbnail(content)
+	return data, mimeType
+}
+
+func hashOf(s *Store, content string) string {
+	row, _ := s.Model().Table("CONTENT").Get(content)
+	return row["hash"]
+}
+
+func thumbOf(t *testing.T, s *Store, pics *Pictures, content string) string {
+	t.Helper()
+	data, _ := contentOf(t, s, pics, content)
+	thumb, err := blob.Thumbnail(data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return "photos/" + blob.Name(thumb, "jpg")
+	return blob.Hash(thumb)
 }
 
 func TestPersonPhotoAddsFirst(t *testing.T) {
@@ -144,17 +156,17 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 			t.Fatal(err)
 		}
 		row := made(t, s, "PHOTO", out.Result[0], "ready")
-		if row["person"] != staff || row["original"] != "photos/"+out.Hash+".png" || row["crop"] != "" || row["thumbnail"] == "" {
+		if row["person"] != staff || hashOf(s, row["original"]) != out.Hash || row["crop"] != "" || row["thumbnail"] == "" {
 			t.Fatalf("photo %d answered %+v and reads %v", i, out, row)
 		}
-		if found, err := pics.bucket.Exists(context.Background(), row["original"]); err != nil || !found {
+		if found, err := pics.bucket.Exists(context.Background(), "content/"+out.Hash); err != nil || !found {
 			t.Fatalf("photo %d's original is not in the bucket: %v", i, err)
 		}
-		re, mimeType, err := pics.bucket.Get(context.Background(), row["reencode"])
-		if err != nil || mimeType != "image/jpeg" || "photos/"+blob.Name(re, "jpg") != row["reencode"] {
-			t.Fatalf("photo %d's re-encode %q is not its own stored jpeg: %v", i, row["reencode"], err)
+		re, mimeType := contentOf(t, s, pics, row["reencode"])
+		if mimeType != "image/jpeg" || blob.Hash(re) != hashOf(s, row["reencode"]) {
+			t.Fatalf("photo %d's re-encode %q is not its own stored jpeg", i, row["reencode"])
 		}
-		if row["thumbnail"] != thumbOf(t, pics, row["reencode"]) {
+		if hashOf(s, row["thumbnail"]) != thumbOf(t, s, pics, row["reencode"]) {
 			t.Fatalf("photo %d's thumbnail is not made from its re-encode", i)
 		}
 		orders = append(orders, row["order"])
@@ -171,11 +183,74 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a photo of someone outside one's family: %d %s", rec.Code, rec.Body.String())
 	}
-	if found, _ := pics.bucket.Exists(context.Background(), "photos/"+blob.Name(photo, "png")); found {
+	if found, _ := pics.bucket.Exists(context.Background(), "content/"+blob.Hash(photo)); found {
 		t.Fatal("a refused photo was stored")
 	}
 	if rec := addPhoto(t, s, queue, pics, importing, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not an image: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestTheSamePictureUploadedAtOnceIsOneContent(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	picture := pngOf(t, 6)
+	people := []string{staff, student, parent, "per00000020001", "per00000020002", "per00000020003"}
+	codes := make([]int, len(people))
+	var wg sync.WaitGroup
+	for i, person := range people {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			codes[i] = addPhoto(t, s, queue, pics, importing, person, picture).Code
+		}()
+	}
+	wg.Wait()
+	for i, code := range codes {
+		if code != http.StatusOK {
+			t.Fatalf("upload %d answered %d", i, code)
+		}
+	}
+	content, ok := s.Model().Table("CONTENT").Find(blob.Hash(picture), "image/png")
+	if !ok || len(s.Model().Table("PHOTO").Referencing("original", content["id"])) != len(people) {
+		t.Fatalf("the uploads do not all name one CONTENT row %v", content)
+	}
+}
+
+func TestAStaleMakesBytesAreSweptOnceOld(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	pics := newPictures(s, queue)
+	rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, 8))
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	row := made(t, s, "PHOTO", out.Result[0], "ready")
+	before, err := pics.bucket.List(context.Background(), "content/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := maps.Clone(row)
+	stale["crop_left"], stale["crop_top"], stale["crop_width"], stale["crop_height"] = "1", "1", "3", "3"
+	if err := pics.makePhoto(row["id"], stale); err != nil {
+		t.Fatal(err)
+	}
+	x := &sweeper{s: s, queue: queue, bucket: pics.bucket}
+	if removed, err := x.sweepObjects(context.Background(), time.Now().Add(-orphanAge)); err != nil || removed != 0 {
+		t.Fatalf("the sweep removed %d objects written just now: %v", removed, err)
+	}
+	if removed, err := x.sweepObjects(context.Background(), time.Now().Add(time.Second)); err != nil || removed == 0 {
+		t.Fatalf("the sweep removed %d objects once they were old: %v", removed, err)
+	}
+	after, err := pics.bucket.List(context.Background(), "content/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(before, after) {
+		t.Fatalf("the sweep left objects no content names, or took ones it names: %v, then %v", before, after)
+	}
+	if now, _ := s.Model().Table("PHOTO").Get(row["id"]); now["crop"] != "" || now["thumbnail"] != row["thumbnail"] {
+		t.Fatalf("a stale make changed the photo: %v", now)
 	}
 }
 
@@ -193,14 +268,11 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	}
 	id := out.Result[0]
 	row := made(t, s, "PHOTO", id, "crop")
-	content, _, err := pics.bucket.Get(context.Background(), row["crop"])
-	if err != nil {
-		t.Fatal(err)
-	}
+	content, _ := contentOf(t, s, pics, row["crop"])
 	if img, _, err := image.Decode(bytes.NewReader(content)); err != nil || img.Bounds().Dx() != 4 || img.Bounds().Dy() != 3 {
 		t.Fatalf("the crop is %v: %v", img.Bounds(), err)
 	}
-	if row["thumbnail"] != thumbOf(t, pics, row["crop"]) {
+	if hashOf(s, row["thumbnail"]) != thumbOf(t, s, pics, row["crop"]) {
 		t.Fatal("the thumbnail is not made from the crop")
 	}
 
@@ -238,7 +310,7 @@ func TestGroupPhotos(t *testing.T) {
 			t.Fatal(err)
 		}
 		row := made(t, s, "PHOTO", out.Result[0], "thumbnail")
-		if row["group"] != "grp00000000020" || row["person"] != "" || row["crop"] == "" || row["thumbnail"] != thumbOf(t, pics, row["crop"]) {
+		if row["group"] != "grp00000000020" || row["person"] != "" || row["crop"] == "" || hashOf(s, row["thumbnail"]) != thumbOf(t, s, pics, row["crop"]) {
 			t.Fatalf("family photo %d reads %v", i, row)
 		}
 		ids = append(ids, row["id"])
@@ -281,11 +353,14 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	original := pngOf(t, 7)
-	name := "photos/" + blob.Name(original, "png")
-	if err := bucket.Put(context.Background(), name, "image/png", original); err != nil {
+	hash := blob.Hash(original)
+	if _, err := bucket.Put(context.Background(), "content/"+hash, "image/png", original, 0); err != nil {
 		t.Fatal(err)
 	}
-	photo := apply(t, s, queue, []Edit{{Insert: "PHOTO", Row: map[string]any{"person": staff, "original": name, "order": "m"}}})[0]
+	photo := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "original", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(original))}},
+		{Insert: "PHOTO", Row: map[string]any{"person": staff, "original": "@original", "order": "m"}},
+	})[1]
 	NewPictures(s, queue, bucket).Start()
 	if row := made(t, s, "PHOTO", photo, "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
 		t.Fatalf("a photo left unmade before a restart reads %v", row)
@@ -293,7 +368,7 @@ func TestStartupMakesPhotosNotReady(t *testing.T) {
 }
 
 func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
-	old := store.Row{"id": "pho00000000099", "original": "photos/a.png", "ready": "Yes"}
+	old := store.Row{"id": "pho00000000099", "original": "a.png", "ready": "Yes"}
 	moved := maps.Clone(old)
 	moved["crop_left"] = "3"
 	if edits, _ := photoNotReady(nil, Change{Table: "PHOTO", Old: old, New: moved}); len(edits) != 1 || edits[0].Cells["ready"] != "" {
@@ -306,19 +381,25 @@ func TestChangingWhatAPhotoIsMadeFromClearsReady(t *testing.T) {
 	}
 }
 
-func TestChangingARecordingsOriginalBlanksWhatWasMade(t *testing.T) {
-	old := store.Row{"id": "per00000000099", "pronunciation_original": "pronunciation/a.webm", "pronunciation": "pronunciation/b.m4a"}
-	for _, original := range []string{"pronunciation/c.mp3", ""} {
+func TestChangingAnOriginalBlanksWhatWasMade(t *testing.T) {
+	old := store.Row{"id": "per00000000099", "pronunciation_original": "cnt0000000000a", "pronunciation": "cnt0000000000b"}
+	for _, original := range []string{"cnt0000000000c", ""} {
 		changed := maps.Clone(old)
 		changed["pronunciation_original"] = original
-		if edits, _ := recordingNotMade(nil, Change{Table: "PERSON", Old: old, New: changed}); len(edits) != 1 || edits[0].Cells["pronunciation"] != "" {
+		if edits, _ := madeNotMade(nil, Change{Table: "PERSON", Old: old, New: changed}); len(edits) != 1 || edits[0].Cells["pronunciation"] != "" {
 			t.Fatalf("an original of %q left the made recording: %v", original, edits)
 		}
 	}
 	renamed := maps.Clone(old)
 	renamed["pronouns"] = "they/them"
-	if edits, _ := recordingNotMade(nil, Change{Table: "PERSON", Old: old, New: renamed}); len(edits) != 0 {
+	if edits, _ := madeNotMade(nil, Change{Table: "PERSON", Old: old, New: renamed}); len(edits) != 0 {
 		t.Fatalf("another column blanked the made recording: %v", edits)
+	}
+	poster := store.Row{"id": "grp00000000099", "flyer_original": "cnt0000000000a", "flyer": "cnt0000000000b", "pronunciation_original": "cnt0000000000c", "pronunciation": "cnt0000000000d"}
+	replaced := maps.Clone(poster)
+	replaced["flyer_original"] = "cnt0000000000e"
+	if edits, _ := madeNotMade(nil, Change{Table: "GROUP", Old: poster, New: replaced}); len(edits) != 1 || len(edits[0].Cells) != 1 || edits[0].Cells["flyer"] != "" {
+		t.Fatalf("a new flyer blanked %v, want the made flyer alone", edits)
 	}
 }
 
@@ -343,7 +424,7 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 			t.Fatalf("post %d answered %+v and reads %v", i, out, row)
 		}
 		content, ok := s.Model().Table("CONTENT").Get(row["content"])
-		if !ok || content["hash"] != out.Hash || content["blob"] != "content/"+strings.TrimSuffix(blob.Name(pdf, "pdf"), ".pdf") || content["mime"] != "application/pdf" || content["size"] != strconv.Itoa(len(pdf)) {
+		if !ok || content["hash"] != out.Hash || content["blob"] != "content/"+blob.Hash(pdf) || content["mime"] != "application/pdf" || content["size"] != strconv.Itoa(len(pdf)) {
 			t.Fatalf("post %d: the document's content reads %v", i, content)
 		}
 		if found, err := pics.bucket.Exists(context.Background(), content["blob"]); err != nil || !found {

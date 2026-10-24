@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/blob"
 	"heliosian/internal/testkit"
 )
 
@@ -21,7 +23,7 @@ func TestWikiShare(t *testing.T) {
 		}
 		return id
 	}
-	body := "# Field trips\n\n![a bus](/api/wiki/picture/x.png)\n- **Every grade** goes [somewhere](https://example.org) twice a year. Forms come home a week before.\n\n# Costs\n\nNone.\n"
+	body := "# Field trips\n\n![a bus](/api/blob/pho00000099999/image)\n- **Every grade** goes [somewhere](https://example.org) twice a year. Forms come home a week before.\n\n# Costs\n\nNone.\n"
 	id := save(wikiPage{Name: "Field Trips", Body: body})
 	save(wikiPage{Parent: id, Name: "Museums", Body: "Downtown."})
 	save(wikiPage{Parent: id, Name: "Farms", Body: "Out of town."})
@@ -60,16 +62,23 @@ func TestWikiShareHeader(t *testing.T) {
 		}
 		return id
 	}
-	name := strings.Repeat("c", 64) + ".png"
-	if err := pics.bucket.Put(ctx, "wiki-images/"+name, "image/png", pngOf(t, 4)); err != nil {
+	top := save(wikiPage{Name: "Field Trips", Body: "Trips."})
+	picture := pngOf(t, 4)
+	hash := blob.Hash(picture)
+	if _, err := pics.bucket.Put(ctx, "content/"+hash, "image/png", picture, 0); err != nil {
 		t.Fatal(err)
 	}
-	top := save(wikiPage{Name: "Field Trips", Body: "---\nheader_image: /api/wiki/picture/" + name + "\n---\nTrips."})
+	ids := apply(t, s, queue, []Edit{
+		{Insert: "CONTENT", As: "picture", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(picture))}},
+		{Insert: "PHOTO", Row: map[string]any{"document": top, "original": "@picture", "reencode": "@picture", "ready": "Yes"}},
+	})
+	photo, shown := ids[1], ids[0]
+	save(wikiPage{Document: top, Name: "Field Trips", Body: "---\nheader_image: /api/blob/" + photo + "/image\n---\nTrips."})
 	sub := save(wikiPage{Parent: top, Name: "Museums", Body: "Downtown."})
 	plain := save(wikiPage{Name: "Plain", Body: "No picture."})
 	t.Chdir("../..")
 	share := NewWikiShare(s, pics, func() string { return "Helios Wiki" })
-	for id, want := range map[string]string{top: "wiki-images/" + name, sub: "wiki-images/" + name, plain: wikiBackgrounds + wikiBackgroundNames[backgroundHash(plain)%uint32(len(wikiBackgroundNames))] + ".jpg"} {
+	for id, want := range map[string]string{top: shown, sub: shown, plain: wikiBackgrounds + wikiBackgroundNames[backgroundHash(plain)%uint32(len(wikiBackgroundNames))] + ".jpg"} {
 		got, picture, err := share.header(ctx, id)
 		if err != nil || got != want || len(picture) == 0 {
 			t.Errorf("%s wears %q (%d bytes, %v), want %q", id, got, len(picture), err, want)
@@ -84,12 +93,12 @@ func TestWikiShareHeader(t *testing.T) {
 }
 
 func TestHeaderImage(t *testing.T) {
-	name := strings.Repeat("a", 64) + ".jpg"
 	for markdown, want := range map[string]string{
-		"---\nheader_image: /api/wiki/picture/" + name + "\n---\nHi.": "wiki-images/" + name,
-		"---\nheader_image: https://example.org/x.jpg\n---\nHi.":      "",
-		"---\nheader_image: /api/wiki/picture/secret.png\n---\nHi.":   "",
-		"header_image: /api/wiki/picture/" + name:                     "",
+		"---\nheader_image: /api/blob/pho00000020001/image\n---\nHi.":    "pho00000020001",
+		"---\nheader_image: https://example.org/x.jpg\n---\nHi.":         "",
+		"---\nheader_image: /api/blob/pho00000020001/original\n---\nHi.": "",
+		"---\nheader_image: /api/blob/pho00000020001/image?x\n---\nHi.":  "",
+		"header_image: /api/blob/pho00000020001/image":                   "",
 		"": "",
 	} {
 		if got := headerImage(markdown); got != want {
@@ -110,14 +119,14 @@ func TestPageOutline(t *testing.T) {
 
 func TestFirstSentence(t *testing.T) {
 	for markdown, want := range map[string]string{
-		"# Title\n\nOne. Two.":                                 "One.",
-		"```\nNot this.\n```\nThis one!":                       "This one!",
-		"> Quoted line with no end":                            "Quoted line with no end",
-		"1. *First* step? Then more.":                          "First step?",
-		"# Only headings\n## And more":                         "",
-		"Version 2.5 is out. Upgrade.":                         "Version 2.5 is out.",
-		"![pic](/api/wiki/picture/a.png)\nHi.":                 "Hi.",
-		"---\nheader_image: /api/wiki/picture/a.png\n---\nHi.": "Hi.",
+		"# Title\n\nOne. Two.":                                        "One.",
+		"```\nNot this.\n```\nThis one!":                              "This one!",
+		"> Quoted line with no end":                                   "Quoted line with no end",
+		"1. *First* step? Then more.":                                 "First step?",
+		"# Only headings\n## And more":                                "",
+		"Version 2.5 is out. Upgrade.":                                "Version 2.5 is out.",
+		"![pic](/api/blob/pho00000020001/image)\nHi.":                 "Hi.",
+		"---\nheader_image: /api/blob/pho00000020001/image\n---\nHi.": "Hi.",
 	} {
 		if got := firstSentence(markdown); got != want {
 			t.Errorf("firstSentence(%q) = %q, want %q", markdown, got, want)

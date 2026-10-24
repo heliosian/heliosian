@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"log/slog"
@@ -16,12 +17,20 @@ import (
 	"heliosian/internal/store"
 )
 
+type madeColumn struct {
+	table, original, made string
+}
+
 var (
 	cropColumns  = []string{"crop_left", "crop_top", "crop_width", "crop_height"}
 	photoInputs  = append([]string{"original"}, cropColumns...)
 	photoOutputs = []string{"reencode", "crop", "thumbnail"}
 
-	recordingTables = []string{"PERSON", "GROUP"}
+	madeColumns = []madeColumn{
+		{"PERSON", "pronunciation_original", "pronunciation"},
+		{"GROUP", "pronunciation_original", "pronunciation"},
+		{"GROUP", "flyer_original", "flyer"},
+	}
 )
 
 type Pictures struct {
@@ -40,7 +49,7 @@ func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
 	go func() {
 		for range in.wake {
 			for _, d := range in.take() {
-				if remake(d.change) || rerecord(d.change) {
+				if remake(d.change) || remade(d.change) {
 					p.enqueue(d.change.New["id"])
 				}
 			}
@@ -53,35 +62,37 @@ func (p *Pictures) Start() {
 	go p.run()
 	queued := 0
 	for _, row := range p.s.Model().Table("PHOTO").All() {
-		if row["ready"] == "" && strings.HasPrefix(row["original"], "photos/") {
+		if row["ready"] == "" {
 			p.enqueue(row["id"])
 			queued++
 		}
 	}
-	recordings := 0
-	for _, table := range recordingTables {
-		for _, row := range p.s.Model().Table(table).All() {
-			if strings.HasPrefix(row["pronunciation_original"], "pronunciation/") && row["pronunciation"] == "" {
+	made := 0
+	for _, m := range madeColumns {
+		for _, row := range p.s.Model().Table(m.table).All() {
+			if row[m.original] != "" && row[m.made] == "" {
 				p.enqueue(row["id"])
-				recordings++
+				made++
 			}
 		}
 	}
-	slog.Info("pictures: queued photos and recordings not ready at startup", "queued", queued, "recordings", recordings)
+	slog.Info("pictures: queued photos, recordings and flyers not ready at startup", "queued", queued, "made", made)
 }
 
 func remake(c Change) bool {
-	if c.Table != "PHOTO" || c.New == nil || !strings.HasPrefix(c.New["original"], "photos/") {
+	if c.Table != "PHOTO" || c.New == nil {
 		return false
 	}
 	return c.Old == nil || slices.ContainsFunc(photoInputs, func(col string) bool { return c.Old[col] != c.New[col] })
 }
 
-func rerecord(c Change) bool {
-	if !slices.Contains(recordingTables, c.Table) || c.New == nil || !strings.HasPrefix(c.New["pronunciation_original"], "pronunciation/") {
+func remade(c Change) bool {
+	if c.New == nil {
 		return false
 	}
-	return c.Old == nil || c.Old["pronunciation_original"] != c.New["pronunciation_original"]
+	return slices.ContainsFunc(madeColumns, func(m madeColumn) bool {
+		return m.table == c.Table && c.New[m.original] != "" && (c.Old == nil || c.Old[m.original] != c.New[m.original])
+	})
 }
 
 func (p *Pictures) enqueue(id string) {
@@ -114,10 +125,10 @@ func (p *Pictures) run() {
 		for id, ok := p.next(); ok; id, ok = p.next() {
 			start := time.Now()
 			if err := p.make(id); err != nil {
-				slog.Error("pictures: make", "photo", id, "error", err)
+				slog.Error("pictures: make", "row", id, "error", err)
 				continue
 			}
-			slog.Info("pictures: made", "photo", id, "took", time.Since(start).Round(time.Millisecond))
+			slog.Info("pictures: made", "row", id, "took", time.Since(start).Round(time.Millisecond))
 		}
 	}
 }
@@ -141,17 +152,45 @@ func cropBox(row store.Row) (image.Rectangle, bool, error) {
 	return image.Rect(n[0], n[1], n[0]+n[2], n[1]+n[3]), true, nil
 }
 
-func (p *Pictures) store(ctx context.Context, content []byte) (string, error) {
-	name := "photos/" + blob.Name(content, "jpg")
-	return name, p.put(ctx, name, "image/jpeg", content)
+type madeBytes struct {
+	hash, mime string
+	size       int
+	written    bool
 }
 
-func (p *Pictures) put(ctx context.Context, name, mimeType string, content []byte) error {
-	held, err := p.bucket.Exists(ctx, name)
-	if err != nil || held {
-		return err
+func keepBytes(ctx context.Context, m *Model, bucket *blob.Bucket, mimeType string, content []byte) (madeBytes, error) {
+	b := madeBytes{hash: blob.Hash(content), mime: mimeType, size: len(content)}
+	if _, held := m.Table("CONTENT").Find(b.hash, mimeType); held {
+		return b, nil
 	}
-	return p.bucket.Put(ctx, name, mimeType, content)
+	b.written = true
+	name := "content/" + b.hash
+	seen := int64(0)
+	for {
+		_, err := bucket.Put(ctx, name, mimeType, content, seen)
+		if !errors.Is(err, blob.ErrChanged) {
+			return b, err
+		}
+		now, err := bucket.Generation(ctx, name)
+		if err != nil {
+			return b, err
+		}
+		// An object no row holds may be about to be swept: writing it again moves its generation past the
+		// sweep's listing, and so does another writer's write of these same bytes since we last looked.
+		if seen != 0 && now != 0 {
+			return b, nil
+		}
+		seen = now
+	}
+}
+
+func (m *Model) contentBytes(ctx context.Context, bucket *blob.Bucket, id string) ([]byte, string, error) {
+	row, ok := m.Table("CONTENT").Get(id)
+	if !ok {
+		return nil, "", fmt.Errorf("no content %s", id)
+	}
+	data, _, err := bucket.Get(ctx, row["blob"])
+	return data, row["mime"], err
 }
 
 func (p *Pictures) make(id string) error {
@@ -159,61 +198,77 @@ func (p *Pictures) make(id string) error {
 	if row, ok := m.Table("PHOTO").Get(id); ok {
 		return p.makePhoto(id, row)
 	}
-	for _, table := range recordingTables {
-		if row, ok := m.Table(table).Get(id); ok {
-			return p.makeRecording(table, id, row)
+	for _, made := range madeColumns {
+		row, ok := m.Table(made.table).Get(id)
+		if !ok || row[made.original] == "" || row[made.made] != "" {
+			continue
+		}
+		if err := p.makeMade(made, id, row); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-func (p *Pictures) makeRecording(table, id string, row store.Row) error {
+func (p *Pictures) makeMade(made madeColumn, id string, row store.Row) error {
 	ctx := context.Background()
-	if !strings.HasPrefix(row["pronunciation_original"], "pronunciation/") {
-		return nil
-	}
-	src, declared, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["pronunciation_original"]))
+	src, declared, err := p.s.Model().contentBytes(ctx, p.bucket, row[made.original])
 	if err != nil {
 		return err
 	}
-	mimeType, _, ok := blob.AudioType(declared)
-	if !ok {
-		return fmt.Errorf("%s is stored as %s, not a recording type", row["pronunciation_original"], declared)
+	var out []byte
+	mimeType := "image/jpeg"
+	if made.made == "pronunciation" {
+		mimeType = "audio/mp4"
+		audio, _, ok := blob.AudioType(declared)
+		if !ok {
+			return fmt.Errorf("%s is %s, not a recording type", row[made.original], declared)
+		}
+		out, err = blob.ReencodeRecording(audio, src)
+	} else {
+		out, err = blob.Reencode(src)
 	}
-	out, err := blob.ReencodeRecording(mimeType, src)
 	if err != nil {
 		return err
 	}
-	name := "pronunciation/" + blob.Name(out, "m4a")
-	if err := p.put(ctx, name, "audio/mp4", out); err != nil {
+	kept, err := keepBytes(ctx, p.s.Model(), p.bucket, mimeType, out)
+	if err != nil {
 		return err
 	}
 	_, err = p.queue.Transact(ctx, access.System("pictures"), func(tx *store.Tx) error {
-		now, ok := p.s.In(tx).Table(table).Get(id)
-		if !ok || now["pronunciation_original"] != row["pronunciation_original"] || now["pronunciation"] == name {
+		m := p.s.In(tx)
+		now, ok := m.Table(made.table).Get(id)
+		if !ok || now[made.original] != row[made.original] {
 			return nil
 		}
-		_, err := stageEdits(p.s, tx, Env{System: "pictures"}, []Edit{{Set: id, Cells: map[string]any{"pronunciation": name}}}, "pictures", true)
+		w := &pendingWrites{}
+		held, err := stageContent(m, w, map[string]string{}, kept)
+		if err != nil {
+			return err
+		}
+		if now[made.made] == held {
+			return nil
+		}
+		w.add(Edit{Set: id, Cells: map[string]any{made.made: held}})
+		_, err = stageEdits(p.s, tx, Env{System: "pictures"}, w.edits, "pictures", true)
 		return err
 	})
 	return err
 }
 
 func (p *Pictures) makePhoto(id string, row store.Row) error {
-	if !strings.HasPrefix(row["original"], "photos/") {
-		return nil
-	}
 	ctx := context.Background()
-	src, _, err := p.bucket.Get(ctx, p.s.Model().BlobName(row["original"]))
+	m := p.s.Model()
+	src, _, err := m.contentBytes(ctx, p.bucket, row["original"])
 	if err != nil {
 		return err
 	}
-	want := map[string]any{"crop": ""}
+	want := map[string]madeBytes{}
 	re, err := blob.Reencode(src)
 	if err != nil {
 		return err
 	}
-	if want["reencode"], err = p.store(ctx, re); err != nil {
+	if want["reencode"], err = keepBytes(ctx, m, p.bucket, "image/jpeg", re); err != nil {
 		return err
 	}
 	shown := re
@@ -225,7 +280,7 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 		if shown, err = blob.Crop(re, box); err != nil {
 			return err
 		}
-		if want["crop"], err = p.store(ctx, shown); err != nil {
+		if want["crop"], err = keepBytes(ctx, m, p.bucket, "image/jpeg", shown); err != nil {
 			return err
 		}
 	}
@@ -233,18 +288,28 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 	if err != nil {
 		return err
 	}
-	if want["thumbnail"], err = p.store(ctx, thumb); err != nil {
+	if want["thumbnail"], err = keepBytes(ctx, m, p.bucket, "image/jpeg", thumb); err != nil {
 		return err
 	}
 	_, err = p.queue.Transact(ctx, access.System("pictures"), func(tx *store.Tx) error {
-		now, ok := p.s.In(tx).Table("PHOTO").Get(id)
+		m := p.s.In(tx)
+		now, ok := m.Table("PHOTO").Get(id)
 		if !ok || slices.ContainsFunc(photoInputs, func(col string) bool { return now[col] != row[col] }) {
 			return nil
 		}
+		w := &pendingWrites{}
+		held := map[string]string{}
 		set := map[string]any{}
 		for _, col := range photoOutputs {
-			if now[col] != want[col] {
-				set[col] = want[col]
+			v := ""
+			if b, ok := want[col]; ok {
+				var err error
+				if v, err = stageContent(m, w, held, b); err != nil {
+					return err
+				}
+			}
+			if now[col] != v {
+				set[col] = v
 			}
 		}
 		if now["ready"] != "Yes" {
@@ -253,7 +318,8 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 		if len(set) == 0 {
 			return nil
 		}
-		_, err := stageEdits(p.s, tx, Env{System: "pictures"}, []Edit{{Set: id, Cells: set}}, "pictures", true)
+		w.add(Edit{Set: id, Cells: set})
+		_, err := stageEdits(p.s, tx, Env{System: "pictures"}, w.edits, "pictures", true)
 		return err
 	})
 	return err

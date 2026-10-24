@@ -3,8 +3,6 @@ package db
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -214,18 +212,21 @@ func (m *Model) htmlAlongside(doc store.Row) bool {
 	})
 }
 
-func stageContent(m *Model, w *pendingWrites, held map[string]string, hash, mimeType string, size int) string {
-	key := hash + "\x00" + mimeType
+func stageContent(m *Model, w *pendingWrites, held map[string]string, b madeBytes) (string, error) {
+	key := b.hash + "\x00" + b.mime
 	if id, ok := held[key]; ok {
-		return id
+		return id, nil
 	}
-	if row, ok := m.Table("CONTENT").Find(hash, mimeType); ok {
+	if row, ok := m.Table("CONTENT").Find(b.hash, b.mime); ok {
 		held[key] = row["id"]
-		return row["id"]
+		return row["id"], nil
 	}
-	id := w.server(Edit{Insert: "CONTENT", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": mimeType, "size": strconv.Itoa(size)}})
+	if !b.written {
+		return "", fmt.Errorf("the content row for %s was swept while its bytes were being stored again; try again", b.hash)
+	}
+	id := w.server(Edit{Insert: "CONTENT", Row: map[string]any{"hash": b.hash, "blob": "content/" + b.hash, "mime": b.mime, "size": strconv.Itoa(b.size)}})
 	held[key] = id
-	return id
+	return id, nil
 }
 
 func (x *Extractor) extract(id string) (int, error) {
@@ -268,24 +269,17 @@ func (x *Extractor) extract(id string) (int, error) {
 			children = append(children, extracted{relation: "linked", url: l.URL, title: l.Text, skip: l.Skip})
 		}
 	}
-	hashes := make([]string, len(children))
-	stored := map[string]bool{}
+	kept := make([]madeBytes, len(children))
 	for i, child := range children {
 		if child.body == nil {
 			continue
 		}
-		sum := sha256.Sum256(child.body)
-		hashes[i] = hex.EncodeToString(sum[:])
-		if _, held := m.Table("CONTENT").Find(hashes[i], child.mime); held || stored[hashes[i]] {
-			continue
-		}
-		if err := x.bucket.Put(ctx, "content/"+hashes[i], child.mime, child.body); err != nil {
+		var err error
+		if kept[i], err = keepBytes(ctx, m, x.bucket, child.mime, child.body); err != nil {
 			return 0, err
 		}
-		stored[hashes[i]] = true
 	}
 	orders := store.Order(make([]string, len(children)))
-	committed := false
 	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
 		m := x.s.In(tx)
 		now, ok := m.Table("DOCUMENT").Get(id)
@@ -297,7 +291,11 @@ func (x *Extractor) extract(id string) (int, error) {
 		for i, child := range children {
 			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i]}
 			if child.body != nil {
-				row["content"] = stageContent(m, w, contents, hashes[i], child.mime, len(child.body))
+				content, err := stageContent(m, w, contents, kept[i])
+				if err != nil {
+					return err
+				}
+				row["content"] = content
 			}
 			if child.name != "" {
 				row["filename"] = child.name
@@ -321,15 +319,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		}
 		w.add(Edit{Set: id, Cells: map[string]any{"extracted": time.Now().In(School).Format(cells.StampFormat)}})
 		_, err := stageEdits(x.s, tx, Env{System: extractActor}, w.edits, extractActor, true)
-		committed = err == nil
 		return err
 	})
-	if err != nil || !committed {
-		names := []string{}
-		for hash := range stored {
-			names = append(names, "content/"+hash)
-		}
-		dropUnheld(x.s, x.bucket, names)
-	}
 	return len(children), err
 }

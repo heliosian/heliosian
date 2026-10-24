@@ -28,6 +28,22 @@ func (c client) table(name string, where ...any) (table, string, error) {
 	return t, a.Now, nil
 }
 
+func (c client) photos() (table, map[string]string, error) {
+	a, err := c.Query([]any{"from", "PHOTO", []any{"include", "original"}})
+	if err != nil {
+		return table{}, nil, err
+	}
+	t := table{rows: map[string]row{}}
+	for _, id := range a.Result {
+		t.add(id, a.Resources["PHOTO"][id])
+	}
+	hashes := map[string]string{}
+	for id, content := range a.Resources["CONTENT"] {
+		hashes[id] = content["hash"]
+	}
+	return t, hashes, nil
+}
+
 func name(p string) map[string]any {
 	return map[string]any{"n": p}
 }
@@ -61,10 +77,7 @@ func (c client) read() (*state, error) {
 	if st.emails, _, err = c.table("PERSON_EMAIL"); err != nil {
 		return nil, err
 	}
-	if st.contents, _, err = c.table("CONTENT"); err != nil {
-		return nil, err
-	}
-	if st.photos, _, err = c.table("PHOTO"); err != nil {
+	if st.photos, st.originals, err = c.photos(); err != nil {
 		return nil, err
 	}
 	if st.groups, _, err = c.table("GROUP", or(in("kind", "family", "classroom", "crew", "grade", "gradeband", "department"), roleGroup("kind", "slug"), parentsGroup("kind", "slug"))); err != nil {

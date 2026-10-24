@@ -18,7 +18,6 @@ import (
 const (
 	wikiShareSubPages  = 4
 	wikiBackgrounds    = "web/wiki/backgrounds/"
-	wikiPicturePrefix  = "/api/wiki/picture/"
 	wikiHeaderImageKey = "header_image:"
 )
 
@@ -121,9 +120,9 @@ func (w *WikiShare) header(ctx context.Context, id string) (string, []byte, erro
 		if err != nil {
 			return "", nil, err
 		}
-		if object := headerImage(markdown); object != "" {
-			picture, _, err := w.pics.bucket.Get(ctx, object)
-			return object, picture, err
+		if photo, ok := m.Table("PHOTO").Get(headerImage(markdown)); ok && photo["image"] != "" {
+			picture, _, err := m.contentBytes(ctx, w.pics.bucket, photo["image"])
+			return photo["image"], picture, err
 		}
 		top, at = at, row["parent"]
 	}
@@ -136,8 +135,7 @@ func (w *WikiShare) markdown(ctx context.Context, row map[string]string) (string
 	if row["content"] == "" {
 		return "", nil
 	}
-	content, _ := w.s.Model().Table("CONTENT").Get(row["content"])
-	raw, _, err := w.pics.bucket.Get(ctx, content["blob"])
+	raw, _, err := w.s.Model().contentBytes(ctx, w.pics.bucket, row["content"])
 	return string(raw), err
 }
 
@@ -163,9 +161,8 @@ func headerImage(markdown string) string {
 		if !ok {
 			continue
 		}
-		name, ok := strings.CutPrefix(strings.TrimSpace(value), wikiPicturePrefix)
-		if ok && wikiImage.MatchString("wiki-images/"+name) {
-			return "wiki-images/" + name
+		if found := wikiPicture.FindStringSubmatch(strings.TrimSpace(value)); found != nil && found[0] == strings.TrimSpace(value) {
+			return found[1]
 		}
 	}
 	return ""

@@ -425,8 +425,14 @@ func checkEmails(people Sheet) error {
 
 func checkPhotos(people Sheet) error {
 	for _, row := range people["PHOTO"].rows {
-		if (row["person"] == "") == (row["group"] == "") {
-			return fmt.Errorf("PHOTO %s: a photo is of a person or of a group, not both or neither", row["id"])
+		of := 0
+		for _, col := range []string{"person", "group", "document"} {
+			if row[col] != "" {
+				of++
+			}
+		}
+		if of != 1 {
+			return fmt.Errorf("PHOTO %s: a photo is of one person, group or wiki page", row["id"])
 		}
 	}
 	return nil

@@ -178,6 +178,44 @@ func TestEveryRowIsMadeUnasked(t *testing.T) {
 	}
 }
 
+func TestAnEntryAnotherWriterStoredIsTakenUp(t *testing.T) {
+	s, _, bucket, x := searcher(t)
+	rows := waitRows(t, s, x)
+	waitIndexed(t, x, rows)
+	var hash string
+	for _, r := range rows {
+		hash = r.Object
+		break
+	}
+	x.mu.Lock()
+	mine := *x.entries[hash]
+	theirs := mine
+	mine.Summary = ""
+	x.entries[hash] = &mine
+	x.mu.Unlock()
+	theirs.Summary = "the other revision's summary"
+	raw, err := json.Marshal(&theirs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, err := bucket.Put(context.Background(), hash, "application/json", raw, mine.generation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	x.mu.Lock()
+	x.enqueue(hash)
+	x.mu.Unlock()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		x.mu.RLock()
+		e := x.entries[hash]
+		x.mu.RUnlock()
+		if e.Summary == theirs.Summary && e.generation == stored {
+			return
+		}
+	}
+	t.Fatal("the searcher never took up the entry another writer stored")
+}
+
 func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
@@ -553,7 +591,7 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 
 func TestARefNamesThePagesItWasReadFrom(t *testing.T) {
 	s, queue, bucket, x := searcher(t)
-	if err := bucket.Put(t.Context(), "content/m1", "text/markdown", []byte("# Egg drop\n\nEach team drops one egg from the balcony.")); err != nil {
+	if _, err := bucket.Put(t.Context(), "content/m1", "text/markdown", []byte("# Egg drop\n\nEach team drops one egg from the balcony."), 0); err != nil {
 		t.Fatal(err)
 	}
 	ids := apply(t, s, queue, []Edit{
@@ -927,7 +965,7 @@ func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := sampleBucket(t)
 	stray := SearchObject("a row long gone")
-	if err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`)); err != nil {
+	if _, err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`), 0); err != nil {
 		t.Fatal(err)
 	}
 	x := NewSearcher(s, queue, bucket, vertex)

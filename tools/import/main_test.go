@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -103,7 +102,7 @@ func writePNG(t *testing.T, dir string, size int) string {
 	if err := png.Encode(buf, image.NewRGBA(image.Rect(0, 0, size, size))); err != nil {
 		t.Fatal(err)
 	}
-	name := blob.Name(buf.Bytes(), "png")
+	name := blob.Hash(buf.Bytes()) + ".png"
 	if err := os.WriteFile(filepath.Join(dir, name), buf.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +249,11 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("the first run: %v, %d photos", p.counts, photos)
 	}
 	ines := personNamed(s, "Ines Okafor")
-	if got := photosOf(s, ines["id"]); len(got) != 2 || got[0]["original"] != "photos/"+x.entries[6].photos[0] || got[1]["original"] != "photos/"+x.website[0].photos[0] {
+	hashOf := func(content string) string {
+		row, _ := s.Model().Table("CONTENT").Get(content)
+		return row["hash"] + ".png"
+	}
+	if got := photosOf(s, ines["id"]); len(got) != 2 || hashOf(got[0]["original"]) != x.entries[6].photos[0] || hashOf(got[1]["original"]) != x.website[0].photos[0] {
 		t.Fatalf("Ines's photos, Veracross's first: %v", got)
 	}
 	if ines["vc_bio"] != "Reads." {
@@ -338,21 +341,6 @@ func TestImportAgainstTheSample(t *testing.T) {
 		t.Fatalf("Sam's address reads %v", email)
 	}
 
-	contents := map[string]string{}
-	for _, photo := range s.Model().Table("PHOTO").All() {
-		original := photo["original"]
-		hash := strings.TrimSuffix(path.Base(original), path.Ext(original))
-		if contents[hash] == "" {
-			ids, err := c.write([]write{{Insert: "CONTENT", Row: row{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": "1"}}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			contents[hash] = ids[0]
-		}
-		if _, err := c.write([]write{{Set: photo["id"], Cells: row{"original": contents[hash]}}}); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if p, photos := importOnce(t, c, x); len(p.batch) != 0 || photos != 0 {
 		t.Fatalf("a second run changed %v and added %d photos: %v", p.counts, photos, p.batch)
 	}

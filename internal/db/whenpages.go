@@ -135,7 +135,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		}
 		picture = content
 	} else {
-		content, _, err := p.bucket.Get(r.Context(), name)
+		content, _, err := m.contentBytes(r.Context(), p.bucket, name)
 		if err != nil && !errors.Is(err, blob.ErrNotFound) {
 			slog.ErrorContext(r.Context(), "when pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
 		}
@@ -154,7 +154,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 
 func (m *Model) sharedPicture(g store.Row) (string, bool) {
 	if g["flyer"] != "" {
-		return m.BlobName(g["flyer"]), true
+		return g["flyer"], true
 	}
 	groups := m.Table("GROUP")
 	for n, ok := g, true; ok; n, ok = groups.Get(n["parent"]) {
@@ -162,7 +162,7 @@ func (m *Model) sharedPicture(g store.Row) (string, bool) {
 		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 		for _, ph := range photos {
 			if ph["image"] != "" {
-				return m.BlobName(ph["image"]), false
+				return ph["image"], false
 			}
 		}
 	}

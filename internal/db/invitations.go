@@ -309,7 +309,7 @@ func (iv *Invitations) storeText(ctx context.Context, m *Model, text string) (st
 		return row["id"], nil, nil
 	}
 	name := "content/" + hash
-	if err := iv.pics.bucket.Put(ctx, name, "text/plain", raw); err != nil {
+	if _, err := keepBytes(ctx, m, iv.pics.bucket, "text/plain", raw); err != nil {
 		return "", nil, fmt.Errorf("store the words: %w", err)
 	}
 	return "@words", []Edit{{Insert: "CONTENT", As: "words", Row: map[string]any{"hash": hash, "blob": name, "mime": "text/plain", "size": strconv.Itoa(len(raw))}}}, nil

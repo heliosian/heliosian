@@ -8,7 +8,7 @@ import {keyBetween} from '/order.js';
 import {el, svg, toast, button} from '/elements.js';
 import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
-import {imageTools} from '/images.js';
+import {imageTools, postPhoto, postFlyer} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
@@ -826,11 +826,7 @@ function hostEdits(p, ids) {
 }
 
 export async function setPicture(groupId, name, old) {
-  const blob = await (await fetch('/' + name)).blob();
-  const form = new FormData();
-  form.append('group', groupId);
-  form.append('photo', blob, name.split('/').pop());
-  await api('POST', '/api/do/photo', form);
+  await postPhoto({group: groupId}, name);
   if (old) {
     await write([{delete: old}]);
   }
@@ -1134,8 +1130,10 @@ export async function savePartyFields(p, changes) {
         await write([{delete: p.image}]);
       }
     }
-    if (changes.flyer !== undefined) {
-      await write([{set: p.id, cells: {flyer: changes.flyer}}]);
+    if (changes.flyer) {
+      await postFlyer(p.id, changes.flyer);
+    } else if (changes.flyer !== undefined) {
+      await write([{set: p.id, cells: {flyer_original: ''}}]);
     }
     await load();
   } catch (err) {

@@ -37,7 +37,7 @@ func settled(t *testing.T, b *ops.Board, done func(ops.Snapshot) bool) ops.Snaps
 
 func TestTheBoardReadsEverySource(t *testing.T) {
 	bucket := blob.NewMemoryBucket()
-	if err := bucket.Put(context.Background(), "photos/a.jpg", "image/jpeg", []byte("123")); err != nil {
+	if _, err := bucket.Put(context.Background(), "photos/a.jpg", "image/jpeg", []byte("123"), 0); err != nil {
 		t.Fatal(err)
 	}
 	b := ops.New(testkit.OpsDeps(t, map[string]ops.Measurable{"media": bucket}))

@@ -1,5 +1,6 @@
 import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
+import {pickedPattern, postPhoto} from '/images.js';
 
 export const state = {pages: [], sides: new Map(), moved: new Map(), user: null, viewer: '', admin: false};
 
@@ -164,7 +165,7 @@ export function body(p) {
   return bodies.get(p.content);
 }
 
-export const picturePath = '/api/wiki/picture/';
+const picturePath = /^\/api\/blob\/pho[0-9A-Za-z]{11}\/image$/;
 
 export function splitHeader(md) {
   const front = md.match(/^---\n([\s\S]*?)\n---\n/);
@@ -173,7 +174,16 @@ export function splitHeader(md) {
   }
   const line = front[1].split('\n').find(l => l.startsWith('header_image:'));
   const value = line ? line.slice('header_image:'.length).trim() : '';
-  return {header: value.startsWith(picturePath) ? value : '', text: md.slice(front[0].length)};
+  return {header: picturePath.test(value) ? value : '', text: md.slice(front[0].length)};
+}
+
+export async function placePictures(id, markdown) {
+  const placed = new Map();
+  for (const name of new Set(markdown.match(pickedPattern) || [])) {
+    const made = await postPhoto({document: id}, name);
+    placed.set(name, `/api/blob/${made.result[0]}/image`);
+  }
+  return markdown.replace(pickedPattern, name => placed.get(name));
 }
 
 const backgrounds = ['backpacking', 'building', 'camping', 'library', 'math', 'music', 'nature', 'science', 'writing'];

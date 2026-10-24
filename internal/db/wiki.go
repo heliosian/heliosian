@@ -2,9 +2,6 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -34,7 +31,7 @@ const (
 )
 
 var (
-	wikiImage   = regexp.MustCompile(`^wiki-images/[0-9a-f]{64}\.(jpg|png|gif|webp)$`)
+	wikiPicture = regexp.MustCompile(`/api/blob/(` + PhotoPrefix + `[0-9A-Za-z]{11})/image`)
 	wikiSlug    = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	wikiNameRun = regexp.MustCompile(`[^\p{L}\p{N}]+`)
 )
@@ -70,11 +67,6 @@ type wikiSide struct {
 	Body string `json:"body"`
 }
 
-type markdown struct {
-	hash string
-	size int
-}
-
 func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/wiki", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
@@ -93,31 +85,32 @@ func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictur
 		slog.InfoContext(r.Context(), "saved a wiki page", "viewer", env.Viewer, "document", id, "hash", hash)
 		serve.Write(w, r, http.StatusOK, stored{Result: []string{id}, Hash: hash})
 	})
-	mux.HandleFunc("GET /api/wiki/picture/{name}", func(w http.ResponseWriter, r *http.Request) {
-		if _, _, ok := caller(w, r, s.Model(), tokens, now()); !ok {
-			return
+}
+
+func wikiNamed(ctx context.Context, m *Model, bucket *blob.Bucket, page wikiPage) (map[string]bool, error) {
+	bodies := []string{page.Body}
+	for _, side := range page.Sides {
+		bodies = append(bodies, side.Body)
+	}
+	if page.Sides == nil && page.Document != "" {
+		for _, row := range m.Table("DOCUMENT").Referencing("parent", page.Document) {
+			if row["relation"] != "side" {
+				continue
+			}
+			raw, _, err := m.contentBytes(ctx, bucket, row["content"])
+			if err != nil {
+				return nil, err
+			}
+			bodies = append(bodies, string(raw))
 		}
-		object := "wiki-images/" + r.PathValue("name")
-		if !wikiImage.MatchString(object) {
-			http.NotFound(w, r)
-			return
+	}
+	out := map[string]bool{}
+	for _, body := range bodies {
+		for _, found := range wikiPicture.FindAllStringSubmatch(body, -1) {
+			out[found[1]] = true
 		}
-		data, mimeType, err := pics.bucket.Get(r.Context(), object)
-		if errors.Is(err, blob.ErrNotFound) {
-			http.NotFound(w, r)
-			return
-		}
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		w.Header().Set("Content-Type", mimeType)
-		w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-		w.Header().Set("Content-Security-Policy", "sandbox")
-		if _, err := w.Write(data); err != nil {
-			slog.ErrorContext(r.Context(), "write a wiki picture", "object", object, "error", err)
-		}
-	})
+	}
+	return out, nil
 }
 
 func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, page wikiPage) (string, string, error) {
@@ -140,30 +133,22 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 			return "", "", access.Invalid("a side card is at most %d bytes", wikiLimit)
 		}
 	}
-	stored := []string{}
-	keep := func(body string) (markdown, error) {
-		content := []byte(body)
-		sum := sha256.Sum256(content)
-		md := markdown{hash: hex.EncodeToString(sum[:]), size: len(content)}
-		if _, held := s.Model().Table("CONTENT").Find(md.hash, wikiMime); held || slices.Contains(stored, "content/"+md.hash) {
-			return md, nil
-		}
-		if err := pics.bucket.Put(ctx, "content/"+md.hash, wikiMime, content); err != nil {
-			return md, err
-		}
-		stored = append(stored, "content/"+md.hash)
-		return md, nil
+	keep := func(body string) (madeBytes, error) {
+		return keepBytes(ctx, s.Model(), pics.bucket, wikiMime, []byte(body))
 	}
 	main, err := keep(page.Body)
 	if err != nil {
 		return "", "", err
 	}
-	sides := make([]markdown, len(page.Sides))
+	sides := make([]madeBytes, len(page.Sides))
 	for i, side := range page.Sides {
 		if sides[i], err = keep(side.Body); err != nil {
-			dropUnheld(s, pics.bucket, stored)
 			return "", "", err
 		}
+	}
+	named, err := wikiNamed(ctx, s.Model(), pics.bucket, page)
+	if err != nil {
+		return "", "", err
 	}
 	var id string
 	_, err = queue.Transact(ctx, actor, func(tx *store.Tx) error {
@@ -171,15 +156,22 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		if err := m.wikiParentFits(page.Document, page.Parent); err != nil {
 			return err
 		}
+		for photo := range named {
+			if row, ok := m.Table("PHOTO").Get(photo); ok && (page.Document == "" || row["document"] != page.Document) {
+				return access.Invalid("a picture on this page is another page's; insert it again here")
+			}
+		}
 		w := &pendingWrites{}
 		contents := map[string]string{}
-		contentOf := func(md markdown) string {
-			return stageContent(m, w, contents, md.hash, wikiMime, md.size)
+		contentID, err := stageContent(m, w, contents, main)
+		if err != nil {
+			return err
 		}
-		contentID := contentOf(main)
 		sideContents := make([]string, len(page.Sides))
 		for i := range page.Sides {
-			sideContents[i] = contentOf(sides[i])
+			if sideContents[i], err = stageContent(m, w, contents, sides[i]); err != nil {
+				return err
+			}
 		}
 		segment := wikiSegment(store.Row{"id": page.Document, "name": name, "slug": slug})
 		if segment != "" && m.wikiSibling(page.Document, page.Parent, segment) != "" {
@@ -206,6 +198,13 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 			}
 			id = ids[at]
 			return nil
+		}
+		if page.Document != "" {
+			for _, photo := range m.Table("PHOTO").Referencing("document", page.Document) {
+				if !named[photo["id"]] {
+					w.add(Edit{Delete: photo["id"]})
+				}
+			}
 		}
 		if page.Sides == nil {
 			return commit()
@@ -247,7 +246,6 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		return commit()
 	})
 	if err != nil {
-		dropUnheld(s, pics.bucket, stored)
 		return "", "", err
 	}
 	return id, main.hash, nil

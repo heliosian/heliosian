@@ -33,6 +33,7 @@ const (
 	DocumentPrefix        = "doc"
 	DocumentGroupPrefix   = "dgr"
 	ContentPrefix         = "cnt"
+	StockPrefix           = "stk"
 	ToDoPrefix            = "tdo"
 	ToDoMarkPrefix        = "tdm"
 	SearchPrefix          = "srh"
@@ -57,7 +58,7 @@ var prefixes = map[string]bool{
 	PersonPrefix: true, PersonEmailPrefix: true, PhotoPrefix: true, PersonSettingPrefix: true,
 	BirthdayYearPrefix: true, BirthdayPrefix: true, FeedTokenPrefix: true, SavedSearchPrefix: true,
 	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, PaymentPrefix: true, EffectiveMemberPrefix: true,
-	RulePrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true, ContentPrefix: true, ToDoPrefix: true, ToDoMarkPrefix: true, SearchPrefix: true,
+	RulePrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true, ContentPrefix: true, StockPrefix: true, ToDoPrefix: true, ToDoMarkPrefix: true, SearchPrefix: true,
 	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
 	SettingPrefix: true, CharityPrefix: true, AppPrefix: true,
 	WidgetPrefix: true, GeocodePrefix: true, AliasPrefix: true, RedirectPrefix: true,

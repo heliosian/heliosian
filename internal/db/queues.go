@@ -193,28 +193,14 @@ func (m *Model) queueCounts() []queueCount {
 	photos.Done = photos.Total - photos.Pending
 	out = append(out, photos)
 
-	refs := []string{}
-	for _, t := range Tables {
-		if t.Generated {
-			continue
-		}
-		for _, c := range t.Columns {
-			if c.Kind == Ref && (c.Target == "" || c.Target == "CONTENT") {
-				refs = append(refs, `(not (exists `+t.Name+` (= `+c.Name+` @c)))`)
-			}
-		}
-	}
-	sweepQuery := func(also string) string {
-		return `(from CONTENT @c (where ` + also + strings.Join(refs, " ") + `))`
-	}
-	sweep := queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object", Query: sweepQuery("")}
+	sweep := queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object"}
 	byMime := map[string]int{}
 	for _, c := range m.unreferencedContent() {
 		sweep.Pending++
 		byMime[c["mime"]]++
 	}
 	for _, mimeType := range slices.Sorted(maps.Keys(byMime)) {
-		sweep.Parts = append(sweep.Parts, queueCount{Name: baseType(mimeType), Pending: byMime[mimeType], Query: sweepQuery(`(= mime ` + strconv.Quote(mimeType) + `) `)})
+		sweep.Parts = append(sweep.Parts, queueCount{Name: baseType(mimeType), Pending: byMime[mimeType]})
 	}
 	return append(out, sweep)
 }

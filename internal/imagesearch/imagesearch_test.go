@@ -7,7 +7,6 @@ import (
 	"errors"
 	"image"
 	"image/png"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +17,11 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/data"
+	"heliosian/internal/db"
+	"heliosian/internal/hosts"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 func picture(t *testing.T) []byte {
@@ -29,33 +32,43 @@ func picture(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-func memoryStock() *Stock {
-	bucket := blob.NewMemoryBucket()
-	return NewStock(bucket, blob.New(bucket))
+func sampleStock(t *testing.T) (*db.Stock, *db.Store) {
+	t.Helper()
+	dir := &data.Dir{Root: "../../sampledata"}
+	queue := store.NewQueue()
+	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return db.NewStock(s, queue, blob.NewMemoryBucket()), s
 }
 
 func TestStockFetchedOnce(t *testing.T) {
 	pic := picture(t)
 	fetches := map[string]int{}
+	var mu sync.Mutex
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		fetches[r.URL.Path]++
+		mu.Unlock()
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(pic)
 	}))
 	defer provider.Close()
-	s := Search{Pexels: "key", UserAgent: "test", Stock: memoryStock()}
-	id := key("Pexels", "42")
-	rec, err := json.Marshal(record{Source: "Pexels", SourceID: "42", Thumb: provider.URL + "/thumb", URL: provider.URL + "/full"})
+	stock, s := sampleStock(t)
+	search := Search{Pexels: "key", UserAgent: "test", Stock: stock}
+	ids, err := stock.Remember(context.Background(), []db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Stock.bucket.Put(context.Background(), recordName(id), "application/json", rec); err != nil {
-		t.Fatal(err)
+	id := ids[0]
+	if again, err := stock.Remember(context.Background(), []db.StockHit{{Source: "Pexels", SourceID: "42", PreviewURL: provider.URL + "/thumb", URL: provider.URL + "/full"}}); err != nil || again[0] != id {
+		t.Fatalf("the same hit remembered again: %v %v, want %s", again, err, id)
 	}
 
 	thumb := func(query string) *httptest.ResponseRecorder {
 		w := httptest.NewRecorder()
-		s.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?"+query, nil))
+		search.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?"+query, nil))
 		return w
 	}
 	for range 2 {
@@ -70,52 +83,49 @@ func TestStockFetchedOnce(t *testing.T) {
 	if fetches["/thumb"] != 1 {
 		t.Errorf("thumbnail fetched %d times, want once", fetches["/thumb"])
 	}
-	if w := thumb("id=" + key("Pexels", "43")); w.Code != http.StatusNotFound {
+	if row, _ := stock.Row(id); row["preview"] == "" {
+		t.Errorf("the preview is not kept as content: %v", row)
+	}
+	if w := thumb("id=stk00000000000"); w.Code != http.StatusNotFound {
 		t.Errorf("unknown id: %d, want 404", w.Code)
 	}
 	if w := thumb("id=../42"); w.Code != http.StatusNotFound {
 		t.Errorf("malformed id: %d, want 404", w.Code)
 	}
-	if w := thumb("source=Pexels&id=42"); w.Code != http.StatusNotFound {
-		t.Errorf("a library's own id: %d, want 404", w.Code)
+	if w := thumb("id=cnt00000030001"); w.Code != http.StatusNotFound {
+		t.Errorf("another table's id: %d, want 404", w.Code)
 	}
 
 	imported := func(body string) (int, string) {
 		w := httptest.NewRecorder()
-		serve.JSON(func(r *http.Request, body importRequest) (stored, error) {
-			return s.importImage(r, body, "activity-images")
-		})(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)))
+		serve.JSON(search.importImage)(w, httptest.NewRequest(http.MethodPost, "/api/team/images/import", strings.NewReader(body)))
 		var answer struct {
-			Name string `json:"name"`
+			Stock string `json:"stock"`
 		}
 		json.Unmarshal(w.Body.Bytes(), &answer)
-		return w.Code, answer.Name
+		return w.Code, answer.Stock
 	}
-	code, first := imported(`{"id":"` + id + `"}`)
-	if code != http.StatusOK || !strings.HasPrefix(first, "activity-images/") || !strings.HasSuffix(first, ".png") {
-		t.Fatalf("import: %d %q", code, first)
-	}
-	if code, again := imported(`{"id":"` + id + `"}`); code != http.StatusOK || again != first {
-		t.Errorf("second import: %d %q, want %q", code, again, first)
+	for range 2 {
+		if code, got := imported(`{"id":"` + id + `"}`); code != http.StatusOK || got != id {
+			t.Fatalf("import: %d %q", code, got)
+		}
 	}
 	if fetches["/full"] != 1 {
 		t.Errorf("full image fetched %d times, want once", fetches["/full"])
 	}
-	if ok, err := s.Stock.media.Has(first); err != nil || !ok {
-		t.Errorf("imported image in the store: %v %v", ok, err)
+	row, _ := stock.Row(id)
+	if content, ok := s.Model().Table("CONTENT").Get(row["picture"]); !ok || content["hash"] != blob.Hash(pic) {
+		t.Errorf("the picture is not kept as content: %v", row)
 	}
-	if code, _ := imported(`{"id":"` + key("Pexels", "43") + `"}`); code != http.StatusNotFound {
+	if code, _ := imported(`{"id":"stk00000000000"}`); code != http.StatusNotFound {
 		t.Errorf("import of an unknown id: %d, want 404", code)
 	}
 	if code, _ := imported(`{"url":"http://169.254.169.254/"}`); code != http.StatusNotFound {
 		t.Errorf("import by address: %d, want 404", code)
 	}
-	if code, _ := imported(`{"source":"Pexels","id":"42"}`); code != http.StatusNotFound {
-		t.Errorf("import by a library's own id: %d, want 404", code)
-	}
 
 	w := httptest.NewRecorder()
-	serve.JSON(Search{Stock: memoryStock()}.search)(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+	serve.JSON(Search{Stock: stock}.search)(w, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("search with no library: %d, want 400", w.Code)
 	}
@@ -131,26 +141,30 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 		w.Write(pic)
 	}))
 	defer provider.Close()
-	s := Search{Pixabay: "key", UserAgent: "test", Stock: memoryStock()}
-	results := []result{}
+	stock, _ := sampleStock(t)
+	search := Search{Pixabay: "key", UserAgent: "test", Stock: stock}
+	hits := []db.StockHit{}
 	for i := range 30 {
 		sourceID := letters(i)
-		results = append(results, result{hit: Hit{ID: key("Pixabay", sourceID)}, rec: record{Source: "Pixabay", SourceID: sourceID, Thumb: provider.URL + "/" + sourceID}})
+		hits = append(hits, db.StockHit{Source: "Pixabay", SourceID: sourceID, PreviewURL: provider.URL + "/" + sourceID, URL: provider.URL + "/full/" + sourceID})
 	}
-	s.Stock.remember(results)
+	ids, err := stock.Remember(context.Background(), hits)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s.Stock.prefetch(results, "test")
+		search.prefetch(ids)
 	}()
-	codes := make([]int, len(results)*3)
+	codes := make([]int, len(ids)*3)
 	for i := range codes {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			w := httptest.NewRecorder()
-			s.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?id="+results[i%len(results)].hit.ID, nil))
+			search.serveThumb(w, httptest.NewRequest(http.MethodGet, "/api/team/images/thumb?id="+ids[i%len(ids)], nil))
 			codes[i] = w.Code
 		}()
 	}
@@ -160,12 +174,12 @@ func TestThumbnailFetchedOnceUnderLoad(t *testing.T) {
 			t.Errorf("request %d: %d, want 200", i, code)
 		}
 	}
-	if got := fetches.Load(); got != int32(len(results)) {
-		t.Errorf("fetched %d thumbnails from the library, want %d", got, len(results))
+	if got := fetches.Load(); got != int32(len(ids)) {
+		t.Errorf("fetched %d thumbnails from the library, want %d", got, len(ids))
 	}
-	for _, res := range results {
-		if held, err := s.Stock.bucket.Exists(context.Background(), thumbName(res.hit.ID)); err != nil || !held {
-			t.Errorf("thumbnail of %s in the bucket: %v %v", res.rec.SourceID, held, err)
+	for _, id := range ids {
+		if row, _ := stock.Row(id); row["preview"] == "" {
+			t.Errorf("%s keeps no preview: %v", id, row)
 		}
 	}
 }
@@ -174,90 +188,62 @@ func letters(i int) string {
 	return string(rune('a'+i%26)) + string(rune('a'+i/26))
 }
 
-func upload(t *testing.T, mux *http.ServeMux, as, path string, content []byte) *httptest.ResponseRecorder {
-	t.Helper()
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
-	part, err := form.CreateFormFile("image", "picture.png")
-	if err != nil {
-		t.Fatal(err)
-	}
-	part.Write(content)
-	form.Close()
-	req := httptest.NewRequest(http.MethodPost, path, &body)
-	req.Header.Set("Content-Type", form.FormDataContentType())
-	rec := httptest.NewRecorder()
-	auth.Fixed(as, mux).ServeHTTP(rec, req)
-	return rec
-}
-
-func TestUploadThroughRegister(t *testing.T) {
-	s := Search{Stock: memoryStock(), Limits: NewLimits()}
+func TestRegisterGatesEveryRoute(t *testing.T) {
+	stock, _ := sampleStock(t)
+	s := Search{Stock: stock, Limits: NewLimits()}
 	mux := http.NewServeMux()
-	s.Register(mux, "/api/team", "activity-images", Members)
 	refused := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "admin access required", http.StatusForbidden)
 		}
 	}
-	s.Register(mux, "/api/apps", "link-images", refused)
-
-	rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t))
-	var answer struct {
-		Name string `json:"name"`
-	}
-	json.Unmarshal(rec.Body.Bytes(), &answer)
-	if rec.Code != http.StatusOK || !strings.HasPrefix(answer.Name, "activity-images/") || !strings.HasSuffix(answer.Name, ".png") {
-		t.Fatalf("member upload: %d %s", rec.Code, rec.Body)
-	}
-	if ok, err := s.Stock.media.Has(answer.Name); err != nil || !ok {
-		t.Errorf("uploaded image in the store: %v %v", ok, err)
-	}
-	if rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", []byte("<svg></svg>")); rec.Code != http.StatusBadRequest {
-		t.Errorf("non-image upload: %d, want 400", rec.Code)
-	}
-	for _, path := range []string{"/api/apps/image", "/api/apps/images/import"} {
-		if rec := upload(t, mux, "robin.whitfield@heliosschool.org", path, picture(t)); rec.Code != http.StatusForbidden {
-			t.Errorf("%s past a refusing gate: %d, want 403", path, rec.Code)
+	s.Register(mux, "/api/apps", refused)
+	for _, req := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/api/apps/images/search?q=soccer", nil),
+		httptest.NewRequest(http.MethodGet, "/api/apps/images/thumb?id=stk00000000000", nil),
+		httptest.NewRequest(http.MethodPost, "/api/apps/images/import", strings.NewReader(`{"id":"stk00000000000"}`)),
+	} {
+		rec := httptest.NewRecorder()
+		auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s past a refusing gate: %d, want 403", req.URL.Path, rec.Code)
 		}
-	}
-	rec = httptest.NewRecorder()
-	auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/apps/images/search?q=soccer", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("search past a refusing gate: %d, want 403", rec.Code)
 	}
 }
 
-func TestUploadsAreLimited(t *testing.T) {
-	s := Search{Stock: memoryStock(), Limits: NewLimits()}
+func TestImportsAndSearchesAreLimited(t *testing.T) {
+	stock, _ := sampleStock(t)
+	s := Search{Stock: stock, Limits: NewLimits()}
 	mux := http.NewServeMux()
-	s.Register(mux, "/api/team", "activity-images", Members)
-	for i := range storesPerHour {
-		if rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusOK {
-			t.Fatalf("upload %d: %d %s", i, rec.Code, rec.Body)
-		}
-	}
-	rec := upload(t, mux, "robin.whitfield@heliosschool.org", "/api/team/image", picture(t))
-	if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), storeRefusal) {
-		t.Errorf("upload over the limit: %d %s", rec.Code, rec.Body)
-	}
-	if rec := upload(t, mux, "Robin.Whitfield@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusTooManyRequests {
-		t.Errorf("same person in capitals: %d, want 429", rec.Code)
-	}
-	if rec := upload(t, mux, "mina.park@heliosschool.org", "/api/team/image", picture(t)); rec.Code != http.StatusOK {
-		t.Errorf("someone else: %d, want 200", rec.Code)
-	}
-	search := func() *httptest.ResponseRecorder {
+	s.Register(mux, "/api/team", Members)
+	request := func(as, method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/team/images/search?q=soccer", nil))
+		auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
 		return rec
 	}
+	importing := func(as string) *httptest.ResponseRecorder {
+		return request(as, http.MethodPost, "/api/team/images/import", `{"id":"stk00000000000"}`)
+	}
+	for i := range importsPerHour {
+		if rec := importing("robin.whitfield@heliosschool.org"); rec.Code == http.StatusTooManyRequests {
+			t.Fatalf("import %d refused: %s", i, rec.Body)
+		}
+	}
+	if rec := importing("robin.whitfield@heliosschool.org"); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), importRefusal) {
+		t.Errorf("import over the limit: %d %s", rec.Code, rec.Body)
+	}
+	if rec := importing("Robin.Whitfield@heliosschool.org"); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("same person in capitals: %d, want 429", rec.Code)
+	}
+	if rec := importing("mina.park@heliosschool.org"); rec.Code == http.StatusTooManyRequests {
+		t.Errorf("someone else: %d", rec.Code)
+	}
 	for i := range searchesPerHour {
-		if rec := search(); rec.Code == http.StatusTooManyRequests {
+		if rec := request("robin.whitfield@heliosschool.org", http.MethodGet, "/api/team/images/search?q=soccer", ""); rec.Code == http.StatusTooManyRequests {
 			t.Fatalf("search %d refused: %s", i, rec.Body)
 		}
 	}
-	if rec := search(); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), searchRefusal) {
+	if rec := request("robin.whitfield@heliosschool.org", http.MethodGet, "/api/team/images/search?q=soccer", ""); rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), searchRefusal) {
 		t.Errorf("search over the limit: %d %s", rec.Code, rec.Body)
 	}
 }

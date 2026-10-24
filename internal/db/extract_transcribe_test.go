@@ -35,7 +35,7 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
 	pdf := pdfOfPages(t, 2)
-	if err := bucket.Put(t.Context(), "content/p1", pdfType, pdf); err != nil {
+	if _, err := bucket.Put(t.Context(), "content/p1", pdfType, pdf, 0); err != nil {
 		t.Fatal(err)
 	}
 	ids := apply(t, s, queue, []Edit{
@@ -90,7 +90,7 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(string) string { return "# Slides" }))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	if err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25)); err != nil {
+	if _, err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25), 0); err != nil {
 		t.Fatal(err)
 	}
 	ids := apply(t, s, queue, []Edit{
@@ -132,7 +132,7 @@ func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 	}))
 	s, queue := sampleWithQueue(t)
 	bucket := blob.NewMemoryBucket()
-	if err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo); err != nil {
+	if _, err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo, 0); err != nil {
 		t.Fatal(err)
 	}
 	ids := apply(t, s, queue, []Edit{
@@ -225,7 +225,7 @@ func TestImagesAreTranscribed(t *testing.T) {
 	for i, img := range [][]byte{schedule, logo, icon, flyer, poster, chart, sign} {
 		name := blobs[i]
 		mime := []string{"image/gif", "image/gif", "image/gif", "image/bmp", "image/webp", "image/png", "image/jpeg"}[i]
-		if err := bucket.Put(t.Context(), "content/"+name, mime, img); err != nil {
+		if _, err := bucket.Put(t.Context(), "content/"+name, mime, img, 0); err != nil {
 			t.Fatal(err)
 		}
 		edits = append(edits, Edit{Insert: "CONTENT", As: name, Row: map[string]any{"hash": name, "blob": "content/" + name, "mime": mime, "size": "1"}})

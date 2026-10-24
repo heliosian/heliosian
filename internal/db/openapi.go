@@ -76,7 +76,7 @@ func cellSchema(c Column) schema {
 		out["examples"] = []string{"2026-09-24", "2026-09-24 16:00", "2026-09-24 16:00:05"}
 		notes = append(notes, "A day, or a day and a time to the minute or the second, in the school's time zone.")
 	case Blob:
-		notes = append(notes, "An object's name in the media bucket.")
+		notes = append(notes, "An object's name in the media bucket: content/ and the SHA-256 of its bytes.")
 	case Order:
 		notes = append(notes, "An order key: rows sort by it.")
 	case Email:
@@ -323,17 +323,34 @@ func spec() schema {
 		"/api/do/photo": schema{
 			"post": schema{
 				"tags":    []string{"do"},
-				"summary": "Add a photo of a person or a group",
+				"summary": "Add a photo of a person, a group or a wiki page",
 				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
-					"type":     "object",
-					"required": []string{"photo"},
+					"type": "object",
 					"properties": schema{
 						"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)}, "group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+						"document":  schema{"type": "string", "pattern": idPattern(DocumentPrefix)},
 						"photo":     schema{"type": "string", "contentMediaType": "application/octet-stream"},
+						"stock":     schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of photo."},
 						"crop_left": crop, "crop_top": crop, "crop_width": crop, "crop_height": crop,
 					},
 				}}}},
-				"responses": refusals(schema{"200": answers("The new PHOTO and the original's hash.", "Stored"), "400": failure("Not an image, or a bad crop box.")}),
+				"responses": refusals(schema{"200": answers("The new PHOTO and the original's hash.", "Stored"), "400": failure("Not an image, no picture imported for the stock ID, a bad crop box, or not exactly one of person, group and document.")}),
+			},
+		},
+		"/api/do/flyer": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Set a group's flyer",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"group"},
+					"properties": schema{
+						"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+						"flyer": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in flyer_original; the server then makes flyer, a JPEG with every tag dropped, from it."},
+						"stock": schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of flyer."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The GROUP and the flyer's hash.", "Stored"), "400": failure("Not an image, or no picture imported for the stock ID.")}),
 			},
 		},
 		"/api/do/pronunciation": schema{

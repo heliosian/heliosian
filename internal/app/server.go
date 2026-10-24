@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"heliosian/internal/blob"
 	"heliosian/internal/hosts"
 	"heliosian/internal/logging"
 	"heliosian/internal/serve"
@@ -116,7 +115,7 @@ func withAPI(api, site http.Handler) http.Handler {
 }
 
 func Logged(app string, next http.Handler) http.Handler {
-	return logging.Requests(app, blob.Media, next)
+	return logging.Requests(app, next)
 }
 
 func route(domain string, apps, aliased map[string]http.Handler) http.Handler {

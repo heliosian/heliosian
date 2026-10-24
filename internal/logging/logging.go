@@ -151,17 +151,13 @@ func (r *recorder) Unwrap() http.ResponseWriter {
 	return r.ResponseWriter
 }
 
-func Requests(app string, media func(path string) bool, next http.Handler) http.Handler {
+func Requests(app string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		req := request{app: app, user: strings.ToLower(auth.RealEmail(r)), as: strings.ToLower(auth.Spoofing(r))}
 		req.trace, req.span = traceOf(r.Header.Get("X-Cloud-Trace-Context"))
 		ctx := context.WithValue(r.Context(), contextKey{}, req)
 		r = r.WithContext(ctx)
-		if media(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
 		rec := &recorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		if rec.Header().Get("Content-Type") != "text/event-stream" {

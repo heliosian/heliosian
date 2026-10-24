@@ -53,7 +53,6 @@ type Config struct {
 	Writer        data.Writer
 	Geocoder      *geocode.Client
 	Bucket        *blob.Bucket
-	Store         *blob.Store
 	ChatKey       []byte
 	AccessKey     []byte
 	BrowserKey    string
@@ -103,20 +102,12 @@ func NewCore(cfg Config) *Core {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
 	queue := store.NewQueue()
-	queue.Register(cfg.Store.Load)
-	cfg.ImageSearch.Stock = imagesearch.NewStock(cfg.Bucket, cfg.Store)
-	cfg.ImageSearch.Limits = imagesearch.NewLimits()
-	imageFolder := func(app string) string {
-		folder, ok := blob.ImageFolder(app)
-		if !ok {
-			logging.Fatal("no image folder", "app", app)
-		}
-		return folder
-	}
 	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex(), hosts.Origin(cfg.Domain))
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
+	cfg.ImageSearch.Stock = db.NewStock(dataStore, queue, cfg.Bucket)
+	cfg.ImageSearch.Limits = imagesearch.NewLimits()
 	sessions := db.NewSessions(dataStore, queue)
 	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
 	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
@@ -157,13 +148,13 @@ func NewCore(cfg Config) *Core {
 	}
 	whenSearch := cfg.ImageSearch
 	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	whenSearch.Register(api, "/api/when", imageFolder("when"), imagesearch.Members)
+	whenSearch.Register(api, "/api/when", imagesearch.Members)
 	homeMux := http.NewServeMux()
 	homePages := db.NewHomePages(dataStore, homeStyle)
 	homePages.Register(homeMux)
 	homeSearch := cfg.ImageSearch
 	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
-	homeSearch.Register(api, "/api/home", imageFolder("home"), imagesearch.Members)
+	homeSearch.Register(api, "/api/home", imagesearch.Members)
 	teamMux := http.NewServeMux()
 	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/g/{path...}"} {
 		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
@@ -172,7 +163,7 @@ func NewCore(cfg Config) *Core {
 	}
 	teamSearch := cfg.ImageSearch
 	teamSearch.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	teamSearch.Register(api, "/api/team", imageFolder("team"), imagesearch.Members)
+	teamSearch.Register(api, "/api/team", imagesearch.Members)
 	activityPages := db.NewActivityPages(dataStore, cfg.Bucket, teamStyle)
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
@@ -185,7 +176,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	celebrateSearch.Register(api, "/api/celebrate", imageFolder("celebrate"), imagesearch.Members)
+	celebrateSearch.Register(api, "/api/celebrate", imagesearch.Members)
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
@@ -214,7 +205,7 @@ func NewCore(cfg Config) *Core {
 			serve.File(w, r, "web/wiki/index.html")
 		})
 	}
-	cfg.ImageSearch.Register(api, "/api/wiki", imageFolder("wiki"), imagesearch.Members)
+	cfg.ImageSearch.Register(api, "/api/wiki", imagesearch.Members)
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
 	schoolNow := func() time.Time { return time.Now().In(db.School) }
@@ -266,9 +257,6 @@ func NewCore(cfg Config) *Core {
 	optIn := optInForm(func() string { return dataStore.Model().Setting("platform", "Helios Who Opt-In URL") })
 	for _, a := range apps {
 		a.Mux.Handle("GET "+OptInPath, optIn)
-		if folder, ok := blob.ImageFolder(a.Key); ok {
-			blob.Register(a.Mux, cfg.Store, folder)
-		}
 	}
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
@@ -337,7 +325,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 	if err != nil {
 		logging.Fatal("media bucket", "error", err)
 	}
-	store := blob.New(bucket)
 	embedder, err := artifacts.NewVertex()
 	if err != nil {
 		logging.Fatal("vertex embedder", "error", err)
@@ -353,7 +340,6 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		Writer:        sheet,
 		Geocoder:      geocoder,
 		Bucket:        bucket,
-		Store:         store,
 		ChatKey:       chatKey.Sum(nil),
 		AccessKey:     auth.AccessKey([]byte(sessionKey)),
 		BrowserKey:    env.Required("GOOGLE_MAPS_BROWSER_KEY"),
@@ -403,7 +389,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
 			db.StartDigest(core.Data, core.Queue, bucket, anthropicKey, time.Now)
-			db.PauseSweeper(core.Data)
+			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
 			db.StartGeocoder(core.Data, core.Queue, geocoder)
 		}()

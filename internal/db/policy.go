@@ -143,10 +143,22 @@ const PolicySource = `
            (or (= @g.parent.kind "celebration")
                (and (= @g.parent.kind "category") (= @g.parent.parent.kind "celebration"))))))
 
-; the viewer may change @ph: a picture of themselves or someone in their family, or of a group they manage or run
+; the viewer may change @ph: a picture of themselves or someone in their family, of a group they manage or run, or, unless a guest, of a wiki page
 (define (edits_photo @ph)
   (or (and (not (blank @ph.person)) (self_or_household @ph.person))
-      (and (not (blank @ph.group)) (or (manages @ph.group) (runs_list @ph.group)))))
+      (and (not (blank @ph.group)) (or (manages @ph.group) (runs_list @ph.group)))
+      (and (not (blank @ph.document)) (= @ph.document.kind "wiki") (!= @viewer.source "guest"))))
+
+; the viewer may see @ph: its person, its group or its wiki page
+(define (photo_visible @ph)
+  (or (and (not (blank @ph.person)) (person_visible @ph.person))
+      (and (not (blank @ph.group)) (visible @ph.group))
+      (and (not (blank @ph.document)) (document_visible @ph.document))))
+
+; the viewer sees @ph whole, its re-encode beside its crop: it is of them or someone in their family, or of a group they manage
+(define (photo_whole @ph)
+  (or (and (not (blank @ph.person)) (self_or_household @ph.person))
+      (and (not (blank @ph.group)) (manages @ph.group))))
 
 ; @g is a plain group someone may make and run: under nothing, linking nowhere, and seen by its managers alone
 (define (own_group @g)
@@ -341,17 +353,13 @@ const PolicySource = `
 (read PERSON_EMAIL (person_visible person))
 ; every column of an email
 (read PERSON_EMAIL (id person address primary source guest) true)
-; the photos of people and groups the viewer may see
-(read PHOTO
-  (or (and (not (blank person)) (person_visible person))
-      (and (not (blank group)) (visible group))))
+; the photos of people, groups and wiki pages the viewer may see
+(read PHOTO (photo_visible @row))
 ; every column of a photo but its original, its re-encode and its crop
-(read PHOTO (id person group order crop_left crop_top crop_width crop_height thumbnail image ready) true)
+(read PHOTO (id person group document order crop_left crop_top crop_width crop_height thumbnail image ready) true)
 ; a photo's re-encode and crop, to its person and their family, or its group's managers
-(read PHOTO (reencode crop)
-  (or (and (not (blank person)) (self_or_household person))
-      (and (not (blank group)) (manages group))))
-; add a picture of oneself, someone in one's family, or a family one manages
+(read PHOTO (reencode crop) (photo_whole @row))
+; add a picture of oneself, someone in one's family, a family one manages, or a wiki page
 (insert PHOTO (edits_photo @new))
 ; move such a picture among its person's or family's
 (set PHOTO.order (edits_photo @old))
@@ -584,8 +592,24 @@ const PolicySource = `
 (read CONTENT
   (or (exists DOCUMENT @d (= content @row) (document_visible @d))
       (exists MESSAGE @m (= content @row) (message_visible @m))))
+; the thumbnail and picture shown of a photo the viewer may see
+(read CONTENT (exists PHOTO @p (or (= thumbnail @row) (= image @row)) (photo_visible @p)))
+; the re-encode and crop of a photo the viewer sees whole
+(read CONTENT (exists PHOTO @p (or (= reencode @row) (= crop @row)) (photo_visible @p) (photo_whole @p)))
+; how the name of a person the viewer may see is said
+(read CONTENT (exists PERSON @p (= pronunciation @row) (person_visible @p)))
+; the flyer of a group the viewer may see, and how a family's name is said
+(read CONTENT (exists GROUP @g (or (= flyer @row) (= pronunciation @row)) (visible @g)))
+; the screenshot of a report the viewer sent
+(read CONTENT (exists REPORT (= screenshot @row) (= added_by @viewer)))
+; the preview and picture of a stock picture, to anyone
+(read CONTENT (exists STOCK (or (= preview @row) (= picture @row))))
 ; every column of a document's bytes
 (read CONTENT (id hash blob mime size) true)
+; every stock picture an image search answered with
+(read STOCK true)
+; every column of a stock picture
+(read STOCK (id source source_id preview_url url download credit license context preview picture) true)
 ; links between a document and a group, where the viewer may see both
 (read DOCUMENT_GROUP (and (document_visible document) (visible group)))
 ; every column of a link between a document and a group
@@ -767,6 +791,8 @@ const PolicySource = `
 (read PERSON_EMAIL (admin_of "who"))
 ; every picture's re-encode and crop, to crop it
 (read PHOTO (reencode crop) (admin_of "who"))
+; the bytes of every picture's re-encode and crop, to crop it
+(read CONTENT (and (admin_of "who") (exists PHOTO (or (= reencode @row) (= crop @row)))))
 ; override anyone's grade
 (set PERSON.grade_override (admin_of "who"))
 ; override anyone's classroom
@@ -1071,7 +1097,7 @@ const PolicySource = `
 (set GROUP.waitlist
   (and (runs_list @old) (= @old.kind "party") (or (blank @new.waitlist) (= @new.waitlist.parent @old.id))))
 ; a group's managers give it a poster
-(set GROUP.flyer (runs_list @old))
+(set GROUP.flyer_original (runs_list @old))
 ; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
 (set GROUP.auto_invite (runs_list @old))
 ; a group's managers say who may join it by themselves and add others

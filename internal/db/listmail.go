@@ -274,7 +274,7 @@ func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) e
 	ref := content["id"]
 	if !found {
 		name := "content/" + hash
-		if err := l.pics.bucket.Put(ctx, name, mailType, raw); err != nil {
+		if _, err := keepBytes(ctx, m, l.pics.bucket, mailType, raw); err != nil {
 			return fmt.Errorf("store the post: %w", err)
 		}
 		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mailType, "size": strconv.Itoa(len(raw))}})
@@ -298,9 +298,6 @@ func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) e
 	}
 	ids, err := l.write(ctx, edits...)
 	if err != nil {
-		if !found {
-			dropUnheld(l.s, l.pics.bucket, []string{"content/" + hash})
-		}
 		return fmt.Errorf("record the post: %w", err)
 	}
 	for _, id := range ids[len(ids)-len(fresh):] {

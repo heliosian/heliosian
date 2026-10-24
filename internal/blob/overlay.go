@@ -3,6 +3,8 @@ package blob
 import (
 	"context"
 	"errors"
+	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -39,44 +41,73 @@ func (o *overlay) get(ctx context.Context, name string) (object, error) {
 	return o.base.get(ctx, name)
 }
 
-func (o *overlay) put(ctx context.Context, name, mimeType string, content []byte) error {
+func (o *overlay) put(ctx context.Context, name, mimeType string, content []byte, generation int64) (int64, error) {
 	o.mu.Lock()
+	defer o.mu.Unlock()
+	now, err := o.statLocked(ctx, name)
+	if err != nil {
+		return 0, err
+	}
+	if now != generation {
+		return 0, fmt.Errorf("write %s at generation %d: %w", name, generation, ErrChanged)
+	}
 	delete(o.gone, name)
-	o.mu.Unlock()
-	return o.top.put(ctx, name, mimeType, content)
+	o.top.mu.Lock()
+	defer o.top.mu.Unlock()
+	return o.top.set(name, mimeType, content), nil
 }
 
-func (o *overlay) exists(ctx context.Context, name string) (bool, error) {
-	if o.removed(name) {
-		return false, nil
-	}
-	if held, _ := o.top.exists(ctx, name); held {
-		return true, nil
-	}
-	return o.base.exists(ctx, name)
-}
-
-func (o *overlay) remove(ctx context.Context, name string) error {
+func (o *overlay) stat(ctx context.Context, name string) (int64, error) {
 	o.mu.Lock()
-	o.gone[name] = true
-	o.mu.Unlock()
-	return o.top.remove(ctx, name)
+	defer o.mu.Unlock()
+	return o.statLocked(ctx, name)
 }
 
-func (o *overlay) list(ctx context.Context, prefix string) ([]string, error) {
+func (o *overlay) statLocked(ctx context.Context, name string) (int64, error) {
+	if o.gone[name] {
+		return 0, nil
+	}
+	if generation, _ := o.top.stat(ctx, name); generation != 0 {
+		return generation, nil
+	}
+	return o.base.stat(ctx, name)
+}
+
+func (o *overlay) remove(ctx context.Context, name string, generation int64) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	now, err := o.statLocked(ctx, name)
+	if err != nil {
+		return err
+	}
+	if now == 0 {
+		return fmt.Errorf("delete %s: %w", name, ErrNotFound)
+	}
+	if now != generation {
+		return fmt.Errorf("delete %s at generation %d: %w", name, generation, ErrChanged)
+	}
+	o.gone[name] = true
+	o.top.mu.Lock()
+	defer o.top.mu.Unlock()
+	delete(o.top.objects, name)
+	return nil
+}
+
+func (o *overlay) list(ctx context.Context, prefix string) ([]listed, error) {
 	base, err := o.base.list(ctx, prefix)
 	if err != nil {
 		return nil, err
 	}
 	top, _ := o.top.list(ctx, prefix)
-	out := []string{}
-	for _, name := range append(base, top...) {
-		if !o.removed(name) && strings.HasPrefix(name, prefix) {
-			out = append(out, name)
+	newest := map[string]listed{}
+	for _, l := range append(base, top...) {
+		if !o.removed(l.Name) && strings.HasPrefix(l.Name, prefix) {
+			newest[l.Name] = l
 		}
 	}
-	slices.Sort(out)
-	return slices.Compact(out), nil
+	out := slices.Collect(maps.Values(newest))
+	slices.SortFunc(out, func(a, b listed) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
 }
 
 func (o *overlay) usage(ctx context.Context) (map[string]Usage, error) {

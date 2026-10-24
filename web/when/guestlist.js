@@ -1,4 +1,5 @@
 import {api} from '/api.js';
+import {postFlyer} from '/images.js';
 import {queries} from '/rail.js';
 import {directory, listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff} from '/directory.js';
 import {nameRulesWith, ruleOf, ruleRow} from '/listrules.js';
@@ -222,7 +223,10 @@ export function setAutoInvite(e, on) {
 }
 
 export function setFlyer(e, image) {
-  return write([{set: e.id, cells: {flyer: image}}]);
+  if (image) {
+    return postFlyer(e.id, image);
+  }
+  return write([{set: e.id, cells: {flyer_original: ''}}]);
 }
 
 export async function setNotifyMe(e, view, on) {

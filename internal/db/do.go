@@ -47,14 +47,14 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("send the photo as multipart form data: %v", err))
 			return
 		}
-		person, group := r.FormValue("person"), r.FormValue("group")
-		if (person == "") == (group == "") {
-			serve.Error(w, r, access.Invalid("a photo is of a person or of a group: send one of them"))
-			return
+		of := map[string]string{}
+		for _, col := range []string{"person", "group", "document"} {
+			if v := r.FormValue(col); v != "" {
+				of[col] = v
+			}
 		}
-		img, err := readImage(r, "photo")
-		if err != nil {
-			serve.Error(w, r, err)
+		if len(of) != 1 {
+			serve.Error(w, r, access.Invalid("a photo is of a person, a group or a wiki page: send one of them"))
 			return
 		}
 		box, err := formBox(r)
@@ -63,29 +63,60 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		m := s.Model()
-		row := store.Row{"person": person, "group": group, "original": "photos/" + img.name}
+		row := store.Row{}
+		maps.Copy(row, of)
 		maps.Copy(row, box)
 		if err := m.Authorize(env, Change{Table: "PHOTO", New: row}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		if err := pics.bucket.Put(r.Context(), row["original"], img.mimeType, img.content); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		cells := map[string]any{"order": m.firstOrder(person, group)}
-		for k, v := range row {
-			if v != "" {
-				cells[k] = v
-			}
-		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Insert: "PHOTO", Row: cells}}})
+		img, err := pictureOf(r, m, "photo")
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "person", person, "group", group, "original", row["original"])
-		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(img.name, "."+img.ext)})
+		if photo, hash, ok := m.pagePhoto(of["document"], img); ok {
+			serve.Write(w, r, http.StatusOK, stored{Result: []string{photo}, Hash: hash})
+			return
+		}
+		cells := map[string]any{}
+		for k, v := range row {
+			cells[k] = v
+		}
+		if of["document"] == "" {
+			cells["order"] = m.firstOrder(of["person"], of["group"])
+		}
+		ids, hash, err := writeUpload(r.Context(), s, queue, pics, actor, env, img, func(content string) Edit {
+			cells["original"] = content
+			return Edit{Insert: "PHOTO", Row: cells}
+		})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "of", of, "photo", ids[len(ids)-1], "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids[len(ids)-1:], Hash: hash})
+	})
+	mux.HandleFunc("POST /api/do/flyer", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
+		if err := r.ParseMultipartForm(photoLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the flyer as multipart form data: %v", err))
+			return
+		}
+		id := r.FormValue("group")
+		ids, hash, err := setUpload(r, s, queue, pics, actor, env, "GROUP", id, "flyer_original", func(m *Model) (upload, error) {
+			return pictureOf(r, m, "flyer")
+		})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "set a flyer", "viewer", env.Viewer, "group", id, "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
@@ -106,34 +137,15 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		if group != "" {
 			id, table = group, "GROUP"
 		}
-		rec, err := readRecording(r)
+		ids, hash, err := setUpload(r, s, queue, pics, actor, env, table, id, "pronunciation_original", func(*Model) (upload, error) {
+			return readRecording(r)
+		})
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		m := s.Model()
-		old, found := m.Shown(table).Get(id)
-		if !found {
-			serve.Error(w, r, access.Invalid("no %s %s", table, id))
-			return
-		}
-		updated := maps.Clone(old)
-		updated["pronunciation_original"] = "pronunciation/" + rec.name
-		if err := m.Authorize(env, Change{Table: table, Old: old, New: updated}); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		if err := pics.bucket.Put(r.Context(), updated["pronunciation_original"], rec.mimeType, rec.content); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		ids, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"pronunciation_original": updated["pronunciation_original"]}}}})
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "of", id, "name", updated["pronunciation_original"])
-		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: strings.TrimSuffix(rec.name, "."+rec.ext)})
+		slog.InfoContext(r.Context(), "recorded a pronunciation", "viewer", env.Viewer, "of", id, "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
@@ -257,22 +269,23 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": strconv.Itoa(len(content))}}); err != nil {
 			return fetchedAnswer{}, err
 		}
-		if err := pics.bucket.Put(r.Context(), name, mimeType, content); err != nil {
-			return fetchedAnswer{}, err
-		}
+	}
+	kept, err := keepBytes(r.Context(), m, pics.bucket, mimeType, content)
+	if err != nil {
+		return fetchedAnswer{}, err
 	}
 	whole := m.whole(env)
 	_, err = queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
 		w := &pendingWrites{}
-		held := stageContent(s.In(tx), w, map[string]string{}, hash, mimeType, len(content))
+		held, err := stageContent(s.In(tx), w, map[string]string{}, kept)
+		if err != nil {
+			return err
+		}
 		w.add(Edit{Set: id, Cells: map[string]any{"fetch": "", "content": held}})
-		_, err := stageEdits(s, tx, env, w.edits, "fetched", whole)
+		_, err = stageEdits(s, tx, env, w.edits, "fetched", whole)
 		return err
 	})
 	if err != nil {
-		if !found {
-			dropUnheld(s, pics.bucket, []string{name})
-		}
 		return fetchedAnswer{}, err
 	}
 	return fetchedAnswer{Result: []string{id}, Hash: hash}, nil
@@ -327,7 +340,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
 			return "", "", err
 		}
-		if err := pics.bucket.Put(ctx, name, mimeType, content); err != nil {
+		if _, err := keepBytes(ctx, m, pics.bucket, mimeType, content); err != nil {
 			return "", "", err
 		}
 		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
@@ -340,9 +353,6 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	}
 	ids, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits})
 	if err != nil {
-		if !found {
-			dropUnheld(s, pics.bucket, []string{"content/" + hash})
-		}
 		return "", "", err
 	}
 	return ids[at], hash, nil
@@ -397,9 +407,21 @@ func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 }
 
 type upload struct {
-	content       []byte
-	mimeType, ext string
-	name          string
+	content  []byte
+	mimeType string
+	held     string
+}
+
+func pictureOf(r *http.Request, m *Model, field string) (upload, error) {
+	id := r.FormValue("stock")
+	if id == "" {
+		return readImage(r, field)
+	}
+	row, ok := m.Table("STOCK").Get(id)
+	if !ok || row["picture"] == "" {
+		return upload{}, access.Invalid("%q is no stock picture someone picked", id)
+	}
+	return upload{held: row["picture"]}, nil
 }
 
 func readImage(r *http.Request, field string) (upload, error) {
@@ -413,14 +435,13 @@ func readImage(r *http.Request, field string) (upload, error) {
 		return upload{}, access.Invalid("could not read the %s", field)
 	}
 	mimeType := http.DetectContentType(content)
-	ext, ok := blob.ImageExtensions[mimeType]
-	if !ok {
+	if _, ok := blob.ImageExtensions[mimeType]; !ok {
 		return upload{}, access.Invalid("%s is not a supported %s", mimeType, field)
 	}
 	if err := blob.Check(content); err != nil {
 		return upload{}, access.Invalid("could not read the %s: %v", field, err)
 	}
-	return upload{content: content, mimeType: mimeType, ext: ext, name: blob.Name(content, ext)}, nil
+	return upload{content: content, mimeType: mimeType}, nil
 }
 
 func readRecording(r *http.Request) (upload, error) {
@@ -434,11 +455,79 @@ func readRecording(r *http.Request) (upload, error) {
 		return upload{}, access.Invalid("could not read the recording")
 	}
 	declared := header.Header.Get("Content-Type")
-	mimeType, ext, ok := blob.AudioType(declared)
+	mimeType, _, ok := blob.AudioType(declared)
 	if !ok {
 		return upload{}, access.Invalid("%s is not a supported recording", declared)
 	}
-	return upload{content: content, mimeType: mimeType, ext: ext, name: blob.Name(content, ext)}, nil
+	return upload{content: content, mimeType: mimeType}, nil
+}
+
+func (m *Model) pagePhoto(document string, up upload) (string, string, bool) {
+	if document == "" {
+		return "", "", false
+	}
+	content, ok := m.Table("CONTENT").Get(up.held)
+	if !ok {
+		content, ok = m.Table("CONTENT").Find(blob.Hash(up.content), up.mimeType)
+	}
+	if !ok {
+		return "", "", false
+	}
+	photo, ok := m.Table("PHOTO").Find("", "", document, content["id"])
+	return photo["id"], content["hash"], ok
+}
+
+func writeUpload(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, up upload, edit func(content string) Edit) ([]string, string, error) {
+	if up.held != "" {
+		row, _ := s.Model().Table("CONTENT").Get(up.held)
+		ids, err := Write(ctx, s, queue, actor, env, Batch{Batch: []Edit{edit(up.held)}})
+		return ids, row["hash"], err
+	}
+	kept, err := keepBytes(ctx, s.Model(), pics.bucket, up.mimeType, up.content)
+	if err != nil {
+		return nil, "", err
+	}
+	whole := s.Model().whole(env)
+	var ids []string
+	_, err = queue.Transact(ctx, actor, func(tx *store.Tx) error {
+		w := &pendingWrites{}
+		content, err := stageContent(s.In(tx), w, map[string]string{}, kept)
+		if err != nil {
+			return err
+		}
+		w.add(edit(content))
+		written, err := stageEdits(s, tx, env, w.edits, "batch", whole)
+		ids = written
+		return err
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return ids, kept.hash, nil
+}
+
+func setUpload(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, table, id, column string, read func(*Model) (upload, error)) ([]string, string, error) {
+	m := s.Model()
+	old, found := m.Shown(table).Get(id)
+	if !found {
+		return nil, "", access.Invalid("no %s %s", table, id)
+	}
+	updated := maps.Clone(old)
+	updated[column] = "upload"
+	if err := m.Authorize(env, Change{Table: table, Old: old, New: updated}); err != nil {
+		return nil, "", err
+	}
+	up, err := read(m)
+	if err != nil {
+		return nil, "", err
+	}
+	ids, hash, err := writeUpload(r.Context(), s, queue, pics, actor, env, up, func(content string) Edit {
+		return Edit{Set: id, Cells: map[string]any{column: content}}
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return ids[len(ids)-1:], hash, nil
 }
 
 func formBox(r *http.Request) (store.Row, error) {

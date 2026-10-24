@@ -1,4 +1,5 @@
 import {api} from '/api.js';
+import {postPhoto} from '/images.js';
 import {keyBetween} from '/order.js';
 import {state, me, wordsFor, classroomNames, tagIds} from './state.js';
 
@@ -148,11 +149,7 @@ export async function moveEvent(e, start, end) {
 
 export async function setPicture(e, name) {
   if (name) {
-    const blob = await (await fetch('/' + name)).blob();
-    const form = new FormData();
-    form.append('group', e.id);
-    form.append('photo', blob, name.split('/').pop());
-    await api('POST', '/api/do/photo', form);
+    await postPhoto({group: e.id}, name);
   }
   if (e.photo) {
     await write([{delete: e.photo}]);

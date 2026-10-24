@@ -202,13 +202,13 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	name, whole := m.BlobName(g["flyer"]), true
+	name, whole := g["flyer"], true
 	if name == "" {
 		name, whole = m.groupPhoto(g["id"]), false
 	}
 	var picture []byte
 	if name != "" {
-		content, _, err := p.bucket.Get(r.Context(), name)
+		content, _, err := m.contentBytes(r.Context(), p.bucket, name)
 		if err != nil && !errors.Is(err, blob.ErrNotFound) {
 			slog.ErrorContext(r.Context(), "party pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
 		}
@@ -227,7 +227,7 @@ func (m *Model) groupPhoto(group string) string {
 	slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
 	for _, ph := range photos {
 		if ph["image"] != "" {
-			return m.BlobName(ph["image"])
+			return ph["image"]
 		}
 	}
 	return ""

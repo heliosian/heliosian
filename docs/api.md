@@ -20,7 +20,7 @@ A registration that also draws pages (`RegisterInvitations`, `RegisterDashboard`
 
 ## On every host, outside /api
 
-Every app's mux also carries the opt-in form at `/optin` and the media folders the app's pages show from, `photos/` and its own image folder (`blob.Register`). Sign-in's own routes (`/auth/…`, Spoof Mode's `/auth/spoof`) are `internal/auth`'s, registered on each mux with the gate (`docs/toolbar.md`, Spoof Mode).
+Every app's mux also carries the opt-in form at `/optin`; stored bytes are served by `/api/blob/` alone (`docs/datamodel.md`, The query API). Sign-in's own routes (`/auth/…`, Spoof Mode's `/auth/spoof`) are `internal/auth`'s, registered on each mux with the gate (`docs/toolbar.md`, Spoof Mode).
 
 ## On one host
 

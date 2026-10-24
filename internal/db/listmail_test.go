@@ -305,7 +305,7 @@ func TestARestartResumesAPostNotYetSentOn(t *testing.T) {
 	h := newListMailHarness(t)
 	raw := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "resume@example.org", "Resume", "")
 	content := "content/resume"
-	if err := h.mailer.pics.bucket.Put(context.Background(), content, mailType, []byte(raw)); err != nil {
+	if _, err := h.mailer.pics.bucket.Put(context.Background(), content, mailType, []byte(raw), 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := Write(context.Background(), h.s, h.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{

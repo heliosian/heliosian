@@ -42,7 +42,7 @@ export function stable(text) {
 
 const inlinePattern = /(!\[[^\]]*\]\([^)\s]+\)|\*\*[^*]+\*\*|\*[^*\s](?:[^*]*[^*\s])?\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>)]+[^\s<>).,;:!?])/g;
 
-const picturePath = '/api/wiki/picture/';
+const picturePath = /^\/api\/blob\/pho[0-9A-Za-z]{11}\/image$/;
 
 function inline(node, text, cards) {
   let last = 0;
@@ -55,7 +55,7 @@ function inline(node, text, cards) {
       const close = token.indexOf('](');
       const src = token.slice(close + 2, -1);
       const alt = token.slice(2, close);
-      if (src.startsWith(picturePath)) {
+      if (picturePath.test(src)) {
         const img = el('img', 'md-image');
         img.src = src;
         img.alt = alt;

@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 const (
 	sweepActor = "sweep"
 	sweepBatch = 25
+	orphanAge  = time.Hour
 )
 
 type sweeper struct {
@@ -20,22 +22,57 @@ type sweeper struct {
 	queue  *store.Queue
 	bucket *blob.Bucket
 	in     *inbox
+	tick   wake
 }
 
 func StartSweeper(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	x := &sweeper{s: s, queue: queue, bucket: bucket, in: s.Model().services.inbox(sweepInbox)}
+	x := &sweeper{s: s, queue: queue, bucket: bucket, in: s.Model().services.inbox(sweepInbox), tick: newWake()}
 	go x.run()
+	go x.runObjects()
+	queue.OnTick(x.tick.poke)
 	x.in.wake.poke()
+	x.tick.poke()
 }
 
-func PauseSweeper(s *Store) {
-	in := s.Model().services.inbox(sweepInbox)
-	slog.Info("sweep: paused")
-	go func() {
-		for range in.wake {
-			in.take()
+func (x *sweeper) runObjects() {
+	for range x.tick {
+		start := time.Now()
+		removed, err := x.sweepObjects(context.Background(), start.Add(-orphanAge))
+		if err != nil {
+			slog.Error("sweep: objects", "error", err)
+			continue
 		}
-	}()
+		if removed > 0 {
+			slog.Info("sweep: objects no content names", "removed", removed, "took", time.Since(start).Round(time.Millisecond))
+		}
+	}
+}
+
+func (x *sweeper) sweepObjects(ctx context.Context, before time.Time) (int, error) {
+	old, err := x.bucket.Older(ctx, "content/", before)
+	if err != nil {
+		return 0, err
+	}
+	held := map[string]bool{}
+	for _, row := range x.s.Model().Table("CONTENT").All() {
+		held[row["blob"]] = true
+	}
+	removed := 0
+	for _, o := range old {
+		if held[o.Name] {
+			continue
+		}
+		err := x.bucket.Remove(ctx, o.Name, o.Generation)
+		if errors.Is(err, blob.ErrChanged) {
+			slog.Info("sweep: object rewritten since listed", "object", o.Name)
+			continue
+		}
+		if err != nil {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func (x *sweeper) run() {
@@ -43,7 +80,7 @@ func (x *sweeper) run() {
 		x.in.take()
 		for len(x.s.Model().unreferencedContent()) > 0 {
 			start := time.Now()
-			rows, objects, written, err := x.sweep()
+			rows, written, err := x.sweep()
 			if err != nil {
 				slog.Error("sweep: content", "error", err)
 				break
@@ -51,7 +88,7 @@ func (x *sweeper) run() {
 			if written != nil {
 				<-written
 			}
-			slog.Info("sweep: content", "rows", rows, "objects", objects, "took", time.Since(start).Round(time.Millisecond))
+			slog.Info("sweep: content", "rows", rows, "took", time.Since(start).Round(time.Millisecond))
 		}
 	}
 }
@@ -72,7 +109,7 @@ func (m *Model) contentReferenced(id string) bool {
 			continue
 		}
 		for _, c := range t.Columns {
-			if c.Kind != Ref || (c.Target != "" && c.Target != "CONTENT") {
+			if c.Kind != Ref || c.Generated || (c.Target != "" && c.Target != "CONTENT") {
 				continue
 			}
 			if len(m.Table(t.Name).Referencing(c.Name, id)) > 0 {
@@ -83,54 +120,13 @@ func (m *Model) contentReferenced(id string) bool {
 	return false
 }
 
-func dropUnheld(s *Store, bucket *blob.Bucket, names []string) {
-	held := map[string]bool{}
-	for _, row := range s.Model().Table("CONTENT").All() {
-		held[row["blob"]] = true
-	}
-	for _, name := range names {
-		if held[name] {
-			continue
-		}
-		if err := bucket.Remove(context.Background(), name); err != nil {
-			slog.Error("sweep: remove", "object", name, "error", err)
-		}
-	}
-}
-
-func (x *sweeper) sweep() (int, int, <-chan struct{}, error) {
-	rows, objects := 0, 0
+func (x *sweeper) sweep() (int, <-chan struct{}, error) {
+	rows := 0
 	written, err := x.queue.Transact(context.Background(), access.System(sweepActor), func(tx *store.Tx) error {
-		m := x.s.In(tx)
-		gone := m.unreferencedContent()
+		gone := x.s.In(tx).unreferencedContent()
 		gone = gone[:min(len(gone), sweepBatch)]
-		deleted := map[string]bool{}
-		for _, row := range gone {
-			deleted[row["id"]] = true
-		}
-		blobs := map[string]bool{}
-		for _, row := range gone {
-			blobs[row["blob"]] = true
-		}
-		for _, row := range m.Table("CONTENT").All() {
-			if !deleted[row["id"]] {
-				delete(blobs, row["blob"])
-			}
-		}
-		if err := stageContentSweep(x.s, tx, gone); err != nil {
-			return err
-		}
-		tx.After(func() {
-			for name := range blobs {
-				if err := x.bucket.Remove(context.Background(), name); err != nil {
-					slog.Error("sweep: remove", "object", name, "error", err)
-					continue
-				}
-				objects++
-			}
-		})
 		rows = len(gone)
-		return nil
+		return stageContentSweep(x.s, tx, gone)
 	})
-	return rows, objects, written, err
+	return rows, written, err
 }

@@ -9,10 +9,8 @@ import (
 	"image/jpeg"
 	"io"
 	"io/fs"
-	"log/slog"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -27,42 +25,38 @@ import (
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp"
 
-	"heliosian/internal/lru"
-	"heliosian/internal/store"
-
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 	storage "google.golang.org/api/storage/v1"
 )
 
 const (
-	MediaBucket  = "heliosian-media"
-	thumbWidth   = 480
-	thumbSuffix  = "-thumb"
-	thumbExt     = ".jpg"
-	thumbMime    = "image/jpeg"
-	thumbVersion = "1"
-	maxPixels    = 40_000_000
-	dataBudget   = 256 << 20
+	MediaBucket = "heliosian-media"
+	thumbWidth  = 480
+	maxPixels   = 40_000_000
 
 	reencodeSide    = 2048
 	reencodeQuality = 85
 )
 
-var ErrNotFound = errors.New("no such object")
+var (
+	ErrNotFound = errors.New("no such object")
+	ErrChanged  = errors.New("object is not at the expected generation")
+)
 
 type object struct {
 	mimeType   string
 	generation int64
 	data       []byte
+	written    time.Time
 }
 
 type objects interface {
 	get(ctx context.Context, name string) (object, error)
-	put(ctx context.Context, name, mimeType string, content []byte) error
-	exists(ctx context.Context, name string) (bool, error)
-	remove(ctx context.Context, name string) error
-	list(ctx context.Context, prefix string) ([]string, error)
+	put(ctx context.Context, name, mimeType string, content []byte, generation int64) (int64, error)
+	stat(ctx context.Context, name string) (int64, error)
+	remove(ctx context.Context, name string, generation int64) error
+	list(ctx context.Context, prefix string) ([]listed, error)
 	usage(ctx context.Context) (map[string]Usage, error)
 }
 
@@ -91,31 +85,37 @@ func (b gcs) get(ctx context.Context, name string) (object, error) {
 	return object{mimeType: resp.Header.Get("Content-Type"), generation: generation, data: data}, nil
 }
 
-func (b gcs) put(ctx context.Context, name, mimeType string, content []byte) error {
-	_, err := b.service.Objects.Insert(b.name, &storage.Object{Name: name, ContentType: mimeType}).
+func (b gcs) put(ctx context.Context, name, mimeType string, content []byte, generation int64) (int64, error) {
+	o, err := b.service.Objects.Insert(b.name, &storage.Object{Name: name, ContentType: mimeType}).
 		Media(bytes.NewReader(content), googleapi.ContentType(mimeType), googleapi.ChunkSize(0)).
-		Context(ctx).Do()
-	if err != nil {
-		return fmt.Errorf("write %s: %w", name, err)
-	}
-	return nil
-}
-
-func (b gcs) exists(ctx context.Context, name string) (bool, error) {
-	_, err := b.service.Objects.Get(b.name, name).Fields("name").Context(ctx).Do()
-	if notFound(err) {
-		return false, nil
+		IfGenerationMatch(generation).Fields("generation").Context(ctx).Do()
+	if preconditionFailed(err) {
+		return 0, fmt.Errorf("write %s at generation %d: %w", name, generation, ErrChanged)
 	}
 	if err != nil {
-		return false, fmt.Errorf("stat %s: %w", name, err)
+		return 0, fmt.Errorf("write %s: %w", name, err)
 	}
-	return true, nil
+	return o.Generation, nil
 }
 
-func (b gcs) remove(ctx context.Context, name string) error {
-	err := b.service.Objects.Delete(b.name, name).Context(ctx).Do()
+func (b gcs) stat(ctx context.Context, name string) (int64, error) {
+	o, err := b.service.Objects.Get(b.name, name).Fields("generation").Context(ctx).Do()
 	if notFound(err) {
-		return nil
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("stat %s: %w", name, err)
+	}
+	return o.Generation, nil
+}
+
+func (b gcs) remove(ctx context.Context, name string, generation int64) error {
+	err := b.service.Objects.Delete(b.name, name).IfGenerationMatch(generation).Context(ctx).Do()
+	if notFound(err) {
+		return fmt.Errorf("delete %s: %w", name, ErrNotFound)
+	}
+	if preconditionFailed(err) {
+		return fmt.Errorf("delete %s at generation %d: %w", name, generation, ErrChanged)
 	}
 	if err != nil {
 		return fmt.Errorf("delete %s: %w", name, err)
@@ -123,11 +123,15 @@ func (b gcs) remove(ctx context.Context, name string) error {
 	return nil
 }
 
-func (b gcs) list(ctx context.Context, prefix string) ([]string, error) {
-	out := []string{}
-	err := b.service.Objects.List(b.name).Prefix(prefix).Fields("nextPageToken", "items/name").Pages(ctx, func(page *storage.Objects) error {
+func (b gcs) list(ctx context.Context, prefix string) ([]listed, error) {
+	out := []listed{}
+	err := b.service.Objects.List(b.name).Prefix(prefix).Fields("nextPageToken", "items/name", "items/generation", "items/updated").Pages(ctx, func(page *storage.Objects) error {
 		for _, o := range page.Items {
-			out = append(out, o.Name)
+			written, err := time.Parse(time.RFC3339, o.Updated)
+			if err != nil {
+				return fmt.Errorf("list %s: %s was written at %q: %w", prefix, o.Name, o.Updated, err)
+			}
+			out = append(out, listed{Version: Version{Name: o.Name, Generation: o.Generation}, written: written})
 		}
 		return nil
 	})
@@ -181,7 +185,8 @@ func (b *Bucket) FillFrom(root string) error {
 		if err != nil {
 			return err
 		}
-		return b.Put(context.Background(), filepath.ToSlash(rel), http.DetectContentType(content), content)
+		_, err = b.Put(context.Background(), filepath.ToSlash(rel), http.DetectContentType(content), content, 0)
+		return err
 	})
 }
 
@@ -193,34 +198,57 @@ func (b *Bucket) Get(ctx context.Context, name string) ([]byte, string, error) {
 	return o.data, o.mimeType, nil
 }
 
-func (b *Bucket) Put(ctx context.Context, name, mimeType string, content []byte) error {
-	return b.objects.put(ctx, name, mimeType, content)
+func (b *Bucket) GetVersion(ctx context.Context, name string) ([]byte, int64, error) {
+	o, err := b.objects.get(ctx, name)
+	if err != nil {
+		return nil, 0, err
+	}
+	return o.data, o.generation, nil
 }
 
-func (b *Bucket) PutMedia(ctx context.Context, name, mimeType string, content []byte) error {
-	if !strings.HasPrefix(mimeType, "image/") {
-		return b.objects.put(ctx, name, mimeType, content)
-	}
-	thumb, err := Thumbnail(content)
-	if err != nil {
-		return fmt.Errorf("thumbnail %s: %w", name, err)
-	}
-	if err := b.objects.put(ctx, thumbName(name), thumbMime, thumb); err != nil {
-		return err
-	}
-	return b.objects.put(ctx, name, mimeType, content)
+func (b *Bucket) Put(ctx context.Context, name, mimeType string, content []byte, generation int64) (int64, error) {
+	return b.objects.put(ctx, name, mimeType, content, generation)
+}
+
+func (b *Bucket) Generation(ctx context.Context, name string) (int64, error) {
+	return b.objects.stat(ctx, name)
 }
 
 func (b *Bucket) Exists(ctx context.Context, name string) (bool, error) {
-	return b.objects.exists(ctx, name)
+	generation, err := b.objects.stat(ctx, name)
+	return generation != 0, err
 }
 
-func (b *Bucket) Remove(ctx context.Context, name string) error {
-	return b.objects.remove(ctx, name)
+func (b *Bucket) Remove(ctx context.Context, name string, generation int64) error {
+	return b.objects.remove(ctx, name, generation)
 }
 
-func (b *Bucket) List(ctx context.Context, prefix string) ([]string, error) {
-	return b.objects.list(ctx, prefix)
+func (b *Bucket) List(ctx context.Context, prefix string) ([]Version, error) {
+	return b.Older(ctx, prefix, time.Time{})
+}
+
+func (b *Bucket) Older(ctx context.Context, prefix string, before time.Time) ([]Version, error) {
+	all, err := b.objects.list(ctx, prefix)
+	if err != nil {
+		return nil, err
+	}
+	out := []Version{}
+	for _, o := range all {
+		if before.IsZero() || o.written.Before(before) {
+			out = append(out, o.Version)
+		}
+	}
+	return out, nil
+}
+
+type Version struct {
+	Name       string
+	Generation int64
+}
+
+type listed struct {
+	Version
+	written time.Time
 }
 
 type memory struct {
@@ -239,38 +267,51 @@ func (m *memory) get(_ context.Context, name string) (object, error) {
 	return o, nil
 }
 
-func (m *memory) put(_ context.Context, name, mimeType string, content []byte) error {
+func (m *memory) put(_ context.Context, name, mimeType string, content []byte, generation int64) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.objects[name].generation != generation {
+		return 0, fmt.Errorf("write %s at generation %d: %w", name, generation, ErrChanged)
+	}
+	return m.set(name, mimeType, content), nil
+}
+
+func (m *memory) set(name, mimeType string, content []byte) int64 {
 	m.generation++
-	m.objects[name] = object{mimeType: mimeType, generation: m.generation, data: content}
-	return nil
+	m.objects[name] = object{mimeType: mimeType, generation: m.generation, data: content, written: time.Now()}
+	return m.generation
 }
 
-func (m *memory) exists(_ context.Context, name string) (bool, error) {
+func (m *memory) stat(_ context.Context, name string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.objects[name]
-	return ok, nil
+	return m.objects[name].generation, nil
 }
 
-func (m *memory) remove(_ context.Context, name string) error {
+func (m *memory) remove(_ context.Context, name string, generation int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	o, ok := m.objects[name]
+	if !ok {
+		return fmt.Errorf("delete %s: %w", name, ErrNotFound)
+	}
+	if o.generation != generation {
+		return fmt.Errorf("delete %s at generation %d: %w", name, generation, ErrChanged)
+	}
 	delete(m.objects, name)
 	return nil
 }
 
-func (m *memory) list(_ context.Context, prefix string) ([]string, error) {
+func (m *memory) list(_ context.Context, prefix string) ([]listed, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := []string{}
-	for name := range m.objects {
+	out := []listed{}
+	for name, o := range m.objects {
 		if strings.HasPrefix(name, prefix) {
-			out = append(out, name)
+			out = append(out, listed{Version: Version{Name: name, Generation: o.generation}, written: o.written})
 		}
 	}
-	slices.Sort(out)
+	slices.SortFunc(out, func(a, b listed) int { return strings.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
@@ -301,198 +342,14 @@ func (b *Bucket) Usage(ctx context.Context) (map[string]Usage, error) {
 	return b.objects.usage(ctx)
 }
 
-func Media(path string) bool {
-	folder, _, _ := strings.Cut(strings.TrimPrefix(path, "/"), "/")
-	return slices.Contains(folders, folder)
-}
-
-func trimExt(name string) string {
-	return strings.TrimSuffix(name, path.Ext(name))
-}
-
-func thumbName(name string) string {
-	return trimExt(name) + thumbSuffix + thumbExt
-}
-
-type entry struct {
-	name       string
-	generation int64
-	mimeType   string
-	thumb      []byte
-}
-
-type Store struct {
-	bucket  *Bucket
-	mu      sync.RWMutex
-	entries map[string]*entry
-	named   map[string]bool
-	data    *lru.Cache[string, []byte]
-}
-
-func New(bucket *Bucket) *Store {
-	return &Store{bucket: bucket, entries: map[string]*entry{}, data: lru.New[string, []byte](dataBudget, func(b []byte) int { return len(b) })}
-}
-
-func Register(mux *http.ServeMux, s *Store, folders ...string) {
-	for _, folder := range folders {
-		mux.HandleFunc("GET /"+folder+"/{name}", s.serve)
-	}
-}
-
-func (s *Store) Load(context.Context) (store.Settle, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.named = map[string]bool{}
-	return func() (func(), error) { return s.drop, nil }, nil
-}
-
-func (s *Store) drop() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	dropped := 0
-	for key := range s.entries {
-		if !s.named[key] {
-			delete(s.entries, key)
-			dropped++
-		}
-	}
-	s.named = nil
-	if dropped > 0 {
-		slog.Info("blob store: dropped what no sheet names", "dropped", dropped, "kept", len(s.entries))
-	}
-}
-
 func notFound(err error) bool {
 	var apiErr *googleapi.Error
 	return errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound
 }
 
-func (s *Store) held(key string) (*entry, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	e, ok := s.entries[key]
-	return e, ok
-}
-
-func (s *Store) keep(key string) (*entry, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	e, ok := s.entries[key]
-	if ok && s.named != nil {
-		s.named[key] = true
-	}
-	return e, ok
-}
-
-func (s *Store) dataOf(ctx context.Context, key string, e *entry) ([]byte, error) {
-	if data, ok := s.data.Get(key); ok {
-		return data, nil
-	}
-	o, err := s.bucket.objects.get(ctx, e.name)
-	if err != nil {
-		return nil, err
-	}
-	s.data.Put(key, o.data)
-	return o.data, nil
-}
-
-func (s *Store) Has(name string) (bool, error) {
-	return s.has(context.Background(), name)
-}
-
-func (s *Store) has(ctx context.Context, name string) (bool, error) {
-	key := trimExt(name)
-	if _, ok := s.keep(key); ok {
-		return true, nil
-	}
-	start := time.Now()
-	e, data, err := s.download(ctx, name)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	s.data.Put(key, data)
-	s.mu.Lock()
-	s.entries[key] = e
-	if s.named != nil {
-		s.named[key] = true
-	}
-	held := len(s.entries)
-	s.mu.Unlock()
-	slog.Info("blob store: fetched", "name", name, "bytes", len(data)+len(e.thumb), "held", held, "took", time.Since(start).Round(time.Millisecond))
-	return true, nil
-}
-
-func (s *Store) download(ctx context.Context, name string) (*entry, []byte, error) {
-	o, err := s.bucket.objects.get(ctx, name)
-	if err != nil {
-		return nil, nil, err
-	}
-	e := &entry{name: name, generation: o.generation, mimeType: o.mimeType}
-	if !strings.HasPrefix(o.mimeType, "image/") {
-		return e, o.data, nil
-	}
-	thumb, err := s.bucket.objects.get(ctx, thumbName(name))
-	if errors.Is(err, ErrNotFound) {
-		return nil, nil, fmt.Errorf("no thumbnail stored for %s", name)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	e.thumb = thumb.data
-	return e, o.data, nil
-}
-
-func (s *Store) Put(folder, name, mimeType string, content []byte) error {
-	full := folder + "/" + name
-	if _, ok := s.keep(trimExt(full)); ok {
-		return nil
-	}
-	if err := s.bucket.PutMedia(context.Background(), full, mimeType, content); err != nil {
-		return err
-	}
-	return s.take(full)
-}
-
-func (s *Store) take(name string) error {
-	found, err := s.Has(name)
-	if err != nil {
-		return fmt.Errorf("read back %s: %w", name, err)
-	}
-	if !found {
-		return fmt.Errorf("read back %s: not there after writing it", name)
-	}
-	return nil
-}
-
-func (s *Store) serve(w http.ResponseWriter, r *http.Request) {
-	key := trimExt(strings.TrimPrefix(r.URL.Path, "/"))
-	e, ok := s.held(key)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("ETag", fmt.Sprintf(`"%d"`, e.generation))
-	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	if thumb := r.URL.Query().Get("thumb"); thumb != "" {
-		if thumb != thumbVersion || e.thumb == nil {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", thumbMime)
-		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(e.thumb))
-		return
-	}
-	data, err := s.dataOf(r.Context(), key, e)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "blob store: read", "name", e.name, "error", err)
-		http.Error(w, "could not read the object", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", e.mimeType)
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(data))
+func preconditionFailed(err error) bool {
+	var apiErr *googleapi.Error
+	return errors.As(err, &apiErr) && apiErr.Code == http.StatusPreconditionFailed
 }
 
 func Check(src []byte) error {

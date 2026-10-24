@@ -15,14 +15,6 @@ import (
 
 const blobPath = "/api/blob/"
 
-func (m *Model) BlobName(cell string) string {
-	if table, _ := TableOf(cell); table == "CONTENT" {
-		row, _ := m.Table("CONTENT").Get(cell)
-		return row["blob"]
-	}
-	return cell
-}
-
 func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mimeType string, ok bool) {
 	defer span.End()
 	tableName, ok := TableOf(id)
@@ -31,7 +23,7 @@ func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mi
 	}
 	t, _ := Lookup(tableName)
 	c, ok := t.Column(column)
-	if !ok || c.Kind != Blob || t.Generated {
+	if !ok || t.Generated || !(c.Kind == Blob || c.Kind == Ref && c.Target == "CONTENT") {
 		return "", "", false
 	}
 	r := m.newRun(env)
@@ -40,10 +32,16 @@ func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mi
 	if !ok || !r.readable(t, row) {
 		return "", "", false
 	}
-	name = m.BlobName(r.guardedCell(t, row, c))
-	if mime, ok := t.Column("mime"); ok {
-		mimeType = r.guardedCell(t, row, mime)
+	if c.Kind == Ref {
+		content := r.guardedCell(t, row, c)
+		t, _ = Lookup("CONTENT")
+		c, _ = t.Column("blob")
+		if row, ok = r.table(t.Name).Get(content); !ok || !r.readable(t, row) {
+			return "", "", false
+		}
 	}
+	mime, _ := t.Column("mime")
+	name, mimeType = r.guardedCell(t, row, c), r.guardedCell(t, row, mime)
 	return name, mimeType, name != ""
 }
 
@@ -85,7 +83,7 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tok
 			return
 		}
 		fetching := root.Start("bucket")
-		content, stored, err := pics.bucket.Get(r.Context(), name)
+		content, _, err := pics.bucket.Get(r.Context(), name)
 		fetching.End()
 		if errors.Is(err, blob.ErrNotFound) {
 			http.NotFound(w, r)
@@ -94,9 +92,6 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tok
 		if err != nil {
 			serve.Error(w, r, err)
 			return
-		}
-		if mimeType == "" {
-			mimeType = stored
 		}
 		root.End()
 		w.Header().Set("Trace", root.Header())

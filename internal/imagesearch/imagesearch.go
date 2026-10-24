@@ -2,8 +2,6 @@ package imagesearch
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,8 +18,10 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
+	"heliosian/internal/db"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 type Search struct {
@@ -30,7 +29,7 @@ type Search struct {
 	Pexels    string
 	Pixabay   string
 	UserAgent string
-	Stock     *Stock
+	Stock     *db.Stock
 	Limits    *Limits
 }
 
@@ -46,58 +45,31 @@ type Hit struct {
 	Title  string `json:"title"`
 }
 
-type record struct {
-	Source   string `json:"source"`
-	SourceID string `json:"sourceId"`
-	Thumb    string `json:"thumb"`
-	URL      string `json:"url"`
-	Download string `json:"download,omitempty"`
-	Credit   string `json:"credit"`
-	License  string `json:"license"`
-	Context  string `json:"context"`
-}
-
 type result struct {
 	hit Hit
-	rec record
-}
-
-type Stock struct {
-	bucket  *blob.Bucket
-	media   *blob.Store
-	slots   chan struct{}
-	mu      sync.Mutex
-	records map[string]record
-	have    map[string]bool
-	pending map[string]chan struct{}
-}
-
-func NewStock(bucket *blob.Bucket, media *blob.Store) *Stock {
-	return &Stock{bucket: bucket, media: media, slots: make(chan struct{}, workers), records: map[string]record{}, have: map[string]bool{}, pending: map[string]chan struct{}{}}
+	rec db.StockHit
 }
 
 type Limits struct {
 	searches *ratelimit.Limiter
-	stores   *ratelimit.Limiter
+	imports  *ratelimit.Limiter
 }
 
 func NewLimits() *Limits {
-	return &Limits{searches: ratelimit.New(searchesPerHour, time.Hour), stores: ratelimit.New(storesPerHour, time.Hour)}
+	return &Limits{searches: ratelimit.New(searchesPerHour, time.Hour), imports: ratelimit.New(importsPerHour, time.Hour)}
 }
 
 const (
-	stockPrefix     = "stock/"
 	maxThumb        = 2 << 20
 	maxImageSize    = 8 << 20
 	workers         = 8
 	searchesPerHour = 30
-	storesPerHour   = 20
+	importsPerHour  = 20
 	searchRefusal   = "too many picture searches in the last hour; try again later"
-	storeRefusal    = "too many pictures added in the last hour; try again later"
+	importRefusal   = "too many pictures added in the last hour; try again later"
 )
 
 var (
-	idPattern   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	errTooLarge = errors.New("that image is too large")
 	errNotImage = errors.New("that is not a supported image")
 	imageClient = &http.Client{Timeout: 20 * time.Second}
@@ -111,27 +83,22 @@ func searches(l *Limits) *ratelimit.Limiter {
 	return l.searches
 }
 
-func stores(l *Limits) *ratelimit.Limiter {
-	return l.stores
+func imports(l *Limits) *ratelimit.Limiter {
+	return l.imports
 }
 
-func (s Search) Register(mux *http.ServeMux, prefix, folder string, gate func(http.HandlerFunc) http.HandlerFunc) {
-	mux.HandleFunc("POST "+prefix+"/image", gate(s.limited(stores, storeRefusal, func(w http.ResponseWriter, r *http.Request) {
-		s.serveUpload(w, r, folder)
-	})))
+func (s Search) Register(mux *http.ServeMux, prefix string, gate func(http.HandlerFunc) http.HandlerFunc) {
 	mux.HandleFunc("GET "+prefix+"/images/search", gate(s.limited(searches, searchRefusal, serve.JSON(s.search))))
 	mux.HandleFunc("GET "+prefix+"/images/thumb", gate(s.serveThumb))
-	mux.HandleFunc("POST "+prefix+"/images/import", gate(s.limited(stores, storeRefusal, serve.JSON(func(r *http.Request, body importRequest) (stored, error) {
-		return s.importImage(r, body, folder)
-	}))))
+	mux.HandleFunc("POST "+prefix+"/images/import", gate(s.limited(imports, importRefusal, serve.JSON(s.importImage))))
 }
 
 type importRequest struct {
 	ID string `json:"id"`
 }
 
-type stored struct {
-	Name string `json:"name"`
+type imported struct {
+	Stock string `json:"stock"`
 }
 
 func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, next http.HandlerFunc) http.HandlerFunc {
@@ -144,58 +111,6 @@ func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, 
 		}
 		next(w, r)
 	}
-}
-
-func (s Search) serveUpload(w http.ResponseWriter, r *http.Request, folder string) {
-	r.Body = http.MaxBytesReader(w, r.Body, maxImageSize)
-	out, err := s.upload(r, folder)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
-	}
-	serve.Write(w, r, http.StatusOK, out)
-}
-
-func (s Search) upload(r *http.Request, folder string) (stored, error) {
-	file, header, err := r.FormFile("image")
-	if err != nil {
-		return stored{}, access.Invalid("an image file is required")
-	}
-	defer file.Close()
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return stored{}, access.Invalid("could not read the image")
-	}
-	mimeType := http.DetectContentType(content)
-	if blob.ImageExtensions[mimeType] == "" {
-		return stored{}, access.Invalid("%s is not a supported image", header.Filename)
-	}
-	return s.store(folder, mimeType, content)
-}
-
-func (s Search) store(folder, mimeType string, content []byte) (stored, error) {
-	name := blob.Name(content, blob.ImageExtensions[mimeType])
-	if err := s.Stock.media.Put(folder, name, mimeType, content); err != nil {
-		return stored{}, fmt.Errorf("store image in %s: %w", folder, err)
-	}
-	return stored{Name: folder + "/" + name}, nil
-}
-
-func key(source, sourceID string) string {
-	sum := sha256.Sum256([]byte(source + "/" + sourceID))
-	return hex.EncodeToString(sum[:])
-}
-
-func recordName(id string) string {
-	return stockPrefix + id + ".json"
-}
-
-func thumbName(id string) string {
-	return stockPrefix + id + "-thumb"
-}
-
-func imageName(id string) string {
-	return stockPrefix + id
 }
 
 func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
@@ -220,12 +135,20 @@ func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
 	if err != nil {
 		return nil, access.Refuse(http.StatusBadGateway, "%s", err.Error())
 	}
-	s.Stock.remember(results)
-	go s.Stock.prefetch(results, s.UserAgent)
+	records := []db.StockHit{}
+	for _, res := range results {
+		records = append(records, res.rec)
+	}
+	ids, err := s.Stock.Remember(r.Context(), records)
+	if err != nil {
+		return nil, err
+	}
+	go s.prefetch(ids)
 	thumbPath := path.Dir(r.URL.Path) + "/thumb"
 	hits := []Hit{}
-	for _, res := range results {
+	for i, res := range results {
 		hit := res.hit
+		hit.ID = ids[i]
 		hit.Thumb = thumbPath + "?id=" + hit.ID
 		hits = append(hits, hit)
 	}
@@ -274,114 +197,25 @@ func interleave(lists [][]result) []result {
 	}
 }
 
-func (st *Stock) remember(results []result) {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	for _, res := range results {
-		st.records[res.hit.ID] = res.rec
-	}
-}
-
-func (st *Stock) prefetch(results []result, userAgent string) {
-	ctx := context.Background()
-	st.each(results, func(res result) {
-		body, err := json.Marshal(res.rec)
-		if err == nil {
-			err = st.bucket.Put(ctx, recordName(res.hit.ID), "application/json", body)
-		}
-		if err != nil {
-			slog.Error("keep a search result", "id", res.hit.ID, "error", err)
-		}
-	})
-	st.each(results, func(res result) {
-		if err := st.thumbnail(ctx, res.hit.ID, userAgent); err != nil {
-			slog.Error("prefetch a thumbnail", "id", res.hit.ID, "error", err)
-		}
-	})
-}
-
-func (st *Stock) each(results []result, f func(result)) {
+func (s Search) prefetch(ids []string) {
+	slots := make(chan struct{}, workers)
 	var wg sync.WaitGroup
-	for _, res := range results {
+	for _, id := range ids {
 		wg.Add(1)
-		st.slots <- struct{}{}
+		slots <- struct{}{}
 		go func() {
 			defer wg.Done()
-			defer func() { <-st.slots }()
-			f(res)
+			defer func() { <-slots }()
+			if _, _, err := s.Stock.Keep(context.Background(), id, "preview", s.fetchPreview); err != nil {
+				slog.Error("prefetch a stock preview", "stock", id, "error", err)
+			}
 		}()
 	}
 	wg.Wait()
 }
 
-func (st *Stock) record(ctx context.Context, id string) (record, error) {
-	st.mu.Lock()
-	rec, ok := st.records[id]
-	st.mu.Unlock()
-	if ok {
-		return rec, nil
-	}
-	body, _, err := st.bucket.Get(ctx, recordName(id))
-	if err != nil {
-		return record{}, err
-	}
-	if err := json.Unmarshal(body, &rec); err != nil {
-		return record{}, fmt.Errorf("read the record of %s: %w", id, err)
-	}
-	st.mu.Lock()
-	st.records[id] = rec
-	st.mu.Unlock()
-	return rec, nil
-}
-
-func (st *Stock) thumbnail(ctx context.Context, id, userAgent string) error {
-	for {
-		st.mu.Lock()
-		if st.have[id] {
-			st.mu.Unlock()
-			return nil
-		}
-		wait, fetching := st.pending[id]
-		if !fetching {
-			wait = make(chan struct{})
-			st.pending[id] = wait
-		}
-		st.mu.Unlock()
-		if !fetching {
-			break
-		}
-		select {
-		case <-wait:
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	err := st.fetchThumbnail(ctx, id, userAgent)
-	st.mu.Lock()
-	if err == nil {
-		st.have[id] = true
-	}
-	close(st.pending[id])
-	delete(st.pending, id)
-	st.mu.Unlock()
-	return err
-}
-
-func (st *Stock) fetchThumbnail(ctx context.Context, id, userAgent string) error {
-	name := thumbName(id)
-	held, err := st.bucket.Exists(ctx, name)
-	if err != nil || held {
-		return err
-	}
-	rec, err := st.record(ctx, id)
-	if err != nil {
-		return err
-	}
-	content, mimeType, err := fetch(ctx, userAgent, rec.Thumb, maxThumb)
-	if err != nil {
-		return err
-	}
-	return st.bucket.Put(ctx, name, mimeType, content)
+func (s Search) fetchPreview(row store.Row) ([]byte, string, error) {
+	return fetch(context.Background(), s.UserAgent, row["preview_url"], maxThumb)
 }
 
 func (s Search) searchUnsplash(ctx context.Context, q string) ([]result, error) {
@@ -425,9 +259,9 @@ func (s Search) searchUnsplash(ctx context.Context, q string) ([]result, error) 
 	results := []result{}
 	for _, p := range body.Results {
 		results = append(results, result{
-			hit: Hit{ID: key("Unsplash", p.ID), Width: p.Width, Height: p.Height, Title: p.Description},
-			rec: record{
-				Source: "Unsplash", SourceID: p.ID, Thumb: p.URLs.Small, URL: p.URLs.Regular, Download: p.Links.DownloadLocation,
+			hit: Hit{Width: p.Width, Height: p.Height, Title: p.Description},
+			rec: db.StockHit{
+				Source: "Unsplash", SourceID: p.ID, PreviewURL: p.URLs.Small, URL: p.URLs.Regular, Download: p.Links.DownloadLocation,
 				Credit: "Photo by " + p.User.Name + " on Unsplash", License: "Unsplash License", Context: p.Links.HTML,
 			},
 		})
@@ -469,11 +303,10 @@ func (s Search) searchPexels(ctx context.Context, q string) ([]result, error) {
 	}
 	results := []result{}
 	for _, p := range body.Photos {
-		id := strconv.Itoa(p.ID)
 		results = append(results, result{
-			hit: Hit{ID: key("Pexels", id), Width: p.Width, Height: p.Height, Title: p.Alt},
-			rec: record{
-				Source: "Pexels", SourceID: id, Thumb: p.Src.Medium, URL: p.Src.Large2x,
+			hit: Hit{Width: p.Width, Height: p.Height, Title: p.Alt},
+			rec: db.StockHit{
+				Source: "Pexels", SourceID: strconv.Itoa(p.ID), PreviewURL: p.Src.Medium, URL: p.Src.Large2x,
 				Credit: "Photo by " + p.Photographer + " on Pexels", License: "Pexels License", Context: p.URL,
 			},
 		})
@@ -515,11 +348,10 @@ func (s Search) searchPixabay(ctx context.Context, q string) ([]result, error) {
 	}
 	results := []result{}
 	for _, h := range body.Hits {
-		id := strconv.Itoa(h.ID)
 		results = append(results, result{
-			hit: Hit{ID: key("Pixabay", id), Width: h.ImageWidth, Height: h.ImageHeight, Title: h.Tags},
-			rec: record{
-				Source: "Pixabay", SourceID: id, Thumb: h.WebformatURL, URL: h.LargeImageURL,
+			hit: Hit{Width: h.ImageWidth, Height: h.ImageHeight, Title: h.Tags},
+			rec: db.StockHit{
+				Source: "Pixabay", SourceID: strconv.Itoa(h.ID), PreviewURL: h.WebformatURL, URL: h.LargeImageURL,
 				Credit: "Image by " + h.User + " on Pixabay", License: "Pixabay Content License", Context: h.PageURL,
 			},
 		})
@@ -557,78 +389,65 @@ func fetch(ctx context.Context, userAgent, src string, limit int64) ([]byte, str
 	return content, mimeType, nil
 }
 
+func stockID(id string) bool {
+	table, ok := db.TableOf(id)
+	return ok && table == "STOCK"
+}
+
 func (s Search) serveThumb(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
-	if !s.On() || !idPattern.MatchString(id) {
+	if !s.On() || !stockID(id) {
 		http.NotFound(w, r)
 		return
 	}
-	err := s.Stock.thumbnail(r.Context(), id, s.UserAgent)
+	content, _, err := s.Stock.Keep(r.Context(), id, "preview", s.fetchPreview)
 	if errors.Is(err, blob.ErrNotFound) {
 		http.NotFound(w, r)
 		return
 	}
 	if err != nil {
-		slog.ErrorContext(r.Context(), "stock thumbnail", "id", id, "error", err)
+		slog.ErrorContext(r.Context(), "stock preview", "stock", id, "error", err)
 		http.Error(w, "could not fetch that picture", http.StatusBadGateway)
 		return
 	}
-	content, mimeType, err := s.Stock.bucket.Get(r.Context(), thumbName(id))
+	data, mimeType, err := s.Stock.Bytes(r.Context(), content)
 	if err != nil {
-		slog.ErrorContext(r.Context(), "stock thumbnail", "id", id, "error", err)
+		slog.ErrorContext(r.Context(), "stock preview", "stock", id, "error", err)
 		http.Error(w, "could not read that picture", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", mimeType)
 	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
-	w.Write(content)
+	w.Write(data)
 }
 
-func (s Search) importImage(r *http.Request, body importRequest, folder string) (stored, error) {
-	if !s.On() || !idPattern.MatchString(body.ID) {
-		return stored{}, access.Missing("no such picture")
+func (s Search) importImage(r *http.Request, body importRequest) (imported, error) {
+	if !s.On() || !stockID(body.ID) {
+		return imported{}, access.Missing("no such picture")
 	}
 	ctx := r.Context()
-	content, mimeType, err := s.Stock.bucket.Get(ctx, imageName(body.ID))
-	fetched := false
-	download := ""
-	if errors.Is(err, blob.ErrNotFound) {
-		var rec record
-		rec, err = s.Stock.record(ctx, body.ID)
-		if errors.Is(err, blob.ErrNotFound) {
-			return stored{}, access.Missing("no such picture")
-		}
-		if err == nil {
-			content, mimeType, err = fetch(ctx, s.UserAgent, rec.URL, maxImageSize)
-		}
-		switch {
-		case errors.Is(err, errTooLarge), errors.Is(err, errNotImage):
-			return stored{}, access.Invalid("%s", err.Error())
-		case err != nil:
-			slog.ErrorContext(ctx, "stock image", "id", body.ID, "error", err)
-			return stored{}, access.Refuse(http.StatusBadGateway, "could not fetch that image")
-		}
-		if err := s.Stock.bucket.Put(ctx, imageName(body.ID), mimeType, content); err != nil {
-			return stored{}, fmt.Errorf("keep stock image %s: %w", body.ID, err)
-		}
-		fetched = true
-		download = rec.Download
+	_, fetched, err := s.Stock.Keep(ctx, body.ID, "picture", func(row store.Row) ([]byte, string, error) {
+		return fetch(ctx, s.UserAgent, row["url"], maxImageSize)
+	})
+	switch {
+	case errors.Is(err, blob.ErrNotFound):
+		return imported{}, access.Missing("no such picture")
+	case errors.Is(err, errTooLarge), errors.Is(err, errNotImage):
+		return imported{}, access.Invalid("%s", err.Error())
+	case err != nil:
+		slog.ErrorContext(ctx, "stock picture", "stock", body.ID, "error", err)
+		return imported{}, access.Refuse(http.StatusBadGateway, "could not fetch that image")
 	}
-	if err != nil {
-		return stored{}, fmt.Errorf("read stock image %s: %w", body.ID, err)
-	}
-	if int64(len(content)) > maxImageSize {
-		return stored{}, access.Invalid("%s", errTooLarge.Error())
-	}
-	if fetched && strings.HasPrefix(download, "https://api.unsplash.com/") && s.Unsplash != "" {
+	row, _ := s.Stock.Row(body.ID)
+	if fetched && strings.HasPrefix(row["download"], "https://api.unsplash.com/") && s.Unsplash != "" {
 		go func(endpoint string) {
 			req, _ := http.NewRequest("GET", endpoint, nil)
 			req.Header.Set("Authorization", "Client-ID "+s.Unsplash)
 			if resp, err := imageClient.Do(req); err == nil {
 				resp.Body.Close()
 			}
-		}(download)
+		}(row["download"])
 	}
-	slog.InfoContext(ctx, "imported image", "id", body.ID, "folder", folder, "fetched", fetched)
-	return s.store(folder, mimeType, content)
+	slog.InfoContext(ctx, "imported image", "stock", body.ID, "fetched", fetched)
+	return imported{Stock: body.ID}, nil
 }
