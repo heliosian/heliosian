@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"time"
 
 	"heliosian/internal/cells"
@@ -61,14 +62,31 @@ func parts(index *SearchIndex, sv *services, origin func(app string) string, ref
 	return out
 }
 
+var sheetChecks = []struct {
+	tables []string
+	check  func(Sheet) error
+}{
+	{[]string{"PERSON_EMAIL"}, checkEmails},
+	{[]string{"PHOTO"}, checkPhotos},
+	{[]string{"RULE"}, checkRuleProperties},
+	{[]string{"GROUP", "RULE"}, checkGroupCycles},
+	{[]string{"DOCUMENT"}, checkDocuments},
+}
+
 func build(sheet string, index *SearchIndex, sv *services, origin func(app string) string) func(context.Context, store.Tables, *Model) error {
 	return func(ctx context.Context, tables store.Tables, m *Model) error {
 		m.index = index
 		m.services = sv
+		prior := *m.slot(sheet)
 		built := Sheet{}
+		rebuilt := map[string]bool{}
 		for i := range Tables {
 			t := &Tables[i]
 			if !t.In(sheet) {
+				continue
+			}
+			if prior[t.Name].builtFrom(tables[t.Name]) {
+				built[t.Name] = prior[t.Name]
 				continue
 			}
 			rows, err := buildRows(ctx, t, tables[t.Name], origin)
@@ -76,26 +94,14 @@ func build(sheet string, index *SearchIndex, sv *services, origin func(app strin
 				return err
 			}
 			built[t.Name] = rows
+			rebuilt[t.Name] = true
 		}
 		checked := tallied(ctx, "sheet checks")
-		if sheet == PeopleSheet {
-			if err := checkEmails(built); err != nil {
-				return err
+		for _, c := range sheetChecks {
+			if !slices.ContainsFunc(c.tables, func(t string) bool { return rebuilt[t] }) {
+				continue
 			}
-			if err := checkPhotos(built); err != nil {
-				return err
-			}
-		}
-		if sheet == GroupsSheet {
-			if err := checkRuleProperties(built); err != nil {
-				return err
-			}
-			if err := checkGroupCycles(built); err != nil {
-				return err
-			}
-		}
-		if sheet == DocumentsSheet {
-			if err := checkDocuments(built); err != nil {
+			if err := c.check(built); err != nil {
 				return err
 			}
 		}

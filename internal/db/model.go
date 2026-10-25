@@ -20,6 +20,7 @@ func tallied(ctx context.Context, name string) func() {
 
 type Rows struct {
 	table      *Table
+	stored     []store.Row
 	rows       []store.Row
 	byID       map[string]int
 	byUnique   map[string]int
@@ -37,6 +38,7 @@ type Model struct {
 	Config    Sheet
 	derived   *derived
 	consented map[string]*View
+	hidden    map[string]bool
 	index     *SearchIndex
 	services  *services
 }
@@ -219,7 +221,15 @@ func buildRows(ctx context.Context, t *Table, raw []store.Row, origin func(app s
 	out, err := indexRows(t, rows)
 	table.Tally("index").Add(time.Since(start))
 	table.Set("rows", len(rows))
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	out.stored = raw
+	return out, nil
+}
+
+func (r *Rows) builtFrom(raw []store.Row) bool {
+	return r != nil && len(r.stored) == len(raw) && (len(raw) == 0 || &r.stored[0] == &raw[0])
 }
 
 func indexRows(t *Table, rows []store.Row) (*Rows, error) {

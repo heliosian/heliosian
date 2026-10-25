@@ -44,12 +44,25 @@ func consentStep(ctx context.Context, m *Model) error {
 	trace.From(ctx).Set("hidden", len(hidden))
 	viewing := tallied(ctx, "views")
 	defer viewing()
+	flipped := map[string]bool{}
+	for _, pair := range [][2]map[string]bool{{hidden, m.hidden}, {m.hidden, hidden}} {
+		for id := range pair[0] {
+			if !pair[1][id] {
+				table, _ := TableOf(id)
+				flipped[table] = true
+			}
+		}
+	}
 	consented := map[string]*View{}
 	for _, t := range Tables {
 		if t.Generated {
 			continue
 		}
 		rows := m.Table(t.Name)
+		if was := m.consented[t.Name]; was != nil && was.rows == rows && !flipped[t.Name] {
+			consented[t.Name] = was
+			continue
+		}
 		v := &View{rows: rows, shown: make([]store.Row, len(rows.rows)), all: []store.Row{}}
 		for i, row := range rows.rows {
 			if hidden[row["id"]] {
@@ -61,7 +74,7 @@ func consentStep(ctx context.Context, m *Model) error {
 		consented[t.Name] = v
 	}
 	m.derived = m.derived.carry(m.consented, consented)
-	m.consented = consented
+	m.consented, m.hidden = consented, hidden
 	return nil
 }
 

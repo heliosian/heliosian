@@ -126,6 +126,9 @@ func changedReads(was, is map[string]*View) reads {
 }
 
 func viewChanges(a, b *View, each func(old, new store.Row)) {
+	if a == b {
+		return
+	}
 	if a.rows == b.rows {
 		for i, row := range a.rows.rows {
 			if (a.shown[i] == nil) != (b.shown[i] == nil) {

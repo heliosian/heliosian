@@ -429,7 +429,6 @@ function tagMenu(id, onChange) {
     });
     menu.append(form);
   };
-  render();
   // The menu sits inside the card's <a>; preventDefault on a checkbox would cancel
   // its own toggle, so only other targets are kept from following the link.
   menu.addEventListener('click', e => {
@@ -474,12 +473,14 @@ export function tagControl(id, wrapClass, buttonClass, onChange) {
     e.preventDefault();
     e.stopPropagation();
     const opening = menu.hidden;
+    if (opening) {
+      menu.refreshTags();
+    }
     menu.hidden = !menu.hidden;
     if (!opening) {
       return;
     }
     if (isTagged(id)) {
-      menu.refreshTags();
       menu.querySelector('.tag-option input')?.focus();
       return;
     }

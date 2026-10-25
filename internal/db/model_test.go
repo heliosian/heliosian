@@ -77,6 +77,38 @@ func TestSampleLoads(t *testing.T) {
 	}
 }
 
+func TestAWriteBuildsOnlyTheTablesItChanged(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	before := s.Model()
+	apply(t, s, queue, []Edit{{Set: "per00000000002", Cells: map[string]any{"facts": "keeps bees"}}})
+	after := s.Model()
+	if after.Table("PERSON") == before.Table("PERSON") {
+		t.Error("the write kept the PERSON rows it changed")
+	}
+	if row, _ := after.Table("PERSON").Get("per00000000002"); row["facts"] != "keeps bees" {
+		t.Errorf("Rowan's facts are %q", row["facts"])
+	}
+	for _, table := range []string{"PERSON_EMAIL", "PHOTO", "GROUP", "DOCUMENT"} {
+		if after.Table(table) != before.Table(table) {
+			t.Errorf("the write built %s again, though it changed nothing there", table)
+		}
+		if after.Shown(table) != before.Shown(table) {
+			t.Errorf("the write drew %s's view again, though it changed nothing there", table)
+		}
+	}
+	_, err := applyErr(s, queue, []Edit{{Set: "eml00000000001", Cells: map[string]any{"primary": "No"}}})
+	if err == nil || !strings.Contains(err.Error(), "0 primary addresses") {
+		t.Errorf("taking away Rowan's only primary address answered %v", err)
+	}
+	if _, ok := s.Model().Shown("PERSON_EMAIL").Get("eml00000000001"); !ok {
+		t.Fatal("Rowan's address isn't shown before Rowan is hidden")
+	}
+	apply(t, s, queue, []Edit{{Set: "per00000000002", Cells: map[string]any{"hidden": true}}})
+	if _, ok := s.Model().Shown("PERSON_EMAIL").Get("eml00000000001"); ok {
+		t.Error("hiding Rowan left Rowan's address shown")
+	}
+}
+
 func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
 	s, queue := sampleWithQueue(t)
 	juni, _ := s.Model().Table("PERSON").Get("per00000000001")
