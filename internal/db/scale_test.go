@@ -157,6 +157,10 @@ func BenchmarkOnePerson(b *testing.B) {
 	benchQuery(b, `(from PERSON (where (= id "per00000000150")))`)
 }
 
+func BenchmarkLimitedDocuments(b *testing.B) {
+	benchQuery(b, `(from DOCUMENT (columns name) (limit 1))`)
+}
+
 func BenchmarkWikiPages(b *testing.B) {
 	benchQuery(b, `(from DOCUMENT (where (= kind "wiki")))`)
 }

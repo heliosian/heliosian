@@ -1,6 +1,7 @@
 package db
 
 import (
+	"maps"
 	"slices"
 	"strings"
 	"sync"
@@ -315,6 +316,50 @@ func TestRun(t *testing.T) {
 		got := ids(runAs(t, m, c.viewer, c.src).Rows(), c.column)
 		if !slices.Equal(got, c.want) && (len(got) != 0 || len(c.want) != 0) {
 			t.Errorf("%s as %q = %v, want %v", c.src, c.viewer, got, c.want)
+		}
+	}
+}
+
+func TestLimitedQueriesKeepTheReadablePrefix(t *testing.T) {
+	m := sample(t).Model()
+	for _, viewer := range []string{"", parent, student, staff, guest} {
+		for _, src := range []string{
+			"(from PERSON (columns name_show))",
+			"(from MEMBER (where (= member \"yes\")) (include person group))",
+			"(from DOCUMENT (columns name))",
+			"(from PERSON (order name_sort desc) (columns name_show))",
+		} {
+			q := mustParse(t, src)
+			env := Env{Viewer: viewer, Now: testNow}
+			full := m.Run(t.Context(), q, env)
+			if full.Err != nil {
+				t.Fatal(full.Err)
+			}
+			checked := 0
+			q.scan.conds = append(q.scan.conds, cond{eval: func(*frame) bool {
+				checked++
+				return true
+			}})
+			q.limit = 2
+			got := m.Run(t.Context(), q, env)
+			want := full.IDs[:min(len(full.IDs), q.limit)]
+			if got.Err != nil || !slices.Equal(got.IDs, want) {
+				t.Fatalf("%s as %q: %v, %v; want %v", src, viewer, got.IDs, got.Err, want)
+			}
+			wantChecked := len(want)
+			if len(q.order) > 0 {
+				wantChecked = len(full.IDs)
+			}
+			if checked != wantChecked {
+				t.Errorf("%s as %q checked %d readable matches, want %d", src, viewer, checked, wantChecked)
+			}
+			for table, rows := range got.Resources {
+				for id, row := range rows {
+					if !maps.Equal(row, full.Resources[table][id]) {
+						t.Errorf("%s as %q changed %s %s: %v", src, viewer, table, id, row)
+					}
+				}
+			}
 		}
 	}
 }

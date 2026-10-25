@@ -1423,7 +1423,7 @@ func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	rows := []store.Row{}
 	q.scan.each(top, func(f *frame) bool {
 		rows = append(rows, f.row)
-		return true
+		return q.limit == 0 || len(q.order) > 0 || len(rows) < q.limit
 	})
 	scanned.Set("table", q.scan.table.Name)
 	scanned.Set("rows", len(rows))
