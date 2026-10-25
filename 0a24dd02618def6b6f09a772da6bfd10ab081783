@@ -1,0 +1,32 @@
+# Align wording and docs with project conventions
+
+byre task tskUZhZV5OZNx1, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskUZhZV5OZNx1 in byre (GET /api/events?task_id=tskUZhZV5OZNx1).
+
+## Summary
+
+Consistency audit of heliosian at 948bf931. Wording and docs only, then a clean merge of main (8db8125c, the simplicity audit). No behavior change from this task.
+
+Who? already called the directory section Directory in the rail, the phone tab, and the h1. The mobile strip and breadcrumbs still said People. Those strings, and the matching labels on person and family pages, now say Directory. docs/who/directory.md was updated only where it described screens that are gone: Students and Staff as directory tabs, Classrooms as the section name, Email List as the page, and Map as a primary nav item with an in-page address editor.
+
+docs/queryspeed.md told agents to measure a full-table per-row cost with `(limit 1)` and no order. An unordered limited scan now stops at the first match; an ordered scan still walks every match. The recipe is `(order id asc) (limit 1)`. `(order id)` does not compile, which a review caught.
+
+Left on purpose: the search group People and the People/Families toggle (a kind of result, not the section); the Students renderer and the directory Staff tab, because `/people?tab=students` and `/people?tab=staff` still call them through tabParam, and renderStaff is the Staff page. Deleting them would throw, and switching those URLs to Everyone would be a fallback. Also left: button capitalization, Claude-prompt British verbs, the three super-admin 403 wordings, short production app names versus long titles.
+
+Phone `/people` and desktop `/p/maya.lindqvist` were checked on the sample server. List, family, gradebands, staff, everyone, and map were matched to the code and not captured.
+
+Merge of main was automatic, no conflicts. `go vet ./...` passed. Every package's tests passed under `timeout 30`.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Aligns Who?’s section titles and breadcrumbs with the existing Directory label. Updates the directory documentation to describe the current navigation and tabs, and revises the query performance guide to account for early stopping on unordered queries with a limit.
+
+- The profiling query in `docs/queryspeed.md` has an invalid order clause and fails to parse.
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Aligns Who?’s mobile section title and person/family breadcrumbs with the existing “Directory” label. Updates the directory documentation to match current navigation, tabs and filters, and corrects the query-profiling example so its limit still permits a full scan. Reviewed the code and surrounding documentation without running builds, as requested.
+
+No significant findings.
