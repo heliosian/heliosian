@@ -213,10 +213,14 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	edits = append(edits, Edit{Insert: "MEMBER", Row: map[string]any{"group": c.group["id"], "person": guest, "member": "yes", "guest_of": c.person, "added_by": c.person, "added": stamp(at)}})
+	actor := access.Actor{Email: m.addressOf(c.person)}
 	if address != "" {
 		edits = append(edits, invitationEdits(c.group["id"], c.person, "invitation", []string{guest}, at)...)
+		_, err = iv.writeInvitations(r.Context(), actor, edits, c.group["id"], c.person, 1)
+	} else {
+		_, err = iv.write(r.Context(), actor, edits)
 	}
-	if _, err := iv.write(r.Context(), access.Actor{Email: m.addressOf(c.person)}, edits); err != nil {
+	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}

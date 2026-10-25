@@ -100,6 +100,12 @@ func (iv *Invitations) write(ctx context.Context, actor access.Actor, edits []Ed
 	return Write(ctx, iv.s, iv.queue, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits})
 }
 
+func (iv *Invitations) writeInvitations(ctx context.Context, actor access.Actor, edits []Edit, group, from string, more int) ([]string, error) {
+	return writeChecked(ctx, iv.s, iv.queue, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits}, func(m *Model) error {
+		return m.mayInvite(group, from, more)
+	})
+}
+
 func (m *Model) passes(ctx context.Context, env Env, table, id, cond string) bool {
 	q, err := Parse(fmt.Sprintf("(from %s @row (where (= id %q) %s))", table, id, cond))
 	if err != nil {
@@ -215,6 +221,25 @@ func (m *Model) answerEdits(g store.Row, person, answer, by string, at time.Time
 	return append(edits, Edit{Insert: "MEMBER", Row: row})
 }
 
+const maxGuestInvitations = 10
+
+func (m *Model) invitationsFrom(group, person string) int {
+	sent := 0
+	for _, msg := range m.Table("MESSAGE").Referencing("group", group) {
+		if msg["direction"] == "out" && msg["kind"] == "invitation" && msg["from_person"] == person {
+			sent += len(m.Table("RECIPIENT").Referencing("message", msg["id"]))
+		}
+	}
+	return sent
+}
+
+func (m *Model) mayInvite(group, from string, more int) error {
+	if m.invitationsFrom(group, from)+more > maxGuestInvitations {
+		return access.Forbidden("you can have at most %d invitations mailed for one guest list", maxGuestInvitations)
+	}
+	return nil
+}
+
 func invitationEdits(group, from, kind string, people []string, at time.Time) []Edit {
 	created := stamp(at)
 	msg := map[string]any{"direction": "out", "kind": kind, "group": group, "created": created}
@@ -281,7 +306,12 @@ func (iv *Invitations) invite(ctx context.Context, m *Model, env Env, actor acce
 		kind = "skip"
 	}
 	edits := append(answerGroupEdits(g), invitationEdits(g["id"], env.Viewer, kind, people, env.Now)...)
-	ids, err := iv.write(ctx, actor, edits)
+	var ids []string
+	if !runs && kind == "invitation" {
+		ids, err = iv.writeInvitations(ctx, actor, edits, g["id"], env.Viewer, len(people))
+	} else {
+		ids, err = iv.write(ctx, actor, edits)
+	}
 	if err != nil {
 		return sentAnswer{}, err
 	}
@@ -506,7 +536,12 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	if len(sending) > 0 {
 		edits = append(edits, invitationEdits(g["id"], env.Viewer, "invitation", sending, env.Now)...)
 	}
-	if _, err := iv.write(ctx, actor, edits); err != nil {
+	if !runs && len(sending) > 0 {
+		_, err = iv.writeInvitations(ctx, actor, edits, g["id"], env.Viewer, len(sending))
+	} else {
+		_, err = iv.write(ctx, actor, edits)
+	}
+	if err != nil {
 		return sentAnswer{}, err
 	}
 	slog.InfoContext(ctx, "invitations: guests added", "viewer", env.Viewer, "group", g["id"], "added", len(added), "sent", len(sending), "family", ask.Family && len(outside) > 1)

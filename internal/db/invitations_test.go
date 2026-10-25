@@ -215,6 +215,59 @@ func TestNewcomersAreInvitedOnlyWithAutoInvite(t *testing.T) {
 	}
 }
 
+func TestAnOutsideGuestBringsOnlySoManyGuests(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"auto_invite": true}}})
+	h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}}})
+	coach := h.s.Model().personAt("coach@example.net")
+	h.mailTo("coach@example.net", "You're invited")
+	token := h.copyOf(coach)["token"]
+	guest := func(i int) int {
+		return h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Guest", "email": fmt.Sprintf("guest%d@example.net", i)}).Code
+	}
+	for i := 0; i < maxGuestInvitations; i++ {
+		if code := guest(i); code != http.StatusNoContent {
+			t.Fatalf("guest %d: %d", i, code)
+		}
+	}
+	if code := guest(maxGuestInvitations); code != http.StatusForbidden {
+		t.Errorf("one guest too many: %d", code)
+	}
+	one := h.s.Model().personAt("guest0@example.net")
+	h.do("", http.MethodDelete, "/open/ext/"+token+"/guest", map[string]string{"key": one})
+	if code := guest(maxGuestInvitations + 1); code != http.StatusForbidden {
+		t.Errorf("a guest taken back and another brought: %d", code)
+	}
+	h.waitFor("the last allowed invitation", func() bool { return h.copyOf(h.s.Model().personAt("guest9@example.net"))["sent"] != "" })
+	time.Sleep(50 * time.Millisecond)
+	for _, m := range h.sender.Messages() {
+		if slices.Contains(m.To, "guest10@example.net") || slices.Contains(m.To, "guest11@example.net") {
+			t.Errorf("mail went to %v past the limit", m.To)
+		}
+	}
+}
+
+func TestSimultaneousGuestsStayWithinTheLimit(t *testing.T) {
+	h := newInviteHarness(t)
+	h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "send": true, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}}})
+	token := h.copyOf(h.s.Model().personAt("coach@example.net"))["token"]
+	codes := make(chan int, 3*maxGuestInvitations)
+	for i := 0; i < 3*maxGuestInvitations; i++ {
+		go func() {
+			codes <- h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Guest", "email": fmt.Sprintf("guest%d@example.net", i)}).Code
+		}()
+	}
+	accepted := 0
+	for i := 0; i < 3*maxGuestInvitations; i++ {
+		if <-codes == http.StatusNoContent {
+			accepted++
+		}
+	}
+	if accepted != maxGuestInvitations {
+		t.Errorf("%d guests brought at once, want %d", accepted, maxGuestInvitations)
+	}
+}
+
 func TestAnOutsideFamilyAnswersForOneAnother(t *testing.T) {
 	h := newInviteHarness(t)
 	add := map[string]any{"group": h.event, "family": true, "send": true, "people": []map[string]string{{"name": "Elaine Tse", "email": "elaine@example.net"}, {"name": "Sam Tse"}}}

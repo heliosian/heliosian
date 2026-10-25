@@ -98,6 +98,10 @@ func resolve(text string, names map[string]string) (string, error) {
 }
 
 func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
+	return writeChecked(ctx, s, queue, actor, env, b, nil)
+}
+
+func writeChecked(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch, check func(*Model) error) ([]string, error) {
 	whole := s.Model().whole(env)
 	span := trace.From(ctx)
 	waiting := span.Start("lock")
@@ -106,6 +110,11 @@ func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor
 	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
 		waiting.End()
 		defer func() { committing = span.Start("commit") }()
+		if check != nil {
+			if err := check(s.In(tx)); err != nil {
+				return err
+			}
+		}
 		ids, err := stageEdits(s, tx, env, b.Batch, "batch", whole)
 		written = ids
 		return err
