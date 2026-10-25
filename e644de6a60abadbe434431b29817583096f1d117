@@ -1,0 +1,20 @@
+# Fetch only the directory columns the shared client uses
+
+byre task tskdzIugfvPmxJ, "Lean directory queries", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskdzIugfvPmxJ in byre (GET /api/events?task_id=tskdzIugfvPmxJ).
+
+## Summary
+
+Audited main at 134a42a for user-visible performance waste across request serving, query execution, memberships, workers, blobs and shared client loaders. The fix changes five query lines in web/common/directory.js to request only the columns consumed for photos, emails, memberships, roles and directory groups, preserving predicates, ordering, includes and parallel requests.
+
+Measured production with six interleaved rounds after warmup as both owner and non-admin parent, checking matching IDs and consumed cell values. For the parent, photo median server time fell 90.0→47.4 ms, round trip 184.7→107.6 ms, JSON 240,386→118,509 bytes. Five affected responses together fell 480,529→306,444 bytes (36%). These are request measurements, not whole-page claims. Batching all six requests was tried and rejected: parent completion rose 218.9→305.6 ms despite reducing summed server work. No caches, queues or engine redesign were justified.
+
+Passed targeted projection/permission/batch tests, vet and sample Loop page capture. After review, merged main with git merge --no-ff --no-commit main automatically without conflicts or manual changes. Reverified full internal/db and internal/app package tests, go vet for both packages and git diff --check, each test command under timeout 30. Merge left uncommitted for byre to conclude. No deployment performed; investigation tools and captures remain ignored under local/.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+The shared directory now requests only the email, photo, membership, and group columns that its index uses. This reduces response data and column permission checks while retaining row IDs, photo ordering, and the included role groups.
+
+No significant findings.
