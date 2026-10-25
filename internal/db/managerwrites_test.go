@@ -96,9 +96,11 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	}
 	cochair, err := write(parent,
 		Edit{Insert: "GROUP", As: "m", Row: map[string]any{"kind": "group", "name": "Decor Managers", "status": "open", "added_by": parent}},
-		Edit{Set: decor[0], Cells: map[string]any{"managed_by": "@m"}},
 		Edit{Set: "@m", Cells: map[string]any{"managed_by": "@m"}},
+		Edit{Insert: "MEMBER", As: "creator", Row: map[string]any{"group": "@m", "person": parent, "member": "yes"}},
+		Edit{Set: decor[0], Cells: map[string]any{"managed_by": "@m"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@m", "person": student, "member": "yes"}},
+		Edit{Delete: "@creator"},
 	)
 	if err != nil {
 		t.Fatalf("a chair can't make someone co-chair of a role under their event: %v", err)
@@ -106,7 +108,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	if _, err := write(student, Edit{Set: decor[0], Cells: map[string]any{"timing": "Before doors"}}); err != nil {
 		t.Errorf("a role's new co-chair can't change it: %v", err)
 	}
-	if _, err := write(parent, Edit{Delete: cochair[3]}); err != nil {
+	if _, err := write(parent, Edit{Delete: cochair[4]}); err != nil {
 		t.Errorf("a chair can't stop someone co-chairing a role under their event: %v", err)
 	}
 

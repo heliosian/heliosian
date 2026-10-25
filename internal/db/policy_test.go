@@ -388,10 +388,12 @@ func TestAnAppsAdminsAppointManagers(t *testing.T) {
 		t.Errorf("a When admin can't add a host: %v", err)
 	}
 	if err := write(staff,
-		Edit{Insert: "GROUP", As: "hosts", Row: map[string]any{"kind": "group", "name": "Fall Picnic Hosts", "status": "open"}},
-		Edit{Set: "grp00000000040", Cells: map[string]any{"managed_by": "@hosts"}},
+		Edit{Insert: "GROUP", As: "hosts", Row: map[string]any{"kind": "group", "name": "Fall Picnic Hosts", "status": "open", "added_by": staff}},
 		Edit{Set: "@hosts", Cells: map[string]any{"managed_by": "@hosts"}},
+		Edit{Insert: "MEMBER", As: "creator", Row: map[string]any{"group": "@hosts", "person": staff, "member": "yes"}},
+		Edit{Set: "grp00000000040", Cells: map[string]any{"managed_by": "@hosts"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": "@hosts", "person": student, "member": "yes"}},
+		Edit{Delete: "@creator"},
 	); err != nil {
 		t.Errorf("a When admin can't give an event a new managers group: %v", err)
 	}

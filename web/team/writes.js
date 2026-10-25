@@ -171,9 +171,13 @@ function chairEdits(node, person) {
   }
   return [
     {insert: 'GROUP', as: 'managers', row: {kind: 'group', name: `${node.title} Managers`, status: 'open', added_by: me().id}},
-    {set: node.id, cells: {managed_by: '@managers'}},
     {set: '@managers', cells: {managed_by: '@managers'}},
-    {insert: 'MEMBER', row: {group: '@managers', person, member: 'yes'}},
+    {insert: 'MEMBER', as: 'creator', row: {group: '@managers', person: me().id, member: 'yes'}},
+    {set: node.id, cells: {managed_by: '@managers'}},
+    ...(person === me().id ? [] : [
+      {insert: 'MEMBER', row: {group: '@managers', person, member: 'yes'}},
+      {delete: '@creator'},
+    ]),
   ];
 }
 

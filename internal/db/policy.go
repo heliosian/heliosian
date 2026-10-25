@@ -1809,6 +1809,35 @@ type Change struct {
 	Before []Change
 }
 
+func (m *Model) authorizeServingGroups(viewer string, c Change) error {
+	for _, column := range servingColumns {
+		id := c.New[column]
+		if id == "" || c.Old != nil && c.Old[column] == id {
+			continue
+		}
+		if column == "managed_by" {
+			if m.runsGroup(id, viewer) {
+				continue
+			}
+			if id == c.New["id"] && c.Old != nil && c.Old["kind"] == "group" && c.Old["managed_by"] == "" && c.Old["added_by"] == viewer &&
+				c.Old["parent"] == "" && c.Old["url"] == "" && c.Old["visible_to"] == "" &&
+				!slices.Contains([]string{"students", "parents", "staff", "adults", "everyone"}, c.Old["slug"]) &&
+				!slices.ContainsFunc(m.Table("GROUP").Referencing("managed_by", id), func(g store.Row) bool { return g["id"] != id }) {
+				continue
+			}
+			return access.Forbidden("you must manage a managers group before assigning it")
+		}
+		if column == "hidden_for" || column == "unsubscribed" {
+			return access.Forbidden("only the server assigns GROUP.%s", column)
+		}
+		child, ok := m.Table("GROUP").Get(id)
+		if !ok || child["kind"] != "group" || child["parent"] != c.New["id"] {
+			return access.Forbidden("GROUP.%s must name a plain group under this group", column)
+		}
+	}
+	return nil
+}
+
 func (m *Model) Authorize(env Env, c Change) error {
 	t, ok := Lookup(c.Table)
 	if !ok || t.Generated && (c.Old == nil || c.New != nil) {
@@ -1816,6 +1845,11 @@ func (m *Model) Authorize(env Env, c Change) error {
 	}
 	if env.System != "" {
 		return nil
+	}
+	if c.Table == "GROUP" && c.New != nil && !m.superAdmin(env.Viewer) {
+		if err := m.authorizeServingGroups(env.Viewer, c); err != nil {
+			return err
+		}
 	}
 	r := m.newRun(env)
 	old := &frame{table: t, row: c.Old, name: "old", run: r}
