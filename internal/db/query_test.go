@@ -1,6 +1,7 @@
 package db
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -471,6 +472,78 @@ func TestCorrelatedSelectsAreNotShared(t *testing.T) {
 		if !slices.Equal(constant, all) {
 			t.Errorf("as %q: a constant exists kept %v of %v", viewer, constant, all)
 		}
+	}
+}
+
+func TestAQueryThatVisitsTooManyRowsIsRefused(t *testing.T) {
+	m := sample(t).Model()
+	src := `(from PERSON @p (where (exists MEMBER @a (exists MEMBER @b (exists MEMBER @c (and (= @c.note @b.note) (!= @c.note @a.note) (= @c.note @p.name_sort)))))))`
+	if res := runAs(t, m, "per00000000002", src); res.Err == nil || !strings.Contains(res.Err.Error(), "visits more than") {
+		t.Errorf("a query visiting billions of rows answered %v", res.Err)
+	}
+	batch := m.RunAll(t.Context(), []*Query{unfiltered(t, src), unfiltered(t, `(from GROUP (where (= id "grp00000000040")))`)}, Env{Viewer: "per00000000002", Now: testNow})
+	if batch[0].Err == nil || batch[1].Err == nil || len(batch[1].IDs) != 0 || len(batch[1].Resources["GROUP"]) != 0 {
+		t.Errorf("after a query spent the run's visits, the next answered %v with %v", batch[1].Err, batch[1].IDs)
+	}
+	system := m.Run(t.Context(), unfiltered(t, `(from MEMBER @a (where (exists MEMBER @b (and (= @b.note @a.note) (!= @b.note @a.note)))))`), Env{System: "test", Now: testNow})
+	if system.Err != nil {
+		t.Errorf("a server job's query was refused: %v", system.Err)
+	}
+}
+
+func TestALongInIsOneLookupPerRow(t *testing.T) {
+	m := sample(t).Model()
+	words := []string{}
+	for i := range 20000 {
+		words = append(words, fmt.Sprintf(`"word-%d"`, i))
+	}
+	src := `(from PERSON @p (where (exists MEMBER @a (in @a.note ` + strings.Join(words, " ") + `) (= @a.note @p.name_sort))))`
+	start := time.Now()
+	if res := runAs(t, m, "per00000000002", src); res.Err != nil || len(res.IDs) != 0 {
+		t.Errorf("a long in answered %v with %v", res.Err, res.IDs)
+	}
+	if took := time.Since(start); took > 15*time.Second {
+		t.Errorf("a 20000-literal in over 36000 row visits took %v", took)
+	}
+}
+
+func TestIndexLookupsThatFindNothingAreCountedToo(t *testing.T) {
+	m := sample(t).Model()
+	ids := []string{}
+	for i := range 3000 {
+		ids = append(ids, fmt.Sprintf(`"memZ%010d"`, i))
+	}
+	q, err := Parse(`(from PERSON @p (where (exists PERSON @a (exists PERSON @b (exists MEMBER @z (in id ` + strings.Join(ids, " ") + `) (= @z.note @p.name_sort) (= @z.note @a.name_sort) (= @z.note @b.name_sort))))))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := m.Run(t.Context(), q, Env{Viewer: "per00000000002", Now: testNow}); res.Err == nil || !strings.Contains(res.Err.Error(), "visits more than") {
+		t.Errorf("a million probes of missing ids answered %v", res.Err)
+	}
+}
+
+func TestALiteralInOnAnOrderKeyIsExact(t *testing.T) {
+	m := sample(t).Model()
+	lower := ids(runAs(t, m, "", `(from DOCUMENT (where (in order "a")))`).Rows(), "id")
+	upper := ids(runAs(t, m, "", `(from DOCUMENT (where (in order "A")))`).Rows(), "id")
+	equal := ids(runAs(t, m, "", `(from DOCUMENT (where (= order "A")))`).Rows(), "id")
+	if len(lower) == 0 || len(upper) != 0 || len(equal) != 0 {
+		t.Errorf("order keys a, A and = A matched %v, %v and %v", lower, upper, equal)
+	}
+}
+
+func TestManyFusedSelectsAreCountedToo(t *testing.T) {
+	m := scaleStore(t).Model()
+	conds := []string{}
+	for i := range 1500 {
+		conds = append(conds, fmt.Sprintf(`(in id (select DOCUMENT.id (contains name "absent-%d")))`, i))
+	}
+	q, err := Parse(`(from DOCUMENT (columns name) (where (or ` + strings.Join(conds, " ") + `)))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := m.Run(t.Context(), q, Env{Viewer: scaleViewer, Now: testNow}); res.Err == nil || !strings.Contains(res.Err.Error(), "visits more than") {
+		t.Errorf("1500 selects over 10000 documents answered %v", res.Err)
 	}
 }
 

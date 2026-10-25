@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"maps"
 	"math/big"
@@ -80,6 +81,19 @@ type run struct {
 	queries map[string]Result
 	policy  *trace.Span
 	span    *trace.Span
+	visited int
+	limited bool
+}
+
+const queryVisits = 10_000_000
+
+type overspent struct{}
+
+func (r *run) spend(n int) {
+	r.visited += n
+	if r.limited && r.visited > queryVisits {
+		panic(overspent{})
+	}
 }
 
 type cellKey struct {
@@ -313,7 +327,12 @@ func (cx *compiler) scan(s *sexp, at int, outer *scope, also func(*scope) error)
 func (cx *compiler) keyed(out *scan, s *sexp, mark int, inner *scope) {
 	out.outer = cx.outside(mark, inner)
 	out.constant = len(out.outer) == 0
-	out.key = guardKey(out.guarded) + s.flat()
+	out.key = guardKey(out.guarded) + memoDigest(s.flat())
+}
+
+func memoDigest(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return string(sum[:])
 }
 
 func guardKey(guarded bool) string {
@@ -461,6 +480,12 @@ func (s *scan) candidates(f *frame) []store.Row {
 }
 
 func (s *scan) lookup(f *frame, col, v string) []store.Row {
+	rows := s.indexed(f, col, v)
+	f.run.spend(1 + len(rows))
+	return rows
+}
+
+func (s *scan) indexed(f *frame, col, v string) []store.Row {
 	m := f.run.m
 	c, _ := s.table.Column(col)
 	v = indexKey(c, v)
@@ -481,7 +506,9 @@ func (s *scan) lookup(f *frame, col, v string) []store.Row {
 }
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
+	f.run.spend(1)
 	for _, row := range s.candidates(f) {
+		f.run.spend(1)
 		inner := &frame{table: s.table, row: row, name: s.name, outer: f, run: f.run}
 		if !s.matches(inner, true) {
 			continue
@@ -634,7 +661,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			if err != nil || cx.policy || c.cheap {
 				return c, err
 			}
-			key, outer, work := guardKey(true)+expanded.flat(), cx.outside(mark, nil), c.eval
+			key, outer, work := guardKey(true)+memoDigest(expanded.flat()), cx.outside(mark, nil), c.eval
 			c.eval = func(f *frame) bool {
 				k := f.memoKey(key, outer)
 				if held, ok := f.run.memo[k]; ok {
@@ -847,8 +874,7 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 		}
 		return out, nil
 	}
-	options := []value{}
-	keys := newValueSet(false)
+	keys := newValueSet(x.t.kind == Order)
 	for _, item := range s.list[2:] {
 		if item.isList {
 			return cond{}, item.errorf("in takes literals or one select")
@@ -857,18 +883,9 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 		if err != nil {
 			return cond{}, err
 		}
-		options = append(options, o.eval(nil))
 		keys.add(o.eval(nil))
 	}
-	out := cond{eval: func(f *frame) bool {
-		v := x.eval(f)
-		for _, o := range options {
-			if equalValues(v, o) {
-				return true
-			}
-		}
-		return false
-	}, cheap: x.cheap}
+	out := cond{eval: func(f *frame) bool { return keys.has(x.eval(f)) }, cheap: x.cheap}
 	if x.direct != "" && indexed(x.t) {
 		out.probeCol, out.probeSet = x.direct, func(*frame) *valueSet { return keys }
 	}
@@ -1031,6 +1048,7 @@ func (r *run) fuse(f *frame, spec *selectSpec) bool {
 	for _, row := range rows {
 		checked, readable := false, false
 		for i, s := range pending {
+			r.spend(1)
 			inner := &frame{table: t, row: row, name: s.inner.name, outer: f, run: r}
 			if !s.inner.matches(inner, true) {
 				continue
@@ -1390,6 +1408,7 @@ func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
 
 func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 	r := m.newRun(env)
+	r.limited = r.system == ""
 	for _, q := range qs {
 		for _, s := range q.selects {
 			r.fusable[s.inner.table.Name] = append(r.fusable[s.inner.table.Name], s)
@@ -1402,11 +1421,23 @@ func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 			out = append(out, held)
 			continue
 		}
-		result := m.runIn(ctx, r, q)
+		result := m.runGuarded(ctx, r, q)
 		r.queries[key] = result
 		out = append(out, result)
 	}
 	return out
+}
+
+func (m *Model) runGuarded(ctx context.Context, r *run, q *Query) (result Result) {
+	defer func() {
+		if p := recover(); p != nil {
+			if _, spent := p.(overspent); !spent {
+				panic(p)
+			}
+			result = Result{Table: q.scan.table.Name, IDs: []string{}, Resources: map[string]map[string]store.Row{}, Err: fmt.Errorf("the query visits more than %d rows; narrow it with a where that names the rows it needs", queryVisits)}
+		}
+	}()
+	return m.runIn(ctx, r, q)
 }
 
 func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
