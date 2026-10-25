@@ -1,0 +1,22 @@
+# Remove unused image search gate and limiter selectors
+
+byre task tskHeofms2uJx7, "Simplify image search", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskHeofms2uJx7 in byre (GET /api/events?task_id=tskHeofms2uJx7).
+
+## Summary
+
+Audited main at 7b9b60a for structural simplicity and selected a focused cleanup of image-search wiring. Removed the unused configurable gate from Search.Register and deleted Members, its identity implementation; updated all five app registrations and removed the obsolete custom-gate test. Shared authentication remains the source of community access.
+
+Replaced rate-limiter selector callbacks with direct *ratelimit.Limiter arguments, deleting two forwarding functions and the unnecessary Search receiver on limited. Existing process-wide, per-person search/import limits and user-visible behavior are preserved. Updated API and development docs.
+
+Left app-specific share-card composition separate because content, timing/picture inheritance, and upcoming listings differ; a broad abstraction was not justified. No data migration or additional configuration was introduced.
+
+Latest review finished before readiness. Ran the requested git merge --no-ff --no-commit main; branch was already up to date, with no conflicts or substantive resolution changes. Final verification passed: timeout 30 go test ./internal/imagesearch, timeout 30 go test ./internal/app, go vet ./..., and git diff --check. Worktree is clean; byre handles the authorized merge and push.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Simplifies image-search route registration by removing the pass-through Members gate and its unused gate parameter from all five apps. Rate-limit middleware now receives the shared limiter directly, and the documentation and tests reflect the simpler API. The outer sign-in gate and per-person limits remain in place. Reviewed the diff, callers, authentication wiring, and existing tests by reading code; no builds or tests were run, as requested.
+
+No significant findings.
