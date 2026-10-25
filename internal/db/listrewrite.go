@@ -23,7 +23,7 @@ var droppedHeaders = map[string]bool{
 
 func held(lines []mail.HeaderLine) string {
 	for _, l := range lines {
-		switch l.Name {
+		switch l.Name() {
 		case strings.ToLower(loopHeader):
 			return "already sent through Helios Loop"
 		case "auto-submitted":
@@ -49,7 +49,7 @@ func messageKey(id string) string {
 func referenced(lines []mail.HeaderLine) []string {
 	out := []string{}
 	for _, l := range lines {
-		if l.Name != "in-reply-to" && l.Name != "references" {
+		if l.Name() != "in-reply-to" && l.Name() != "references" {
 			continue
 		}
 		for _, m := range bracketed.FindAllStringSubmatch(l.Value(), -1) {
@@ -113,7 +113,7 @@ func rewrite(lines []mail.HeaderLine, g store.Row) ([]byte, error) {
 	var from, replyTo, subject string
 	hasSubject := false
 	for _, l := range lines {
-		switch l.Name {
+		switch l.Name() {
 		case "from":
 			from = l.Value()
 		case "reply-to":
@@ -134,13 +134,13 @@ func rewrite(lines []mail.HeaderLine, g store.Row) ([]byte, error) {
 	var b bytes.Buffer
 	for _, l := range lines {
 		switch {
-		case l.Name == "from":
+		case l.Name() == "from":
 			b.WriteString("From: " + (&netmail.Address{Name: senderName(from) + " via " + title, Address: address}).String() + "\r\n")
-		case l.Name == "subject":
+		case l.Name() == "subject":
 			b.WriteString(newSubject + "\r\n")
-		case droppedHeaders[l.Name]:
+		case droppedHeaders[l.Name()]:
 		default:
-			b.WriteString(l.Raw + "\r\n")
+			b.WriteString(string(l) + "\r\n")
 		}
 	}
 	if !hasSubject {

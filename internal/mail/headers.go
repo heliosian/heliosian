@@ -7,13 +7,16 @@ import (
 	"strings"
 )
 
-type HeaderLine struct {
-	Name string
-	Raw  string
+type HeaderLine string
+
+func (h HeaderLine) Name() string {
+	line, _, _ := strings.Cut(string(h), "\r\n")
+	name, _, _ := strings.Cut(line, ":")
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 func (h HeaderLine) Value() string {
-	_, rest, _ := strings.Cut(h.Raw, ":")
+	_, rest, _ := strings.Cut(string(h), ":")
 	rest = strings.ReplaceAll(rest, "\r\n\t", " ")
 	rest = strings.ReplaceAll(rest, "\r\n ", " ")
 	return strings.TrimSpace(rest)
@@ -34,18 +37,17 @@ func SplitMessage(raw []byte) ([]HeaderLine, []byte) {
 			break
 		}
 		if (line[0] == ' ' || line[0] == '\t') && len(lines) > 0 {
-			lines[len(lines)-1].Raw += "\r\n" + string(line)
+			lines[len(lines)-1] += HeaderLine("\r\n" + string(line))
 			continue
 		}
-		name, _, _ := strings.Cut(string(line), ":")
-		lines = append(lines, HeaderLine{Name: strings.ToLower(strings.TrimSpace(name)), Raw: string(line)})
+		lines = append(lines, HeaderLine(line))
 	}
 	return lines, rest
 }
 
 func Header(lines []HeaderLine, name string) string {
 	for _, l := range lines {
-		if l.Name == name {
+		if l.Name() == name {
 			return l.Value()
 		}
 	}
@@ -154,7 +156,7 @@ func passes(results, from string) (passed, arc bool) {
 func sealedResults(lines []HeaderLine) string {
 	newest, sealer := 0, ""
 	for _, l := range lines {
-		if l.Name != "arc-seal" {
+		if l.Name() != "arc-seal" {
 			continue
 		}
 		tags := arcTags(l.Value())
@@ -166,7 +168,7 @@ func sealedResults(lines []HeaderLine) string {
 		return ""
 	}
 	for _, l := range lines {
-		if l.Name != "arc-authentication-results" {
+		if l.Name() != "arc-authentication-results" {
 			continue
 		}
 		instance, rest, _ := strings.Cut(uncommented(l.Value()), ";")
