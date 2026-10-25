@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"log/slog"
+	"slices"
 	"sync"
 
 	"heliosian/internal/access"
@@ -44,7 +45,6 @@ func (st *Stock) Remember(hits []StockHit) []string {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	ids := make([]string, len(hits))
-	fresh := []StockHit{}
 	writes := []*stockWrite{}
 	m := st.s.Model()
 	for i, h := range hits {
@@ -60,16 +60,15 @@ func (st *Stock) Remember(hits []StockHit) []string {
 			}), hit: h, done: make(chan struct{})}
 			st.remembering[key] = w
 			st.reserved[w.id] = w
-			fresh = append(fresh, h)
 			writes = append(writes, w)
 		}
 		ids[i] = w.id
 	}
-	if len(fresh) > 0 {
+	if len(writes) > 0 {
 		st.s.Hold()
 		go func() {
 			defer st.s.Release()
-			err := st.remember(context.Background(), fresh, writes)
+			err := st.remember(context.Background(), writes)
 			if err != nil {
 				slog.Error("remember stock hits", "error", err)
 				st.finish(writes, err)
@@ -108,19 +107,19 @@ func (st *Stock) wait(ctx context.Context, id string) error {
 	}
 }
 
-func (st *Stock) remember(ctx context.Context, hits []StockHit, writes []*stockWrite) error {
-	for start := 0; start < len(hits); start += stockBatch {
-		chunk := hits[start:min(len(hits), start+stockBatch)]
+func (st *Stock) remember(ctx context.Context, writes []*stockWrite) error {
+	for chunk := range slices.Chunk(writes, stockBatch) {
 		_, err := st.s.Transact(ctx, access.System(stockActor), func(tx *store.Tx[Model]) error {
 			edits := []Edit{}
-			for n, h := range chunk {
+			for _, w := range chunk {
+				h := w.hit
 				row := map[string]any{"source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL}
 				for col, v := range map[string]string{"download": h.Download, "context": h.Context} {
 					if v != "" {
 						row[col] = v
 					}
 				}
-				edits = append(edits, Edit{Insert: "STOCK", Row: row, id: writes[start+n].id})
+				edits = append(edits, Edit{Insert: "STOCK", Row: row, id: w.id})
 			}
 			_, err := stageEdits(st.s, tx, Env{System: stockActor}, edits, stockActor, true)
 			return err
@@ -128,7 +127,7 @@ func (st *Stock) remember(ctx context.Context, hits []StockHit, writes []*stockW
 		if err != nil {
 			return err
 		}
-		st.finish(writes[start:start+len(chunk)], nil)
+		st.finish(chunk, nil)
 	}
 	return nil
 }

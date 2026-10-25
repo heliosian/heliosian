@@ -15,7 +15,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -45,34 +44,9 @@ type Invitations struct {
 
 func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, config InvitationConfig) *Invitations {
 	iv := &Invitations{s: s, pics: pics, config: config, in: s.Model().services.inbox(inviteInbox), kick: newWake()}
-	asked := func(path string, ask func() any, run func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error)) {
-		api.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
-			m := s.Model()
-			env, actor, ok := caller(w, r, m, tokens)
-			if !ok {
-				return
-			}
-			body := ask()
-			if !serve.Decode(w, r, body) {
-				return
-			}
-			out, err := run(r.Context(), m, env, actor, body)
-			if err != nil {
-				serve.Error(w, r, err)
-				return
-			}
-			serve.Write(w, r, http.StatusOK, out)
-		})
-	}
-	asked("/api/do/invite", func() any { return &inviteAsk{} }, func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error) {
-		return iv.invite(ctx, m, env, actor, *body.(*inviteAsk))
-	})
-	asked("/api/do/guest-mail", func() any { return &guestMailAsk{} }, func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error) {
-		return iv.guestMail(ctx, m, env, actor, *body.(*guestMailAsk))
-	})
-	asked("/api/do/add-guests", func() any { return &addGuestsAsk{} }, func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error) {
-		return iv.addGuests(ctx, m, env, actor, *body.(*addGuestsAsk))
-	})
+	api.HandleFunc("POST /api/do/invite", modelAction(s, tokens, iv.invite))
+	api.HandleFunc("POST /api/do/guest-mail", modelAction(s, tokens, iv.guestMail))
+	api.HandleFunc("POST /api/do/add-guests", modelAction(s, tokens, iv.addGuests))
 	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
 	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
 	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)

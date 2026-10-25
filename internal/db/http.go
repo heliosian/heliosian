@@ -118,6 +118,26 @@ const (
 	SpoofHeader = "Helios-Spoof"
 )
 
+func modelAction[In, Out any](s *Store, tokens auth.Tokens, run func(context.Context, *Model, Env, access.Actor, In) (Out, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m := s.Model()
+		env, actor, ok := caller(w, r, m, tokens)
+		if !ok {
+			return
+		}
+		var in In
+		if !serve.Decode(w, r, &in) {
+			return
+		}
+		out, err := run(r.Context(), m, env, actor, in)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		serve.Write(w, r, http.StatusOK, out)
+	}
+}
+
 func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens) (Env, access.Actor, bool) {
 	mode, at := r.Header.Get(ModeHeader), tokens.Now()
 	token, bearer := auth.Bearer(r)
