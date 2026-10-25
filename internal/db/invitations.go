@@ -76,6 +76,26 @@ func (iv *Invitations) writeInvitations(ctx context.Context, actor access.Actor,
 	})
 }
 
+func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edits []Edit, group, from string, sending int) ([]string, error) {
+	if len(edits) == 0 {
+		return nil, nil
+	}
+	env := Env{System: invitationsJob, Now: time.Now()}
+	return writeChecked(ctx, iv.s, actor, env, Batch{Batch: edits}, func(m *Model) error {
+		if sending > 0 {
+			return m.mayInvite(group, from, sending)
+		}
+		return nil
+	})
+}
+
+func guestMembership(g store.Row, viewer string, edit Edit) Edit {
+	if g["kind"] == "party" {
+		edit.viewer = viewer
+	}
+	return edit
+}
+
 func (m *Model) passes(ctx context.Context, env Env, table, id, cond string) bool {
 	q, err := Parse(fmt.Sprintf("(from %s @row (where (= id %q) %s))", table, id, cond))
 	if err != nil {
@@ -471,7 +491,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 		if !strings.HasPrefix(p, "@") {
 			if row, ok := m.Table("MEMBER").Find(g["id"], p); ok {
 				if memberAs(row) == "excluded" && runs {
-					edits = append(edits, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}})
+					edits = append(edits, guestMembership(g, env.Viewer, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}}))
 					added = append(added, p)
 				}
 				continue
@@ -481,10 +501,17 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 			}
 		}
 		row := map[string]any{"group": g["id"], "person": p, "member": "yes", "added_by": env.Viewer, "added": at}
-		if ask.GuestOf != "" && ask.GuestOf != p {
-			row["guest_of"] = ask.GuestOf
+		broughtBy := ask.GuestOf
+		if broughtBy == "" && !runs && g["kind"] == "party" {
+			person, _ := m.Table("PERSON").Get(p)
+			if strings.HasPrefix(p, "@") || person["source"] == "guest" {
+				broughtBy = env.Viewer
+			}
 		}
-		edits = append(edits, Edit{Insert: "MEMBER", Row: row})
+		if broughtBy != "" && broughtBy != p {
+			row["guest_of"] = broughtBy
+		}
+		edits = append(edits, guestMembership(g, env.Viewer, Edit{Insert: "MEMBER", Row: row}))
 		added = append(added, p)
 	}
 	if ask.Answer == "yes" {
@@ -504,11 +531,11 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	if len(sending) > 0 {
 		edits = append(edits, invitationEdits(g["id"], env.Viewer, "invitation", sending, env.Now)...)
 	}
-	if !runs && len(sending) > 0 {
-		_, err = iv.writeInvitations(ctx, actor, edits, g["id"], env.Viewer, len(sending))
-	} else {
-		_, err = iv.write(ctx, actor, edits)
+	counted := len(sending)
+	if runs {
+		counted = 0
 	}
+	_, err = iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, counted)
 	if err != nil {
 		return sentAnswer{}, err
 	}

@@ -212,14 +212,14 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	edits = append(edits, Edit{Insert: "MEMBER", Row: map[string]any{"group": c.group["id"], "person": guest, "member": "yes", "guest_of": c.person, "added_by": c.person, "added": stamp(at)}})
+	edits = append(edits, guestMembership(c.group, c.person, Edit{Insert: "MEMBER", Row: map[string]any{"group": c.group["id"], "person": guest, "member": "yes", "guest_of": c.person, "added_by": c.person, "added": stamp(at)}}))
 	actor := access.Actor{Email: m.addressOf(c.person)}
+	sending := 0
 	if address != "" {
 		edits = append(edits, invitationEdits(c.group["id"], c.person, "invitation", []string{guest}, at)...)
-		_, err = iv.writeInvitations(r.Context(), actor, edits, c.group["id"], c.person, 1)
-	} else {
-		_, err = iv.write(r.Context(), actor, edits)
+		sending = 1
 	}
+	_, err = iv.writeGuests(r.Context(), actor, edits, c.group["id"], c.person, sending)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
@@ -247,8 +247,8 @@ func (iv *Invitations) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, access.Missing("no guest of yours %s", body.Key))
 		return
 	}
-	edits := append([]Edit{{Delete: row["id"]}}, m.answerEdits(c.group, body.Key, "", "", time.Now())...)
-	if _, err := iv.write(r.Context(), access.Actor{Email: m.addressOf(c.person)}, edits); err != nil {
+	edits := append([]Edit{guestMembership(c.group, c.person, Edit{Delete: row["id"]})}, m.answerEdits(c.group, body.Key, "", "", time.Now())...)
+	if _, err := iv.writeGuests(r.Context(), access.Actor{Email: m.addressOf(c.person)}, edits, c.group["id"], c.person, 0); err != nil {
 		serve.Error(w, r, err)
 		return
 	}

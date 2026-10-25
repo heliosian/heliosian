@@ -23,6 +23,7 @@ type Edit struct {
 	Cells  map[string]any `json:"cells,omitempty"`
 	Delete string         `json:"delete,omitempty"`
 	server bool
+	viewer string
 	id     string
 }
 
@@ -153,13 +154,6 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 	span := trace.From(tx.Context())
 	authorizing, staging, firing, checking := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire"), span.Tally("check")
 	var authorized time.Duration
-	authorize := func(m *Model, c Change) error {
-		start := time.Now()
-		err := m.Authorize(env, c)
-		authorized += time.Since(start)
-		authorizing.Add(time.Since(start))
-		return err
-	}
 	names := map[string]string{}
 	written := []string{}
 	for i, w := range edits {
@@ -176,7 +170,17 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 		if err != nil {
 			return nil, err
 		}
-		allowed := authorize
+		authEnv := env
+		if w.viewer != "" {
+			authEnv.System, authEnv.Viewer = "", w.viewer
+		}
+		allowed := func(m *Model, c Change) error {
+			start := time.Now()
+			err := m.Authorize(authEnv, c)
+			authorized += time.Since(start)
+			authorizing.Add(time.Since(start))
+			return err
+		}
 		if w.server {
 			allowed = unchecked
 		}

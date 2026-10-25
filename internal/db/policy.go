@@ -104,6 +104,10 @@ const PolicySource = `
 (define (eligible_for @g @p)
   (or (blank @g.eligible) (exists EFFECTIVE_MEMBER (= group @g.eligible) (= person @p))))
 
+(define (invited_guest @g)
+  (and (!= @g.status "closed") (= @viewer.source "guest")
+       (exists MEMBER (= group @g) (= person @viewer) (= member "yes"))))
+
 ; the viewer is @p or in a family with @p
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
@@ -495,12 +499,16 @@ const PolicySource = `
 (insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
-; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, once eligible oneself, anyone the viewer sees
+; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, anyone the viewer sees or an outside guest brought by their household
 (insert MEMBER
-  (and (visible @new.group) (in @new.group.join "direct" "others") (blank @new.group.price)
+  (and (or (visible @new.group) (invited_guest @new.group))
+       (in @new.group.join "direct" "others") (blank @new.group.price)
        (= @new.member "yes") (= @new.added_by @viewer)
        (or (and (self_or_household @new.person) (eligible_for @new.group @new.person))
-           (and (= @new.group.join "others") (eligible_for @new.group @viewer) (person_visible @new.person)))
+           (and (= @new.group.join "others")
+                (or (eligible_for @new.group @viewer) (invited_guest @new.group))
+                (or (person_visible @new.person)
+                    (and (= @new.person.source "guest") (self_or_household @new.guest_of)))))
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
 ; note that the viewer or someone in their family opened the invitation to a group the viewer sees, on a row that puts nobody in it

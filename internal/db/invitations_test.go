@@ -324,3 +324,251 @@ func TestHostsMailTheListByWhereEachStands(t *testing.T) {
 		}
 	}
 }
+
+func TestPartyInvitationsRequireTickets(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "eligible": ""}}})
+	rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
+		"group": tacoNight, "people": []map[string]string{{"person": avery}},
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("adding a paid party attendee without a payment answered %d: %s", rec.Code, rec.Body)
+	}
+	if _, ok := h.s.Model().Table("MEMBER").Find(tacoNight, avery); ok {
+		t.Fatal("the refused invitation left an unpaid ticket")
+	}
+}
+
+func TestOutsideInvitationsCannotChangePaidTickets(t *testing.T) {
+	h := newInviteHarness(t)
+	h.event = tacoNight
+	h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "eligible": ""}}})
+	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
+		"group": tacoNight, "send": true, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("the host cannot give a complimentary ticket: %d %s", rec.Code, rec.Body)
+	}
+	coach := h.s.Model().personAt("coach@example.net")
+	h.waitFor("the party invitation", func() bool { return h.copyOf(coach)["token"] != "" })
+	token := h.copyOf(coach)["token"]
+	for _, email := range []string{"", "friend@example.net"} {
+		before := h.s.Model().Table("PERSON").Len()
+		rec := h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Friend", "email": email})
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("an outside guest added an unpaid ticket: %d %s", rec.Code, rec.Body)
+		}
+		if h.s.Model().Table("PERSON").Len() != before {
+			t.Fatal("the refused ticket left a guest behind")
+		}
+	}
+	h.setup([]Edit{{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "guest_of": coach}}})
+	rec := h.do("", http.MethodDelete, "/open/ext/"+token+"/guest", map[string]string{"key": avery})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("an outside guest removed a paid party ticket: %d %s", rec.Code, rec.Body)
+	}
+	if _, ok := h.s.Model().Table("MEMBER").Find(tacoNight, avery); !ok {
+		t.Fatal("the refused removal deleted the ticket")
+	}
+}
+
+func TestPartyInvitationsRespectCapacityAndEligibility(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		cells map[string]any
+	}{
+		{"capacity", map[string]any{"capacity": "1"}},
+		{"eligibility", map[string]any{"eligible": "grp00000000001"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newInviteHarness(t)
+			h.setup([]Edit{
+				{Set: tacoNight, Cells: map[string]any{"join": "others", "price": "", "eligible": ""}},
+				{Set: tacoNight, Cells: test.cells},
+			})
+			if test.name == "eligibility" {
+				h.setup([]Edit{
+					{Insert: "GROUP", As: "eligible", Row: map[string]any{"kind": "group", "name": "Eligible buyer", "status": "open"}},
+					{Insert: "MEMBER", Row: map[string]any{"group": "@eligible", "person": parent, "member": "yes"}},
+					{Set: tacoNight, Cells: map[string]any{"eligible": "@eligible", "price": "40"}},
+					{Insert: "PAYMENT", Row: map[string]any{"group": tacoNight, "person": parent, "for": avery, "amount": "40", "added": stamp(time.Now())}},
+				})
+			}
+			rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
+				"group": tacoNight, "people": []map[string]string{{"person": avery}},
+			})
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("a party invitation bypassed %s: %d %s", test.name, rec.Code, rec.Body)
+			}
+		})
+	}
+}
+
+func TestGuestAddsKeepInvitationMailBehavior(t *testing.T) {
+	for _, kind := range []string{"event", "activity", "party"} {
+		t.Run(kind, func(t *testing.T) {
+			h := newInviteHarness(t)
+			h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": kind}}})
+			NewMembershipMailer(h.s, MembershipMailConfig{
+				Sender: h.sender.Mailgun, Celebrate: h.sender.Mailgun,
+				Origin: func(app string) string { return "https://" + app + ".test" },
+			})
+			rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
+				"group": h.event, "send": true, "answer": "yes",
+				"people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("adding an invited guest answered %d: %s", rec.Code, rec.Body)
+			}
+			coach := h.s.Model().personAt("coach@example.net")
+			if !h.s.Model().onList(h.group(), coach) || h.s.Model().answerOf(h.group(), coach) != "yes" {
+				t.Fatal("the guest's membership and answer were not recorded")
+			}
+			h.waitFor("the invitation's send recorded", func() bool { return h.copyOf(coach)["sent"] != "" })
+			time.Sleep(100 * time.Millisecond)
+			messages := h.sender.Messages()
+			if len(messages) != 1 {
+				t.Fatalf("guest addition sent %v, want only the invitation", subjects(messages))
+			}
+			msg := messages[0]
+			if !strings.Contains(msg.Subject, "You're invited") || !slices.Equal(msg.To, []string{"coach@example.net"}) || len(msg.Attachments) != 1 {
+				t.Fatalf("the invitation: subject %q, to %v, attachments %d", msg.Subject, msg.To, len(msg.Attachments))
+			}
+			calendar := string(msg.Attachments[0].Content)
+			if !strings.Contains(calendar, "METHOD:REQUEST") || !strings.Contains(calendar, "UID:"+h.event+whenUID) {
+				t.Fatalf("the invitation's calendar does not name the event: %s", calendar)
+			}
+		})
+	}
+}
+
+func TestPartyInvitationsAcceptPaidExistingPeople(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{
+		{Set: tacoNight, Cells: map[string]any{"join": "others", "eligible": "", "capacity": "20"}},
+		{Insert: "PAYMENT", Row: map[string]any{"group": tacoNight, "person": parent, "for": avery, "amount": "40", "added": stamp(time.Now())}},
+	})
+	rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
+		"group": tacoNight, "people": []map[string]string{{"person": avery}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("adding an eligible paid attendee answered %d: %s", rec.Code, rec.Body)
+	}
+	if _, ok := h.s.Model().Table("MEMBER").Find(tacoNight, avery); !ok {
+		t.Fatal("the paid attendee has no ticket")
+	}
+}
+
+func TestFreePartyInvitationsAcceptNewOutsideGuests(t *testing.T) {
+	for _, email := range []string{"", "coach@example.net"} {
+		t.Run(email, func(t *testing.T) {
+			h := newInviteHarness(t)
+			h.event = tacoNight
+			h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "price": "", "eligible": "", "capacity": "20"}}})
+			rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
+				"group": tacoNight, "people": []map[string]string{{"name": "Coach Pat", "email": email}},
+			})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("adding a new free-party guest answered %d: %s", rec.Code, rec.Body)
+			}
+			found := false
+			for _, row := range h.s.Model().Table("MEMBER").Referencing("group", tacoNight) {
+				if h.s.Model().nameOf(row["person"]) == "Coach Pat" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("the new guest has no free-party membership")
+			}
+		})
+	}
+}
+
+func TestOutsideFreePartyGuestsCanBringAndRemoveGuests(t *testing.T) {
+	h := newInviteHarness(t)
+	h.event = tacoNight
+	h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "price": "", "eligible": "", "capacity": "20"}}})
+	rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
+		"group": tacoNight, "send": true, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the host's invitation answered %d: %s", rec.Code, rec.Body)
+	}
+	coach := h.s.Model().personAt("coach@example.net")
+	token := h.copyOf(coach)["token"]
+	for _, email := range []string{"", "friend@example.net"} {
+		rec := h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Friend", "email": email})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("bringing a free-party guest answered %d: %s", rec.Code, rec.Body)
+		}
+		guests := h.s.Model().broughtGuests(h.group(), coach)
+		if len(guests) != 1 {
+			t.Fatalf("the outside guest brought %v, want one guest", guests)
+		}
+		rec = h.do("", http.MethodDelete, "/open/ext/"+token+"/guest", map[string]string{"key": guests[0]})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("removing their free-party guest answered %d: %s", rec.Code, rec.Body)
+		}
+		if _, ok := h.s.Model().Table("MEMBER").Find(tacoNight, guests[0]); ok {
+			t.Fatal("the removed guest is still on the list")
+		}
+	}
+}
+
+func TestFreePartyGuestWritesRequireAHouseholdSponsor(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "price": "", "eligible": "", "capacity": "20"}}})
+	ids := h.setup([]Edit{
+		{Insert: "PERSON", As: "guest", Row: map[string]any{"source": "guest", "name_long_override": "Pat Coach"}},
+		{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@guest", "address": "coach@example.net", "primary": true, "source": "guest"}},
+	})
+	row := map[string]any{"group": tacoNight, "person": ids[0], "member": "yes", "added_by": parent}
+	write := func(as string) *httptest.ResponseRecorder {
+		body, err := json.Marshal(Batch{Batch: []Edit{{Insert: "MEMBER", Row: row}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return send(t, h.s, http.MethodPost, "application/json", as, string(body))
+	}
+	if rec := write("coach@example.net"); rec.Code != http.StatusForbidden {
+		t.Fatalf("a guest wrote through /api/q: %d %s", rec.Code, rec.Body)
+	}
+	if rec := write(rowan); rec.Code != http.StatusForbidden {
+		t.Fatalf("an unseen guest with no sponsor was added: %d %s", rec.Code, rec.Body)
+	}
+	row["guest_of"] = staff
+	if rec := write(rowan); rec.Code != http.StatusForbidden {
+		t.Fatalf("someone else's unseen guest was added: %d %s", rec.Code, rec.Body)
+	}
+	row["guest_of"] = avery
+	if rec := write(rowan); rec.Code != http.StatusOK {
+		t.Fatalf("a household's new guest was refused: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestPartyOutsideInvitationsStayLimitedAndClose(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "party", "price": ""}}})
+	rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
+		"group": h.event, "send": true, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the host's party invitation answered %d: %s", rec.Code, rec.Body)
+	}
+	coach := h.s.Model().personAt("coach@example.net")
+	token := h.copyOf(coach)["token"]
+	for i := 0; i < maxGuestInvitations; i++ {
+		rec := h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Friend", "email": fmt.Sprintf("friend%d@example.net", i)})
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("party invitation %d answered %d: %s", i, rec.Code, rec.Body)
+		}
+	}
+	rec = h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "One too many", "email": "extra@example.net"})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("a party invitation past the limit answered %d: %s", rec.Code, rec.Body)
+	}
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"status": "closed"}}})
+	rec = h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "No email"})
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("a closed party accepted an outside guest: %d %s", rec.Code, rec.Body)
+	}
+}
