@@ -1,0 +1,19 @@
+# Skip family name recomputation for unrelated edits
+
+byre task tskE2vkn3dxbI0, "Family name guards", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Family names are recomputed on every PERSON and MEMBER change".
+Full transcripts: the events of task tskE2vkn3dxbI0 in byre (GET /api/events?task_id=tskE2vkn3dxbI0).
+
+## Summary
+
+Prevented unnecessary family name recomputation on PERSON and MEMBER updates. PERSON triggers now check stored name inputs (vc_name_long and name_long_override) and visibility inputs (hidden, deactivated, consent, source); MEMBER triggers check group, person, and member. Inserts and deletes still recompute. Grade guards were unnecessary because surname ordering uses explicit student memberships, whose changes are covered by the MEMBER guard.
+
+Added regression coverage for skipping unrelated updates and preserving relevant updates, inserts, and deletes. Existing family rename behavior and committed-trigger propagation remain covered. Removed the completed TODO item. Full internal/db tests and repository-wide go vet passed. No benchmark, migration, or deployment was included.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds column guards to the person and membership family-name triggers so unrelated edits skip recomputation. Adds tests covering skipped edits, relevant columns, inserts and deletes, and removes the completed TODO item.
+
+No significant findings.
