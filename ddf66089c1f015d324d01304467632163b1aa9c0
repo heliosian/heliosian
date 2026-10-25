@@ -1,0 +1,22 @@
+# Stop unordered query scans once their limit is reached
+
+byre task tskey1AFiXdpnt, "Stop limited scans", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskey1AFiXdpnt in byre (GET /api/events?task_id=tskey1AFiXdpnt).
+
+## Summary
+
+Audited main at 5436ca5 for user-visible performance waste and fixed unordered limited queries scanning every matching readable row before truncation. The existing scan visitor now stops once the query limit is reached, after filters and permission checks. Ordered queries retain full scanning and sorting. One production line changed, with regression coverage for result IDs, returned cells, includes, permissions across five viewers, and evaluation counts; a repeatable scale benchmark was added.
+
+Production baseline for requesting 20 documents scanned 45,317 readable matches as an ordinary parent and took median 347.620 ms over five warmed rounds. Local benchmark on 10,013 synthetic documents with limit 1 improved from median 26.804 ms to 0.475 ms (about 56x), with allocated bytes falling from roughly 21.95 MB to 0.45 MB. No deployment or post-fix production measurement was performed.
+
+Measured and rejected combining the shared directory's six concurrent requests: parent production median wall time rose from 102.764 ms to 155.523 ms batched despite a small server-work reduction. Left ordered top-N optimization and invitation-query inversion alone because further code lacked a demonstrated gain at current sizes.
+
+Merged main into this branch using git merge --no-ff --no-commit main; it merged automatically without conflicts or substantive resolution edits. Database, tools and Ask tests under timeout 30, go vet ./..., and diff checks pass on the merged tree. The merge was left uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Unordered queries with a limit now stop scanning once enough readable, matching rows have been collected. Ordered queries still scan all matches before sorting. The change adds regression coverage across viewers, filters, includes and ordering, plus a benchmark for a limited document query.
+
+No significant findings.
