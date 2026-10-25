@@ -1,0 +1,120 @@
+# Prevent unauthorized group grants (#200)
+
+byre task tskKlfHC0cydEl, "Group grant fixes", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskKlfHC0cydEl in byre (GET /api/events?task_id=tskKlfHC0cydEl).
+
+## Summary
+
+Read the complete Group grant security audit transcript, then continued its fixes on Ian's instruction by merging that audit's committed branch. Fixes #200: ordinary members could borrow privileged RSVP groups to become super admins, and app admins could borrow managers groups or self-assign event management to grant unauthorized control. Shared authorization now confines RSVP/waitlist/co-chair/leads/audience helpers to plain child groups, reserves hidden/unsubscribe assignment for trusted writers, and requires existing management authority over assigned managers groups. Membership alone is insufficient. Self-management initialization is narrowly limited to creator-owned plain non-role groups with blank managers, parent, URL and visibility that manage no other group. Team chair creation initializes and joins new managers groups before attachment, removing the creator when appointing someone else. Documentation distinguishes mandatory constraints from additive policy grants. Regressions reproduce and reject super-admin escalation, unrelated helper/manager borrowing, the Garden Club membership takeover and picnic self-management. Existing helper references are not rewritten; custom callers using the old creation-batch order must update it. No production data writes or manual deployment. Main merged automatically without conflict resolution.
+
+## Handoffs
+
+### Session ses4Hp9fpTKXwY, 2026-10-25T18:30:07Z
+
+You are continuing byre task `tskKlfHC0cydEl`, titled **Group grant transcript**, in project **heliosian**.
+
+The goal is to read the **entire transcript** of byre task `tskKZePVsvbQZB`, titled **Group grant security** (a Security audit stage), using `read_task`. Start at the beginning and page through using `after_seq` until every page has been read. Then **wait for Ian’s instructions**. Do not investigate or fix the security findings unless Ian instructs you.
+
+The instruction came from Ian’s lead agent:
+> Read the full transcript of byre task tskKZePVsvbQZB ("Group grant security", a Security audit stage in heliosian) with read_task, page by page from the start until you've read all of it. Then wait for Ian's instructions.
+
+**Current state**
+
+- None of the target transcript has been read.
+- No repository files have been read or changed.
+- No tests, queries, verification of production, commits, merges, or deployments were needed or performed.
+- Task titles were set through `set_titles`:
+  - Task title: `Group grant transcript`
+  - Merge title: `Read Group grant security transcript`
+- Discussion mode is currently **on**, set with `set_discussion({discussion:true})` to stop completion nudges while access is being resolved.
+- The lead has been notified of the access problem twice.
+
+**Access problem and attempts**
+
+Initially, searching the complete `ALL_TOOLS` catalog for `read_task` found no match. Calling:
+```js
+await tools.byre__read_subtask({
+  task_id: "tskKZePVsvbQZB",
+  after_seq: 0,
+  limit: 30,
+  timeout_ms: 10000
+})
+```
+returned:
+```text
+invalid: task tskKZePVsvbQZB is not a subtask of this task
+```
+
+Running `byre --help` through `byre__bash` only printed:
+```text
+usage: byre serve | byre run [--resume ID]
+```
+No transcript access was obtained that way.
+
+The lead subsequently said:
+> read_task is now deployed for task agents. Go on with your brief: read the whole transcript of tskKZePVsvbQZB with read_task (page through it with after_seq), then wait for Ian's instructions.
+
+After that message, the existing session still had no `read_task` entry in `ALL_TOOLS`. Directly attempting:
+```js
+await tools.byre__read_task({
+  task_id: "tskKZePVsvbQZB",
+  after_seq: 0,
+  limit: 30,
+  timeout_ms: 10000
+})
+```
+returned:
+```text
+TypeError: tools.byre__read_task is not a function
+```
+
+The last message sent to the lead was:
+> I retried after your deployment message, but this running agent still has no read_task in ALL_TOOLS; calling tools.byre__read_task directly returns TypeError: tools.byre__read_task is not a function. The tool catalog/session appears to need refreshing before I can page through tskKZePVsvbQZB. I remain ready to read from after_seq:0 as soon as the tool reaches this session. I withdrew the earlier human question because you are handling access.
+
+A fresh agent may now receive the deployed tool. **First discover `read_task` and inspect its actual schema**, then read the transcript from the start. The earlier direct-call arguments were guessed from `read_subtask`; they were never verified against a `read_task` schema.
+
+**Questions and decisions**
+
+An earlier completion nudge led to a human question asking whether to supply transcript access or stop the task. Its ID was `inbOLkIZR2UURx`. After the lead said the tool was deployed, cancellation reported that the question was already dismissed. There is no pending question known to this session.
+
+The only unresolved issue is transcript access. There are no content or implementation decisions to make. Do not ask Ian to choose an implementation: the current assignment is only reading and waiting.
+
+**Files and workspace**
+
+Working directory:
+```text
+/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskKlfHC0cydEl
+```
+
+No files are currently relevant beyond repository instructions in `AGENTS.md`, which the user supplied in full. No setup was performed because no repository work began.
+
+**Operating constraints**
+
+- Ask any human question through byre’s `ask_human`, never prose.
+- Use `message_lead` for coordination with the lead; its messages need to stand alone.
+- Do not commit with git, push, switch branches, or merge/discard without Ian’s authorization. Byre manages commits.
+- Do not spawn subagents unless explicitly instructed.
+- When the transcript has been fully read, report that fact briefly and wait for Ian. Do not automatically propose fixes, mark ready for merge, or suggest discard merely because this task has no code changes.
+- If access remains unavailable in the fresh session, report the concrete tool failure to the lead. Do not claim to have read any portion of the transcript.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds shared authorization checks for group references across insert and update grants. Helper groups must belong under the group they serve, managers groups require existing membership or management, and Team’s co-chair creation batch now joins the creator before assigning the managers group.
+
+- High: A When-only admin can still take over Garden Club by assigning the club itself as an event’s managers group.
+
+### Snapshot #3, reviewer "Review · Grok high", grok grok-4.7: done
+
+Model.Authorize now rejects non-system, non-super-admin GROUP writes that assign helper-group references unsafely, before the policy grants run. A changed nonblank managed_by must be the row itself or a group the viewer already manages (runsGroup: effective member of that group's managed_by, or of an ancestor's). A changed nonblank waitlist, rsvp_yes, rsvp_no, chair_offers, leads, or audience must name an existing plain group whose parent is the row being written. Nonblank hidden_for and unsubscribed are refused. Blanking a reference and leaving one unchanged are skipped. Team's chair editor and the co-chair and host-appointment tests follow the bootstrap the new rule requires: create a plain group, set it to manage itself, join as creator, then assign it; when appointing someone else, add them and remove the creator in the same batch. New tests cover borrowing Super Admins as an RSVP group, borrowing Students on the other serving columns, a When admin pointing an event's RSVP columns at Super Admins or Students, and a When admin taking over Garden Club or Garden Club Managers.
+
+- Self-assignment of managed_by lets an app admin make every member a manager
+
+### Snapshot #4, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Adds a Go-level check in `Model.Authorize` (`authorizeServingGroups`, internal/db/policy.go) that runs on every GROUP insert or update by anyone except a system job or super admin. A changed, nonblank `managed_by` must name a group the viewer already runs, except for a creator's one-time self-management of a plain group they made. A changed, nonblank `waitlist`, `rsvp_yes`, `rsvp_no`, `chair_offers`, `leads` or `audience` must name a plain child group of the group being written. `hidden_for` and `unsubscribed` can only be assigned by the server or a super admin. This closes the takeovers where a member borrowed another group's managers, helpers or answer groups, including the super-admins group. The creation batches in `web/team/writes.js` and the Go tests are reordered so the creator joins the new managers group before it is assigned (and is removed afterwards when someone else becomes co-chair). New tests are in `groupsecurity_test.go`, and `docs/datamodel.md` documents the constraint.
+
+No significant findings.
