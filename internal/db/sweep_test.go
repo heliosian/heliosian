@@ -54,6 +54,29 @@ func TestUnreferencedContentIsSwept(t *testing.T) {
 	t.Fatal("the unreferenced content is still held")
 }
 
+func TestSweepKeepsPrivateAndGenericReferences(t *testing.T) {
+	s := sample(t)
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "private", Row: map[string]any{"hash": "private", "blob": "content/private", "mime": "audio/mp4", "size": "9"}},
+		{Set: "per00000000003", Cells: map[string]any{"pronunciation_original": "@private", "hidden": true}},
+		{Insert: "CONTENT", As: "aliased", Row: map[string]any{"hash": "aliased", "blob": "content/aliased", "mime": "text/plain", "size": "9"}},
+		{Insert: "ALIAS", Row: map[string]any{"alias": "held-content", "target": "@aliased"}},
+		{Insert: "CONTENT", Row: map[string]any{"hash": "orphan", "blob": "content/orphan", "mime": "text/plain", "size": "9"}},
+	})
+	gone := s.Model().unreferencedContent()
+	if len(gone) != 1 || gone[0]["id"] != ids[4] {
+		t.Fatalf("sweep candidates include private or aliased content: %v", gone)
+	}
+	apply(t, s, []Edit{
+		{Set: "per00000000003", Cells: map[string]any{"pronunciation_original": ""}},
+		{Delete: ids[3]},
+	})
+	gone = s.Model().unreferencedContent()
+	if len(gone) != 3 {
+		t.Fatalf("sweep found %d candidates after the references were removed, want 3", len(gone))
+	}
+}
+
 func TestBytesARowHoldsAreNotRewritten(t *testing.T) {
 	s := sample(t)
 	bucket := blob.NewMemoryBucket()

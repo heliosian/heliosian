@@ -93,16 +93,8 @@ func (x *sweeper) run() {
 }
 
 func (m *Model) unreferencedContent() []store.Row {
-	out := []store.Row{}
-	for _, row := range m.Table("CONTENT").All() {
-		if !m.contentReferenced(row["id"]) {
-			out = append(out, row)
-		}
-	}
-	return out
-}
-
-func (m *Model) contentReferenced(id string) bool {
+	contents := m.Table("CONTENT")
+	held := make([]bool, contents.Len())
 	for _, t := range Tables {
 		if t.Generated {
 			continue
@@ -111,12 +103,20 @@ func (m *Model) contentReferenced(id string) bool {
 			if c.Kind != Ref || c.Generated || (c.Target != "" && c.Target != "CONTENT") {
 				continue
 			}
-			if len(m.Table(t.Name).Referencing(c.Name, id)) > 0 {
-				return true
+			for id := range m.Table(t.Name).by[c.Name] {
+				if i, ok := contents.byID[id]; ok {
+					held[i] = true
+				}
 			}
 		}
 	}
-	return false
+	out := []store.Row{}
+	for i, row := range contents.All() {
+		if !held[i] {
+			out = append(out, row)
+		}
+	}
+	return out
 }
 
 func (x *sweeper) sweep() (int, <-chan struct{}, error) {
