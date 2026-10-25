@@ -1,0 +1,20 @@
+# Share school-year boundaries and preview membership counts
+
+byre task tsk2dyV54jg6F5, "Shared calendar rules", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk2dyV54jg6F5 in byre (GET /api/events?task_id=tsk2dyV54jg6F5).
+
+## Summary
+
+Audited main at e8118e1 for structural simplicity across storage/model/worker code, app wiring, previews, shared browser code and tools. Consolidated five Go implementations of the July school-year boundary into db.SchoolYearStart in internal/db/schoolyear.go, retaining existing parsing, labels and calendar windows. Consolidated activity and party preview membership counts into Model.directMemberCount in internal/db/effective.go, using existing memberAs normalization; deleted the old counters and activityYear wrapper. This fixes activity previews undercounting valid mixed-case/padded yes cells and advertising a full activity as needing volunteers. Extended the existing activity capacity test to cover ' Yes '.
+
+Selected shared primitives instead of configuration or compatibility wrappers. Left birthday-year calculation independent because its month/day boundary is configurable, and left Team/Celebrate redirect resolvers separate because their matching and chaining semantics differ. No stored-data migration, configuration change or deployment.
+
+Verification passed: repository-wide go vet ./..., timeout 30 shared-tool tests, focused db tests covering activity capacity/previews, party previews, Google/PDF calendar plans and feed reading, git diff --check, and a gitignored local go run check of June 30/July 1/January school-year boundaries. At merge preparation, the requested git merge --no-ff --no-commit main reported already up to date; no conflicts or merge-resolution edits were needed. Re-ran vet and affected tests successfully. Work is left for byre to conclude and land.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Consolidates duplicated school-year and "members who said yes" logic. A new `internal/db/schoolyear.go` holds `SchoolYearStart` (July rollover) and the moved `SchoolYear`. The activities page's year label, the Google calendar feed window, and the `helios_activities` and calendar year-bounds tools now use it. The activity tree's `takenIn` and the party page's `held` are replaced by one `Model.directMemberCount` in `effective.go`, which uses `memberAs`, so it ignores case and whitespace. A test covers a membership value of " Yes ".
+
+No significant findings.
