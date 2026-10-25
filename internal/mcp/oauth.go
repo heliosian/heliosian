@@ -48,6 +48,7 @@ type grant struct {
 	Redirect  string `json:"r"`
 	Challenge string `json:"p"`
 	Email     string `json:"e"`
+	Issued    int64  `json:"i"`
 	Expires   int64  `json:"x"`
 }
 
@@ -249,7 +250,8 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 	if s.deps.Data.Model().SignedIn(email) == "" {
 		return onward{}, access.Forbidden("%s is not in the directory", email)
 	}
-	code := auth.Seal(s.deps.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Expires: s.deps.Now().Add(codeLength).Unix()})
+	now := s.deps.Now()
+	code := auth.Seal(s.deps.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
 	slog.InfoContext(r.Context(), "mcp: approved", "client", a.client.Name, "email", email)
 	return onward{Redirect: a.back(url.Values{"code": {code}, "iss": {origin(r)}})}, nil
 }
@@ -286,7 +288,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.deps.Now()
 	switch {
-	case now.Unix() > g.Expires:
+	case g.Issued == 0 || now.Unix() > g.Expires:
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code has expired")
 		return
 	case r.PostForm.Get("client_id") != g.Client:
@@ -299,13 +301,17 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code_verifier does not match the challenge")
 		return
 	}
-	token := s.tokens().Issue(g.Email)
+	if out, ok := s.deps.Sessions.SignedOut(g.Email); ok && g.Issued <= out.Unix() {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "signed out since this code was approved")
+		return
+	}
+	token := s.tokens().Issue(g.Email, time.Unix(g.Issued, 0))
 	slog.InfoContext(r.Context(), "mcp: token issued", "email", g.Email)
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusOK, map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
-		"expires_in":   int(auth.AccessLength.Seconds()),
+		"expires_in":   g.Issued + int64(auth.AccessLength.Seconds()) - now.Unix(),
 	})
 }
 

@@ -31,7 +31,7 @@ var devClient = &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Co
 
 func Local(base string, sessionKey []byte, email, mode, spoof string) *Client {
 	tokens := auth.Tokens{Key: auth.AccessKey(sessionKey), Now: time.Now}
-	return &Client{Base: base, Token: tokens.Issue(email), Mode: mode, Spoof: spoof, insecure: true}
+	return &Client{Base: base, Token: tokens.Issue(email, time.Now()), Mode: mode, Spoof: spoof, insecure: true}
 }
 
 type Answer struct {

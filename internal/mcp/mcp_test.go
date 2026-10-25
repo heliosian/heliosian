@@ -431,6 +431,46 @@ func TestSigningOutRevokesTheToken(t *testing.T) {
 	}
 }
 
+func TestExchangingACodeKeepsItsApprovalTime(t *testing.T) {
+	f := setup(t)
+	client := f.register(t)
+	code := f.approve(t, client)
+	var g grant
+	if !auth.Unseal([]byte("test"), "code", code, &g) {
+		t.Fatal("approval did not return a signed code")
+	}
+	g.Issued -= 10
+	g.Expires -= 10
+	code = auth.Seal([]byte("test"), "code", g)
+	for range 2 {
+		status, out := f.exchange(t, client, code, verifier)
+		if status != http.StatusOK {
+			t.Fatalf("exchange answered %d: %v", status, out)
+		}
+		var token struct {
+			Issued int64 `json:"i"`
+		}
+		if !auth.Unseal([]byte("test"), "access", out["access_token"].(string), &token) || token.Issued != g.Issued {
+			t.Fatalf("token issued at %d, approval at %d", token.Issued, g.Issued)
+		}
+	}
+}
+
+func TestSigningOutRevokesTheCode(t *testing.T) {
+	f := setup(t)
+	client := f.register(t)
+	code := f.approve(t, client)
+	if status, out := f.exchange(t, client, code, verifier); status != http.StatusOK {
+		t.Fatalf("first exchange answered %d: %v", status, out)
+	}
+	f.sessions.mu.Lock()
+	f.sessions.out[rowan] = time.Now()
+	f.sessions.mu.Unlock()
+	if status, out := f.exchange(t, client, code, verifier); status != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("an approval from before sign-out answered %d: %v", status, out)
+	}
+}
+
 func TestTools(t *testing.T) {
 	f := setup(t)
 	session := f.connect(t, f.token(t))

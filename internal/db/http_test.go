@@ -27,7 +27,7 @@ var setupEnv = Env{System: "test", Whole: true, Now: testNow}
 
 func serveAs(mux http.Handler, rec *httptest.ResponseRecorder, r *http.Request, as string) {
 	if email, ok := strings.CutPrefix(as, "import:"); ok {
-		r.Header.Set("Authorization", "Bearer "+testTokens.Issue(email))
+		r.Header.Set("Authorization", "Bearer "+testTokens.Issue(email, time.Now()))
 		r.Header.Set(ModeHeader, "import")
 		mux.ServeHTTP(rec, r)
 		return
@@ -66,7 +66,7 @@ func TestTokens(t *testing.T) {
 	if code != http.StatusOK || len(out.Result) != 101 {
 		t.Fatalf("a super admin in import mode sees every person, the hidden one too, but got %d %s", code, body)
 	}
-	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin), `["from", "PERSON"]`); len(out.Result) != 96 {
+	if _, out, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue(superAdmin, time.Now()), `["from", "PERSON"]`); len(out.Result) != 96 {
 		t.Fatalf("a super admin's token without import mode sees %d people, want the 96 the consent view holds", len(out.Result))
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, `["from", "MEMBER", ["where", ["=", {"n": "person"}, "per00000000001"]]]`); len(out.Result) != 0 {
@@ -76,7 +76,7 @@ func TestTokens(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a super admin setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), `{"batch": [{"set": "per00000000003", "cells": {"vc_name": "Maya Berg"}}]}`)
+	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), `{"batch": [{"set": "per00000000003", "cells": {"vc_name": "Maya Berg"}}]}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent's token setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
@@ -118,11 +118,11 @@ func TestSpoof(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &spoofed); rec.Code != http.StatusOK || err != nil {
 		t.Fatalf("a super admin spoofing got %d %s", rec.Code, rec.Body.String())
 	}
-	_, parent, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), query)
+	_, parent, _ := ask(t, s, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), query)
 	if len(spoofed.Result) != len(parent.Result) {
 		t.Fatalf("spoofing Rowan, import mode or not, sees %d people; Rowan sees %d", len(spoofed.Result), len(parent.Result))
 	}
-	if rec := send(t, s, queue, "QUERY", "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org"), query, SpoofHeader, superAdmin); rec.Code != http.StatusForbidden {
+	if rec := send(t, s, queue, "QUERY", "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), query, SpoofHeader, superAdmin); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent spoofing got %d %s", rec.Code, rec.Body.String())
 	}
 	if rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "nobody@example.org"); rec.Code != http.StatusForbidden {

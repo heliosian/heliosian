@@ -31,7 +31,7 @@ func sampleClient(t *testing.T) *qclient.Client {
 	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), tokens, time.Now)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return &qclient.Client{Base: srv.URL, Token: tokens.Issue("maya.lindqvist@example.org"), Mode: qclient.ImportMode}
+	return &qclient.Client{Base: srv.URL, Token: tokens.Issue("maya.lindqvist@example.org", time.Now()), Mode: qclient.ImportMode}
 }
 
 func TestReadShowsTables(t *testing.T) {

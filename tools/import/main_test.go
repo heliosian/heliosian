@@ -93,7 +93,7 @@ func sampleServer(t *testing.T) (client, *db.Store) {
 	db.Register(mux, s, queue, pics, tokens, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return client{&qclient.Client{Base: srv.URL, Token: tokens.Issue("rowan.ashdown@example.org"), Mode: qclient.ImportMode}}, s
+	return client{&qclient.Client{Base: srv.URL, Token: tokens.Issue("rowan.ashdown@example.org", time.Now()), Mode: qclient.ImportMode}}, s
 }
 
 func writePNG(t *testing.T, dir string, size int) string {

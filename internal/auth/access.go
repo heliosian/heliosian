@@ -66,8 +66,8 @@ type Tokens struct {
 	Now      func() time.Time
 }
 
-func (t Tokens) Issue(email string) string {
-	return Seal(t.Key, "access", accessToken{Email: email, Issued: t.Now().Unix()})
+func (t Tokens) Issue(email string, issued time.Time) string {
+	return Seal(t.Key, "access", accessToken{Email: email, Issued: issued.Unix()})
 }
 
 func (t Tokens) Verify(token string) (string, time.Time, error) {
