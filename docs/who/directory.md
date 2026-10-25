@@ -14,20 +14,18 @@ The directory ("Helios Who?") is the community's who's-who: students, parents, a
 
 ## Navigation
 
-On wide screens a persistent sidebar carries the app identity and the section list, with the shared toolbar (`docs/toolbar.md`) - search, and the signed-in user - across the top of the content. On phones — the primary way the community uses the app — the sidebar gives way to the shared toolbar on top (hamburger, search, badges, avatar, app switch), a slim dark-teal strip under it, and a bottom tab bar holding the six everyday sections (People, Classrooms, My Family, Staff, Map, Email List), with the rest behind the hamburger. The strip shows the page title while browsing and becomes a back arrow plus the record's name on detail pages. Tab strips collapse to the first tabs plus "More ▾", people grids drop to two columns and gain a per-card overflow menu, detail pages stack their blocks full-width, and family-band member rows pick up photo thumbnails. Same structure throughout — only the chrome changes.
+On wide screens a persistent sidebar carries the app identity and the section list, with the shared toolbar (`docs/toolbar.md`) - search, and the signed-in user - across the top of the content. On phones — the primary way the community uses the app — the sidebar gives way to the shared toolbar on top (hamburger, search, badges, avatar, app switch), a slim dark-teal strip under it, and a bottom tab bar holding Directory, Gradebands, Staff and My Family, plus Lists, which opens the lists menu rather than a page. The strip shows the section's name while browsing — Directory on the directory — and becomes a back arrow plus the record's name on detail pages. Tab strips collapse to the first tabs plus "More ▾", people grids drop to two columns and gain a per-card overflow menu, detail pages stack their blocks full-width, and family-band member rows pick up photo thumbnails. Same structure throughout — only the chrome changes.
 
 The model loads once, with the page; every link inside the app is followed in place by the shared router (`web/common/router.js`), which redraws the page from the loaded model, so moving between pages fetches nothing. Following a link starts the new page fresh - search, filters, open tabs and edit mode back at their defaults, as a reload would leave them - and Back returns to the page before, fresh the same way, at the scroll position it was left at. Breadcrumbs follow where the person came from: each history entry carries the last few pages before it (`trail()` in the router), never the URL, so a person reached from a grade reads Gradebands / Grade 3 / their name, and a link back to a page on that trail picks up that page's own trail again.
 
 Sections:
 
-### People (home)
+### Directory (`/people`)
 
-Four tabs, each with search and filter:
+Two tabs, each with search and filter:
 
 - **Everyone** — grid of circular photos. Each card: role label with pronouns (e.g. "PARENT (SHE/HER)"), name, and a context line — kids' names for parents, grade/classroom chain for students, job title for staff.
-- **Students** — larger cards, first name prominent over last name, grade/classroom chain, pronouns badge.
 - **Families** — family-photo cards with grade badges, surname combination, and kids' first names.
-- **Staff** — grouped into sections (admin and office staff, teaching staff, ...), title over name.
 
 ### Person detail
 
@@ -37,9 +35,9 @@ Breadcrumb back to the list, tag control, photo, role label with pronouns, name 
 
 Family photo with click-to-expand and its identifying caption, grade badges, family name, member first-names, city with message/map actions, and a members section split into adults and kids, each row linking to the person.
 
-### Classrooms
+### Gradebands (`/classrooms`)
 
-Three tabs: browse classrooms by gradeband (mascot art, student count, link to detail), the same grouped by classroom, and room parents (parent rows annotated with each of their kids' classroom and grade). Classroom detail shows the mascot, name, and tabbed member lists — students (grouped by crew, with parents' names above each student and the about-me blurb inline), staff, and parents — with per-tab counts.
+Three tabs: Classrooms (each classroom under its gradeband, mascot art, student count, link to detail), Grades (the grades the same way), and Room Parents (parent rows annotated with each of their kids' classroom and grade). Classroom detail shows the mascot, name, and tabbed member lists — students (grouped by crew, with parents' names above each student and the about-me blurb inline), staff, and parents — with per-tab counts.
 
 ### My Family
 
@@ -47,15 +45,15 @@ Goes straight to the signed-in user's own family page.
 
 ### Staff
 
-The staff list as a top-level section — same content as the People staff tab.
+The staff list as its own section, grouped by department.
 
-### Map
+### Map (`/map`)
 
-A Google map of family locations: one brand-teal pin per geocoded family address, a popup card (family photo, name, address, family-page link) on pin click, and search and filters narrowing the pins. Below the map, an "update my address" self-service action.
+A Google map of family locations, not in the rail or the phone tab bar: one brand-teal pin per geocoded family address, a popup card (family photo, name, address, family-page link) on pin click, and search and filters narrowing the pins. Below the map, Update My Address links to My Privacy. A list's own Map view is the same map of that list (`web/who/pages/list.js`).
 
-### Email List
+### Everyone (`/email-list`)
 
-A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Tabs narrow to parents, students, both, or everyone the user has tagged. Filters select grades, classrooms, or one of the user's own tags or lists.
+A row under Lists. A copyable contact table for party planning and outreach: full name, email, role, grade, classroom. Role chips narrow it to Students, Parents and Staff. Filters select grades, classrooms, or one of the user's own tags or lists.
 
 ### Lists
 

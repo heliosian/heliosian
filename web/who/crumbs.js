@@ -27,9 +27,9 @@ export function peopleCrumbs(from) {
   const seg = segmentsOf(from.pathname);
   const key = kindAt(seg) === 'list' ? groupKeyOf(seg[1]) : '';
   if (!key) {
-    return [['People', back]];
+    return [['Directory', back]];
   }
-  return [['People', '/people'], [tagLabel(key), back]];
+  return [['Directory', '/people'], [tagLabel(key), back]];
 }
 
 export function listedFrom(href) {

@@ -128,7 +128,7 @@ export function familyPage(key) {
   const editing = editable && state.editing === family.id;
   const shortName = familyShortName(family);
   const mine = myFamily() === family;
-  let crumbs = [['People', '/people'], [shortName, null], ['Family', null]];
+  let crumbs = [['Directory', '/people'], [shortName, null], ['Family', null]];
   const from = fromURL();
   if (mine) {
     crumbs = [['My Family', '/my-family'], ['Family', null]];
@@ -138,7 +138,7 @@ export function familyPage(key) {
     const rsegPerson = kindAt(rseg) === 'person' ? personByKey(rseg[1]) : undefined;
     if (rsegPerson) {
       const peopleBack = trail()[1];
-      const origin = listedFrom(peopleBack) ? peopleCrumbs(new URL(peopleBack, location.origin)) : [['People', '/people']];
+      const origin = listedFrom(peopleBack) ? peopleCrumbs(new URL(peopleBack, location.origin)) : [['Directory', '/people']];
       crumbs = [...origin, [rsegPerson.name_show, back], ['Family', null]];
     } else if ((rseg[0] === 'people' && !rseg[1]) || kindAt(rseg) === 'list') {
       crumbs = [...peopleCrumbs(from), [shortName, null], ['Family', null]];

@@ -20,9 +20,9 @@ import {mapPage} from './pages/map.js';
 import {adminPage} from './pages/admin.js';
 
 const sectionTitles = {
-  people: 'People',
-  p: 'People',
-  g: 'People',
+  people: 'Directory',
+  p: 'Directory',
+  g: 'Directory',
   classrooms: 'Gradebands',
   'my-family': 'My Family',
   staff: 'Staff',

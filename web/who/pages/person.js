@@ -66,7 +66,7 @@ export function personPage(key) {
       render();
     });
   }
-  const origin = fromCrumbs() || [['People', '/people']];
+  const origin = fromCrumbs() || [['Directory', '/people']];
   const crumbsRow = breadcrumbs([...origin, [p.name_show, null]], p.id, toggle);
 
   const photos = photosOf(p.id);
