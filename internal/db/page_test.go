@@ -46,6 +46,39 @@ func TestTheRailAndDirectoryQueriesAreTheShippedOnes(t *testing.T) {
 	if before < 500 || after*10 > before {
 		t.Errorf("shipped navManaged read-checked GROUP %d times, the walk %d", after, before)
 	}
+	tags := mustParse(t, qs["navTags"])
+	if tags.scan.probeCol != "managed_by" || tags.scan.probeSet == nil {
+		t.Errorf("navTags probes %q, want managed_by", tags.scan.probeCol)
+	}
+	kindOnly := strings.Replace(qs["navTags"], "(in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer))) ", "", 1)
+	if kindOnly == qs["navTags"] {
+		t.Fatal("navTags has no managed_by probe")
+	}
+	kindChecks := groupReadChecks(t, wide, scaleViewer, kindOnly)
+	probed := groupReadChecks(t, wide, scaleViewer, qs["navTags"])
+	t.Logf("GROUP read checks: kind probe %d, shipped navTags %d", kindChecks, probed)
+	if kindChecks < 100 || probed*10 > kindChecks {
+		t.Errorf("shipped navTags read-checked GROUP %d times, the kind probe %d", probed, kindChecks)
+	}
+	cal := calendarQueries(t)
+	if !strings.Contains(cal["places"], "(not (blank capacity))") {
+		t.Errorf("places loads members of parties and activities with no capacity: %s", cal["places"])
+	}
+	if _, err := Parse(cal["places"]); err != nil {
+		t.Errorf("places: %v", err)
+	}
+}
+
+func calendarQueries(t *testing.T) map[string]string {
+	t.Helper()
+	src := readSource(t, "../../web/common/calendar.js")
+	bind := map[string]string{}
+	bindConsts(t, bind, src)
+	out := jsObject(t, bind, src, "export const calendarQueries = {", "")
+	if out["places"] == "" {
+		t.Fatal("calendar queries have no places")
+	}
+	return out
 }
 
 func groupReadChecks(t *testing.T, m *Model, viewer, src string) int {

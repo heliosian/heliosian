@@ -94,7 +94,7 @@ export const calendarQueries = {
   audiences: `(from RULE (where (in group (select GROUP.audience ${eventKinds}))) (columns group target))`,
   sources: `(from GROUP_SOURCE (where (in group.kind "event" "party" "activity")) (columns group calendar_event document name))`,
   photos: `(from PHOTO (where (in group.kind "event" "party" "activity" "category")) (order order asc) (columns group ready))`,
-  places: `(from MEMBER (where (= member "yes") (in group (select GROUP.id (in kind "party" "activity")))) (columns group person))`,
+  places: `(from MEMBER (where (= member "yes") (in group (select GROUP.id (in kind "party" "activity") (not (blank capacity))))) (columns group person))`,
   mine: '(from MEMBER (where (= member "yes") (or (= person @viewer) (in person (household @viewer)))) (columns group person))',
   hosted: `(from GROUP @g (where ${eventKinds} (manages @g)) (columns kind))`,
   adders: `(from PERSON (where (in id (select GROUP.added_by ${eventKinds}))) (columns name_show))`,

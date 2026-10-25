@@ -47,7 +47,7 @@ export function fetchGroups(sel) {
   return queries(groupQueries(sel));
 }
 
-export const tagCondition = '(= kind "group") (blank parent) (blank url) (blank visible_to) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
+export const tagCondition = '(= kind "group") (blank parent) (blank url) (blank visible_to) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer))) (manages @g)';
 const viewerGroups = '(select EFFECTIVE_MEMBER.group (= person @viewer))';
 const notPast = '(or (blank start) (and (not (blank end)) (>= end today)) (and (blank end) (>= start today)))';
 export const runCondition = `${notPast} (in id (descendants (select GROUP.id (in managed_by ${viewerGroups})))) (manages @g) (sidebar_group @g)`;
