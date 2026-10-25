@@ -38,6 +38,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
+	{table: "DOCUMENT", fire: thumbnailStale},
 	{table: "SAVED_SEARCH", fire: savedSearchSlugs},
 }
 
@@ -70,6 +71,8 @@ var committedTriggers = []committedTrigger{
 	{table: "DOCUMENT_GROUP", to: digestInbox},
 	{table: "DOCUMENT", to: extractInbox},
 	{table: "CONTENT", to: extractInbox},
+	{table: "DOCUMENT", to: thumbnailInbox},
+	{table: "CONTENT", to: thumbnailInbox},
 	{table: "GROUP", to: geocodeInbox},
 	{table: "GEOCODE", to: geocodeInbox},
 	{table: "CONTENT", to: sweepInbox},
@@ -451,6 +454,13 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
+}
+
+func thumbnailStale(_ *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["content"] == c.New["content"] || c.New["thumbnailed"] == "" && c.New["thumbnail"] == "" {
+		return nil, nil
+	}
+	return []Edit{{Set: c.New["id"], Cells: map[string]any{"thumbnail": "", "thumbnailed": ""}}}, nil
 }
 
 func madeNotMade(_ *Model, c Change) ([]Edit, error) {

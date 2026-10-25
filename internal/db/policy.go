@@ -569,7 +569,7 @@ const PolicySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id parent kind relation order name first_page last_page published author url fetch link filename content_id content message
+  (id parent kind relation order name first_page last_page published author url fetch link filename content_id content thumbnail thumbnailed message
    summary key_points repeats digest classified extracted slug hidden source terminal path href)
   true)
 ; what the mail the viewer may read asks of its readers
@@ -588,9 +588,9 @@ const PolicySource = `
 (set TODO_MARK.changed (= @old.person @viewer))
 ; the viewer takes their own mark away
 (delete TODO_MARK (= @old.person @viewer))
-; the bytes of documents and mail the viewer may see
+; the bytes and thumbnails of documents and the bytes of mail the viewer may see
 (read CONTENT
-  (or (exists DOCUMENT @d (= content @row) (document_visible @d))
+  (or (exists DOCUMENT @d (or (= content @row) (= thumbnail @row)) (document_visible @d))
       (exists MESSAGE @m (= content @row) (message_visible @m))))
 ; the thumbnail and picture shown of a photo the viewer may see
 (read CONTENT (exists PHOTO @p (or (= thumbnail @row) (= image @row)) (photo_visible @p)))

@@ -92,6 +92,10 @@ func (c *Client) once(method, path, kind string, raw []byte, out any) (http.Head
 	if resp.StatusCode != http.StatusOK {
 		return nil, &StatusError{Code: resp.StatusCode, What: fmt.Sprintf("%s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(got)))}
 	}
+	if raw, ok := out.(*[]byte); ok {
+		*raw = got
+		return resp.Header, nil
+	}
 	return resp.Header, json.Unmarshal(got, out)
 }
 

@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	photoLimit = 30 << 20
-	fileLimit  = 200 << 20
-	formMemory = 32 << 20
+	photoLimit      = 30 << 20
+	fileLimit       = 200 << 20
+	formMemory      = 32 << 20
+	thumbnailUpload = 20 << 20
 )
 
 type stored struct {
@@ -227,6 +228,49 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		}
 		slog.InfoContext(r.Context(), "filled a linked document", "viewer", env.Viewer, "document", id, "hash", answer.Hash, "fetch", answer.Fetch, "why", answer.Why)
 		serve.Write(w, r, http.StatusOK, answer)
+	})
+	mux.HandleFunc("POST /api/do/thumbnail", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, thumbnailUpload+1<<20)
+		if err := r.ParseMultipartForm(thumbnailUpload); err != nil {
+			serve.Error(w, r, access.Invalid("send the picture as multipart form data: %v", err))
+			return
+		}
+		id := r.FormValue("document")
+		doc, found := s.Model().Table("DOCUMENT").Get(id)
+		if !found || doc["content"] == "" || doc["thumbnailed"] != "" {
+			serve.Error(w, r, access.Invalid("%q is not a document still to thumbnail", id))
+			return
+		}
+		if drawn := r.FormValue("content"); drawn != doc["content"] {
+			serve.Error(w, r, access.Invalid("%q holds %q now, not the %q drawn", id, doc["content"], drawn))
+			return
+		}
+		file, _, err := r.FormFile("picture")
+		if err != nil {
+			serve.Error(w, r, access.Invalid("the picture is required"))
+			return
+		}
+		defer file.Close()
+		picture, err := io.ReadAll(file)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("could not read the picture"))
+			return
+		}
+		thumb, err := blob.Thumbnail(picture)
+		if err != nil {
+			serve.Error(w, r, access.Invalid("the picture: %v", err))
+			return
+		}
+		if err := saveThumbnail(r.Context(), s, queue, pics.bucket, actor, env, doc, thumb, s.Model().whole(env)); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "added a thumbnail", "viewer", env.Viewer, "document", id, "bytes", len(thumb))
+		serve.Write(w, r, http.StatusOK, stored{Result: []string{id}, Hash: blob.Hash(thumb)})
 	})
 }
 

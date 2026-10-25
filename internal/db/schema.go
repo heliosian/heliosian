@@ -579,6 +579,8 @@ var Tables = []Table{
 			col("filename", Text).about("The file name it came with."),
 			col("content_id", Text).about("A mail part's Content-ID, which its parent's HTML refers to."),
 			ref("content", "CONTENT").about("Its bytes."),
+			ref("thumbnail", "CONTENT").about("A small JPEG of its content, when that can be drawn: an image scaled down, or a page's og:image. Made by the server."),
+			col("thumbnailed", Moment).about("When the server finished making its thumbnail, or found nothing to draw; blank while that work is still to do."),
 			ref("message", "MESSAGE").about("The mail it was filed from."),
 			col("summary", Text).about("For mail, one sentence on what it is about, as Heliosian's Inbox shows it under the subject."),
 			col("key_points", Text).about("For mail, its key points, one a line, as Heliosian's Inbox shows them."),

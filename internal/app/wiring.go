@@ -391,6 +391,7 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 			db.StartDigest(core.Data, core.Queue, bucket, anthropicKey, time.Now)
 			db.StartSweeper(core.Data, core.Queue, bucket)
 			db.StartFetcher(core.Data, core.Queue, bucket)
+			db.StartThumbnailer(core.Data, core.Queue, bucket)
 			db.StartGeocoder(core.Data, core.Queue, geocoder)
 		}()
 	} else {

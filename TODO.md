@@ -20,9 +20,6 @@ Last verified: bff8f634
 - Wiki: keep each page's edit history
   Wiki saves overwrite the page's content and the old version is swept away. Record every save as a revision, with a History view, diffs between revisions, and restore.
   Issue: https://github.com/heliosian/heliosian/issues/184
-- Give documents thumbnails
-  Documents have no preview image. Make a thumbnail for images, PDFs and fetched pages in a worker off the request path, probably attached to `CONTENT`.
-  Issue: https://github.com/heliosian/heliosian/issues/182
 - Extract an image of each page of a PDF document
   No picture of any PDF page is kept. Render each page to an image, stored as a child document, using a pure-Go renderer.
   Issue: https://github.com/heliosian/heliosian/issues/179

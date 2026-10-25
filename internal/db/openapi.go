@@ -403,6 +403,23 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT, and the content's hash, or the fetch it was set to and why.", "Fetched"), "400": failure("Not a linked document still to fetch, or no body.")}),
 			},
 		},
+		"/api/do/thumbnail": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Set a document's thumbnail",
+				"description": "Takes a picture of a document whose thumbnailed is blank, such as a PDF's first page drawn on a laptop, scales it to the server's thumbnail and sets the document's thumbnail and thumbnailed.",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"document", "content", "picture"},
+					"properties": schema{
+						"document": schema{"type": "string", "pattern": idPattern(DocumentPrefix)},
+						"content":  schema{"type": "string", "pattern": idPattern(ContentPrefix), "description": "The CONTENT the picture was drawn from, which must still be the document's."},
+						"picture":  schema{"type": "string", "contentMediaType": "image/png"},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The DOCUMENT and the thumbnail's hash.", "Stored"), "400": failure("Not a document still to thumbnail, or no picture that decodes.")}),
+			},
+		},
 		"/api/do/person-at": schema{
 			"post": schema{
 				"tags":        []string{"do"},
