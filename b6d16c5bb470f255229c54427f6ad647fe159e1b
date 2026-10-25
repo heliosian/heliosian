@@ -1,0 +1,20 @@
+# Simplify stock batches and invitation handlers (#202, #203)
+
+byre task tsknQf5m61VmA3, "Simplify stock invitations", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsknQf5m61VmA3 in byre (GET /api/events?task_id=tsknQf5m61VmA3).
+
+## Summary
+
+Audited main at e39742a for structural simplicity, following project guidance and prior Cleanup/Bug findings. Made two behavior-preserving cleanups: stock-image writes in internal/db/stock.go now batch stockWrite pointers directly with slices.Chunk, reading each write's hit and ID together instead of maintaining parallel slices of duplicate metadata; invitation routes in internal/db/invitations.go now register their typed methods through generic modelAction in internal/db/http.go, removing any-valued factories, forwarding closures and runtime type assertions. These changes remove slice-alignment requirements and make decoder/action mismatches compiler errors. Findings tracked as #202 and #203.
+
+Kept asynchronous stock writes, deduplication, independent batch completion, authentication-before-decoding, model capture, refusal statuses and JSON responses intact. Deliberately left calendar event construction across feeds and mail alone because identifier, organizer, attendee and time-span semantics differ and need a separate behavior review. No new comments, validation, tests, compatibility paths or user-visible behavior changes.
+
+Review completed. Targeted existing stock and invitation tests passed under timeout 30; go vet ./... and git diff --check passed. At merge time, ran the requested git merge --no-ff --no-commit main: main was already incorporated, so there were no conflicts or generated files to regenerate. Compilation checks and targeted tests were rerun successfully. No manual commit or push; byre concludes the authorized merge.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The invitation endpoints now use a typed HTTP handler helper instead of request factories and runtime type assertions. Stock persistence now batches the pending write records directly, removing the parallel slice of image hits while retaining asynchronous writes and per-batch completion.
+
+No significant findings.
