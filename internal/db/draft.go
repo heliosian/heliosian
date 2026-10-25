@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -214,10 +213,10 @@ func readDraft(w http.ResponseWriter, r *http.Request) (groupDraft, bool) {
 	return d, true
 }
 
-func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer, tokens auth.Tokens, now func() time.Time) {
+func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer, tokens auth.Tokens) {
 	mux.HandleFunc("POST /api/do/draft-members", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens, now())
+		env, _, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}
@@ -238,7 +237,7 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 	})
 	mux.HandleFunc("POST /api/do/describe-group", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, actor, ok := caller(w, r, m, tokens, now())
+		env, actor, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}
@@ -273,7 +272,7 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
 	})
 	mux.HandleFunc("POST /api/do/describe-activity", func(w http.ResponseWriter, r *http.Request) {
-		_, actor, ok := caller(w, r, s.Model(), tokens, now())
+		_, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -301,7 +300,7 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 	})
 	mux.HandleFunc("POST /api/do/describe-charity", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, actor, ok := caller(w, r, m, tokens, now())
+		env, actor, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}

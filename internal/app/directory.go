@@ -13,7 +13,9 @@ import (
 	"heliosian/internal/sharecard"
 )
 
-var directorySections = []string{"classrooms", "staff", "map", "email-list", "greenvelope", "my-privacy", "my-family", "admin"}
+const directoryShell = "web/who/index.html"
+
+var directoryPages = []string{"/classrooms", "/staff", "/map", "/email-list", "/greenvelope", "/my-privacy", "/my-family", "/admin", "/g/{key}", "/p/{key}"}
 
 var directoryLegacy = map[string]string{
 	"people":   "/people",
@@ -46,12 +48,8 @@ func registerDirectoryPages(mux *http.ServeMux, about *sharecard.About, mapsKey 
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		fmt.Fprintf(w, "export const mapsKey = %s;\n", strconv.Quote(mapsKey))
 	})
-	for _, section := range directorySections {
-		mux.HandleFunc("GET /"+section, directoryPage)
-	}
+	serve.Pages(mux, directoryShell, directoryPages...)
 	mux.HandleFunc("GET /people", directoryPeople)
-	mux.HandleFunc("GET /g/{key}", directoryPage)
-	mux.HandleFunc("GET /p/{key}", directoryPage)
 	mux.HandleFunc("GET /dl/", directoryLegacyRedirect)
 }
 
@@ -95,12 +93,8 @@ func directoryPeople(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if key == "" {
-		directoryPage(w, r)
+		serve.File(w, r, directoryShell)
 		return
 	}
 	http.Redirect(w, r, "/g/"+url.PathEscape(key), http.StatusMovedPermanently)
-}
-
-func directoryPage(w http.ResponseWriter, r *http.Request) {
-	serve.File(w, r, "web/who/index.html")
 }

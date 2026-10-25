@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"net/http"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,16 +29,12 @@ const (
 	costVersion = "2023-06-01"
 )
 
-type Measurable interface {
-	Usage(ctx context.Context) (map[string]blob.Usage, error)
-}
-
 type Deps struct {
 	GitHub   *feedback.GitHubApp
 	Builds   *cloudbuild.Service
 	Run      *run.Service
 	AdminKey string
-	Buckets  map[string]Measurable
+	Bucket   *blob.Bucket
 }
 
 type Commit struct {
@@ -102,7 +96,7 @@ type Snapshot struct {
 	Serving Reading[Serving]  `json:"serving"`
 	Issues  Reading[Issues]   `json:"issues"`
 	Spend   Reading[Spend]    `json:"spend"`
-	Buckets []Bucket          `json:"buckets"`
+	Bucket  Bucket            `json:"bucket"`
 }
 
 type Board struct {
@@ -111,8 +105,7 @@ type Board struct {
 	serving *Source[Serving]
 	issues  *Source[Issues]
 	spend   *Source[Spend]
-	names   []string
-	buckets map[string]*Source[map[string]blob.Usage]
+	bucket  *Source[map[string]blob.Usage]
 }
 
 func New(d Deps) *Board {
@@ -122,11 +115,7 @@ func New(d Deps) *Board {
 		serving: newSource("serving", Serving{}, d.servingRevision),
 		issues:  newSource("issues", Issues{Items: []Issue{}}, d.openIssues),
 		spend:   newSource("spend", Spend{Days: []SpendDay{}}, d.monthSpend),
-		names:   slices.Sorted(maps.Keys(d.Buckets)),
-		buckets: map[string]*Source[map[string]blob.Usage]{},
-	}
-	for name, m := range d.Buckets {
-		b.buckets[name] = newSource("bucket "+name, map[string]blob.Usage{}, m.Usage)
+		bucket:  newSource("bucket", map[string]blob.Usage{}, d.Bucket.Usage),
 	}
 	for _, s := range []interface{ Refresh() }{b.commits, b.builds, b.serving, b.issues} {
 		s.Refresh()
@@ -140,17 +129,14 @@ func (b *Board) Freshen() {
 	b.serving.retry()
 	b.issues.retry()
 	b.spend.freshen(measureAge)
-	for _, s := range b.buckets {
-		s.freshen(measureAge)
-	}
+	b.bucket.freshen(measureAge)
 }
 
 func (b *Board) Snapshot() Snapshot {
-	out := Snapshot{Commits: b.commits.Read(), Builds: b.builds.Read(), Serving: b.serving.Read(), Issues: b.issues.Read(), Spend: b.spend.Read(), Buckets: []Bucket{}}
-	for _, name := range b.names {
-		out.Buckets = append(out.Buckets, Bucket{Name: name, Reading: b.buckets[name].Read()})
+	return Snapshot{
+		Commits: b.commits.Read(), Builds: b.builds.Read(), Serving: b.serving.Read(), Issues: b.issues.Read(), Spend: b.spend.Read(),
+		Bucket: Bucket{Name: blob.MediaBucket, Reading: b.bucket.Read()},
 	}
-	return out
 }
 
 func (d Deps) recentCommits(ctx context.Context) ([]Commit, error) {

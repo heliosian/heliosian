@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/serve"
+	"heliosian/internal/testkit/authtest"
 )
 
 func picture(t *testing.T) []byte {
@@ -214,7 +214,7 @@ func TestRegisterGatesEveryRoute(t *testing.T) {
 		httptest.NewRequest(http.MethodPost, "/api/apps/images/import", strings.NewReader(`{"id":"stk00000000000"}`)),
 	} {
 		rec := httptest.NewRecorder()
-		auth.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, req)
+		authtest.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, req)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s past a refusing gate: %d, want 403", req.URL.Path, rec.Code)
 		}
@@ -228,7 +228,7 @@ func TestImportsAndSearchesAreLimited(t *testing.T) {
 	s.Register(mux, "/api/team", Members)
 	request := func(as, method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
-		auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+		authtest.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
 		return rec
 	}
 	importing := func(as string) *httptest.ResponseRecorder {

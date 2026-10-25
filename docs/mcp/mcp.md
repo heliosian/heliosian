@@ -33,4 +33,4 @@ Each call logs a `tools: run` line with the tool, the viewer's person ID, how lo
 
 ## Tests
 
-`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `auth.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling tools, at `/mcp` and at the root. What each tool answers is pinned in `internal/tools` (`docs/tools.md`). It also covers the refusals, at both: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.
+`internal/mcp/mcp_test.go` loads the sample data model, registers the real routes behind `authtest.Fixed`, and goes through what a client does: registering, approving, exchanging the code, then connecting with the SDK's own client and calling tools, at `/mcp` and at the root. What each tool answers is pinned in `internal/tools` (`docs/tools.md`). It also covers the refusals, at both: no token or a forged one, a wrong verifier, another client's exchange, an unregistered redirect, a cross-site approval, and a token from before a sign-out.

@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"heliosian/internal/auth"
+	"heliosian/internal/blob"
 	"heliosian/internal/ops"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/authtest"
 	"heliosian/internal/vitals"
 )
 
@@ -22,13 +23,13 @@ func dashboardAs(t *testing.T, s *Store, board *ops.Board, as, path string) *htt
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	rec := httptest.NewRecorder()
-	auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx))
+	authtest.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil).WithContext(ctx))
 	return rec
 }
 
 func TestTheDashboardIsForSuperAdmins(t *testing.T) {
 	s := sample(t)
-	board := ops.New(testkit.OpsDeps(t, map[string]ops.Measurable{}))
+	board := ops.New(testkit.OpsDeps(t, blob.NewMemoryBucket()))
 	vitals.RecordError(time.Now(), "dashboard test failure", map[string]string{"app": "admin"})
 	if rec := dashboardAs(t, s, board, "rowan.ashdown@example.org", "/api/dashboard"); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent reads the dashboard: %d", rec.Code)

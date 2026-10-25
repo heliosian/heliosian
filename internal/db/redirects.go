@@ -11,16 +11,22 @@ import (
 const maxHops = 20
 
 func (a *ActivityPages) Redirected(next http.Handler) http.Handler {
+	return redirected(next, func(r *http.Request) (string, int) {
+		tr := a.tree()
+		if to := tr.canonical(r.URL.Path); to != "" {
+			return to, http.StatusMovedPermanently
+		}
+		return tr.destination(r.URL.Path), http.StatusFound
+	})
+}
+
+func redirected(next http.Handler, resolve func(r *http.Request) (string, int)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			next.ServeHTTP(w, r)
 			return
 		}
-		tr := a.tree()
-		to, status := tr.canonical(r.URL.Path), http.StatusMovedPermanently
-		if to == "" {
-			to, status = tr.destination(r.URL.Path), http.StatusFound
-		}
+		to, status := resolve(r)
 		if to == "" {
 			next.ServeHTTP(w, r)
 			return

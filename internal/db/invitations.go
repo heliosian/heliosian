@@ -2,14 +2,11 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -46,12 +43,12 @@ type Invitations struct {
 	started atomic.Bool
 }
 
-func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time, config InvitationConfig) *Invitations {
+func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, config InvitationConfig) *Invitations {
 	iv := &Invitations{s: s, pics: pics, config: config, in: s.Model().services.inbox(inviteInbox), kick: newWake()}
 	asked := func(path string, ask func() any, run func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error)) {
 		api.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
 			m := s.Model()
-			env, actor, ok := caller(w, r, m, tokens, now())
+			env, actor, ok := caller(w, r, m, tokens)
 			if !ok {
 				return
 			}
@@ -332,16 +329,14 @@ var guestMailKinds = map[string]string{"reminder": "reminder", "message": "post"
 
 func (iv *Invitations) storeText(ctx context.Context, m *Model, text string) (string, []Edit, error) {
 	raw := []byte(text)
-	sum := sha256.Sum256(raw)
-	hash := hex.EncodeToString(sum[:])
-	if row, ok := m.Table("CONTENT").Find(hash, "text/plain"); ok {
+	made := madeOf(raw, "text/plain")
+	if row, ok := m.Table("CONTENT").Find(made.hash, made.mime); ok {
 		return row["id"], nil, nil
 	}
-	name := "content/" + hash
-	if _, err := keepBytes(ctx, m, iv.pics.bucket, "text/plain", raw); err != nil {
+	if _, err := keepBytes(ctx, m, iv.pics.bucket, made.mime, raw); err != nil {
 		return "", nil, fmt.Errorf("store the words: %w", err)
 	}
-	return "@words", []Edit{{Insert: "CONTENT", As: "words", Row: map[string]any{"hash": hash, "blob": name, "mime": "text/plain", "size": strconv.Itoa(len(raw))}}}, nil
+	return "@words", []Edit{made.insert("words")}, nil
 }
 
 func (iv *Invitations) guestMail(ctx context.Context, m *Model, env Env, actor access.Actor, ask guestMailAsk) (sentAnswer, error) {

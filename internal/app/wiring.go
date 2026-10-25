@@ -138,11 +138,7 @@ func NewCore(cfg Config) *Core {
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}"} {
-		calendarMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, "web/when/index.html")
-		})
-	}
+	serve.Pages(calendarMux, "web/when/index.html", "/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}")
 	whenSearch := cfg.ImageSearch
 	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	whenSearch.Register(api, "/api/when", imagesearch.Members)
@@ -153,11 +149,7 @@ func NewCore(cfg Config) *Core {
 	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
 	homeSearch.Register(api, "/api/home", imagesearch.Members)
 	teamMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/g/{path...}"} {
-		teamMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, "web/team/index.html")
-		})
-	}
+	serve.Pages(teamMux, "web/team/index.html", "/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/g/{path...}")
 	teamSearch := cfg.ImageSearch
 	teamSearch.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
 	teamSearch.Register(api, "/api/team", imagesearch.Members)
@@ -165,11 +157,7 @@ func NewCore(cfg Config) *Core {
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
 	birthdayMux.Handle("GET /open/share/about.png", birthdayAbout)
-	for _, page := range []string{"/{$}", "/jobs", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/newsletters/{date}", "/skipped", "/unassigned", "/admin", "/staff/{handle}"} {
-		birthdayMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, "web/birthday/index.html")
-		})
-	}
+	serve.Pages(birthdayMux, "web/birthday/index.html", "/{$}", "/jobs", "/process", "/calendar", "/charities", "/charities/{name}", "/newsletters", "/newsletters/{date}", "/skipped", "/unassigned", "/admin", "/staff/{handle}")
 	celebrateMux := http.NewServeMux()
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
@@ -180,11 +168,7 @@ func NewCore(cfg Config) *Core {
 	db.RegisterMailHook(askMux, dataStore, pictures, cfg.ArtifactsMail.SigningKey)
 	loopMux := http.NewServeMux()
 	loopMux.Handle("GET /open/share/about.png", loopAbout)
-	for _, page := range []string{"/{$}", "/new", "/g/{key}"} {
-		loopMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, "web/loop/index.html")
-		})
-	}
+	serve.Pages(loopMux, "web/loop/index.html", "/{$}", "/new", "/g/{key}")
 	listMail := db.RegisterListMail(loopMux, dataStore, pictures, cfg.ListMail)
 	deliveries := db.NewDeliveries(dataStore, cfg.ListMail.SigningKey)
 	deliveries.Register(loopMux)
@@ -197,11 +181,7 @@ func NewCore(cfg Config) *Core {
 		})
 	}
 	wikiMux := http.NewServeMux()
-	for _, page := range []string{"/{$}", "/new", "/p/{path...}"} {
-		wikiMux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, "web/wiki/index.html")
-		})
-	}
+	serve.Pages(wikiMux, "web/wiki/index.html", "/{$}", "/new", "/p/{path...}")
 	cfg.ImageSearch.Register(api, "/api/wiki", imagesearch.Members)
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
@@ -215,19 +195,13 @@ func NewCore(cfg Config) *Core {
 	db.RegisterFeeds(calendarMux, dataStore, schoolNow)
 	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle)
 	whenPages.Register(calendarMux)
-	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, schoolNow, db.InvitationConfig{
+	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
 	birthdays := db.NewBirthdayMailer(dataStore, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
 	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Now: schoolNow})
 	mcpMux := http.NewServeMux()
-	mcp.Register(mcpMux, api, mcp.Deps{
-		Data:     dataStore,
-		Tools:    shared,
-		Key:      cfg.AccessKey,
-		Sessions: sessions,
-		Now:      schoolNow,
-	})
+	mcp.Register(mcpMux, api, mcp.Deps{Data: dataStore, Tools: shared, Tokens: tokens})
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead, Moved: map[string]string{"/groups/": "/g/", "/families/": "/g/", "/classrooms/": "/g/", "/grades/": "/g/", "/people/": "/p/"}},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: homePages.PreviewHead},
@@ -242,20 +216,20 @@ func NewCore(cfg Config) *Core {
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
 	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
-	feedback := db.NewFeedback(dataStore, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
+	feedback := db.NewFeedback(dataStore, cfg.Bucket, tokens, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
 	feedback.RegisterTriage(api, func(key string) string { return appName(key)() })
 	feedback.Register(api, cfg.Domain, func(key string) string { return appName(key)() })
-	db.Register(api, dataStore, pictures, tokens, schoolNow)
-	db.RegisterSearch(api, dataStore, search, tokens, schoolNow)
+	db.Register(api, dataStore, pictures, tokens)
+	db.RegisterSearch(api, dataStore, search, tokens)
 	geocode.NewSuggestions(cfg.Geocoder).Register(api)
-	db.RegisterCompose(api, dataStore, cfg.Composer, tokens, schoolNow)
-	db.RegisterDrafts(api, dataStore, cfg.Describer, tokens, schoolNow)
-	db.RegisterQueues(api, dataStore, tokens, schoolNow)
+	db.RegisterCompose(api, dataStore, cfg.Composer, tokens)
+	db.RegisterDrafts(api, dataStore, cfg.Describer, tokens)
+	db.RegisterQueues(api, dataStore, tokens)
 	optIn := optInForm(func() string { return dataStore.Model().Setting("platform", "Helios Who Opt-In URL") })
 	for _, a := range apps {
 		a.Mux.Handle("GET "+OptInPath, optIn)
 	}
-	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
+	cfg.Ops.Bucket = cfg.Bucket
 	external := ops.New(cfg.Ops)
 	external.Register(adminMux, cfg.Hooks)
 	db.RegisterDashboard(adminMux, api, dataStore, external)

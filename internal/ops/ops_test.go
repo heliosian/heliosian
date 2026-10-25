@@ -40,12 +40,12 @@ func TestTheBoardReadsEverySource(t *testing.T) {
 	if _, err := bucket.Put(context.Background(), "photos/a.jpg", "image/jpeg", []byte("123"), 0); err != nil {
 		t.Fatal(err)
 	}
-	b := ops.New(testkit.OpsDeps(t, map[string]ops.Measurable{"media": bucket}))
+	b := ops.New(testkit.OpsDeps(t, bucket))
 	b.Freshen()
 	s := settled(t, b, func(s ops.Snapshot) bool {
-		return !s.Commits.Fetched.IsZero() && !s.Builds.Fetched.IsZero() && !s.Serving.Fetched.IsZero() && !s.Issues.Fetched.IsZero() && !s.Spend.Fetched.IsZero() && !s.Buckets[0].Reading.Fetched.IsZero()
+		return !s.Commits.Fetched.IsZero() && !s.Builds.Fetched.IsZero() && !s.Serving.Fetched.IsZero() && !s.Issues.Fetched.IsZero() && !s.Spend.Fetched.IsZero() && !s.Bucket.Reading.Fetched.IsZero()
 	})
-	for name, err := range map[string]string{"commits": s.Commits.Error, "builds": s.Builds.Error, "serving": s.Serving.Error, "issues": s.Issues.Error, "spend": s.Spend.Error, "bucket": s.Buckets[0].Reading.Error} {
+	for name, err := range map[string]string{"commits": s.Commits.Error, "builds": s.Builds.Error, "serving": s.Serving.Error, "issues": s.Issues.Error, "spend": s.Spend.Error, "bucket": s.Bucket.Reading.Error} {
 		if err != "" {
 			t.Errorf("%s: %s", name, err)
 		}
@@ -70,13 +70,13 @@ func TestTheBoardReadsEverySource(t *testing.T) {
 	if len(s.Spend.Value.Days) != today.Day() || last.ByModel["claude-sonnet-5-5"] != float64(4000+today.Day()*150)/100 {
 		t.Errorf("spend: %+v", s.Spend.Value)
 	}
-	if s.Buckets[0].Reading.Value["photos"] != (blob.Usage{Objects: 1, Bytes: 3}) {
-		t.Errorf("bucket: %+v", s.Buckets[0].Reading)
+	if s.Bucket.Reading.Value["photos"] != (blob.Usage{Objects: 1, Bytes: 3}) {
+		t.Errorf("bucket: %+v", s.Bucket.Reading)
 	}
 }
 
 func TestTheGitHubHookNeedsItsSignature(t *testing.T) {
-	b := ops.New(testkit.OpsDeps(t, map[string]ops.Measurable{}))
+	b := ops.New(testkit.OpsDeps(t, blob.NewMemoryBucket()))
 	mux := http.NewServeMux()
 	b.Register(mux, ops.Hooks{GitHubSecret: []byte("secret"), Audience: "https://admin.example.org/hooks/build", PushAccount: "push@example.org"})
 	body := `{"ref":"refs/heads/main"}`

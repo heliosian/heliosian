@@ -9,12 +9,13 @@ import (
 	cloudbuild "google.golang.org/api/cloudbuild/v1"
 	run "google.golang.org/api/run/v2"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/feedback"
 	"heliosian/internal/intercept"
 	"heliosian/internal/ops"
 )
 
-func OpsDeps(t *testing.T, buckets map[string]ops.Measurable) ops.Deps {
+func OpsDeps(t *testing.T, bucket *blob.Bucket) ops.Deps {
 	t.Helper()
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.GitHubHost, intercept.GitHub())
@@ -33,5 +34,5 @@ func OpsDeps(t *testing.T, buckets map[string]ops.Measurable) ops.Deps {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ops.Deps{GitHub: &feedback.GitHubApp{ID: "test", PrivateKey: key}, Builds: builds, Run: runs, AdminKey: "test", Buckets: buckets}
+	return ops.Deps{GitHub: &feedback.GitHubApp{ID: "test", PrivateKey: key}, Builds: builds, Run: runs, AdminKey: "test", Bucket: bucket}
 }

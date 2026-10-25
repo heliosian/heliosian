@@ -131,10 +131,9 @@ func (c *Composer) Compose(ctx context.Context, words string, today time.Time) (
 	return out, err
 }
 
-func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Tokens, now func() time.Time) {
+func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Tokens) {
 	mux.HandleFunc("POST /api/do/compose", func(w http.ResponseWriter, r *http.Request) {
-		at := now()
-		env, _, ok := caller(w, r, s.Model(), tokens, at)
+		env, _, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -149,12 +148,12 @@ func RegisterCompose(mux *http.ServeMux, s *Store, c *Composer, tokens auth.Toke
 			serve.Error(w, r, access.Invalid("words is required"))
 			return
 		}
-		if !c.limit.Allow(env.Viewer, at) {
+		if !c.limit.Allow(env.Viewer, env.Now) {
 			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", claude.ErrTooMany))
 			return
 		}
 		start := time.Now()
-		out, err := c.Compose(r.Context(), words, at)
+		out, err := c.Compose(r.Context(), words, env.Now)
 		if errors.Is(err, claude.ErrFinal) {
 			serve.Error(w, r, access.Invalid("%v", err))
 			return

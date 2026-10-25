@@ -39,11 +39,7 @@ func NewHomePages(s *Store, style *sharecard.Style) *HomePages {
 }
 
 func (p *HomePages) Register(mux *http.ServeMux) {
-	for _, page := range []string{"GET /{$}", "GET /admin"} {
-		mux.HandleFunc(page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, homeShell)
-		})
-	}
+	serve.Pages(mux, homeShell, "/{$}", "/admin")
 	mux.HandleFunc("GET /dl/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusMovedPermanently)
 	})

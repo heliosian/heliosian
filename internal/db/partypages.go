@@ -1,8 +1,6 @@
 package db
 
 import (
-	"errors"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -43,31 +41,18 @@ func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style) *Party
 }
 
 func (p *PartyPages) Register(mux *http.ServeMux) {
-	for _, page := range partiesPages {
-		mux.HandleFunc("GET "+page, func(w http.ResponseWriter, r *http.Request) {
-			serve.File(w, r, partiesShell)
-		})
-	}
+	serve.Pages(mux, partiesShell, partiesPages...)
 	mux.HandleFunc("GET /open/share/upcoming.png", p.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", p.shareCard)
 }
 
 func (p *PartyPages) Redirected(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			next.ServeHTTP(w, r)
-			return
-		}
+	return redirected(next, func(r *http.Request) (string, int) {
 		m := p.s.Model()
-		to, status := m.partyCanonical(r.URL), http.StatusMovedPermanently
-		if to == "" {
-			to, status = m.partyRedirect(r.URL.Path), http.StatusFound
+		if to := m.partyCanonical(r.URL); to != "" {
+			return to, http.StatusMovedPermanently
 		}
-		if to == "" {
-			next.ServeHTTP(w, r)
-			return
-		}
-		redirectTo(w, r, to, status)
+		return m.partyRedirect(r.URL.Path), http.StatusFound
 	})
 }
 
@@ -115,13 +100,7 @@ func (p *PartyPages) PreviewHead(r *http.Request) string {
 	if g == nil {
 		return p.upcomingHead(m, origin)
 	}
-	lines := []string{}
-	for _, s := range []string{whenText(g), g["location"], blurb(g["description"])} {
-		if s != "" {
-			lines = append(lines, s)
-		}
-	}
-	return p.style.PreviewTags(g["name"], strings.Join(lines, " — "), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
+	return p.style.PreviewTags(g["name"], eventBlurb(g), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
 }
 
 func (m *Model) upcomingParties(at time.Time) []store.Row {
@@ -184,7 +163,7 @@ func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 		next := parties[0]
 		day, hours := whenLines(next)
 		card.Kicker, card.Title, card.Subtitle = "Next party", next["name"], next["subtitle"]
-		card.Lines = []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: next["location"]}}
+		card.Lines = whenCardLines(day, hours, next["location"])
 		words = append(words, next["name"], next["subtitle"], day, hours, next["location"])
 		for _, g := range parties[1:min(len(parties), 1+partiesListed)] {
 			day, _ := whenLines(g)
@@ -206,18 +185,10 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name, whole = m.groupPhoto(g["id"]), false
 	}
-	var picture []byte
-	if name != "" {
-		content, _, err := m.contentBytes(r.Context(), p.bucket, name)
-		if err != nil && !errors.Is(err, blob.ErrNotFound) {
-			slog.ErrorContext(r.Context(), "party pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
-		}
-		picture = content
-	}
 	day, hours := whenLines(g)
 	card := sharecard.Card{
-		Title: g["name"], Subtitle: g["subtitle"], Picture: picture, Whole: whole,
-		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: g["location"]}},
+		Title: g["name"], Subtitle: g["subtitle"], Picture: m.cardPicture(r.Context(), p.bucket, "party pages", g, name), Whole: whole,
+		Lines: whenCardLines(day, hours, g["location"]),
 	}
 	p.style.Serve(w, r, card, g["name"], g["subtitle"], day, hours, g["location"], name)
 }

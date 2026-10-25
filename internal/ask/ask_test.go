@@ -19,13 +19,13 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/intercept"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/authtest"
 	"heliosian/internal/tools"
 )
 
@@ -69,7 +69,7 @@ func sampleSources(t *testing.T) sample {
 
 func requestAs(email string) *http.Request {
 	var got *http.Request
-	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	authtest.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	return got
 }
 
@@ -275,7 +275,7 @@ func TestChatTellsOfNewMailOnce(t *testing.T) {
 	s := sampleSources(t)
 	mux := http.NewServeMux()
 	Register(mux, mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
-	handler := auth.Fixed(rowan, mux)
+	handler := authtest.Fixed(rowan, mux)
 	chat := &transcript{}
 	first := chat.keep(t, post(t, handler, chat.body(t, "Anything new?")))
 	already := []string{"doc00000000001", "doc00000000201", "doc00000000202", "doc00000000203", "doc00000000204"}
@@ -326,7 +326,7 @@ func TestTheCarriedPromptIsCheckedAndTheNewDayTold(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	Register(mux, mux, s.sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
-	handler := auth.Fixed(rowan, mux)
+	handler := authtest.Fixed(rowan, mux)
 	chat := &transcript{}
 	chat.keep(t, post(t, handler, chat.body(t, "Hello")))
 	forged := *chat
@@ -421,7 +421,7 @@ func serveApp(t *testing.T) http.Handler {
 	t.Helper()
 	mux := http.NewServeMux()
 	Register(mux, mux, sampleSources(t).sources, NewClaude(t.Name()), claude.NewLimiter(), []byte("test"), About(func() string { return "Ask" }, func() string { return "" }))
-	return auth.Fixed(rowan, mux)
+	return authtest.Fixed(rowan, mux)
 }
 
 func chatKey(t *testing.T, handler http.Handler) string {
@@ -452,7 +452,7 @@ func TestChatKeyIsTheSameEachLoadAndGoesWithTheServerKey(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	Register(mux, mux, sampleSources(t).sources, NewClaude("test"), claude.NewLimiter(), []byte("other"), About(func() string { return "Ask" }, func() string { return "" }))
-	if other := chatKey(t, auth.Fixed(rowan, mux)); other == first {
+	if other := chatKey(t, authtest.Fixed(rowan, mux)); other == first {
 		t.Fatalf("a different server key gave the same chat key")
 	}
 }

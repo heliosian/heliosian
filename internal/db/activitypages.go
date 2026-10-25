@@ -1,9 +1,7 @@
 package db
 
 import (
-	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"slices"
@@ -117,19 +115,11 @@ func (a *ActivityPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, whole := tr.picture(g)
-	var picture []byte
-	if name != "" {
-		content, _, err := tr.m.contentBytes(r.Context(), a.bucket, name)
-		if err != nil && !errors.Is(err, blob.ErrNotFound) {
-			slog.ErrorContext(r.Context(), "activity pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
-		}
-		picture = content
-	}
 	under := tr.lineage(g)
 	day, hours := whenLines(tr.timed(g))
 	card := sharecard.Card{
-		Kicker: under, Title: g["name"], Picture: picture, Whole: whole,
-		Lines: []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}},
+		Kicker: under, Title: g["name"], Picture: tr.m.cardPicture(r.Context(), a.bucket, "activity pages", g, name), Whole: whole,
+		Lines: whenCardLines(day, hours, ""),
 	}
 	a.style.Serve(w, r, card, g["name"], under, day, hours, name)
 }

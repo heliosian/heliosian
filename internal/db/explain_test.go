@@ -5,17 +5,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"heliosian/internal/auth"
+	"heliosian/internal/testkit/authtest"
 )
 
 func getJSON(t *testing.T, s *Store, as, path string, into any) int {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, nil, testTokens, func() time.Time { return testNow })
+	Register(mux, s, nil, testTokens)
 	rec := httptest.NewRecorder()
-	auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	authtest.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	if rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), into); err != nil {
 			t.Fatal(err)

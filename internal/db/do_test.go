@@ -62,7 +62,7 @@ func postFile(t *testing.T, s *Store, pics *Pictures, as, verb string, fields ma
 	}
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	r := httptest.NewRequest(http.MethodPost, "/api/do/"+verb, body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func postUpload(t *testing.T, s *Store, pics *Pictures, as string, fields map[st
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	r := httptest.NewRequest(http.MethodPost, "/api/do/file", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()

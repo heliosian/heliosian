@@ -50,13 +50,12 @@ type Feedback struct {
 	s      *Store
 	bucket *blob.Bucket
 	tokens auth.Tokens
-	now    func() time.Time
 	config FeedbackConfig
 	recent *ratelimit.Limiter
 }
 
-func NewFeedback(s *Store, bucket *blob.Bucket, tokens auth.Tokens, now func() time.Time, config FeedbackConfig) *Feedback {
-	return &Feedback{s: s, bucket: bucket, tokens: tokens, now: now, config: config, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
+func NewFeedback(s *Store, bucket *blob.Bucket, tokens auth.Tokens, config FeedbackConfig) *Feedback {
+	return &Feedback{s: s, bucket: bucket, tokens: tokens, config: config, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
 }
 
 type feedbackSubmission struct {
@@ -90,7 +89,7 @@ func (f *Feedback) Register(mux *http.ServeMux, domain string, appName func(key 
 
 func (f *Feedback) file(w http.ResponseWriter, r *http.Request, app, appName string) {
 	m := f.s.Model()
-	env, actor, ok := caller(w, r, m, f.tokens, f.now())
+	env, actor, ok := caller(w, r, m, f.tokens)
 	if !ok {
 		return
 	}
@@ -122,7 +121,7 @@ func (f *Feedback) file(w http.ResponseWriter, r *http.Request, app, appName str
 		http.Error(w, "that's longer than a report can be", http.StatusBadRequest)
 		return
 	}
-	now := f.now()
+	now := env.Now
 	if !f.recent.Allow(actor.Email, now) {
 		http.Error(w, "that's a lot of reports in a few minutes; please wait a little and try again", http.StatusTooManyRequests)
 		return
@@ -384,7 +383,7 @@ type reportRequest struct {
 func (f *Feedback) RegisterTriage(mux *http.ServeMux, appName func(key string) string) {
 	read := func(w http.ResponseWriter, r *http.Request) (store.Row, reportRequest, access.Actor, Env, bool) {
 		m := f.s.Model()
-		env, actor, ok := caller(w, r, m, f.tokens, f.now())
+		env, actor, ok := caller(w, r, m, f.tokens)
 		if !ok {
 			return nil, reportRequest{}, actor, env, false
 		}
@@ -423,7 +422,7 @@ func (f *Feedback) RegisterTriage(mux *http.ServeMux, appName func(key string) s
 			return
 		}
 		slog.InfoContext(r.Context(), "feedback: filed", "id", report["id"], "issue", issue)
-		edit := Edit{Set: report["id"], Cells: map[string]any{"status": "filed", "issue": issue, "handled": f.now().In(School).Format(cells.StampFormat), "handled_by": env.Viewer}}
+		edit := Edit{Set: report["id"], Cells: map[string]any{"status": "filed", "issue": issue, "handled": env.Now.In(School).Format(cells.StampFormat), "handled_by": env.Viewer}}
 		if _, err := Write(r.Context(), f.s, actor, env, Batch{Batch: []Edit{edit}}); err != nil {
 			serve.Error(w, r, err)
 			return

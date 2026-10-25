@@ -1008,7 +1008,7 @@ func TestSearchAnswersOnceByTable(t *testing.T) {
 	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	mux := http.NewServeMux()
-	RegisterSearch(mux, s, x, testTokens, func() time.Time { return testNow })
+	RegisterSearch(mux, s, x, testTokens)
 	req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(`{"words": "picnic"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -1048,7 +1048,7 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 		t.Fatalf("limited to one group and no people, the search found %d and %d", len(got["GROUP"]), len(got["PERSON"]))
 	}
 	mux := http.NewServeMux()
-	RegisterSearch(mux, s, x, testTokens, func() time.Time { return testNow })
+	RegisterSearch(mux, s, x, testTokens)
 	ask := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "/api/do/search", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")

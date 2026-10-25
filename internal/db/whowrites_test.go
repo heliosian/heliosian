@@ -10,12 +10,11 @@ import (
 	"net/textproto"
 	"os"
 	"testing"
-	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
+	"heliosian/internal/testkit/authtest"
 )
 
 func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
@@ -173,11 +172,11 @@ func postRecording(t *testing.T, s *Store, pics *Pictures, as string, fields map
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	r := httptest.NewRequest(http.MethodPost, "/api/do/pronunciation", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	authtest.Fixed(as, mux).ServeHTTP(rec, r)
 	return rec
 }
 

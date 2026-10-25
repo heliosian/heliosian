@@ -3,7 +3,6 @@ package db
 import (
 	"net/http"
 	"slices"
-	"time"
 
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
@@ -82,13 +81,13 @@ func (m *Model) explain(env, self Env, id string) (explanation, bool) {
 	return out, true
 }
 
-func registerExplain(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
+func registerExplain(mux *http.ServeMux, s *Store, tokens auth.Tokens) {
 	mux.HandleFunc("GET /api/policies", func(w http.ResponseWriter, r *http.Request) {
 		serve.Write(w, r, http.StatusOK, policyList{Clauses: policies.clauses})
 	})
 	mux.HandleFunc("GET /api/explain/{id}", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens, now())
+		env, _, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}

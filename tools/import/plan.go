@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -12,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/store"
 )
 
@@ -178,8 +177,7 @@ func (p *planner) portraits() ([]portrait, error) {
 			if err != nil {
 				return nil, fmt.Errorf("%s's photo: %w", id.name, err)
 			}
-			sum := sha256.Sum256(content)
-			hash := hex.EncodeToString(sum[:])
+			hash := blob.Hash(content)
 			if held[id.person+"/"+hash] {
 				continue
 			}

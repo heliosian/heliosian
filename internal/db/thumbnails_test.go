@@ -247,7 +247,7 @@ func TestDocumentsGetThumbnails(t *testing.T) {
 		}
 	}
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		serveAs(mux, rec, httptest.NewRequest(http.MethodGet, path, nil), "rowan.ashdown@example.org")

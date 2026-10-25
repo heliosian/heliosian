@@ -198,15 +198,13 @@ function showData(d) {
   const bhead = el('tr');
   bhead.append(el('th', '', 'bucket'), el('th', 'num', 'objects'), el('th', 'num', 'size'), el('th', 'num', 'measured'));
   buckets.append(bhead);
-  for (const b of d.ops.buckets) {
-    const tr = el('tr');
-    const r = b.reading;
-    if (r.error) {
-      tr.append(el('td', '', b.name), el('td', 'bad', r.error));
-      tr.lastChild.colSpan = 3;
-      buckets.append(tr);
-      continue;
-    }
+  const b = d.ops.bucket;
+  const tr = el('tr');
+  const r = b.reading;
+  if (r.error) {
+    tr.append(el('td', '', b.name), el('td', 'bad', r.error));
+    tr.lastChild.colSpan = 3;
+  } else {
     const folders = Object.values(r.value);
     const measured = !r.fetched.startsWith('0001');
     tr.append(
@@ -215,8 +213,8 @@ function showData(d) {
       el('td', 'num', measured ? bytes(folders.reduce((n, f) => n + f.bytes, 0)) : ''),
       el('td', 'num', measured ? ago(r.fetched) : 'measuring…'),
     );
-    buckets.append(tr);
   }
+  buckets.append(tr);
   body('data').replaceChildren(table, buckets);
 }
 

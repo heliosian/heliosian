@@ -7,13 +7,12 @@ import (
 	"net/http/httptest"
 	"slices"
 	"testing"
-	"time"
 )
 
 func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	r := httptest.NewRequest(http.MethodGet, blobPath+path, nil)
 	if etag != "" {
 		r.Header.Set("If-None-Match", etag)

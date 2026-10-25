@@ -37,7 +37,7 @@ func newInviteHarness(t *testing.T) *inviteHarness {
 	t.Helper()
 	s := sample(t)
 	h := &inviteHarness{t: t, s: s, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
-	iv := RegisterInvitations(h.mux, h.mux, s, newPictures(s), testTokens, func() time.Time { return testNow }, InvitationConfig{
+	iv := RegisterInvitations(h.mux, h.mux, s, newPictures(s), testTokens, InvitationConfig{
 		Sender: h.sender.Mailgun, ReplyTo: whenReply, SigningKey: loopSigningKey, Origin: func(app string) string { return "https://" + app + ".test" },
 	})
 	iv.Start()

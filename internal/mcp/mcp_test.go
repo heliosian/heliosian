@@ -23,6 +23,7 @@ import (
 	"heliosian/internal/hosts"
 	"heliosian/internal/intercept"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/authtest"
 	"heliosian/internal/tools"
 )
 
@@ -82,13 +83,16 @@ func setup(t *testing.T) fixture {
 	search := db.NewSearcher(s, bucket, vertex)
 	mux := http.NewServeMux()
 	Register(mux, mux, Deps{
-		Data:     s,
-		Tools:    tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: time.Now}),
-		Key:      []byte("test"),
-		Sessions: signed,
-		Now:      time.Now,
+		Data:  s,
+		Tools: tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: time.Now}),
+		Tokens: auth.Tokens{
+			Key:      []byte("test"),
+			Sessions: signed,
+			SignedIn: func(email string) bool { return s.Model().SignedIn(email) != "" },
+			Now:      time.Now,
+		},
 	})
-	server := httptest.NewServer(auth.Fixed(rowan, mux))
+	server := httptest.NewServer(authtest.Fixed(rowan, mux))
 	t.Cleanup(server.Close)
 	return fixture{server: server, sessions: signed, search: search}
 }

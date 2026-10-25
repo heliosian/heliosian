@@ -10,7 +10,7 @@ import (
 const maxOutput = 200 << 10
 
 func (s *Server) addTools() {
-	for _, t := range s.tools.Tools {
+	for _, t := range s.deps.Tools.Tools {
 		tool := &sdk.Tool{Name: t.Name, Description: t.Description, InputSchema: t.Schema, Annotations: &sdk.ToolAnnotations{ReadOnlyHint: true}}
 		s.server.AddTool(tool, func(ctx context.Context, req *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 			m := s.deps.Data.Model()
@@ -19,7 +19,7 @@ func (s *Server) addTools() {
 			if viewer == "" {
 				return nil, fmt.Errorf("%s is not in the directory", email)
 			}
-			answer, err := s.tools.Run(ctx, m, viewer, t.Name, req.Params.Arguments)
+			answer, err := s.deps.Tools.Run(ctx, m, viewer, t.Name, req.Params.Arguments)
 			if err != nil {
 				return failed(err), nil
 			}

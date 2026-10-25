@@ -279,7 +279,7 @@ func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 		t.Fatalf("the page's picture reads %v", row)
 	}
 	mux := http.NewServeMux()
-	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens)
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		serveAs(mux, rec, httptest.NewRequest(http.MethodGet, path, nil), "maya.lindqvist@example.org")

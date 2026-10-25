@@ -1,9 +1,7 @@
 package db
 
 import (
-	"errors"
 	"image/color"
-	"log/slog"
 	"net/http"
 	"os"
 	"slices"
@@ -73,13 +71,7 @@ func (p *WhenPages) PreviewHead(r *http.Request) string {
 }
 
 func (p *WhenPages) head(g store.Row, origin string) string {
-	parts := []string{}
-	for _, s := range []string{whenText(g), g["location"], blurb(g["description"])} {
-		if s != "" {
-			parts = append(parts, s)
-		}
-	}
-	return p.style.PreviewTags(g["name"], strings.Join(parts, " — "), origin+g["path"], origin+"/open/share/"+g["id"]+".png")
+	return p.style.PreviewTags(g["name"], eventBlurb(g), origin+g["path"], origin+"/open/share/"+g["id"]+".png")
 }
 
 func (p *WhenPages) extPage(w http.ResponseWriter, r *http.Request) {
@@ -135,18 +127,14 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		}
 		picture = content
 	} else {
-		content, _, err := m.contentBytes(r.Context(), p.bucket, name)
-		if err != nil && !errors.Is(err, blob.ErrNotFound) {
-			slog.ErrorContext(r.Context(), "when pages: read a share card's picture", "group", g["id"], "name", name, "error", err)
-		}
-		picture = content
+		picture = m.cardPicture(r.Context(), p.bucket, "when pages", g, name)
 	}
 	kicker := m.topCategory(g)
 	day, hours := whenLines(g)
 	button := map[string]string{"event": "RSVP", "party": "Get Tickets", "activity": "Sign Up"}[g["kind"]]
 	card := sharecard.Card{
 		Kicker: kicker, Title: g["name"], Picture: picture, Whole: whole,
-		Lines:  []sharecard.Line{{Icon: "calendar", Text: day}, {Icon: "clock", Text: hours}, {Icon: "pin", Text: g["location"]}},
+		Lines:  whenCardLines(day, hours, g["location"]),
 		Button: button,
 	}
 	p.style.Serve(w, r, card, g["name"], kicker, day, hours, g["location"], name, button)

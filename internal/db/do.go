@@ -2,8 +2,6 @@ package db
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -35,11 +33,11 @@ type stored struct {
 	Hash   string   `json:"hash"`
 }
 
-func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
-	registerWiki(mux, s, pics, tokens, now)
-	registerSubscription(mux, s, tokens, now)
+func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
+	registerWiki(mux, s, pics, tokens)
+	registerSubscription(mux, s, tokens)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -99,7 +97,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		serve.Write(w, r, http.StatusOK, stored{Result: ids[len(ids)-1:], Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/flyer", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -120,7 +118,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -149,7 +147,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/file", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -194,7 +192,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 	})
 	mux.HandleFunc("POST /api/do/person-at", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		if _, _, ok := caller(w, r, m, tokens, now()); !ok {
+		if _, _, ok := caller(w, r, m, tokens); !ok {
 			return
 		}
 		var ask struct {
@@ -206,7 +204,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		serve.Write(w, r, http.StatusOK, map[string]string{"person": m.personAt(ask.Address)})
 	})
 	mux.HandleFunc("POST /api/do/fetched", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -230,7 +228,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		serve.Write(w, r, http.StatusOK, answer)
 	})
 	mux.HandleFunc("POST /api/do/thumbnail", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}
@@ -304,13 +302,10 @@ func storeFetched(r *http.Request, s *Store, pics *Pictures, actor access.Actor,
 	if err != nil {
 		return stop("refused", err.Error())
 	}
-	sum := sha256.Sum256(content)
-	hash := hex.EncodeToString(sum[:])
-	name := "content/" + hash
+	made := madeOf(content, mimeType)
 	m := s.Model()
-	_, found := m.Table("CONTENT").Find(hash, mimeType)
-	if !found {
-		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": strconv.Itoa(len(content))}}); err != nil {
+	if _, found := m.Table("CONTENT").Find(made.hash, mimeType); !found {
+		if err := m.Authorize(env, Change{Table: "CONTENT", New: made.row()}); err != nil {
 			return fetchedAnswer{}, err
 		}
 	}
@@ -332,7 +327,7 @@ func storeFetched(r *http.Request, s *Store, pics *Pictures, actor access.Actor,
 	if err != nil {
 		return fetchedAnswer{}, err
 	}
-	return fetchedAnswer{Result: []string{id}, Hash: hash}, nil
+	return fetchedAnswer{Result: []string{id}, Hash: made.hash}, nil
 }
 
 func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
@@ -362,8 +357,8 @@ func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
 }
 
 func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
-	sum := sha256.Sum256(content)
-	hash := hex.EncodeToString(sum[:])
+	made := madeOf(content, mimeType)
+	hash := made.hash
 	m := s.Model()
 	if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": root["kind"].(string)}}); err != nil {
 		return "", "", err
@@ -380,14 +375,13 @@ func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor
 	edits := []Edit{}
 	root["content"] = existing["id"]
 	if !found {
-		name, size := "content/"+hash, strconv.Itoa(len(content))
-		if err := m.Authorize(env, Change{Table: "CONTENT", New: store.Row{"hash": hash, "blob": name, "mime": mimeType, "size": size}}); err != nil {
+		if err := m.Authorize(env, Change{Table: "CONTENT", New: made.row()}); err != nil {
 			return "", "", err
 		}
 		if _, err := keepBytes(ctx, m, pics.bucket, mimeType, content); err != nil {
 			return "", "", err
 		}
-		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mimeType, "size": size}})
+		edits = append(edits, made.insert("content"))
 		root["content"] = "@content"
 	}
 	edits = append(edits, Edit{Insert: "DOCUMENT", As: "document", Row: root})

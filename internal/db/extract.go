@@ -223,7 +223,7 @@ func stageContent(m *Model, w *pendingWrites, held map[string]string, b madeByte
 	if !b.written {
 		return "", fmt.Errorf("the content row for %s was swept while its bytes were being stored again; try again", b.hash)
 	}
-	id := w.server(Edit{Insert: "CONTENT", Row: map[string]any{"hash": b.hash, "blob": "content/" + b.hash, "mime": b.mime, "size": strconv.Itoa(b.size)}})
+	id := w.server(b.insert(""))
 	held[key] = id
 	return id, nil
 }

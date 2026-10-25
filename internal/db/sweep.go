@@ -48,7 +48,7 @@ func (x *sweeper) runObjects() {
 }
 
 func (x *sweeper) sweepObjects(ctx context.Context, before time.Time) (int, error) {
-	old, err := x.bucket.Older(ctx, "content/", before)
+	old, err := x.bucket.Older(ctx, contentFolder, before)
 	if err != nil {
 		return 0, err
 	}

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/intercept"
+	"heliosian/internal/testkit/authtest"
 )
 
 type counting struct {
@@ -53,7 +53,7 @@ func TestSuggestCachesAndLimits(t *testing.T) {
 	intercept.Install(intercept.PlacesHost, c)
 	mux := http.NewServeMux()
 	NewSuggestions(New("test")).Register(mux)
-	h := auth.Fixed("jordan@example.org", mux)
+	h := authtest.Fixed("jordan@example.org", mux)
 	for range 3 {
 		if got := suggest(t, h, "  Waverley  "); len(got) != 1 || got[0].Text != "waverley St" {
 			t.Fatalf("got %+v", got)

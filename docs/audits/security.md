@@ -43,7 +43,7 @@ The people to think about:
 - `/open/` and `/ext/` tokens: how long, how random, from which source, what each one opens, whether it can be revoked or re-issued, whether it outlives what it was for, whether it is logged, and whether one kind of token is accepted where another is expected.
 - Admin and super admin: how each is decided, that every handler that needs one asks on the server, that an app's admin is not an admin elsewhere, and that a regular admin cannot make themselves more (`docs/datamodel.md`, Groups and Permissions).
 - Spoof Mode (`internal/auth/spoof.go`, `docs/toolbar.md`): who can start one, that a spoofed request can never reach more than the person viewed as, that writes made while spoofing are recorded against the admin, that mail and invitations sent while spoofing say who really sent them, and that the spoof cookie cannot be minted or kept by someone who is no longer a super admin.
-- The sample server's sign-in (`auth.Fixed`, `tools/startserver`, `tools/cookie`): that nothing of it is reachable in the production binary, by a flag, an environment variable or a hostname.
+- The sample server's sign-in (`Auth.Fixed`, `tools/startserver`, `tools/cookie`): that nothing of it is reachable in the production binary, by a flag, an environment variable or a hostname.
 - Host routing: the `Host` header as the app selector, and anything built from it - links in mail, redirect targets, the login URI.
 
 ### Server data handling

@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -67,9 +66,9 @@ type wikiSide struct {
 	Body string `json:"body"`
 }
 
-func registerWiki(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+func registerWiki(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
 	mux.HandleFunc("POST /api/do/wiki", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}

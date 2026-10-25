@@ -7,17 +7,16 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
+	"heliosian/internal/testkit/authtest"
 )
 
 func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens)
 	personAt := func(as, address string) string {
 		t.Helper()
 		rec := doCall(t, mux, as, "/api/do/person-at", `{"address": "`+address+`"}`)
@@ -71,12 +70,12 @@ func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 	s := sample(t)
 	apply(t, s, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
 	mux := http.NewServeMux()
-	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, func() time.Time { return testNow })
+	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens)
 	ask := func(as, body string) (*httptest.ResponseRecorder, draftAnswer) {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "/api/do/draft-members", strings.NewReader(body))
 		rec := httptest.NewRecorder()
-		auth.Fixed(as, mux).ServeHTTP(rec, r)
+		authtest.Fixed(as, mux).ServeHTTP(rec, r)
 		var out draftAnswer
 		if rec.Code == http.StatusOK {
 			if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {

@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/testkit"
+	"heliosian/internal/testkit/authtest"
 	"heliosian/internal/trace"
 )
 
-var testTokens = testkit.Tokens(func(string) bool { return true })
+var testTokens = testkit.Tokens(func(string) bool { return true }, func() time.Time { return testNow })
 
 const (
 	superAdmin = "maya.lindqvist@example.org"
@@ -36,13 +36,13 @@ func serveAs(mux http.Handler, rec *httptest.ResponseRecorder, r *http.Request, 
 		mux.ServeHTTP(rec, r)
 		return
 	}
-	auth.Fixed(as, mux).ServeHTTP(rec, r)
+	authtest.Fixed(as, mux).ServeHTTP(rec, r)
 }
 
 func send(t *testing.T, s *Store, method, kind, as, body string, headers ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens)
 	r := httptest.NewRequest(method, "/api/q", strings.NewReader(body))
 	if kind != "" {
 		r.Header.Set("Content-Type", kind)

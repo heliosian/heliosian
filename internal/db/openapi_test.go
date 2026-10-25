@@ -12,7 +12,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 )
 
 type specProperty struct {
@@ -38,7 +37,7 @@ func served(t *testing.T) specDoc {
 	t.Helper()
 	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
 	if rec.Code != http.StatusOK {

@@ -28,6 +28,14 @@ func File(w http.ResponseWriter, r *http.Request, name string) {
 	Content(w, r, name, data)
 }
 
+func Pages(mux *http.ServeMux, name string, paths ...string) {
+	for _, path := range paths {
+		mux.HandleFunc("GET "+path, func(w http.ResponseWriter, r *http.Request) {
+			File(w, r, name)
+		})
+	}
+}
+
 func Content(w http.ResponseWriter, r *http.Request, name string, data []byte) {
 	sum := sha256.Sum256(data)
 	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:])+`"`)

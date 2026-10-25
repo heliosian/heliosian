@@ -56,12 +56,6 @@ func New(domain, clientID string, key []byte, login Login, member func(email str
 	return &Auth{domain: domain, clientID: clientID, key: key, page: login, member: member, nonMember: nonMember, sessions: sessions}
 }
 
-func Fixed(email string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, identity{real: email, effective: email})))
-	})
-}
-
 func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if passed(r) {

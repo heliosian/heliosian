@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +18,7 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"golang.org/x/net/html"
 
+	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/db"
 )
@@ -155,8 +154,7 @@ func importCalendar(c client, anthropicKey string, dryRun bool) error {
 	if err != nil {
 		return fmt.Errorf("fetch the year calendar pdf: %w", err)
 	}
-	sum := sha256.Sum256(pdf)
-	hash := hex.EncodeToString(sum[:])
+	hash := blob.Hash(pdf)
 	rows, err := c.calendarRows()
 	if err != nil {
 		return err

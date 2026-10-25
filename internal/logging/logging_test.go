@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"heliosian/internal/auth"
+	"heliosian/internal/testkit/authtest"
 )
 
 func TestTraceOf(t *testing.T) {
@@ -37,7 +37,7 @@ func TestRequestsTagsRecords(t *testing.T) {
 		slog.WarnContext(r.Context(), "inside", "n", 1)
 		w.WriteHeader(http.StatusTeapot)
 	})
-	h := auth.Fixed("Someone@heliosschool.org", Requests("who", inner))
+	h := authtest.Fixed("Someone@heliosschool.org", Requests("who", inner))
 	r := httptest.NewRequest("GET", "/people?x=1", nil)
 	r.Header.Set("X-Cloud-Trace-Context", "105445aa7843bc8bf206b12000100000/255;o=1")
 	h.ServeHTTP(httptest.NewRecorder(), r)

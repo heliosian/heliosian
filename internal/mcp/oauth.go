@@ -56,15 +56,6 @@ func origin(r *http.Request) string {
 	return "https://" + r.Host
 }
 
-func (s *Server) tokens() auth.Tokens {
-	return auth.Tokens{
-		Key:      s.deps.Key,
-		Sessions: s.deps.Sessions,
-		SignedIn: func(email string) bool { return s.deps.Data.Model().SignedIn(email) != "" },
-		Now:      s.deps.Now,
-	}
-}
-
 func (s *Server) resource(path string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		sdkauth.ProtectedResourceMetadataHandler(&oauthex.ProtectedResourceMetadata{
@@ -144,7 +135,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	if len(name) > maxClientName {
 		name = name[:maxClientName]
 	}
-	id := auth.Seal(s.deps.Key, "client", client{Name: name, Redirects: asked.Redirects, Nonce: rand.Text()})
+	id := auth.Seal(s.deps.Tokens.Key, "client", client{Name: name, Redirects: asked.Redirects, Nonce: rand.Text()})
 	slog.InfoContext(r.Context(), "mcp: registered", "client", name, "redirects", asked.Redirects)
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusCreated, map[string]any{
@@ -171,7 +162,7 @@ func (s *Server) authorization(query string) (authorization, error) {
 		return authorization{}, access.Invalid("the request's address does not parse")
 	}
 	a := authorization{clientID: q.Get("client_id"), redirect: q.Get("redirect_uri"), state: q.Get("state"), pkce: q.Get("code_challenge")}
-	if !auth.Unseal(s.deps.Key, "client", a.clientID, &a.client) {
+	if !auth.Unseal(s.deps.Tokens.Key, "client", a.clientID, &a.client) {
 		return authorization{}, access.Invalid("this client is not registered here; remove the connector and add it again")
 	}
 	if !slices.Contains(a.client.Redirects, a.redirect) {
@@ -250,8 +241,8 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 	if s.deps.Data.Model().SignedIn(email) == "" {
 		return onward{}, access.Forbidden("%s is not in the directory", email)
 	}
-	now := s.deps.Now()
-	code := auth.Seal(s.deps.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
+	now := s.deps.Tokens.Now()
+	code := auth.Seal(s.deps.Tokens.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
 	slog.InfoContext(r.Context(), "mcp: approved", "client", a.client.Name, "email", email)
 	return onward{Redirect: a.back(url.Values{"code": {code}, "iss": {origin(r)}})}, nil
 }
@@ -282,11 +273,11 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var g grant
-	if !auth.Unseal(s.deps.Key, "code", r.PostForm.Get("code"), &g) {
+	if !auth.Unseal(s.deps.Tokens.Key, "code", r.PostForm.Get("code"), &g) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code is not one this server issued")
 		return
 	}
-	now := s.deps.Now()
+	now := s.deps.Tokens.Now()
 	switch {
 	case g.Issued == 0 || now.Unix() > g.Expires:
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code has expired")
@@ -301,11 +292,11 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code_verifier does not match the challenge")
 		return
 	}
-	if out, ok := s.deps.Sessions.SignedOut(g.Email); ok && g.Issued <= out.Unix() {
+	if out, ok := s.deps.Tokens.Sessions.SignedOut(g.Email); ok && g.Issued <= out.Unix() {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "signed out since this code was approved")
 		return
 	}
-	token := s.tokens().Issue(g.Email, time.Unix(g.Issued, 0))
+	token := s.deps.Tokens.Issue(g.Email, time.Unix(g.Issued, 0))
 	slog.InfoContext(r.Context(), "mcp: token issued", "email", g.Email)
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusOK, map[string]any{
@@ -316,7 +307,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verify(_ context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
-	email, expires, err := s.tokens().Verify(token)
+	email, expires, err := s.deps.Tokens.Verify(token)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sdkauth.ErrInvalidToken, err)
 	}

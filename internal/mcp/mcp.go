@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"net/http"
-	"time"
 
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -14,16 +13,13 @@ import (
 )
 
 type Deps struct {
-	Data     *db.Store
-	Tools    *tools.Set
-	Key      []byte
-	Sessions auth.Sessions
-	Now      func() time.Time
+	Data   *db.Store
+	Tools  *tools.Set
+	Tokens auth.Tokens
 }
 
 type Server struct {
 	deps    Deps
-	tools   *tools.Set
 	server  *sdk.Server
 	handler http.Handler
 }
@@ -39,7 +35,7 @@ Start with helios_search or helios_whoami. For anything structured, helios_descr
 ` + db.Language
 
 func Register(mux, api *http.ServeMux, deps Deps) {
-	s := &Server{deps: deps, tools: deps.Tools}
+	s := &Server{deps: deps}
 	s.server = sdk.NewServer(&sdk.Implementation{Name: "helios-school", Title: "Helios School", Description: about, Version: "1"}, &sdk.ServerOptions{Instructions: instructions})
 	s.addTools()
 	s.handler = sdk.NewStreamableHTTPHandler(func(*http.Request) *sdk.Server { return s.server }, &sdk.StreamableHTTPOptions{Stateless: true, JSONResponse: true})

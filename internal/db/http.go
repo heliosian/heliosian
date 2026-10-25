@@ -14,7 +14,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -119,8 +118,8 @@ const (
 	SpoofHeader = "Helios-Spoof"
 )
 
-func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens, at time.Time) (Env, access.Actor, bool) {
-	mode := r.Header.Get(ModeHeader)
+func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens) (Env, access.Actor, bool) {
+	mode, at := r.Header.Get(ModeHeader), tokens.Now()
 	token, bearer := auth.Bearer(r)
 	if !bearer {
 		email := auth.Email(r)
@@ -152,16 +151,16 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email}, true
 }
 
-func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
-	registerDo(mux, s, pics, tokens, now)
-	registerBlobs(mux, s, pics, tokens, now)
-	registerExplain(mux, s, tokens, now)
+func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
+	registerDo(mux, s, pics, tokens)
+	registerBlobs(mux, s, pics, tokens)
+	registerExplain(mux, s, tokens)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
 	mux.HandleFunc("QUERY /api/q", func(w http.ResponseWriter, r *http.Request) {
 		root := trace.New("request")
 		ctx := trace.With(r.Context(), root)
 		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens, now())
+		env, _, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}
@@ -220,7 +219,7 @@ func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, 
 		respond(ctx, w, r, root, out)
 	})
 	mux.HandleFunc("POST /api/q", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens, now())
+		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
 			return
 		}

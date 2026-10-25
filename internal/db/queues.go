@@ -28,10 +28,10 @@ type queueReport struct {
 	LastRefresh time.Time    `json:"lastRefresh"`
 }
 
-func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
+func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens) {
 	mux.HandleFunc("GET /api/queues", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens, now())
+		env, _, ok := caller(w, r, m, tokens)
 		if !ok {
 			return
 		}

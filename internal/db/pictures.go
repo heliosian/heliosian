@@ -162,19 +162,37 @@ func cropBox(row store.Row) (image.Rectangle, bool, error) {
 	return image.Rect(n[0], n[1], n[0]+n[2], n[1]+n[3]), true, nil
 }
 
+const contentFolder = "content/"
+
 type madeBytes struct {
 	hash, mime string
 	size       int
 	written    bool
 }
 
+func madeOf(content []byte, mimeType string) madeBytes {
+	return madeBytes{hash: blob.Hash(content), mime: mimeType, size: len(content)}
+}
+
+func (b madeBytes) row() store.Row {
+	return store.Row{"hash": b.hash, "blob": contentFolder + b.hash, "mime": b.mime, "size": strconv.Itoa(b.size)}
+}
+
+func (b madeBytes) insert(as string) Edit {
+	row := map[string]any{}
+	for k, v := range b.row() {
+		row[k] = v
+	}
+	return Edit{Insert: "CONTENT", As: as, Row: row}
+}
+
 func keepBytes(ctx context.Context, m *Model, bucket *blob.Bucket, mimeType string, content []byte) (madeBytes, error) {
-	b := madeBytes{hash: blob.Hash(content), mime: mimeType, size: len(content)}
+	b := madeOf(content, mimeType)
 	if _, held := m.Table("CONTENT").Find(b.hash, mimeType); held {
 		return b, nil
 	}
 	b.written = true
-	name := "content/" + b.hash
+	name := contentFolder + b.hash
 	seen := int64(0)
 	for {
 		_, err := bucket.Put(ctx, name, mimeType, content, seen)

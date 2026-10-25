@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
-	"heliosian/internal/auth"
 	"heliosian/internal/data"
+	"heliosian/internal/testkit/authtest"
 )
 
 type counts struct {
@@ -169,7 +169,7 @@ func equal(t *testing.T, what string, got, want []string) {
 
 func signedIn(email string) context.Context {
 	var ctx context.Context
-	auth.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { ctx = r.Context() })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	authtest.Fixed(email, http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { ctx = r.Context() })).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
 	return ctx
 }
 

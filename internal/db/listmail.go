@@ -5,14 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
 	"log/slog"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -248,10 +246,9 @@ func (l *ListMailer) inbound(w http.ResponseWriter, r *http.Request) {
 func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) error {
 	l.receiving.Lock()
 	defer l.receiving.Unlock()
-	sum := sha256.Sum256(raw)
-	hash := hex.EncodeToString(sum[:])
+	made := madeOf(raw, mailType)
 	m := l.s.Model()
-	content, found := m.Table("CONTENT").Find(hash, mailType)
+	content, found := m.Table("CONTENT").Find(made.hash, made.mime)
 	fresh := []string{}
 	for _, g := range lists {
 		if !found || !m.postOf(g, content["id"]) {
@@ -264,11 +261,10 @@ func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) e
 	edits := []Edit{}
 	ref := content["id"]
 	if !found {
-		name := "content/" + hash
-		if _, err := keepBytes(ctx, m, l.pics.bucket, mailType, raw); err != nil {
+		if _, err := keepBytes(ctx, m, l.pics.bucket, made.mime, raw); err != nil {
 			return fmt.Errorf("store the post: %w", err)
 		}
-		edits = append(edits, Edit{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": hash, "blob": name, "mime": mailType, "size": strconv.Itoa(len(raw))}})
+		edits = append(edits, made.insert("content"))
 		ref = "@content"
 	}
 	lines, _ := mail.SplitMessage(raw)
@@ -292,7 +288,7 @@ func (l *ListMailer) received(ctx context.Context, raw []byte, lists []string) e
 		return fmt.Errorf("record the post: %w", err)
 	}
 	for _, id := range ids[len(ids)-len(fresh):] {
-		slog.InfoContext(ctx, "list mail: post received", "message", id, "hash", hash)
+		slog.InfoContext(ctx, "list mail: post received", "message", id, "hash", made.hash)
 		l.enqueue(id)
 	}
 	return nil

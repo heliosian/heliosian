@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
@@ -25,7 +24,7 @@ func TestSubscriptionTurnsAListsMailOffAndOn(t *testing.T) {
 	const hummingbirdsParents = "grp00000000030"
 	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens)
 	rowan := "rowan.ashdown@example.org"
 	if rec := doCall(t, mux, rowan, "/api/do/subscription", `{"group": "`+hummingbirdsParents+`", "subscribed": false}`); rec.Code != http.StatusOK {
 		t.Fatalf("unsubscribing answered %d %s", rec.Code, rec.Body)
@@ -58,9 +57,8 @@ func TestFetchedTakesOnlyALinkStillToFetch(t *testing.T) {
 func TestClaudeCallsCheckBeforeAskingClaude(t *testing.T) {
 	s := sample(t)
 	mux := http.NewServeMux()
-	now := func() time.Time { return testNow }
-	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, now)
-	RegisterCompose(mux, s, NewComposer("test", claude.NewLimiter()), testTokens, now)
+	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens)
+	RegisterCompose(mux, s, NewComposer("test", claude.NewLimiter()), testTokens)
 	team, err := Parse(`(from APP (where (= key "birthday") (birthday_team)))`)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +92,7 @@ func TestReportTriageIsForSuperAdmins(t *testing.T) {
 	s := sample(t)
 	report := apply(t, s, []Edit{{Insert: "REPORT", Row: map[string]any{"app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"}}})[0]
 	mux := http.NewServeMux()
-	NewFeedback(s, blob.NewMemoryBucket(), testTokens, func() time.Time { return testNow }, FeedbackConfig{}).RegisterTriage(mux, func(string) string { return "Helios Who?" })
+	NewFeedback(s, blob.NewMemoryBucket(), testTokens, FeedbackConfig{}).RegisterTriage(mux, func(string) string { return "Helios Who?" })
 	ask := `{"report": "` + report + `", "title": "Broken", "body": "It broke.", "type": "Bug"}`
 	if rec := doCall(t, mux, "rowan.ashdown@example.org", "/api/do/report-draft", ask); rec.Code != http.StatusForbidden {
 		t.Errorf("a parent drafting an issue answered %d", rec.Code)
