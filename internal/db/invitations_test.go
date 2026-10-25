@@ -126,7 +126,7 @@ func (h *inviteHarness) reply(to, from, uid, standing string) int {
 	h.t.Helper()
 	raw := calendarReply(from, uid, standing)
 	token := fmt.Sprintf("token-%d-%s", time.Now().UnixNano(), standing)
-	stamp, sig := mail.SignMailgun(loopSigningKey, token, time.Now())
+	stamp, sig := mailtest.SignMailgun(loopSigningKey, token, time.Now())
 	return h.do("", http.MethodPost, "/hooks/replies/mime", map[string]string{"recipient": to, "from": from, "body-mime": raw, "timestamp": stamp, "token": token, "signature": sig}).Code
 }
 

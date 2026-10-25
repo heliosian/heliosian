@@ -235,8 +235,3 @@ func VerifyMailgun(key, timestamp, token, signature string, now time.Time) error
 func VerifyNotification(key string, fields map[string]string, now time.Time) error {
 	return VerifyMailgun(key, fields["timestamp"], fields["token"], fields["signature"], now)
 }
-
-func SignMailgun(key, token string, at time.Time) (timestamp, signature string) {
-	timestamp = strconv.FormatInt(at.Unix(), 10)
-	return timestamp, mailgunSignature(key, timestamp, token)
-}

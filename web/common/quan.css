@@ -76,8 +76,6 @@ html[data-theme="quan"] {
 
 [data-theme="quan"] .alert-card-disc { background: var(--notice-disc); color: var(--notice-disc-ink); }
 
-[data-theme="quan"] .alert-card-title { color: var(--notice-ink); }
-
 [data-theme="quan"] .alert-card:hover { background: #e4ffbf; }
 
 [data-theme="quan"] .infobanner-alert .button,

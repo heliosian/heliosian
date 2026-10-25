@@ -1,4 +1,4 @@
-import {byId, bySlug, photosOf, thumbOf, photoUrl, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeOf, gradeName, classroomName, crewName, staffColor} from './state.js';
+import {byId, bySlug, photosOf, thumbOf, emailOf, isStudent, isStaff, familyOf, kidsOf, gradeOf, gradeName, classroomName, crewName, staffColor} from './state.js';
 import {hue} from './dom.js';
 import {el, link} from '/elements.js';
 import {tagControl} from './tags.js';
@@ -27,10 +27,6 @@ export function personPhoto(p) {
 
 export function personPhotoUrl(p) {
   return thumbOf(personPhoto(p));
-}
-
-export function personImageUrl(p) {
-  return photoUrl(photosOf(p.id)[0]);
 }
 
 export function photoOrInitials(url, name, className) {

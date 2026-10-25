@@ -972,7 +972,7 @@ func (x *Searcher) entry(ctx context.Context, row SearchRow, was *SearchEntry) (
 	}
 	if len(entry.Chunks) == 0 {
 		texts := searchChunks(row.Head, row.body())
-		vectors, err := x.vertex.Embed(ctx, texts, false, artifacts.SearchDims)
+		vectors, err := x.vertex.Embed(ctx, texts, false)
 		if err != nil {
 			return entry, err
 		}
@@ -1186,7 +1186,7 @@ func (x *Searcher) Search(ctx context.Context, m *Model, env Env, words string, 
 	}
 	done := make(chan embedded, 1)
 	go func() {
-		vectors, err := x.vertex.Embed(ctx, []string{words}, true, artifacts.SearchDims)
+		vectors, err := x.vertex.Embed(ctx, []string{words}, true)
 		if err != nil {
 			done <- embedded{err: err, took: time.Since(start)}
 			return

@@ -39,10 +39,6 @@ export function assignToMe(sv) {
   return run(() => assignTo(sv, me().id), `${sv.name} is yours`);
 }
 
-export function unassign(sv) {
-  return run(() => unassignWrite(sv));
-}
-
 export function openAssign(sv) {
   const people = team();
   if (sv.assignedToId && !people.some(p => p.id === sv.assignedToId)) {

@@ -180,18 +180,6 @@ function signUpForm(node, existing, someoneElse) {
   };
 }
 
-export async function removeVolunteer(node, volunteer) {
-  if (!confirm(`Remove ${volunteer.name} from ${node.title}?`)) {
-    return;
-  }
-  try {
-    await writes.removeSignUp(node, volunteer);
-    await load();
-  } catch (err) {
-    toast(err.message);
-  }
-}
-
 function whenFields(act, parent) {
   const own = act ? act.own : {start: '', end: '', timing: ''};
   const when = whenEditor(own.start, own.end, own.timing, parent, 'rows');
@@ -1173,19 +1161,6 @@ export function openRedirect(item) {
     confirmDelete: item ? `Remove the redirect from ${item.old}? Anyone holding that link will get Not found.` : '',
     deleteLabel: 'Remove',
   });
-}
-
-export async function copyToNextYear(node) {
-  if (!confirm(`Copy “${node.title}” and everything under it into ${years().next}?`)) {
-    return;
-  }
-  try {
-    await writes.copyToYear(node, years().next);
-    await load();
-    toast(`Copied to ${years().next}`);
-  } catch (err) {
-    toast(err.message);
-  }
 }
 
 export async function saveActivityFields(act, changes) {

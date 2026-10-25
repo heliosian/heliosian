@@ -253,23 +253,6 @@ func (p *calendarPlan) matchHeld(e GoogleEvent, s map[string]string, matched map
 	return m
 }
 
-func HeldGoogle(rows CalendarRows) []GoogleEvent {
-	groups := map[string]map[string]string{}
-	for _, g := range rows["GROUP"] {
-		groups[g["id"]] = g
-	}
-	out := []GoogleEvent{}
-	for _, s := range rows["GROUP_SOURCE"] {
-		g := groups[s["group"]]
-		if s["calendar_event"] == "" || g["kind"] != "event" || g["start"] == "" || groups[g["parent"]]["kind"] == "event" {
-			continue
-		}
-		allDay, _ := cells.YesNo(s["all_day"], false)
-		out = append(out, GoogleEvent{CalendarItem: CalendarItem{Key: s["calendar_event"], Title: s["name"], Start: s["start"], End: s["end"], AllDay: allDay, Location: s["location"], Description: s["description"]}})
-	}
-	return out
-}
-
 func GoogleToMatch(rows CalendarRows, v *Vocabulary, feed []GoogleEvent) []CalendarItem {
 	p := newCalendarPlan(rows, v)
 	events := p.googleEvents(false)
@@ -285,17 +268,6 @@ func GoogleToMatch(rows CalendarRows, v *Vocabulary, feed []GoogleEvent) []Calen
 		out = append(out, e.CalendarItem)
 	}
 	return out
-}
-
-func GoogleMatchPlan(rows CalendarRows, v *Vocabulary, feed []GoogleEvent, matched map[string]string) []Edit {
-	p := newCalendarPlan(rows, v)
-	events := p.googleEvents(false)
-	for _, e := range feed {
-		if s, ok := events[e.Key]; ok {
-			p.matchHeld(e, s, matched)
-		}
-	}
-	return p.edits
 }
 
 func itemCells(it CalendarItem) map[string]any {

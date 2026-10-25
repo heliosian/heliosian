@@ -394,10 +394,6 @@ export function canHost() {
   return state.model.can.host;
 }
 
-export function isHosting(p) {
-  return Boolean(p.hosting);
-}
-
 export function pendingParties() {
   return state.model.parties.filter(p => p.status === 'Pending');
 }

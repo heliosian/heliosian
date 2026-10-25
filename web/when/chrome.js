@@ -611,10 +611,6 @@ export function clearSearch() {
   searchInput().placeholder = defaultPlaceholder;
 }
 
-export function resetSearch() {
-  search('');
-}
-
 function search(value) {
   sync(value);
   const query = value.trim();

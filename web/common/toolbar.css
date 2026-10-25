@@ -254,17 +254,9 @@
 
 .alert-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 7px; background: var(--tone); }
 
-a.alert-card:hover { background: color-mix(in srgb, var(--tone) 5%, var(--alert-bg, #fcfdfd)); }
-
 .alert-card-disc { display: flex; align-items: center; justify-content: center; width: 46px; height: 46px; flex-shrink: 0; border-radius: 50%; background: color-mix(in srgb, var(--tone) 14%, var(--alert-bg, #fcfdfd)); color: var(--tone-ink, var(--tone)); }
 
 .alert-card-disc svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
-.alert-card-words { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-
-.alert-card-title { font-size: 16px; font-weight: 800; line-height: 1.25; color: var(--brand-ink, var(--brand)); }
-
-.alert-card-text { font-size: 13.5px; line-height: 1.4; color: var(--muted, #647071); }
 
 .alert-card-chevron { width: 9px; height: 9px; flex-shrink: 0; margin-right: 4px; border-right: 2px solid var(--faint, #6b7b7c); border-bottom: 2px solid var(--faint, #6b7b7c); transform: rotate(-45deg); }
 

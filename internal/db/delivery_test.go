@@ -15,7 +15,7 @@ import (
 
 func deliveryEvent(kind, severity, copy, address, detail string) string {
 	token := "event-" + kind + severity + copy
-	stamp, sig := mail.SignMailgun(loopSigningKey, token, time.Now())
+	stamp, sig := mailtest.SignMailgun(loopSigningKey, token, time.Now())
 	body, _ := json.Marshal(map[string]any{
 		"signature": map[string]string{"timestamp": stamp, "token": token, "signature": sig},
 		"event-data": map[string]any{

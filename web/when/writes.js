@@ -43,14 +43,6 @@ export async function forgetView() {
   await write([{set: home.id, cells: {search: JSON.stringify(wordsFor(rooms, tags))}}]);
 }
 
-export async function newFeedAddress(f) {
-  const row = state.model.saved.find(s => s.id === f.id);
-  await write([
-    {delete: f.id},
-    {insert: 'SAVED_SEARCH', row: {person: me().id, name: row.name, emoji: row.emoji, order: row.order, default: row.default === 'Yes', search: row.search}},
-  ]);
-}
-
 function moreInformation(source) {
   if (!source) {
     return '';

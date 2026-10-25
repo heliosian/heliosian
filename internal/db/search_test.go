@@ -325,7 +325,7 @@ func TestEveryShownRowHasAnInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := SearchEntry{}
-	if err := json.Unmarshal(raw, &entry); err != nil || len(entry.Chunks[0].Vector) != artifacts.SearchDims {
+	if err := json.Unmarshal(raw, &entry); err != nil || len(entry.Chunks[0].Vector) != artifacts.Dims {
 		t.Errorf("the picnic's entry has %d dimensions: %v", len(entry.Chunks[0].Vector), err)
 	}
 }

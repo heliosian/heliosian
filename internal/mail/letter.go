@@ -2,11 +2,9 @@ package mail
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"html/template"
 	"log/slog"
-	"net/http"
 	"slices"
 	"strings"
 )
@@ -33,14 +31,6 @@ type Letter struct {
 	Button   string
 	Calendar string
 	Footnote string
-}
-
-func Base(r *http.Request) string {
-	scheme := "https"
-	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") && strings.HasPrefix(r.Host, "localhost") {
-		scheme = "http"
-	}
-	return scheme + "://" + r.Host
 }
 
 var letterTemplate = template.Must(template.New("letter").Parse(`<!doctype html>
@@ -123,15 +113,4 @@ func (l Letter) Message(subject string, to, cc, replyTo []string) Message {
 	m.CC = slices.DeleteFunc(NormalizeAll(cc), func(e string) bool { return slices.Contains(m.To, e) })
 	m.HTML, m.Text = l.Render()
 	return m
-}
-
-func Post(ctx context.Context, s *Mailgun, m Message) {
-	if len(m.To) == 0 {
-		return
-	}
-	go func() {
-		if err := s.Send(context.WithoutCancel(ctx), m); err != nil {
-			slog.Error("mail: send", "error", err, "subject", m.Subject, "to", m.To)
-		}
-	}()
 }

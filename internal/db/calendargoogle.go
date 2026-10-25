@@ -37,11 +37,7 @@ var calendarTables = []string{"GROUP", "GROUP_SOURCE", "RULE", "MEMBER", "DOCUME
 func (m *Model) calendarRows() CalendarRows {
 	out := CalendarRows{}
 	for _, name := range calendarTables {
-		rows := []map[string]string{}
-		for _, row := range m.Table(name).All() {
-			rows = append(rows, row)
-		}
-		out[name] = rows
+		out[name] = append([]map[string]string{}, m.Table(name).All()...)
 	}
 	return out
 }

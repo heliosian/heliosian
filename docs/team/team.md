@@ -38,8 +38,6 @@ One shell, `web/team/index.html`, routes every page on the client: a left toolba
 
 On phones the rail becomes a drawer behind the hamburger in the shared toolbar (`docs/toolbar.md`), which stays on top with the search box, a slim title strip sits under it, and a bottom tab bar holds Opportunities, My Sign Ups, and Calendar.
 
-Copying an event and everything under it into the next year is `copyToNextYear` in `web/team/edit.js`, which no page offers a button for.
-
 ## Redirects
 
 An old address on this site sends whoever holds it to where the thing is now, ahead of sign-in, so a link from the volunteer site this one replaced (`hca.heliosian.com/dl/signup/s/…`), an old nested link (`/g/inight/poland`, `/activities/{old id}/…`) or a renamed short name lands on the page's sign-in with that page's preview (`ActivityPages.Redirected` in `internal/db/redirects.go`, wrapped round the host ahead of sign-in in `internal/app`, and round a 404 on HCA-Team's other hosts, `Core.Aliased`). Only a plain fetch of a page is redirected, the query traveling along:

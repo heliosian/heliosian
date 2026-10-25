@@ -5,8 +5,9 @@ import (
 	"runtime"
 	"slices"
 	"sync"
-	"syscall"
 	"time"
+
+	"heliosian/internal/trace"
 )
 
 const (
@@ -148,20 +149,12 @@ func Latencies(slow time.Duration) []Latency {
 	return out
 }
 
-func cpuTime() time.Duration {
-	var u syscall.Rusage
-	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &u); err != nil {
-		panic("vitals: getrusage: " + err.Error())
-	}
-	return time.Duration(u.Utime.Nano() + u.Stime.Nano())
-}
-
 func Sampler() {
-	lastCPU, lastAt := cpuTime(), time.Now()
+	lastCPU, lastAt := trace.CPUTime(), time.Now()
 	for at := range time.Tick(sampleEvery) {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		cpu := cpuTime()
+		cpu := trace.CPUTime()
 		s := Sample{Time: at, HeapMiB: m.HeapAlloc >> 20, SysMiB: m.Sys >> 20, CPU: float64(cpu-lastCPU) / float64(at.Sub(lastAt)), GC: m.NumGC, Goroutines: runtime.NumGoroutine()}
 		lastCPU, lastAt = cpu, at
 		slog.Info("memory", "heap_mib", s.HeapMiB, "sys_mib", s.SysMiB, "gc", s.GC, "goroutines", s.Goroutines, "cpu", s.CPU)

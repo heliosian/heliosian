@@ -17,34 +17,6 @@ export function peopleLine(list, icon) {
   return line;
 }
 
-export function peopleList(list, icon) {
-  const byName = new Map();
-  for (const p of list) {
-    if (!byName.has(p.name)) {
-      byName.set(p.name, []);
-    }
-    if (p.note) {
-      byName.get(p.name).push(p.note);
-    }
-  }
-  const rows = el('ul', 'side-people-list');
-  for (const [name, notes] of byName) {
-    const row = el('li');
-    const words = el('span', 'side-person-words');
-    words.append(el('span', 'side-person', name));
-    if (notes.length) {
-      const roles = el('ul', 'side-person-roles');
-      for (const note of notes) {
-        roles.append(el('li', '', note));
-      }
-      words.append(roles);
-    }
-    row.append(svg(icon), words);
-    rows.append(row);
-  }
-  return rows;
-}
-
 export function feedMark(f, symbol) {
   if (f.emoji) {
     return el('span', 'feed-mark', f.emoji);

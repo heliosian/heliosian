@@ -32,7 +32,7 @@ type key struct{}
 
 func New(name string) *Span {
 	now := time.Now()
-	return &Span{Name: name, origin: now, began: now, cpu: cpuTime()}
+	return &Span{Name: name, origin: now, began: now, cpu: CPUTime()}
 }
 
 func With(ctx context.Context, s *Span) context.Context {
@@ -57,7 +57,7 @@ func (s *Span) Start(name string) *Span {
 		return nil
 	}
 	now := time.Now()
-	child := &Span{Name: name, At: millis(now.Sub(s.origin)), origin: s.origin, began: now, cpu: cpuTime()}
+	child := &Span{Name: name, At: millis(now.Sub(s.origin)), origin: s.origin, began: now, cpu: CPUTime()}
 	s.mu.Lock()
 	s.Children = append(s.Children, child)
 	s.mu.Unlock()
@@ -69,7 +69,7 @@ func (s *Span) End() {
 		return
 	}
 	s.Dur = millis(time.Since(s.began))
-	cpu := millis(cpuTime() - s.cpu)
+	cpu := millis(CPUTime() - s.cpu)
 	s.CPU = &cpu
 }
 
@@ -149,7 +149,7 @@ func millis(d time.Duration) float64 {
 	return float64(d.Microseconds()) / 1000
 }
 
-func cpuTime() time.Duration {
+func CPUTime() time.Duration {
 	var u syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &u); err != nil {
 		panic("trace: getrusage: " + err.Error())

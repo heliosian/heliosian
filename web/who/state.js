@@ -508,18 +508,9 @@ export function roomParentsOf(gradeband) {
   return group ? peopleOf(membersByGroup[group.id] || []) : [];
 }
 
-export function roomParentsGroup(gradeband) {
-  return model.roomParents.find(g => g.parent === gradeband.id) || null;
-}
-
 export function gradeNameColor(name) {
   const g = model.grades.find(x => x.name === name);
   return g ? g.color || '' : '';
-}
-
-export function classroomNameColor(name) {
-  const c = model.classrooms.find(x => x.name === name);
-  return c ? c.color || '' : '';
 }
 
 export function staffColor() {

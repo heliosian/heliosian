@@ -1,4 +1,4 @@
-import {state, model, isStudent, isStaff, kidsOf, adultsOf, gradeOf, classroomOf, photosOf, photoUrl, thumbOf, pronunciationUrl, familyName, familyShortName, canEditFamily, groupAt, kindAt} from '../state.js';
+import {state, isStudent, isStaff, kidsOf, adultsOf, gradeOf, classroomOf, photosOf, photoUrl, thumbOf, pronunciationUrl, familyName, familyShortName, canEditFamily, groupAt, kindAt} from '../state.js';
 import {firstName, copyButton, pronouncePill, contactRow} from '../dom.js';
 import {el, svg, link, iconButton, iconLink, editToggle} from '/elements.js';
 import {myFamily} from '../families.js';

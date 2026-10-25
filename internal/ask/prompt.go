@@ -55,7 +55,6 @@ type place struct {
 
 type viewer struct {
 	Person   person   `json:"person"`
-	Emails   []string `json:"emails"`
 	Families []family `json:"families"`
 	Groups   []place  `json:"groups"`
 	Manages  []place  `json:"manages"`

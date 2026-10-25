@@ -202,10 +202,6 @@ export function showsFeed(f) {
   return sameSet(selectedClassrooms(), feedClassrooms(f)) && sameSet(selectedTags(), feedTags(f));
 }
 
-export function savedAlready() {
-  return allCalendars().some(showsFeed);
-}
-
 export function activeFeed() {
   const feeds = allCalendars();
   const shown = feeds.find(showsFeed);
@@ -374,10 +370,6 @@ export function hiddenClassroomMatches(classroom) {
   return state.model.events.filter(e => e.classrooms.includes(classroom) && isMatch(e) && !eventVisible(e)).length;
 }
 
-export function visibleEvents() {
-  return state.model.events.filter(eventVisible);
-}
-
 function words(query) {
   return (query || '').toLowerCase().split(/\s+/).filter(Boolean);
 }
@@ -448,7 +440,6 @@ export function spansDays(e) {
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 const longDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
-const shortDayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
 const monthDayFormat = new Intl.DateTimeFormat('en-US', {month: 'short', day: 'numeric'});
 const monthFormat = new Intl.DateTimeFormat('en-US', {month: 'long', year: 'numeric'});
 const timeFormat = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
@@ -459,10 +450,6 @@ export function dayLabel(date) {
 
 export function longDayLabel(date) {
   return longDayFormat.format(parseDate(date));
-}
-
-export function shortDayLabel(date) {
-  return shortDayFormat.format(parseDate(date));
 }
 
 export function weekdayLong(date) {

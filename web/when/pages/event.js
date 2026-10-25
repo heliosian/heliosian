@@ -1,7 +1,7 @@
 import {state, me, sourceWords, dayType, dayTypeName, eventDates, isParty, eventImage, parseDate, monthLabel, monthOf, answerOf, answer} from '../state.js';
 import {dayTypeClass} from '/daytype.js';
 import {render as markdown} from '/markdown.js';
-import {el, svg, button, toast, longToast, copyText} from '/elements.js';
+import {el, svg, button, toast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
 import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
 import {heroImageBar, detailHero} from '/heroimage.js';

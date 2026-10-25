@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
+	"heliosian/internal/testkit/mailtest"
 )
 
 const classMail = "Received: by mxa.mailgun.org with SMTP id 1; Wed, 16 Sep 2026 07:05:00 +0000\r\n" +
@@ -109,7 +110,7 @@ func TestVouchTakesTheForwardingMailboxsSealedResults(t *testing.T) {
 }
 
 func hookMail(mux *http.ServeMux, key, raw string) int {
-	timestamp, signature := mail.SignMailgun(key, "token", time.Now())
+	timestamp, signature := mailtest.SignMailgun(key, "token", time.Now())
 	form := url.Values{"timestamp": {timestamp}, "token": {"token"}, "signature": {signature}, "body-mime": {raw}}
 	req := httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")

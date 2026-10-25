@@ -207,12 +207,6 @@ export function newsletterOn(date) {
 
 export const stages = ['Wait', 'Awaiting Outreach', 'Awaiting Response', 'Awaiting Newsletter', 'Complete'];
 
-const stageNumbers = {'Wait': 2, 'Awaiting Outreach': 3, 'Awaiting Response': 4, 'Awaiting Newsletter': 5, 'Complete': 6};
-
-export function stageLabel(stage) {
-  return `${stageNumbers[stage]}. ${stage}`;
-}
-
 const stageNames = {'Wait': 'Scheduled', 'Awaiting Outreach': 'Ready to Contact', 'Awaiting Response': 'Waiting for Reply', 'Awaiting Newsletter': 'Ready for Newsletter', 'Complete': 'Complete'};
 
 export function stageName(stage) {
@@ -308,10 +302,6 @@ export function team() {
   }
   const others = [...seen].slice(1).sort((x, y) => x[1].localeCompare(y[1]));
   return [{id: me().id, name: 'Me'}, ...others.map(([id, name]) => ({id, name}))];
-}
-
-export function inStage(list, stage) {
-  return list.filter(sv => sv.stage === stage);
 }
 
 export function matches(sv, query) {

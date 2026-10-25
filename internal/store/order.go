@@ -5,8 +5,6 @@ import (
 	"strings"
 )
 
-const OrderColumn = "Order"
-
 const keyDigits = "0123456789abcdefghijklmnopqrstuvwxyz"
 
 func CheckKey(key string) error {

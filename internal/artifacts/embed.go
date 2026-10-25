@@ -17,8 +17,7 @@ const (
 	vertexProject = "heliosian"
 	vertexRegion  = "us-west1"
 	vertexBatch   = 25
-	AskDims       = 768
-	SearchDims    = 3072
+	Dims          = 3072
 )
 
 type Vertex struct {
@@ -33,15 +32,11 @@ func NewVertex() (*Vertex, error) {
 	return &Vertex{client: client}, nil
 }
 
-func (Vertex) Model() string {
-	return fmt.Sprintf("%s@%d", vertexBase, AskDims)
-}
-
-func (v *Vertex) Embed(ctx context.Context, texts []string, query bool, dims int) ([][]float32, error) {
+func (v *Vertex) Embed(ctx context.Context, texts []string, query bool) ([][]float32, error) {
 	out := [][]float32{}
 	for start := 0; start < len(texts); start += vertexBatch {
 		end := min(start+vertexBatch, len(texts))
-		vectors, err := v.predict(ctx, texts[start:end], query, dims)
+		vectors, err := v.predict(ctx, texts[start:end], query)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +45,7 @@ func (v *Vertex) Embed(ctx context.Context, texts []string, query bool, dims int
 	return out, nil
 }
 
-func (v *Vertex) predict(ctx context.Context, texts []string, query bool, dims int) ([][]float32, error) {
+func (v *Vertex) predict(ctx context.Context, texts []string, query bool) ([][]float32, error) {
 	task := "RETRIEVAL_DOCUMENT"
 	if query {
 		task = "RETRIEVAL_QUERY"
@@ -59,7 +54,7 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool, dims i
 	for _, text := range texts {
 		instances = append(instances, map[string]string{"content": text, "task_type": task})
 	}
-	body, err := json.Marshal(map[string]any{"instances": instances, "parameters": map[string]any{"outputDimensionality": dims}})
+	body, err := json.Marshal(map[string]any{"instances": instances, "parameters": map[string]any{"outputDimensionality": Dims}})
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +91,8 @@ func (v *Vertex) predict(ctx context.Context, texts []string, query bool, dims i
 	}
 	out := [][]float32{}
 	for i, p := range parsed.Predictions {
-		if len(p.Embeddings.Values) != dims {
-			return nil, fmt.Errorf("embed: vector %d has %d dimensions, not %d", i, len(p.Embeddings.Values), dims)
+		if len(p.Embeddings.Values) != Dims {
+			return nil, fmt.Errorf("embed: vector %d has %d dimensions, not %d", i, len(p.Embeddings.Values), Dims)
 		}
 		out = append(out, p.Embeddings.Values)
 	}

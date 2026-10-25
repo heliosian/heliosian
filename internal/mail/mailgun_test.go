@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -58,7 +59,8 @@ func TestMailgunReportsRefusal(t *testing.T) {
 
 func TestVerifyMailgun(t *testing.T) {
 	at := time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC)
-	stamp, sig := SignMailgun("signing-key", "token-1", at)
+	stamp := strconv.FormatInt(at.Unix(), 10)
+	sig := mailgunSignature("signing-key", stamp, "token-1")
 	if err := VerifyMailgun("signing-key", stamp, "token-1", sig, at.Add(time.Minute)); err != nil {
 		t.Errorf("good call refused: %v", err)
 	}

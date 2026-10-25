@@ -53,7 +53,7 @@ func loopPost(from, id, subject, references string) string {
 
 func loopNotice(raw, recipient string) map[string]string {
 	token := fmt.Sprintf("token-%d-%s", len(raw), recipient)
-	stamp, sig := mail.SignMailgun(loopSigningKey, token, time.Now())
+	stamp, sig := mailtest.SignMailgun(loopSigningKey, token, time.Now())
 	return map[string]string{"recipient": recipient, "sender": "rowan.ashdown@example.org", "from": "Rowan Ashdown <rowan.ashdown@example.org>", "subject": "Field trip", "body-mime": raw, "timestamp": stamp, "token": token, "signature": sig}
 }
 

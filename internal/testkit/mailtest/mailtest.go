@@ -2,7 +2,10 @@ package mailtest
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"mime"
@@ -10,6 +13,7 @@ import (
 	"net/http"
 	netmail "net/mail"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -33,7 +37,6 @@ type Recorder struct {
 	mu       sync.Mutex
 	messages []mail.Message
 	raws     []Raw
-	next     int
 }
 
 var (
@@ -46,6 +49,13 @@ func install() {
 	installed.Do(func() {
 		intercept.Install(mail.Host, http.HandlerFunc(serve))
 	})
+}
+
+func SignMailgun(key, token string, at time.Time) (timestamp, signature string) {
+	timestamp = strconv.FormatInt(at.Unix(), 10)
+	mac := hmac.New(sha256.New, []byte(key))
+	mac.Write([]byte(timestamp + token))
+	return timestamp, hex.EncodeToString(mac.Sum(nil))
 }
 
 func Discard() *mail.Mailgun {
@@ -262,11 +272,4 @@ func (rec *Recorder) Wait(t *testing.T, n int) []mail.Message {
 	}
 	t.Fatalf("waited for %d messages", n)
 	return nil
-}
-
-func (rec *Recorder) Next(t *testing.T) mail.Message {
-	t.Helper()
-	m := rec.Wait(t, rec.next+1)[rec.next]
-	rec.next++
-	return m
 }
