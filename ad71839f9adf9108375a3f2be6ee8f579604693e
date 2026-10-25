@@ -1,0 +1,50 @@
+# Serve a share card again from the one already drawn
+
+byre task tskB5TWUin4RqY, "Share card cache", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskB5TWUin4RqY in byre (GET /api/events?task_id=tskB5TWUin4RqY).
+
+## Summary
+
+Performance audit of heliosian at 948bf93. Production share cards for events, parties, and activities were redrawn on every request (the busiest card, 176 times in a week, median 0.53s). The server now keeps each finished PNG in a 32MB process cache keyed by the card's etag, and the When, Celebrate, and HCA-Team handlers answer from that cache before reading the picture from storage.
+
+A card whose picture failed to load is still returned for that request and is not stored, so a later successful read draws the picture. Whole versus cropped is part of those three keys, so a flyer and a photo of the same upload do not share a card. The app name and subtitle are read once per draw and reused for the painting, the key, and the response.
+
+The cache was chosen over a faster scaler: bilinear scaling changes pixels, and faster PNG compression saved about 15ms while making a larger file. A local repeat dropped from about 47ms to about 34µs. There is no singleflight; two misses at once may both draw. The etag does not include the picture bytes, so a hit skips storage. A client that saved the etag of a picture-less card can still get 304 for it.
+
+Left alone: When search still embeds on every keystroke (now a Helios When item in TODO.md; it is rare, and debouncing would change when results appear), directory person cards still rebuild per keystroke, and wiki share cards still read markdown before drawing. The cache is per process, so the first request and a new instance still draw.
+
+Main had moved picture loading into cardPicture and the calendar lines into whenCardLines. The merge keeps those helpers and the cache behavior.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds a shared, 32 MiB LRU cache for rendered share-card PNGs. Event, party and activity handlers check the cache and conditional request header before loading their pictures, avoiding repeated storage reads and image rendering.
+
+- Temporary picture-read failures can leave incomplete share cards cached indefinitely.
+- Cache keys omit the image rendering mode, allowing cropped cards to replace full flyers.
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Caches rendered share-card PNGs in a 32 MiB LRU and checks the cache before fetching event, party, or activity pictures. Cache keys distinguish whole flyers from cropped photos, and cards rendered after a failed picture read are left uncached so later requests can retry. Tests cover cached responses, revalidation, picture recovery, and photo-versus-flyer rendering. Reviewed by reading the code; no builds or tests were run.
+
+No significant findings.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Share cards reuse rendered PNGs in a process-wide LRU cache with a 32 MiB budget. Event, party and activity handlers check the cache before reading pictures, include whole-versus-cropped rendering in their keys, and leave cards with failed picture reads uncached.
+
+- The new cache test retains global state and fails when repeated in one process.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds a process-wide 32 MiB LRU cache for rendered share-card PNGs. Event, party, and activity handlers check the cache before loading pictures, include crop mode in their keys, and avoid retaining cards when a picture read fails. Tests cover cache reuse, recovery after a missing picture, and photo versus flyer rendering.
+
+- Rendering can cache an old app subtitle under the new subtitle's key during an edit.
+- The exported cache-reset helper violates the repository's prohibition on production code used only by tests.
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Caches rendered share-card PNGs in a bounded 32 MiB LRU and answers repeat event, party and activity requests before loading their pictures. Cache keys include picture layout and branding; failed picture reads skip cache insertion. Tests cover reuse, picture recovery, layout changes and branding consistency. Review was by code inspection; no builds were run.
+
+No significant findings.
