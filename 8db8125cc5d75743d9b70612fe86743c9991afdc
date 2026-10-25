@@ -1,0 +1,26 @@
+# Simplify code found in simplicity audit of 948bf93
+
+byre task tskWgQCJBFXwLY, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskWgQCJBFXwLY in byre (GET /api/events?task_id=tskWgQCJBFXwLY).
+
+## Summary
+
+Simplicity audit of main at 948bf931 (workflow stage, Sonnet high). Goal: find duplicated rules, needless machinery and test-only code in the whole codebase and fix them through structure, not added checks.
+
+Built (five changes; `go vet ./...` clean, touched packages' tests pass):
+- One clock on `auth.Tokens`: twelve `db` register functions took `tokens` plus a separate `now` that was always the same value. `caller` now reads `tokens.Now()`; `mcp.Deps{Key,Sessions,Now}` became `mcp.Deps{Tokens}`; `testkit.Tokens` takes a clock.
+- One CONTENT row shape: `madeOf`/`madeBytes.row()`/`insert()` and `contentFolder` in `internal/db/pictures.go` replace six hand-built rows; inline sha256/hex copies (including `tools/import`) use `blob.Hash`.
+- `serve.Pages` replaces seven shell-page loops; shared `redirected()` wrapper under the party and activity redirects; `internal/db/sharecards.go` (`cardPicture`, `whenCardLines`, `eventBlurb`) replaces copies across the party, when and activity pages.
+- Ops dashboard keeps one bucket: `Deps.Bucket *blob.Bucket` replaces `Buckets map[string]Measurable`; `Snapshot.bucket`; `web/admin/dashboard/start.js` updated.
+- `auth.Fixed` (test-only, unreachable per the `deadcode` tool) moved to `internal/testkit/authtest`, wrapping the real `(*Auth).Fixed`; it is a leaf package because `testkit` imports `store`.
+Docs updated (dev.md, mcp.md, security.md).
+
+Deliberately left alone: party vs activity redirect resolvers (differ on purpose, documented); wiring closures `appName`/`taglineOf` and per-app `ImageSearch` copies; duplicate `SignedIn` closure in the wiring; four unrelated JS `today()` definitions. Merging main was a no-op (already up to date).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Consolidates repeated page registration, redirect handling, share-card formatting, and content-row creation into shared helpers. Reuses the authentication token clock across API handlers and MCP, moves fixed test sign-in into testkit, and simplifies the admin dashboard to its single media bucket.
+
+No significant findings.
