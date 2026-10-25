@@ -1,0 +1,22 @@
+# Restrict school assignments to school groups (#206)
+
+byre task tskGw8TvuqXJWe, "School assignment security", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskGw8TvuqXJWe in byre (GET /api/events?task_id=tskGw8TvuqXJWe).
+
+## Summary
+
+Security audit of main at 90d314a, following the repository trust model and prior Security findings. Found and reproduced high-severity #206: a Who?-only admin could set their classroom, crew or department to a privileged GROUP, causing the server-owned school-membership trigger to make them a super admin. Home's admins group can be discovered through the ordinary APP query, allowing escalation without initially knowing Super Admins' ID.
+
+Fixed the root in schoolGroupsOf: effective classroom, crew and department references must name the matching school group kind before any membership edits are generated. This single check covers app overrides and imported values. Invalid assignments now return HTTP 400 and roll back; valid school assignments keep working. Privileged memberships remain subject to their existing admin policies. No flags, dependencies or new access policy.
+
+Regression tests reproduced HTTP 200 and super-admin elevation before the fix for all three overrides. Tests cover refusal and rollback, legitimate assignments for all three school kinds, and invalid imported references. Full internal/db tests and auth, MCP, mail, tools and app tests passed under timeout 30; go vet ./... and git diff --check passed. Review finished before merge readiness. On the requested main merge, git merge --no-ff --no-commit main reported Already up to date; no conflicts or resolution changes were needed, and checks were rerun.
+
+Deliberately left public share previews and secret links in project logs unchanged, as explicit trust-model decisions; log access is already restricted to trusted super admins. Did not duplicate existing findings. No production deployment or data migration performed. #206 tracks landing.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok high", grok grok-4.7: done
+
+A Who? admin could set a person's classroom, crew, or department (the app override or the Veracross import field) to any group. The school-membership trigger then inserted an unrestricted membership, so naming Super Admins made them a super admin. `schoolGroupsOf` now rejects a reference whose group is missing or whose kind does not match that column, the write rolls back with HTTP 400, and tests cover the directory-admin path and the import path, including a real assignment of each kind.
+
+No significant findings.
