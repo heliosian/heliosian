@@ -247,7 +247,7 @@ export function openActivity(act, options) {
   const addressLine = el('div', 'address-line');
   const addressText = el('code', 'address-text');
   const addressCopy = button('Copy', 'copy', 'button button-secondary button-small', () => {
-    navigator.clipboard.writeText(addressText.textContent).then(() => toast('Address copied'), () => toast('Could not copy'));
+    navigator.clipboard.writeText(addressText.textContent).then(() => toast('Address copied'), () => toast('Couldn’t copy'));
   });
   const paintAddress = () => {
     const slug = pretty.value.trim().toLowerCase();

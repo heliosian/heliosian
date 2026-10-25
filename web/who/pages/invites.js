@@ -358,7 +358,7 @@ export function invitesPage() {
       settings.replaceChildren();
       content.replaceChildren();
       settings.append(el('div', 'gv-setting-group', inviteLoadError
-        ? `Couldn't load invite templates: ${inviteLoadError}`
+        ? `Couldn’t load invite templates: ${inviteLoadError}`
         : 'No invite services are set up yet - add one as an INVITE_SERVICE row with its INVITE_TEMPLATE columns.'));
       return;
     }

@@ -494,7 +494,7 @@ async function fillAdminPage(slot) {
   try {
     await fetchState();
   } catch (err) {
-    slot.replaceWith(el('p', 'hint', `Failed to load admin state: ${err.message}`));
+    slot.replaceWith(el('p', 'hint', `Couldn’t load the admin state: ${err.message}`));
     return;
   }
   painters.length = 0;

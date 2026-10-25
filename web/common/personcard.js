@@ -52,7 +52,7 @@ function cardHead(person, info) {
   if (person.email) {
     action('copy', 'Copy info', null, () => {
       const lines = [name, person.email, phone].filter(Boolean);
-      navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Could not copy'));
+      navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Contact info copied'), () => toast('Couldn’t copy'));
     });
   }
   head.append(face, names, actions);

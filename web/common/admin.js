@@ -212,6 +212,6 @@ export function adminsCard({hint, title = 'Admins', load, save}) {
     list = admins;
     names = new Map(everyone.map(p => [emailOf(p), p.name_show]));
     render();
-  }).catch(err => say(`Failed to load the list: ${err.message}`, true));
+  }).catch(err => say(`Couldn’t load the list: ${err.message}`, true));
   return card;
 }

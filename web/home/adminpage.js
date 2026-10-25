@@ -55,7 +55,7 @@ async function fillReport(card, id, redraw) {
   card.replaceChildren();
   const report = feedback.rows.find(r => r.id === id);
   if (!report) {
-    card.textContent = 'Could not open that report.';
+    card.textContent = 'Couldn’t open that report.';
     return;
   }
   const facts = el('dl');
@@ -99,7 +99,7 @@ async function fillReport(card, id, redraw) {
   try {
     draft = await api('POST', '/api/do/report-draft', {report: report.id});
   } catch (err) {
-    card.append(el('div', 'hint', `Could not draft the issue: ${err.message}`));
+    card.append(el('div', 'hint', `Couldn’t draft the issue: ${err.message}`));
     return;
   }
   const hint = draft.filer
@@ -217,7 +217,7 @@ async function fillAdminPage(slot) {
     try {
       await loadFeedback();
     } catch (err) {
-      slot.replaceWith(el('p', 'hint', `Could not load the reports: ${err.message}`));
+      slot.replaceWith(el('p', 'hint', `Couldn’t load the reports: ${err.message}`));
       return;
     }
     control.push({key: 'feedback', label: 'Feedback', count: feedback.rows.filter(r => r.status === 'new').length, card: feedbackCard});

@@ -483,7 +483,7 @@ func drop(args []string) {
 		names = append(names, name)
 	}
 	if !*apply {
-		log.Printf("dry run: pass --apply to delete %d columns from %q", len(names), *tab)
+		log.Printf("reporting only, pass --apply to delete %d columns from %q", len(names), *tab)
 		return
 	}
 	if err := source.DropColumns("sheet", *tab, names); err != nil {
