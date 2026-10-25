@@ -1,0 +1,72 @@
+# Fix security issues found in audit of 134a42a
+
+byre task tskeI2meSlpCWA, "Security audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskeI2meSlpCWA in byre (GET /api/events?task_id=tskeI2meSlpCWA).
+
+## Summary
+
+Security audit of main at 134a42a (workflow stage "Security Audit · Sonnet high").
+
+Read the docs and earlier Security findings (#28–#69, all closed), then went through the trust boundaries: auth/session/spoof, the public /hooks, /open and /ext routes, Mailgun and GitHub hook signature checks, mail intake (SPF/DKIM/ARC), MCP OAuth, bearer-token handling, image fetching, upload limits, URL scheme validation, blob serving (CSP sandbox), mail header composition, ICS output and frontend markdown. All held up except one.
+
+Found: non-hosts could make the service mail unlimited invitations to any address. With a guest list's join=others, an outside guest (POST /open/ext/{token}/guest, token only) or a non-host member (/api/do/add-guests, /api/do/invite) could add guests, each mailed an invitation at once, with no bound (same class as #40 and #63).
+
+Fix (policy chosen by ian via ask_human): each non-host can have at most 10 invitations mailed in their name per list (maxGuestInvitations), counted from RECIPIENT rows of invitation messages whose from_person is them, so taking a guest back doesn't free a place; hosts exempt. The check runs inside the write transaction (writeChecked in internal/db/writes.go, Invitations.writeInvitations) so parallel requests can't bypass it. Tests: TestAnOutsideGuestBringsOnlySoManyGuests, TestSimultaneousGuestsStayWithinTheLimit; docs/datamodel.md Guest lists updated.
+
+Deliberately left: the chain (a brought guest gets their own token and own allowance of 10, so a determined attacker with several addresses can keep chaining). Reviewers flagged it twice; ian chose the per-person cap over "brought guests can't bring guests" (which would close it at a visible UX cost) and over a per-list pool. Also left alone: shared raw SESSION_KEY HMAC for unsubscribe/session/spoof tokens (no feasible cross-use; re-keying breaks old unsubscribe links), ICS param escaping of ':' '"' and lone CR (own copy only), Mailgun hooks parsing up to 40MB before signature check (flooding), tokens in request logs (#61 invalid), unauthenticated /csp-report logging.
+
+Merged main into the branch with no conflicts; vet and the invitation tests pass.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a limit of ten mailed invitations per sender and guest list for non-hosts, covering the invite, add-guests, and public guest endpoints. Counts persist after guest removal, with documentation and a sequential public-endpoint regression test.
+
+- Concurrent requests can exceed the invitation quota because checking and writing are separate.
+- Attacker-controlled guest aliases receive fresh quotas and allow unlimited invitation mail.
+
+### Snapshot #4, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a ten-invitation limit per sender and guest list for non-host invitation requests, including public guest links. The quota check runs inside the write transaction, with tests for concurrent requests and removing guests, and the behavior is documented.
+
+- Newly invited guests receive fresh invitation allowances, allowing an attacker to bypass the mail limit indefinitely.
+
+## Decisions
+
+### Outside guests (and members) can make the service mail an invitation to any address, with no bound. How should a non-host's invitations be limited?
+
+**What exists today.** An event, party or activity has a guest list. When its `join` column is `others`, a guest may bring more guests. Two routes do it and both mail the new guest an invitation (the "You're invited" email sent from Helios When) right away:
+
+- `POST /open/ext/{token}/guest` (`extGuest` in `internal/db/invitehooks.go`). It needs no sign-in. The `{token}` is the `RECIPIENT.token` in the link of the invitation email, which an outside guest, or whoever the link was forwarded to, holds. Body: `{"name","email"}`.
+- `POST /api/do/add-guests` (`addGuests` in `internal/db/invitations.go`). A signed-in member who is not a host calls it. `people` is an array with no length limit, and each entry is a directory person or a `{name,email}` from outside.
+
+Neither route limits how many invitations one caller sends. `RECIPIENT` rows are the mail owed to each person; `invitationEdits` writes them.
+
+**Concrete reproduction** (the flow `TestNewcomersAreInvitedOnlyWithAutoInvite` already tests): the event "Fondue Night" has `join=others`. The host invites outsider Coach Pat, who gets `/ext/<token>`. Anyone holding that token runs:
+
+    POST /open/ext/<token>/guest  {"name":"Assistant Kim","email":"kim@example.net"}   -> 204, Kim is mailed "You're invited"
+    POST /open/ext/<token>/guest  {"name":"x","email":"victim@example.org"}            -> 204, victim is mailed
+    ... repeated with 500 different addresses                                          -> 500 invitations leave the HCA's Mailgun account
+
+Each new guest gets their own `/ext/` token and can bring guests too, so the count grows by repetition. Deleting a guest (`DELETE .../guest`) and adding another does not reduce what was already sent. What the attacker gets: an anonymous way to send a real-looking Helios invitation to any address in bulk, spending Mailgun volume and sender reputation. This is the same class as closed findings #40 (mail to any address) and #63 (a member mailing anyone at will). The hosts' own sends are not the concern, only non-hosts.
+
+**Recommendation** is the first option below. Which one do you want?
+
+- (*) Cap invitations per non-host per list, count sent not current
+  A non-host (an outside guest through the link, or a member through `add-guests`) can have at most **10** invitations mailed in their name for one list, counted from the `RECIPIENT` rows of `invitation` messages whose `from_person` is them. Hosts are exempt. The 11th returns 403 "you can bring at most 10 guests".
+  Example, Fondue Night: Coach Pat adds Kim and nine more (10 mails); the 11th POST is refused with 403 and no mail. Pat deleting Kim and adding someone new is still refused, because 10 were already sent.
+  Weakness: Kim can also bring 10 (the chain), so the total is 10 per person, not per list.
+- ( ) Cap per non-host (10) and let only people a host or member invited bring guests
+  Same cap as above, plus guests who were themselves brought by an outsider cannot bring more. Their `/ext/` page no longer shows "Add a guest" (`extView.Guests` false), and `extGuest` and `addGuests` refuse them.
+  Example: Pat (invited by the host) brings Kim. Kim's page has no Add a guest button, and `POST /open/ext/<kim token>/guest` returns 403. The most a link can ever cause is 10 invitations from each person a host invited.
+  Cost: a visible change, since a brought guest can no longer bring a plus-one of their own.
+- ( ) Cap the list as a whole
+  Non-hosts together get at most **50** invitations per list, counted the same way. Fondue Night: Pat's 10 and Kim's 10 and so on all draw from the same 50, and the 51st invitation from any non-host is refused.
+  Cost: one abusive guest can use up the 50 and block honest guests from bringing anyone, until a host adds them.
+
+The numbers 10 and 50 are my guesses at a party-sized limit; tell me if you want different ones.
+
+ian@fc.run chose: Cap invitations per non-host per list, count sent not current
