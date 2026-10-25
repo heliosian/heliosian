@@ -1,0 +1,22 @@
+# Find unreferenced content in one pass over reference indexes
+
+byre task tskwfBmuEXE0DS, "Content sweep cost", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskwfBmuEXE0DS in byre (GET /api/events?task_id=tskwfBmuEXE0DS).
+
+## Summary
+
+Audited main at e8118e147eeb3bf5da89b6589a63b98f78c413d2 for user-visible performance and waste, reading project rules/docs and tracing request routing, query execution/policies, store commits, search indexing, background workers, dashboard streams, and client loading/timers. One small change cleared the measured-gain threshold: unreferencedContent now walks the existing reference-index keys once, marks CONTENT row positions in a temporary boolean slice, and returns the unmarked rows in their original order. Previously it inspected every possible reference column and allocated Referencing slices separately for every content row. This reduces cleanup CPU on commit-driven sweeper wakes, dashboard queue counting, and sweeps under the write lock. No persistent cache, new infrastructure, visible behavior changes, or changes to generation-safe object deletion. Production code has no net line growth.
+
+Measured locally against a fresh production spreadsheet snapshot containing 45,203 CONTENT rows and 60,524 DOCUMENT rows. Seven alternating before/after calls returned identical candidates: median 59.69 ms -> 4.20 ms (93% lower). Warm benchmarks: 65.37 ms -> 1.53 ms; 573,696 -> 49,152 B/op; 45,567 -> 1 alloc/op. These are laptop measurements of production data, not deployed request-latency claims. The temporary benchmark and production snapshot were removed. Added 23 test lines protecting private references from hidden people and generic ALIAS references, and checking that content becomes a sweep candidate after references disappear. Existing batching, shared-object, and generation-race tests pass; go vet ./... and diff checks pass.
+
+Deliberately left invitation and to-do query rewrites alone: production had only 31 invitations, 27 TODO rows, and no TODO_MARK rows, so those candidates did not justify changes. The map-based prototype was replaced with an indexed boolean slice to reduce transient allocation. No delegation or deployment was performed during the audit. Subsequent merges from main were automatic and conflict-free, combining both sides as written. Re-ran the six targeted sweep tests and go vet ./... after the final merge; all passed. The merge was left uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The content sweeper now scans existing reference indexes once and marks the content rows they retain, avoiding repeated lookups and temporary row slices for each content row. The added test covers private references, generic alias references, and removal of those references. Review was by code inspection; no builds or tests were run, as requested.
+
+No significant findings.
+
+### Snapshot #2, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: running
