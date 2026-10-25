@@ -152,13 +152,14 @@ func (t activityTree) picture(g store.Row) (string, bool) {
 }
 
 func (t activityTree) needs(at time.Time) []store.Row {
-	year, today := activityYear(at), at.Format(DateLayout)
+	start := SchoolYearStart(at)
+	year, today := fmt.Sprintf("%d - %d", start, start+1), at.Format(DateLayout)
 	dated, undated := []store.Row{}, []store.Row{}
 	for _, g := range t.groups.All() {
 		if !t.shown(g) || g["status"] != "open" || len(t.above(g)) > 0 || t.yearOf(g) != year || g["join"] == "none" {
 			continue
 		}
-		if spots, _ := strconv.Atoi(g["capacity"]); spots > 0 && t.takenIn(g) >= spots {
+		if spots, _ := strconv.Atoi(g["capacity"]); spots > 0 && t.m.directMemberCount(g["id"]) >= spots {
 			continue
 		}
 		if g["start"] == "" {
@@ -177,7 +178,7 @@ func (t activityTree) needNote(g store.Row) string {
 		parts = append(parts, day)
 	}
 	if spots, _ := strconv.Atoi(g["capacity"]); spots > 0 {
-		left := spots - t.takenIn(g)
+		left := spots - t.m.directMemberCount(g["id"])
 		if left == 1 {
 			parts = append(parts, "1 spot left")
 		} else {

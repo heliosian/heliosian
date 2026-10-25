@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/db"
 	"heliosian/internal/store"
 )
 
@@ -85,10 +86,7 @@ var activities = define("helios_activities", "Looking at HCA-Team", "What Helios
 	if err != nil {
 		return nil, err
 	}
-	want := c.env.Now.Year()
-	if c.env.Now.Month() < time.July {
-		want--
-	}
+	want := db.SchoolYearStart(c.env.Now)
 	if in.Year != "" {
 		y, err := strconv.Atoi(firstYear.FindString(in.Year))
 		if err != nil {

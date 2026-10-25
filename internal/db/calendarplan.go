@@ -410,18 +410,6 @@ func weekdays(start, end string) []string {
 	return out
 }
 
-func SchoolYear(date string) string {
-	t, err := time.ParseInLocation(DateLayout, date[:min(len(date), len(DateLayout))], School)
-	if err != nil {
-		return ""
-	}
-	start := t.Year()
-	if t.Month() < time.July {
-		start--
-	}
-	return fmt.Sprintf("%d-%d", start, start+1)
-}
-
 func (p *calendarPlan) googleEvents(recurring bool) map[string]map[string]string {
 	out := map[string]map[string]string{}
 	for _, s := range p.sources {

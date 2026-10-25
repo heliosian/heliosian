@@ -1,9 +1,7 @@
 package db
 
 import (
-	"fmt"
 	"strings"
-	"time"
 
 	"heliosian/internal/store"
 )
@@ -89,22 +87,4 @@ func (t activityTree) at(path string) store.Row {
 		return nil
 	}
 	return t.named(segs[len(segs)-1])
-}
-
-func (t activityTree) takenIn(g store.Row) int {
-	n := 0
-	for _, m := range t.m.Table("MEMBER").Referencing("group", g["id"]) {
-		if m["member"] == "yes" {
-			n++
-		}
-	}
-	return n
-}
-
-func activityYear(at time.Time) string {
-	start := at.Year()
-	if at.Month() < time.July {
-		start--
-	}
-	return fmt.Sprintf("%d - %d", start, start+1)
 }

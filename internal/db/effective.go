@@ -165,6 +165,16 @@ func memberAs(row store.Row) string {
 	return strings.ToLower(strings.TrimSpace(row["member"]))
 }
 
+func (m *Model) directMemberCount(group string) int {
+	count := 0
+	for _, row := range m.Table("MEMBER").Referencing("group", group) {
+		if memberAs(row) == "yes" {
+			count++
+		}
+	}
+	return count
+}
+
 func (m *Model) effectiveRows(group string) []store.Row {
 	m.derived.mu.Lock()
 	e, ok := m.derived.byGroup[group]

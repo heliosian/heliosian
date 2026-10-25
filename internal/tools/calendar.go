@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"heliosian/internal/db"
 	"heliosian/internal/store"
 )
 
@@ -345,10 +346,7 @@ func (c *call) yearBounds(on string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	start := t.Year()
-	if t.Month() < time.July {
-		start--
-	}
+	start := db.SchoolYearStart(t)
 	from, to := fmt.Sprintf("%d-07-01", start), fmt.Sprintf("%d-07-01", start+1)
 	marked, res, err := c.rows(scan("GROUP_SOURCE", where(tree{"not", tree{"blank", path("marker")}}, tree{">=", path("group.start"), from}, tree{"<", path("group.start"), to}), tree{"include", "group"}))
 	if err != nil {

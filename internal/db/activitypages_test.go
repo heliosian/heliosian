@@ -77,6 +77,11 @@ func TestActivityNeeds(t *testing.T) {
 	if note := tr.needNote(tr.group(activityNight)); note != "Friday, February 5 · 2 spots left" {
 		t.Fatalf("note: %q", note)
 	}
+	apply(t, s, []Edit{{Set: "mem00000000022", Cells: map[string]any{"member": " Yes "}}})
+	tr = pages.tree()
+	if note := tr.needNote(tr.group(activityNight)); note != "Friday, February 5 · 2 spots left" {
+		t.Fatalf("note with mixed-case membership: %q", note)
+	}
 	apply(t, s, []Edit{{Set: activityNight, Cells: map[string]any{"capacity": "1"}}})
 	if got := pages.tree().needs(at); len(got) != 0 {
 		t.Fatalf("a full event is a need: %v", got)

@@ -42,10 +42,7 @@ func (m *Model) calendarRows() CalendarRows {
 }
 
 func feedWindow(now time.Time) (time.Time, time.Time) {
-	start := now.Year() - 1
-	if now.Month() < time.July {
-		start--
-	}
+	start := SchoolYearStart(now) - 1
 	from := time.Date(start, time.July, 1, 0, 0, 0, 0, School)
 	return from, from.AddDate(3, 0, 0)
 }

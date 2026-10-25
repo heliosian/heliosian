@@ -110,23 +110,13 @@ func (m *Model) upcomingParties(at time.Time) []store.Row {
 		if g["kind"] != "party" || g["status"] != "open" || g["start"] == "" || g["start"][:min(len(g["start"]), len(DateLayout))] < today || !slices.Contains([]string{"direct", "others"}, g["join"]) {
 			continue
 		}
-		if capacity, _ := strconv.Atoi(g["capacity"]); capacity > 0 && m.held(g["id"]) >= capacity {
+		if capacity, _ := strconv.Atoi(g["capacity"]); capacity > 0 && m.directMemberCount(g["id"]) >= capacity {
 			continue
 		}
 		out = append(out, g)
 	}
 	slices.SortStableFunc(out, func(x, y store.Row) int { return strings.Compare(x["start"], y["start"]) })
 	return out
-}
-
-func (m *Model) held(group string) int {
-	n := 0
-	for _, row := range m.Table("MEMBER").Referencing("group", group) {
-		if memberAs(row) == "yes" {
-			n++
-		}
-	}
-	return n
 }
 
 func (p *PartyPages) upcomingHead(m *Model, origin string) string {
