@@ -1,0 +1,26 @@
+# Simplify code found by whole-codebase audit
+
+byre task tskQbTu4kJpXiO, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskQbTu4kJpXiO in byre (GET /api/events?task_id=tskQbTu4kJpXiO).
+
+## Summary
+
+Simplicity audit of main at 90d314a (whole codebase, not a change review). Go side was already clean (deadcode/staticcheck/dupl found almost nothing), so most work was web-client dedup plus a few internal/db collapses.
+
+Built:
+- Web: rowsOf/all/q/write consolidated into web/common/rail.js (were up to 11 identical copies); Who's private copy of the crop dialog and photo lightbox removed in favour of web/common/crop.js (dialog now returns a crop box; openImageCrop(url, onFile) yields a JPEG for hero image/image picker); shared availabilityOf (calendar.js), agedPast (staleness.js), pageHead (shell.js), selectPill (form.js), badge (elements.js); deleted unused displayURL, web/celebrate/dom.js, web/loop/dom.js and their stale modulepreload links; docs/api.md updated.
+- Go (internal/db, internal/app): serveGroupCard collapses the share-card tail repeated in When/Party/Activity pages; deleteReferencing factory replaces four delete-cascade triggers; Model.membersIn replaces three member-union loops; Model.greeting replaces four greeting blocks; appNameOf defined once in wiring.go.
+
+User-visible: Who's crop dialog buttons use the shared .button style; share-card ETags change once (input order).
+
+Verification: gofmt, go vet ./..., go test for internal/db, app, sharecard, auth; throwaway import/undefined-name checkers and tools/console on sample-server pages. Main was merged in cleanly (it added a schoolGroupsOf validation and a test); build and tests pass after the merge.
+
+Deliberately left: Team/Celebrate parallel client code with real behaviour differences, Who vs common stale-photo rule, .page-head CSS copies in 6 stylesheets, over-exported JS symbols, the listmail/auth HMAC copies (would break already-sent unsubscribe links), and triple session-key derivation.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Consolidates duplicated client helpers for queries, writes, page headings, badges, selectors, availability, staleness, and photo cropping. Shared Go helpers now handle group share cards, referenced-row deletion, membership collection, and email greetings, replacing repeated implementations.
+
+No significant findings.
