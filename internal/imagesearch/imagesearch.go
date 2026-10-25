@@ -75,22 +75,10 @@ var (
 	imageClient = &http.Client{Timeout: 20 * time.Second}
 )
 
-func Members(next http.HandlerFunc) http.HandlerFunc {
-	return next
-}
-
-func searches(l *Limits) *ratelimit.Limiter {
-	return l.searches
-}
-
-func imports(l *Limits) *ratelimit.Limiter {
-	return l.imports
-}
-
-func (s Search) Register(mux *http.ServeMux, prefix string, gate func(http.HandlerFunc) http.HandlerFunc) {
-	mux.HandleFunc("GET "+prefix+"/images/search", gate(s.limited(searches, searchRefusal, serve.JSON(s.search))))
-	mux.HandleFunc("GET "+prefix+"/images/thumb", gate(s.serveThumb))
-	mux.HandleFunc("POST "+prefix+"/images/import", gate(s.limited(imports, importRefusal, serve.JSON(s.importImage))))
+func (s Search) Register(mux *http.ServeMux, prefix string) {
+	mux.HandleFunc("GET "+prefix+"/images/search", limited(s.Limits.searches, searchRefusal, serve.JSON(s.search)))
+	mux.HandleFunc("GET "+prefix+"/images/thumb", s.serveThumb)
+	mux.HandleFunc("POST "+prefix+"/images/import", limited(s.Limits.imports, importRefusal, serve.JSON(s.importImage)))
 }
 
 type importRequest struct {
@@ -101,10 +89,10 @@ type imported struct {
 	Stock string `json:"stock"`
 }
 
-func (s Search) limited(which func(*Limits) *ratelimit.Limiter, refusal string, next http.HandlerFunc) http.HandlerFunc {
+func limited(limiter *ratelimit.Limiter, refusal string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		email := strings.ToLower(auth.RealEmail(r))
-		if !which(s.Limits).Allow(email, time.Now()) {
+		if !limiter.Allow(email, time.Now()) {
 			slog.WarnContext(r.Context(), "image limit reached", "path", r.URL.Path, "email", email)
 			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%s", refusal))
 			return

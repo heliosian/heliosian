@@ -12,7 +12,7 @@ Every app's pages read and write the data model, and nothing else, through the s
 - the guest-list calls, `POST /api/do/invite`, `/api/do/add-guests` and `/api/do/guest-mail` (`RegisterInvitations`, `docs/datamodel.md`, Guest lists);
 - Report a problem or idea, `POST /api/feedback`, and its triage, `POST /api/do/report-draft` and `POST /api/do/file-report` (`docs/feedback.md`);
 - the address suggestions, `GET /api/address/suggest` (`internal/geocode/suggest.go`);
-- image search, one prefix per app's image folder: `/api/home`, `/api/when`, `/api/team`, `/api/celebrate`, `/api/wiki` (`internal/imagesearch`, `imagesearch.Members` gating it to the community);
+- image search, one prefix per app's image folder: `/api/home`, `/api/when`, `/api/team`, `/api/celebrate`, `/api/wiki` (`internal/imagesearch`, behind the shared sign-in gate);
 - Ask's chat, `/api/ask/` (`docs/ask/ask.md`), and the MCP sign-in's approval calls, `/api/mcp/` (`docs/mcp/mcp.md`);
 - Admin's calls: `POST /api/do/compose`, `GET /api/queues`, and the dashboard's `GET /api/system` and `GET /api/dashboard` (`docs/admin/admin.md`).
 

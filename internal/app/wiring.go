@@ -141,18 +141,18 @@ func NewCore(cfg Config) *Core {
 	serve.Pages(calendarMux, "web/when/index.html", "/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}")
 	whenSearch := cfg.ImageSearch
 	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
-	whenSearch.Register(api, "/api/when", imagesearch.Members)
+	whenSearch.Register(api, "/api/when")
 	homeMux := http.NewServeMux()
 	homePages := db.NewHomePages(dataStore, homeStyle)
 	homePages.Register(homeMux)
 	homeSearch := cfg.ImageSearch
 	homeSearch.UserAgent = "Heliosian image search (+https://heliosian.com)"
-	homeSearch.Register(api, "/api/home", imagesearch.Members)
+	homeSearch.Register(api, "/api/home")
 	teamMux := http.NewServeMux()
 	serve.Pages(teamMux, "web/team/index.html", "/{$}", "/my", "/my/{email}", "/calendar", "/approvals", "/admin", "/years/{year}", "/g/{path...}")
 	teamSearch := cfg.ImageSearch
 	teamSearch.UserAgent = "HCA-Team image search (+https://team.heliosian.com)"
-	teamSearch.Register(api, "/api/team", imagesearch.Members)
+	teamSearch.Register(api, "/api/team")
 	activityPages := db.NewActivityPages(dataStore, cfg.Bucket, teamStyle)
 	activityPages.Register(teamMux)
 	birthdayMux := http.NewServeMux()
@@ -161,7 +161,7 @@ func NewCore(cfg Config) *Core {
 	celebrateMux := http.NewServeMux()
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
-	celebrateSearch.Register(api, "/api/celebrate", imagesearch.Members)
+	celebrateSearch.Register(api, "/api/celebrate")
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
@@ -182,7 +182,7 @@ func NewCore(cfg Config) *Core {
 	}
 	wikiMux := http.NewServeMux()
 	serve.Pages(wikiMux, "web/wiki/index.html", "/{$}", "/new", "/p/{path...}")
-	cfg.ImageSearch.Register(api, "/api/wiki", imagesearch.Members)
+	cfg.ImageSearch.Register(api, "/api/wiki")
 	wikiShare := db.NewWikiShare(dataStore, pictures, appName("wiki"))
 	wikiShare.Register(wikiMux)
 	schoolNow := func() time.Time { return time.Now().In(db.School) }

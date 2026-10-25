@@ -198,34 +198,11 @@ func letters(i int) string {
 	return string(rune('a'+i%26)) + string(rune('a'+i/26))
 }
 
-func TestRegisterGatesEveryRoute(t *testing.T) {
-	stock, _ := sampleStock(t)
-	s := Search{Stock: stock, Limits: NewLimits()}
-	mux := http.NewServeMux()
-	refused := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "admin access required", http.StatusForbidden)
-		}
-	}
-	s.Register(mux, "/api/apps", refused)
-	for _, req := range []*http.Request{
-		httptest.NewRequest(http.MethodGet, "/api/apps/images/search?q=soccer", nil),
-		httptest.NewRequest(http.MethodGet, "/api/apps/images/thumb?id=stk00000000000", nil),
-		httptest.NewRequest(http.MethodPost, "/api/apps/images/import", strings.NewReader(`{"id":"stk00000000000"}`)),
-	} {
-		rec := httptest.NewRecorder()
-		authtest.Fixed("robin.whitfield@heliosschool.org", mux).ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("%s past a refusing gate: %d, want 403", req.URL.Path, rec.Code)
-		}
-	}
-}
-
 func TestImportsAndSearchesAreLimited(t *testing.T) {
 	stock, _ := sampleStock(t)
 	s := Search{Stock: stock, Limits: NewLimits()}
 	mux := http.NewServeMux()
-	s.Register(mux, "/api/team", Members)
+	s.Register(mux, "/api/team")
 	request := func(as, method, path, body string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		authtest.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
