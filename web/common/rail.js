@@ -35,10 +35,10 @@ export function fetchGroups(sel) {
   return queries(groupQueries(sel));
 }
 
-export const tagCondition = '(own_group @g) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
+export const tagCondition = '(= kind "group") (blank parent) (blank url) (blank visible_to) (not (blank managed_by)) (!= status "closed") (not (exists GROUP (= managed_by @g) (!= id @g))) (manages @g)';
 const viewerGroups = '(select EFFECTIVE_MEMBER.group (= person @viewer))';
 const notPast = '(or (blank start) (and (not (blank end)) (>= end today)) (and (blank end) (>= start today)))';
-export const runCondition = `${notPast} (manages @g) (sidebar_group @g)`;
+export const runCondition = `${notPast} (in id (descendants (select GROUP.id (in managed_by ${viewerGroups})))) (manages @g) (sidebar_group @g)`;
 export const joinedCondition = `${notPast} (or (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups})) (or (!= kind "event") (not (blank rsvp_yes))) (not (manages @g)) (sidebar_group @g)`;
 export const viewerListCondition = `(or (manages @g) (in id ${viewerGroups}) (in rsvp_yes ${viewerGroups})) (or (!= kind "event") (not (blank rsvp_yes))) (sidebar_group @g)`;
 export const listIncludes = '(include parent parent.parent parent.parent.parent)';

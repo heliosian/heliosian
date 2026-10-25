@@ -170,13 +170,10 @@ func BenchmarkWikiSides(b *testing.B) {
 
 func BenchmarkSidebar(b *testing.B) {
 	m := scaleStore(b).Model()
-	mine := `(select EFFECTIVE_MEMBER.group (= person @viewer))`
+	qs := pageQueries(b)
 	queries := []*Query{}
-	for _, src := range []string{
-		`(from GROUP @g (where (manages @g) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
-		`(from GROUP @g (where (or (in id ` + mine + `) (in rsvp_yes ` + mine + `)) (not (manages @g)) (sidebar_group @g)) (order name asc) (include parent parent.parent parent.parent.parent))`,
-	} {
-		q, err := Parse(src)
+	for _, name := range []string{"navManaged", "navJoined", "groups", "roomGroups", "effective"} {
+		q, err := Parse(qs[name])
 		if err != nil {
 			b.Fatal(err)
 		}

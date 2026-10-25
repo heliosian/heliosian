@@ -3,12 +3,15 @@ package db
 import (
 	"fmt"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"heliosian/internal/data"
 	"heliosian/internal/store"
 	"heliosian/internal/trace"
 )
@@ -390,6 +393,7 @@ func TestInAConstantSelectProbes(t *testing.T) {
 		{`(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (= slug "everyone")))))`, true},
 		{`(from MEMBER (where (in group (select GROUP.id (= kind "family")))))`, true},
 		{`(from GROUP @g (where (in id (select MEMBER.group (= group @g)))))`, false},
+		{`(from GROUP (where (in id (descendants (select GROUP.id (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer))))))))`, true},
 	} {
 		q := mustParse(t, c.src)
 		if probes := q.scan.probeSet != nil; probes != c.probes {
@@ -401,6 +405,53 @@ func TestInAConstantSelectProbes(t *testing.T) {
 		scanned := ids(runAs(t, m, viewer, `(from MEMBER (where (= group.kind "family")))`).Rows(), "id")
 		if len(scanned) == 0 || !slices.Equal(probed, scanned) {
 			t.Errorf("as %q: family memberships through a select %v, through a path %v", viewer, probed, scanned)
+		}
+	}
+}
+
+func TestDescendantsAreTheGroupsTheViewerManages(t *testing.T) {
+	s := sample(t)
+	made := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "mgr", Row: map[string]any{"kind": "group", "name": "Chain Managers", "status": "open", "posting": "members", "replying": "members"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@mgr", "person": staff, "member": "yes"}},
+		{Insert: "GROUP", As: "root", Row: map[string]any{"kind": "group", "name": "Chain", "status": "open", "posting": "members", "replying": "members", "managed_by": "@mgr"}},
+		{Insert: "GROUP", As: "child", Row: map[string]any{"kind": "event", "name": "Chain Child", "status": "open", "posting": "members", "replying": "members", "parent": "@root"}},
+		{Insert: "GROUP", As: "grand", Row: map[string]any{"kind": "event", "name": "Chain Grandchild", "status": "open", "posting": "members", "replying": "members", "parent": "@child"}},
+		{Insert: "GROUP", As: "other", Row: map[string]any{"kind": "group", "name": "Not Theirs", "status": "open", "posting": "members", "replying": "members"}},
+	})
+	root, child, grand, other := made[2], made[3], made[4], made[5]
+	probe := `(from GROUP @g (where (in id (descendants (select GROUP.id (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer))))))))`
+	walk := `(from GROUP @g (where (manages @g)))`
+	for _, viewer := range []string{staff, parent, student} {
+		got := ids(as(t, s, viewer, probe), "id")
+		want := ids(as(t, s, viewer, walk), "id")
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) || (viewer == staff && len(want) == 0) {
+			t.Errorf("as %s: descendants %v, manages %v", viewer, got, want)
+		}
+	}
+	got := ids(as(t, s, staff, probe), "id")
+	for _, id := range []string{root, child, grand} {
+		if !slices.Contains(got, id) {
+			t.Errorf("descendants left out %s", id)
+		}
+	}
+	if slices.Contains(got, other) {
+		t.Errorf("descendants included %s", other)
+	}
+}
+
+func TestDescendantsOfEachOuterRowStayApart(t *testing.T) {
+	s := sample(t)
+	const nested = `(from GROUP @g (where (exists GROUP (= id @g) (in id (descendants @g)))))`
+	for _, viewer := range []string{staff, parent} {
+		got := ids(as(t, s, viewer, nested), "id")
+		want := ids(as(t, s, viewer, `(from GROUP)`), "id")
+		slices.Sort(got)
+		slices.Sort(want)
+		if len(want) < 2 || !slices.Equal(got, want) {
+			t.Errorf("as %s: descendants of each group found %d, the groups themselves %d", viewer, len(got), len(want))
 		}
 	}
 }
@@ -472,6 +523,36 @@ func TestCorrelatedSelectsAreNotShared(t *testing.T) {
 		if !slices.Equal(constant, all) {
 			t.Errorf("as %q: a constant exists kept %v of %v", viewer, constant, all)
 		}
+	}
+}
+
+func TestACorrelatedDescendantWalkPastTheBudgetIsRefused(t *testing.T) {
+	const src = `(from GROUP @g (where (in id (descendants (ancestors @g)))))`
+	sampleRows := runAs(t, sample(t).Model(), parent, src)
+	if sampleRows.Err != nil || len(sampleRows.IDs) < 2 {
+		t.Fatalf("the same walk over the sample answered %v with %d rows", sampleRows.Err, len(sampleRows.IDs))
+	}
+	root := t.TempDir()
+	if err := os.CopyFS(root, os.DirFS("../../sampledata")); err != nil {
+		t.Fatal(err)
+	}
+	const n = 2000
+	tree := fmt.Sprintf("grp%011d", 100000)
+	row := func(id, parent, name string) map[string]string {
+		return map[string]string{"id": id, "parent": parent, "kind": "group", "name": name, "status": "open", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}
+	}
+	rows := []map[string]string{row(tree, "", "Tree")}
+	for i := 1; i < n; i++ {
+		rows = append(rows, row(fmt.Sprintf("grp%011d", 100000+i), tree, fmt.Sprintf("Tree %d", i)))
+	}
+	appendRows(t, filepath.Join(root, "datagroups", "GROUP.csv"), rows)
+	dir := &data.Dir{Root: root}
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := runAs(t, s.Model(), parent, src); res.Err == nil || !strings.Contains(res.Err.Error(), "visits more than") {
+		t.Errorf("descendants of each group's ancestors answered %v", res.Err)
 	}
 }
 

@@ -168,9 +168,10 @@ export async function loadModel() {
       people: `(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns ${personColumns}))`,
       addresses: '(from PERSON_EMAIL (where primary) (columns person address))',
       pictures: '(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (in kind "family" "classroom" "grade"))))) (order order asc) (columns person group order reencode crop_left crop_top crop_width crop_height))',
-      groups: '(from GROUP @g (where (!= status "closed") (or (in kind "family" "classroom" "grade" "gradeband" "crew" "department") (and (= kind "group") (= parent.kind "gradeband")))) (order order asc name asc))',
+      groups: '(from GROUP (where (!= status "closed") (in kind "family" "classroom" "grade" "gradeband" "crew" "department")) (order order asc name asc))',
+      roomGroups: '(from GROUP (where (!= status "closed") (= kind "group") (in parent (select GROUP.id (= kind "gradeband")))) (order order asc name asc))',
       members: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns group person))',
-      effective: '(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (or (in slug "students" "parents" "staff") (and (= kind "group") (= parent.kind "gradeband")))))) (include group) (columns group person))',
+      effective: '(from EFFECTIVE_MEMBER (where (or (in group (select GROUP.id (in slug "students" "parents" "staff"))) (in group (select GROUP.id (= kind "group") (in parent (select GROUP.id (= kind "gradeband"))))))) (include group) (columns group person))',
       coords: '(from GEOCODE)',
       settings: '(from SETTING (where (= app "platform")))',
       tagMembers: `(from MEMBER (where (= member "yes") (in group (select GROUP.id @g ${tagCondition}))) (columns group person))`,
@@ -178,7 +179,7 @@ export async function loadModel() {
     }),
     oldTarget(name),
   ]);
-  const {viewer, admin, people, addresses, pictures, groups, members, effective, coords, settings, tagMembers, navTags, navTagManagers, navManaged, navJoined, navMine} = answers;
+  const {viewer, admin, people, addresses, pictures, groups, roomGroups, members, effective, coords, settings, tagMembers, navTags, navTagManagers, navManaged, navJoined, navMine} = answers;
   model.email = who.email;
   model.viewer = viewer.result.length ? rowsOf(viewer, 'PERSON')[0] : null;
   model.admin = admin.result.length > 0;
@@ -212,7 +213,7 @@ export async function loadModel() {
     model.settings[s.key] = s.value;
   }
   groupById = {};
-  const groupRows = rowsOf(groups, 'GROUP');
+  const groupRows = [...rowsOf(groups, 'GROUP'), ...rowsOf(roomGroups, 'GROUP')];
   for (const g of groupRows) {
     groupById[g.id] = g;
   }

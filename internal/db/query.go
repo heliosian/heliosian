@@ -932,6 +932,74 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			}
 			return out
 		}, t, !g.local, nil
+	case "descendants":
+		if len(s.list) != 2 {
+			return nil, typ{}, false, s.errorf("descendants takes the rows to walk down from")
+		}
+		mark := len(cx.touched)
+		var seeds func(*frame) *valueSet
+		var t typ
+		var outer bool
+		if s.list[1].isList {
+			var err error
+			seeds, t, outer, err = cx.set(s.list[1], sc, x)
+			if err != nil {
+				return nil, typ{}, false, err
+			}
+		} else {
+			g, err := cx.operand(s.list[1], sc)
+			if err != nil {
+				return nil, typ{}, false, err
+			}
+			if g.lit != nil || g.t.class != classRow || g.t.table == "" {
+				return nil, typ{}, false, s.errorf("descendants takes rows")
+			}
+			t, outer = g.t, !g.local
+			seeds = func(f *frame) *valueSet {
+				out := newValueSet(false)
+				if v := g.eval(f); !v.blank {
+					out.add(v)
+				}
+				return out
+			}
+		}
+		depends := cx.outside(mark, nil)
+		if t.class != classRow || t.table == "" {
+			return nil, typ{}, false, s.errorf("descendants takes rows")
+		}
+		table, _ := Lookup(t.table)
+		if parent, ok := table.Column("parent"); !ok || parent.Kind != Ref || parent.Target != table.Name {
+			return nil, typ{}, false, s.errorf("%s has no parent to follow", table.Name)
+		}
+		key := "desc\x00" + memoDigest(s.flat())
+		return func(f *frame) *valueSet {
+			memo := f.memoKey(key, depends)
+			if held, ok := f.run.memo[memo]; ok {
+				return held.(*valueSet)
+			}
+			out := newValueSet(false)
+			rows := f.run.table(table.Name)
+			start := seeds(f)
+			pending := make([]string, 0, len(start.keys))
+			for id := range start.keys {
+				pending = append(pending, id)
+			}
+			for i := 0; i < len(pending); i++ {
+				id := pending[i]
+				if out.keys[id] != 0 {
+					continue
+				}
+				f.run.spend(1)
+				out.add(value{kind: ID, s: id})
+				children := rows.Referencing("parent", id)
+				f.run.spend(1 + len(children))
+				for _, child := range children {
+					pending = append(pending, child["id"])
+				}
+			}
+			f.run.memo[memo] = out
+			return out
+		}, t, outer, nil
 	default:
 		if d, ok := cx.defines[head]; ok {
 			expanded, err := cx.expand(s, d, sc)
