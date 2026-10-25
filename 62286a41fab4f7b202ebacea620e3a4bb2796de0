@@ -1,0 +1,21 @@
+# Audit codebase consistency
+
+byre task tskk3CNY2hYxlK, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskk3CNY2hYxlK in byre (GET /api/events?task_id=tskk3CNY2hYxlK).
+
+## Summary
+
+Audited the codebase at `e8118e1` for consistency with `AGENTS.md`, `docs/`, and internal conventions:
+
+- **Go slice initialization (`AGENTS.md`, Go)**: Replaced `make([]string, 0, len(start.keys))` with `[]string{}` in `internal/db/query.go` and `make([]byte, 0, 64*1024)` with `make([]byte, 64*1024)` in `tools/askrun/main.go`.
+- **American English spelling**: Replaced the only occurrences of `summarise` (`internal/db/extract_transcribe.go`) and `labelled` (`web/team/pages/detail.js`) with `summarize` and `labeled`.
+- **Documentation drift (`AGENTS.md`, Docs)**: Updated `docs/datamodel.md` (`deleteReferencing` replacing `toDosGone`, `marksGone`, `photosGone`, `linksGone`), `docs/home/home.md` (`availabilityOf` in `web/common/calendar.js`), `docs/dev.md` (`badge` in `elements.js`, `setTitle` and `pageHead` in `shell.js`, `selectPill` in `form.js`), and `docs/toolbar.md` (removed the obsolete phone magnifier-overlay description and updated the phone hamburger/title-strip description).
+- **Left out**: Kept `cancelled` / `Cancelling` as-is because `cancelled` is the data model's enum value (`MEMBER.member`, `GROUP.status`, `PAYMENT.status`) and iCalendar's `STATUS:CANCELLED`. Left `alert(err.message)` calls in `web/who/tags.js`, `web/celebrate/pages/admin.js`, `web/who/pages/admin.js`, and `web/when/peek.js` unchanged to avoid altering UI behavior.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Updates stale documentation references for shared UI helpers, calendar availability and delete triggers, and aligns the toolbar docs with its current mobile layout. Standardizes American English spelling and Go slice initialization without changing application behavior.
+
+No significant findings.
