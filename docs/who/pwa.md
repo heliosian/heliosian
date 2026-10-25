@@ -8,7 +8,6 @@ The directory is used from phone home screens, so Heliosian ships as an installa
 - Both pages (app and login) carry the manifest link, `theme-color` (light surface on the app page, teal on login - the manifest's teal governs install and launch chrome while the meta tracks the in-app surface), `viewport` including `viewport-fit=cover` (edge-to-edge under notches) and `user-scalable=no`, `apple-mobile-web-app-capable: yes`, `apple-mobile-web-app-status-bar-style: black-translucent`, 16/32 favicons, and the `apple-touch-icon`.
 - HTTPS comes with Cloud Run; installability requires it.
 - Splash screens for iOS, which ignores the manifest for splash: the login page (`web/templates/login.html`, shared by every app) carries a full `apple-touch-startup-image` battery — one pre-rendered PNG per iPhone/iPad class and orientation, each with its device-specific media query — served from `/brand/splash/` out of each app's `web/public/<app>/brand/splash/` (`docs/brand.md`).
-- A service worker is optional for install on current Chromium and adds offline shell caching; if added, it stays minimal — cache the static shell, never cache directory data (community data must not persist on shared devices beyond the session's needs).
 - `start_url` must resolve for a signed-out user by landing on the sign-in flow, then into the app.
 
 Icon and splash source files are derived from the brand assets (see `docs/who/design.md`).

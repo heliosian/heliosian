@@ -858,7 +858,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 /* The day plan: a card per day type in force, with the four blocks. */
 .plan-cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 
-/* A day's card: square at its left, where a bar in the day type's colour
+/* A day's card: square at its left, where a bar in the day type's color
    runs its full height, and curved at the right. */
 .plan-card { position: relative; overflow: hidden; background: var(--card); border: 1px solid var(--line); border-left: 0; border-radius: 0 12px 12px 0; padding: 10px 14px 12px 18px; }
 
@@ -1250,7 +1250,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .rsvp-side { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* In a band too narrow for the buttons beside the words, they take a row
-   of their own, centred under the question rather than left in its wake. */
+   of their own, centered under the question rather than left in its wake. */
 @container (max-width: 580px) {
   .rsvp-side { flex-basis: 100%; }
 }
@@ -1321,8 +1321,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .invite-line { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Yes, Maybe and No as one small set, the one given filled in its colour;
-   greyed for someone the viewer may not answer for. */
+/* Yes, Maybe and No as one small set, the one given filled in its color;
+   grayed for someone the viewer may not answer for. */
 .rsvp-mini { display: inline-flex; gap: 4px; }
 
 .rsvp-mini-choice { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1.5px solid var(--dash-line, var(--line)); border-radius: 999px; background: var(--glass-soft, #fff); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
@@ -2210,7 +2210,7 @@ body.is-admin #page > :not(.home) { max-width: none; margin: 0; }
 
 .admin-repeat small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
 
-/* The categories tool. Each tool The categories are
+/* The categories tool. The categories are
    cards, one per group: a head with the name (a box only while renaming),
    how many it holds, Rename, arrows to move the group and a chevron to
    fold it; and a row per category - a handle to drag it, its name, its

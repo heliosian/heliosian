@@ -338,9 +338,9 @@ main {
   margin-bottom: 22px;
 }
 
-/* The chips are Helios Who?'s pills: each filled in its category's colour
+/* The chips are Helios Who?'s pills: each filled in its category's color
    with white words, the one that is the active filter full and ringed, the
-   rest faded back. Colours are assigned by position in the sheet's
+   rest faded back. Colors are assigned by position in the sheet's
    category list, so they stay stable as long as the order does. */
 .chip {
   display: inline-flex;
@@ -362,7 +362,7 @@ main {
 
 .chip.is-on { opacity: 1; box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(12, 76, 84, 0.4); }
 
-/* Helios Who?'s pill colours - its staff coral, student teal and parent
+/* Helios Who?'s pill colors - its staff coral, student teal and parent
    olive - then its brand teal and a gold. */
 .chip.cat-1 { background: var(--cat-coral); }
 .chip.cat-2 { background: var(--cat-teal); }
@@ -409,7 +409,7 @@ main {
 .prio-when-line { display: flex; align-items: flex-start; gap: 7px; line-height: 1.3; }
 .prio-when-line svg { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; }
 .prio-tag { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px; color: #fff; font-size: 11.5px; font-weight: 600; }
-/* The tag wears its category's chip colour, as in the chip row above. */
+/* The tag wears its category's chip color, as in the chip row above. */
 .prio-tag.cat-1 { background: var(--cat-coral); }
 .prio-tag.cat-2 { background: var(--cat-teal); }
 .prio-tag.cat-3 { background: var(--cat-olive); }
@@ -739,7 +739,7 @@ main {
 
 .row-actions .need { white-space: nowrap; }
 
-/* The day and time each sit behind a small icon, in the brand's colour. */
+/* The day and time each sit behind a small icon, in the brand's color. */
 .label .label-when { display: inline-flex; align-items: center; gap: 5px; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 600; color: var(--brand); }
 
 .label .label-when svg { width: 15px; height: 15px; color: var(--muted); }
@@ -1445,14 +1445,14 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .form-tab-body .field-toggle small { font-size: 13.5px; }
 
-/* The status select carries a dot in the colour of its state. */
+/* The status select carries a dot in the color of its state. */
 .status-select { position: relative; display: inline-flex; align-items: center; }
 
 .status-select::before { content: ''; position: absolute; left: 12px; top: 50%; width: 10px; height: 10px; border-radius: 50%; transform: translateY(-50%); background: #2fb344; pointer-events: none; }
 
 .status-select select, .field .status-select select { padding-left: 32px; }
 
-/* Policy selects: green yes, yellow approval, red no, grey inherit. */
+/* Policy selects: green yes, yellow approval, red no, gray inherit. */
 .policy-select::before { background: #98a0a6; }
 
 .policy-select[data-policy=Yes]::before { background: #2fb344; }
@@ -1769,7 +1769,7 @@ h2.section .link-button { font-size: 14px; }
   text-decoration: none;
 }
 
-/* Entries take their event's category colour; things under an event the
+/* Entries take their event's category color; things under an event the
    lighter tint with dark text; the viewer's own, yellow with a star. */
 .calendar .chip.cat-1 { background: #ee523c; }
 .calendar .chip.cat-2 { background: var(--cat-teal); }
@@ -2105,7 +2105,7 @@ h2.section .link-button { font-size: 14px; }
 /* The suggestion form's lead-in, above its few fields. */
 .suggest-lead { margin: 0 0 16px; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
 
-/* What sits under a row: a labelled run of small chips, plainly not prose. */
+/* What sits under a row: a labeled run of small chips, plainly not prose. */
 .row-under { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 
 .row-under-chip { border: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--brand); background: var(--wash, #eaf3f3); border-radius: 999px; padding: 3px 10px; cursor: pointer; }

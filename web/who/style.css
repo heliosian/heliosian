@@ -610,7 +610,7 @@ body {
 
 /* The page and everything drawn across its top - the banners, a page's
    header, the tab strip, a roster's header - share one ground, the
-   theme's page colour: white by day, and whatever dark and quan say. */
+   theme's page color: white by day, and whatever dark and quan say. */
 main {
   flex: 1;
   min-height: 0;
@@ -3740,7 +3740,7 @@ a.person-card:hover .photo-wrap-peek::before {
   }
 }
 
-/* Admin Tools' own panels: the pictures and colours, the settings rows, the
+/* Admin Tools' own panels: the pictures and colors, the settings rows, the
    overrides forms and the tables of added and hidden people. */
 .admin .image-row { display: flex; align-items: center; gap: 16px; padding: 12px 0; border-top: 1px solid var(--line); }
 .admin .image-row:first-of-type { border-top: 0; }

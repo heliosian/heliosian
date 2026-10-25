@@ -13,7 +13,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 - **Parallel files.** Compare the same kind of file across every domain (in `internal/db` every app's pages file - `homepages.go`, `whenpages.go`, `partypages.go` and the rest - and on the client every `dom.js`, `chrome.js`, `state.js`, `app.js`, `edit.js`, `pages/admin.js`, `style.css` and `index.html`). Note what is byte-identical, what is identical apart from names or wording, and what one app has that the rest lack.
 - **Small helpers each package writes for itself.** Request-body decoding, JSON responses, the "who is asking" lookup, admin checks, the save helper, the site's base URL, the school time zone, ID generators, email cleaning, yes/no cells, URL and date checks, display names.
 - **Whole features written once per app.** The admin list and its handlers, Settings-tab parsing, share cards, mail letters and their templates, `.ics` files, image upload and image search, the people picker, tabs, modals and forms, the Admin Tools shell, the router.
-- **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.ICSEscape`, `mail.Normalize` and `NormalizeAll`, `web/common/tabs.js`, `web/common/picker.js`, `api` in `web/common/api.js`. A package that re-implements one of these is a finding even when its copy is correct.
+- **Shared helpers that exist and go unused.** `sharecard.Serve` and `ETag`, `mail.Normalize` and `NormalizeAll`, `web/common/tabs.js`, `web/common/picker.js`, `api` in `web/common/api.js`. A package that re-implements one of these is a finding even when its copy is correct.
 - **Helpers copied into `tools/` and `cmd/`** from `internal/app`: required environment variables and keys, bundled-file stubs, sheet lists, column schemas.
 - **Test helpers copied between `_test.go` files.** Sample servers, recorders, image-checker stubs, time helpers.
 
@@ -52,7 +52,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 
 ### Second paths, fallbacks and switches
 
-- **Dependencies production always provides but the code treats as optional.** A constructor that returns nil, followed by nil checks at every call site, often with different behaviour at each.
+- **Dependencies production always provides but the code treats as optional.** A constructor that returns nil, followed by nil checks at every call site, often with different behavior at each.
 - **Fallbacks that hide failure.** An empty list on a failed load, a default when a value is missing, a `.catch(() => {})`, a `try`/`catch` around `localStorage`.
 - **Settings nothing ever changes.** Environment variables the deploy never sets, flags always given the same value, policies with only one caller, sentinel defaults like `0` meaning "use the real default".
 - **Code kept alive for retired data.** Old column names, skipped legacy rows, cleanup for sessions that have long expired. The fix is to migrate the data and delete the code.
@@ -62,7 +62,7 @@ What matters to this audit is that the apps are built to one shape, in `internal
 
 - **Logging:** severity carried by the `slog` level and never written into the message, lowercase messages, log prefixes naming the app and not a sheet, one logging package throughout the server.
 - **Mail senders, keys and configuration,** each passed in one shape, not several.
-- **Tools that do the same job with different flag names or different dry-run behaviour.**
+- **Tools that do the same job with different flag names or different dry-run behavior.**
 - **Tool output that doesn't match its name** or its docs (a `.png` that is a JPEG).
 
 ### Style (`AGENTS.md`)
@@ -86,9 +86,9 @@ These areas are close enough to structure to belong to this audit. Each is its o
 - **Tests that line up with the rules.**
   - Rules that can only be tested through HTTP.
   - Each app's visibility function and whether its tests cover the kinds of member (student, parent, staff, admin).
-  - Behaviour-level duplicates, where tests written separately in each app should run once against a shared implementation.
+  - Behavior-level duplicates, where tests written separately in each app should run once against a shared implementation.
 - **Docs against code.**
-  - Docs that describe behaviour the code no longer has.
+  - Docs that describe behavior the code no longer has.
   - Docs that copy a value instead of pointing at where it lives.
   - Tools, routes and settings the docs never mention.
 - **Schema agreement.** A tab's columns as `tools/createtabs` writes them, as the owning package reads them, and as `sampledata/` holds them should all match.
@@ -100,7 +100,7 @@ These areas are close enough to structure to belong to this audit. Each is its o
   - Errors ignored (`json.Encode`, `Close`, `Write`).
   - Errors wrapped without context.
   - The same failure answered with different status codes in different apps.
-- **Client behaviour the apps should share.**
+- **Client behavior the apps should share.**
   - What happens when a session expires mid-page.
   - Focus and Escape in modals.
   - Keyboard use of pickers and tabs.
@@ -112,13 +112,13 @@ These areas are close enough to structure to belong to this audit. Each is its o
 
 - **Security.** Anything a person can do that they should not be able to goes to `docs/audits/security.md` and is filed as a Security issue. A cleanup that happens to close a security gap is filed under Security as well, with the cleanup named in its fix.
 - **Look and feel.** Whether a page looks right is judged by eye. A visual difference between apps is a finding only when it is a drifted copy of the same component, not a design choice.
-- **Deliberate differences.** Each app's colours, words, icons and which features it has. A difference is a finding when nothing chose it.
+- **Deliberate differences.** Each app's colors, words, icons and which features it has. A difference is a finding when nothing chose it.
 - **Rewrites and frameworks.** A fix is shared code, a deleted copy, or a moved function. It is never a new framework, build step, service or store, and never a layer that keeps both copies alive.
 - **Counts for their own sake.** A number of copies supports a finding; it is not one. Every finding names the files and functions.
 
 ## Findings
 
-Structural findings take the issue type Cleanup. Wrong behaviour found along the way, including a user-visible drift between copies, takes the type Bug. A bug inside a duplication is its own Bug, linked from the Cleanup.
+Structural findings take the issue type Cleanup. Wrong behavior found along the way, including a user-visible drift between copies, takes the type Bug. A bug inside a duplication is its own Bug, linked from the Cleanup.
 
 - **The opening** says what is duplicated, drifted or tangled, and where.
 - **Where** lists every instance when there are about ten or fewer; otherwise a representative dozen and the total. Drifted values go side by side: the limit in one file against the limit in the other, the two readings of a blank cell.

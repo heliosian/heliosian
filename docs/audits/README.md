@@ -49,7 +49,7 @@ The body describes the finding as it stands, not the story of how it changed; th
 An issue stays open while the finding stands, including one that waits on something before it can be worked on, with what it waits on in the body. It closes one of three ways, with the body or a comment saying what was done or why not:
 
 - **fixed** - closed as completed once a change closes it, describing the fix.
-- **wontfix** - closed as not planned when it is understood and left, or the behaviour turns out deliberate, giving the reason.
+- **wontfix** - closed as not planned when it is understood and left, or the behavior turns out deliberate, giving the reason.
 - **invalid** - closed as not planned when it turns out not to be a finding, giving the reason.
 
 A closing comment names the commits that fixed it or decided it, and a fix's commit message names the issue.

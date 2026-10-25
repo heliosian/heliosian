@@ -1,7 +1,7 @@
 {
   "name": "Helios Who?",
   "short_name": "Helios Who?",
-  "description": "Please log in with your @heliosschool.org email address",
+  "description": "Please sign in with your @heliosschool.org email address",
   "display": "standalone",
   "id": "/",
   "scope": "/",

@@ -57,7 +57,7 @@ Every `/api/q` answer carries a `Trace` header (`internal/trace`; `docs/datamode
 
 The browser side is `performance.getEntriesByType("resource")` in the capture browser (`go run ./tools/browse --eval`), which gives the request's wall time against the server's `dur`; the difference is the network and the encoding.
 
-For engine work rather than query work, profile the benchmark: `go test ./internal/db -run NONE -bench BenchmarkSidebar -benchtime 60x -cpuprofile /tmp/sidebar.prof -o /tmp/db.test`, then `go tool pprof -top -cum /tmp/db.test /tmp/sidebar.prof` and `-peek` on `holds`, `readable` and `columnReadable`. `BenchmarkSidebar` is the rail's two queries as a parent over the synthetic school in `internal/db/scale_test.go`, sized by `scaleFamilies`; `BenchmarkEveryPerson` and its neighbours time whole-table reads and a write's rebuild. The profile is where the per-row machinery shows, string-keyed caches, clock reads in `holds` and `check`, and garbage, none of which a query rewrite reaches.
+For engine work rather than query work, profile the benchmark: `go test ./internal/db -run NONE -bench BenchmarkSidebar -benchtime 60x -cpuprofile /tmp/sidebar.prof -o /tmp/db.test`, then `go tool pprof -top -cum /tmp/db.test /tmp/sidebar.prof` and `-peek` on `holds`, `readable` and `columnReadable`. `BenchmarkSidebar` is the rail's two queries as a parent over the synthetic school in `internal/db/scale_test.go`, sized by `scaleFamilies`; `BenchmarkEveryPerson` and its neighbors time whole-table reads and a write's rebuild. The profile is where the per-row machinery shows, string-keyed caches, clock reads in `holds` and `check`, and garbage, none of which a query rewrite reaches.
 
 ## Measuring a change
 

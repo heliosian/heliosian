@@ -29,7 +29,7 @@ The capture is a full-page screenshot at a 1280×800 viewport. "Full page" means
 
 ## Checking dark mode
 
-A surface painted white or pale by name in an app's stylesheet, rather than from a palette variable (`docs/who/design.md`, Palette), stays so in dark mode, and the words on it - light, now - vanish. `tools/darkcheck` finds those without looking: it loads each page in dark mode, walks every visible element compositing its background up through its ancestors, and prints the words whose contrast falls short of what their size needs, any tab strip painted a different colour from what it sits on, and with `--light` every light opaque surface for reading by eye. `--compare` reads each page by day too and marks each finding `[dark only]` - dark mode's to fix - or `[by day too]`, a design choice to weigh on its own.
+A surface painted white or pale by name in an app's stylesheet, rather than from a palette variable (`docs/who/design.md`, Palette), stays so in dark mode, and the words on it - light, now - vanish. `tools/darkcheck` finds those without looking: it loads each page in dark mode, walks every visible element compositing its background up through its ancestors, and prints the words whose contrast falls short of what their size needs, any tab strip painted a different color from what it sits on, and with `--light` every light opaque surface for reading by eye. `--compare` reads each page by day too and marks each finding `[dark only]` - dark mode's to fix - or `[by day too]`, a design choice to weigh on its own.
 
     go run ./tools/darkcheck --compare --url https://who.heliosiandev.com:8080/people,https://team.heliosiandev.com:8080/
     go run ./tools/darkcheck --compare --url https://home.heliosiandev.com:8080/ --click ".tile .link-edit:not(.app-move)"
@@ -50,7 +50,7 @@ Some source material sits behind a login. The capture browser handles this:
 
     go run ./tools/capturebrowser
 
-launches a headed Chrome with a dedicated profile in `local/capture-profile` and DevTools on `localhost:9222`, unless one is already answering there. Log in to the target site in that window; the session persists in the profile across restarts. The profile holds that site's cookies, so it sits under `local/`, which is gitignored and never enters an image.
+launches a headed Chrome with a dedicated profile in `local/capture-profile` and DevTools on `localhost:9222`, unless one is already answering there. Sign in to the target site in that window; the session persists in the profile across restarts. The profile holds that site's cookies, so it sits under `local/`, which is gitignored and never enters an image.
 
 With the capture browser running, add `--remote` to attach to it instead of launching headless Chrome:
 
@@ -86,7 +86,7 @@ The capture is the viewport, so click coordinates read off a screenshot are dire
 
 Invocations must not linger: every run exits by itself within its 15-second internal timeout, leaving the browser and tab untouched. A full page load can exceed that: `--nav` to a cold URL often times out even though the tab does navigate, so follow it with an actionless invocation to capture the settled page. SPA navigation by click stays well inside the limit.
 
-Leave the browser running between capture sessions — never kill it. In practice logins do not reliably survive a browser restart, and killing it forces a human to sign in again.
+Leave the browser running between capture sessions — never kill it. In practice sign-ins do not reliably survive a browser restart, and killing it forces a human to sign in again.
 
 ### Whole screens and long pages
 

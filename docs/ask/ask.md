@@ -26,7 +26,7 @@ Claude cannot act: no sign-ups, RSVPs, tickets, mail or edits. The prompt says s
 
 ## Sample data
 
-Sample mode reads the sample data model (`sampledata/data*/`): Rowan Ashdown, whose child is in the Hummingbirds with a crew and a teacher, co-chairs International Night, holds a Taco Night ticket, is one of the Jayvens room parents and has a neighbouring family on the map, so most tools have something to find. The sample server never reaches Claude: its intercept of `api.anthropic.com` (`intercept.Claude` in `internal/intercept`) calls the first tool offered, `helios_whoami`, so the page shows a tool at work, then streams a canned answer a word at a time with the tool's result after it.
+Sample mode reads the sample data model (`sampledata/data*/`): Rowan Ashdown, whose child is in the Hummingbirds with a crew and a teacher, co-chairs International Night, holds a Taco Night ticket, is one of the Jayvens room parents and has a neighboring family on the map, so most tools have something to find. The sample server never reaches Claude: its intercept of `api.anthropic.com` (`intercept.Claude` in `internal/intercept`) calls the first tool offered, `helios_whoami`, so the page shows a tool at work, then streams a canned answer a word at a time with the tool's result after it.
 
 ## Brand
 

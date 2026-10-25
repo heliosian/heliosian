@@ -20,7 +20,6 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/auth` — Google sign-in and session cookies
 - `internal/data` — tabular data sources: sample CSVs and Google Sheets
 - `internal/spreadsheets` — which Google Sheets the server and the tools read, the environment variable holding each one's ID, and its title in Drive
-- `internal/static` — reads the bundled files under `web/` that the models check image names against
 - `internal/store` — the store under the data model: the parts that build its model from the spreadsheets, commits and transactions, and the write queue ([docs/storage.md](docs/storage.md))
 - `internal/db` — the data model every app reads and writes: its schema, sheets and store, the query language and permissions, `/api/q` and `/api/do/`, the consent step and the opt-in sync, the calendar import's Google stage and the planning both stages share, the school mail's hook and the digest that reads each email into key points and to-dos, the toolbar's reports and their triage, and each app's page shells and share cards ([docs/datamodel.md](docs/datamodel.md); what a query costs and how to measure one, [docs/queryspeed.md](docs/queryspeed.md))
 - `internal/ask` — Helios Ask: the chat with Claude over the data model - the prompt, the conversation, the streaming turn and the chips
@@ -31,7 +30,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
 - `internal/logging` — structured records Cloud Logging indexes: severity, the signed-in user, the app, and the request's trace
 - `internal/feedback` — the GitHub App the triage queue files a kept report as
-- `internal/blob` — media from Cloud Storage, held in memory with stored thumbnails
+- `internal/blob` — the only package that talks to Cloud Storage: the media bucket's objects, each written or deleted at the generation it expects, and the picture and recording encodes (`docs/storage.md`)
 - `internal/sharecard` — the 1200x630 picture a chat app shows for a shared link, and the preview tags that name it, for every app in its own dress over a standard palette, under the app's name and subtitle as its `APP` row has them
 - `internal/imagesearch` — every app's image routes: uploads, the picture search (Unsplash, Pexels and Pixabay) and import, behind each app's gate and a per-person hourly limit, for Heliosian, HCA-Team, Celebrate and Helios When
 - `internal/geocode` — address → coordinates for the map
@@ -39,6 +38,21 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/devtls` — the in-memory self-signed certificate local HTTPS runs on
 - `internal/intercept` — a loopback proxy, trusted through a certificate authority minted in memory, that answers one host's HTTPS in-process for the dev tools and tests
 - `internal/devcache` — the dev tools' intercept of the storage API that caches bucket reads under `local/cache/blobs/`
+- `internal/access` — the actor a write is made as, a person or a system job, and the refusals handlers answer with (`Forbidden`, `Missing`, `Invalid`), each carrying its HTTP status
+- `internal/serve` — how handlers outside the data model's API answer: a file or bytes with an ETag, a decoded body, JSON, a refusal with its status
+- `internal/cells` — the readings column kinds share: a yes/no cell, a link, a moment, a comma list, a friendly address
+- `internal/id` — reads the old sites' 13-symbol IDs, which live on as `ALIAS` rows, so a friendly address is never one
+- `internal/claude` — the Claude model and effort each feature calls with, a call that answers JSON of a given shape and one that answers text, and the per-person limit every Claude feature shares
+- `internal/describe` — Claude's descriptions of a group, an activity and a charity, behind the Generate buttons
+- `internal/tomarkdown` — HTML and plain text to Markdown, for documents' extracts and what Helios Ask reads
+- `internal/env` — the environment variables the server reads, each required, and the list of Secret Manager secrets `tools/devenv` prints and `tools/deploy` hands the service
+- `internal/lru` — a cache that drops its least recently used entries past a weight budget
+- `internal/ratelimit` — a limiter counting events per key over a sliding span
+- `internal/trace` — the spans a request's work is timed in, answered as the `Trace` header on `/api/q` (`docs/queryspeed.md`)
+- `internal/vitals` — the recent errors, runtime samples and request latencies Helios Admin's dashboard shows (`docs/admin/admin.md`)
+- `internal/ops` — what the dashboard reads from outside the server - commits and issues through the GitHub App, builds, the serving revision, Claude spend and the buckets' sizes - and the GitHub and Cloud Build hooks that refresh it
+- `internal/qclient` — the client the tools reach production's `/api/q` through, signed in through Helios MCP's OAuth, or a local server by a minted token
+- `internal/testkit` — the helpers more than one package's tests use, imported by `_test.go` files alone (`docs/dev.md`, Tests)
 - `web/` — one directory per app, named for its hostname, holding its pages and every file it serves behind sign-in, `web/common/` for what all apps share, and `web/public/<app>/` and `web/public/common/` for the few files served before sign-in (frameworkless JavaScript throughout)
 - `sampledata/` — the fictional community served by default
 - `tools/` — dev tooling, never deployed: the dev server, screenshots, browser driving, sheet inspection, imports, deploy

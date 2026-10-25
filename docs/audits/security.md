@@ -107,9 +107,9 @@ A second check that costs a few lines where one check stands alone today. The te
 - **Trusted people doing their job** - a super admin reading everything, Spoof Mode existing, an app's admin editing that app's data, a content manager of the shared drive editing a sheet by hand. What Spoof Mode records and what a hand edit can make the server do remain in scope.
 - **The directory being a directory** - a member looking up another family is the product. Scraping by a member is in scope only where the server hands over more than the pages need.
 - **Volume** - flooding a single-instance service with requests. In scope instead: one cheap request that costs a great deal of memory, money or mail.
-- **Dev tooling for its own sake** - `tools/` tools and the sample server run by one developer on their own machine, except where one leaves real data or a credential behind, or where sample-mode behaviour could be reached in production.
+- **Dev tooling for its own sake** - `tools/` tools and the sample server run by one developer on their own machine, except where one leaves real data or a credential behind, or where sample-mode behavior could be reached in production.
 - **Theory without a path** - a primitive that is unfashionable but unbroken as used here, a timing difference nobody could measure through Cloud Run's front end, version strings, anything that ends in "could potentially".
-- **Bugs that are only bugs** - wrong behaviour with no security consequence goes to the ordinary issue tracker.
+- **Bugs that are only bugs** - wrong behavior with no security consequence goes to the ordinary issue tracker.
 
 ## Findings
 

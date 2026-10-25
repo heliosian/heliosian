@@ -23,7 +23,7 @@ The toolbar's hourglass counts the pending parties under something the viewer ru
 
 ## The ticket window
 
-Get Tickets asks who pays (an adult of the household, by face), who is coming (the household by face, greyed with the reason for anyone already holding a place or outside who the party is for) plus guests added by name, and a note, and tallies the places and the total. It writes, in one batch, a payment at the party's price for each place and then the ticket; when the room runs out mid-purchase, the places past it go on the waitlist in the same batch. Join the Waitlist asks how many places; extra places are unnamed guests of the asker, which a host's Give the places turns into tickets the family passes on later.
+Get Tickets asks who pays (an adult of the household, by face), who is coming (the household by face, grayed with the reason for anyone already holding a place or outside who the party is for) plus guests added by name, and a note, and tallies the places and the total. It writes, in one batch, a payment at the party's price for each place and then the ticket; when the room runs out mid-purchase, the places past it go on the waitlist in the same batch. Join the Waitlist asks how many places; extra places are unnamed guests of the asker, which a host's Give the places turns into tickets the family passes on later.
 
 ## Editing
 
