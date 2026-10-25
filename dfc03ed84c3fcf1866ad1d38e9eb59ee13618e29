@@ -1,0 +1,24 @@
+# Derive mail header names from their text (#201)
+
+byre task tskWJ0V1R6R6hd, "Single source headers", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskWJ0V1R6R6hd in byre (GET /api/events?task_id=tskWJ0V1R6R6hd).
+
+## Summary
+
+Simplicity audit of main at ad71839f9adf9108375a3f2be6ee8f579604693e. Surveyed project docs and existing Cleanup issues, shared server wiring, store transactions, model/view indexes, background workers, mail parsing/sending, share cards and client state/shared helpers.
+
+Implemented #201: internal/mail/headers.go represents HeaderLine as a named string instead of independently writable Name and Raw fields. Name() derives the normalized name from the first physical line; Value() unfolds the same text. Authentication and Loop rewriting consumers use this single source, preserving original forwarding text. This eliminates the representable mismatch between header identity and content, with no intended user-visible behavior change, compatibility machinery or new defensive checks.
+
+Kept worker loops separate because commit batching, stale-work handling and retry semantics differ; unification would add options. No other concrete changes selected.
+
+The latest review finished and the task was marked ready. Merged main with git merge --no-ff --no-commit main; the merge was automatic with no conflicts or substantive resolution changes. Left it uncommitted for byre to conclude.
+
+After the merge, validation passed: timeout 30 go test ./internal/mail; timeout 30 go test ./internal/db -run 'Test.*(List|MailHook|Broadcast|Vouch|Reply|Rewrite|Held|Referenced|MessageID|Prefixed)'; go vet ./...; git diff --check.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Replaces the two-field `mail.HeaderLine` struct (`Name`, `Raw`) with `type HeaderLine string` holding the raw header text, with `Name()` computed from its first physical line (lowercased, before the colon). `SplitMessage` now appends/extends the string, and all readers in `internal/mail/headers.go` and `internal/db/listrewrite.go` switch from the `.Name` field to `.Name()` and from `.Raw` to `string(l)`. The cached name can no longer disagree with the raw text.
+
+No significant findings.
