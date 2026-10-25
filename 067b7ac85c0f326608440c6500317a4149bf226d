@@ -1,0 +1,42 @@
+# Simplify code found in simplicity audit of 5436ca5
+
+byre task tskRZLnGeXBNIz, "Simplicity audit 5436ca5", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskRZLnGeXBNIz in byre (GET /api/events?task_id=tskRZLnGeXBNIz).
+
+## Summary
+
+Simplicity audit of main at 5436ca56 (byre workflow "Audit", stage "Simplicity Audit · Opus high"). It made three structural changes and changed nothing anyone sees.
+
+- **Store machinery only tests used** (`internal/store/store.go`, `internal/db/store.go`):
+  - Deleted `Part.Reads` and `order()`, the sort that ordered parts by `Reads` and refused missing or cyclic reads.
+  - Deleted the `Incremental` flag. Production always set it, so refreshes now always rebuild only the parts whose sheet changed.
+  - Dropped the unused `base` argument of the store's finishing hook. db passes `consentStep` directly, and `finishModel` is gone.
+  - db never set `Reads`, since each sheet builds from its own tables alone.
+  - The store tests were reworked around an independent report part; the tests that existed only for `Reads` were deleted. `docs/storage.md` and `docs/datamodel.md` were updated.
+- **Indexed lookups instead of hand-written scans** (`internal/db`):
+  - `groupSlugMoved`, `mailList`, `savedSearchByToken` and `recipientByToken` looped over whole tables for values that `ALIAS` (unique by alias), `SAVED_SEARCH` and `RECIPIENT` (unique by token) and `GROUP.slug` (distinct, case-insensitive) already index.
+  - The two token functions became one `Model.byToken(table, token)`, and the others use `Find` and `Distinct`. Matching is unchanged.
+- **One primary-address lookup** (`internal/db`):
+  - `addressOf` lost its dead fallback to a person's first address. `checkEmails` already guarantees exactly one primary per person with addresses.
+  - `SignedInAs` now calls `addressOf` instead of repeating the loop.
+- **TODO.md:** at ian's request, added "Merge the store's write queue into the store". `store.Queue` and `store.Tx` support several stores per queue (`any`-typed stages, a list of loads), but production builds one.
+
+Left out:
+- **`Rows.builtFrom`.** It decides a table is unchanged when its stored rows are the same slice as before, which relies on every write copying the slice. Left as is.
+- **Areas not surveyed.** Read-only surveys of the rest of `internal/db`, the `web/` client and the other Go packages were stopped by a byre restart and never reported.
+
+Merged main before landing. The one conflict was the refresh paragraph in `docs/storage.md`: kept main's new "thumbnailer" and this branch's removal of `Incremental`.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Simplifies the store by removing unused dependency ordering and optional incremental rebuild machinery, and passes the consent step directly as its finishing hook. Consolidates token and primary email lookups and replaces row scans with existing indexes; updates store tests and documentation to match.
+
+No significant findings.
+
+### Snapshot #2, reviewer "Review", codex gpt-6.1-sol: done
+
+Simplifies store construction and refreshes by removing unused cross-part dependencies and rebuild options, and connects the consent step directly. Consolidates token and alias resolution, uses existing indexes for lookups, and shares primary-email selection. Updates store tests and documentation and records a further queue simplification in TODO.md.
+
+No significant findings.
