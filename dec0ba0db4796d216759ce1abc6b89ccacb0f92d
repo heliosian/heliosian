@@ -1,0 +1,25 @@
+# Name apps consistently in UI text and fix stale doc references
+
+byre task tsk6NcBsm2sjXH, "consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk6NcBsm2sjXH in byre (GET /api/events?task_id=tsk6NcBsm2sjXH).
+
+## Summary
+
+Consistency audit of main at 5436ca56 (the Audit workflow's Consistency stage), run shortly after the previous one (a84e25e) had settled the docs on American English. It checked the whole tree against AGENTS.md and the docs: one dialect, one name per concept in user-facing text, docs that match the code, comments and code style. Nineteen files changed, no behavior.
+
+Changed:
+- App names in UI strings: "Helios Who" → "Helios Who?" in web/common/alerts.js, web/birthday/pages/unassigned.js, web/who/pages/privacy.js and web/who/pages/admin.js (the setting key "Helios Who Opt-In URL" is data and stayed); Who?'s own mismatch card says "hidden here"; "HCA Team event" → "HCA-Team event" in web/when/pages/event.js; the schema's APP enum "Helios Team" → "HCA-Team"; HCA-Team's sign-in page title "HCA-Team: HCA Volunteer Portal" like its page and manifest; docs/birthday/birthday.md names the renamed Open Helios Who? button.
+- Stale doc references: docs/datamodel.md `artifacts.SearchDims` → `artifacts.Dims`; docs/ask/data.md `Registry.Actor` → `auth.Email`; docs/audits/code.md dropped the nonexistent `sharecard.Serve` and `cmd/`; README.md fixed two list-formatting slips and added datamodel.md, queryspeed.md, storage.md and tools.md to its Docs index.
+- British spellings left in stylesheet comments (toolbar, tabs, dark, rules, celebrate, home, birthday) and the `grey` tint identifiers (dark.css variables, birthday's `.tint-grey` class and `tint: 'grey'` value) → gray.
+
+Method: rg sweeps for dialect, comments, log and error style, flags, make/interface; two scratch Python checkers that extracted every backticked path, flag and identifier from the docs and verified it against the code (the second resolving Type.method, pkg.Name and TABLE.column forms); production APP names read with helios_query. Verified with go vet, gofmt and the internal/db (schema, OpenAPI, released queries), internal/tools, internal/app, internal/auth and internal/store tests. The merge of main (document thumbnails, query scan limits, the simplicity audit) was automatic with no conflicts; the review of the audit's changes found nothing.
+
+Deliberately left: production's short APP row names ("Who?", "Team"…) vs the code's long titles (data, not code); "Staff Birthdays" vs "Helios Staff Birthdays"; three wordings of the super-admin 403; the descriptive CSS section comments; button-label capitalization (open design decision already put to ian); Claude prompts' British verbs, test strings and the consent form's quoted text; sheets' --apply vs import's --dry-run (behavior).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Standardizes app names in user-facing text and metadata, updates stale documentation references, and adds shared documentation links to the README. It also changes British color spellings to American English and renames the birthday pipeline’s gray CSS class and dark-theme variables consistently.
+
+No significant findings.
