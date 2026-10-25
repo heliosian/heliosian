@@ -1,0 +1,51 @@
+# Fix security issues found in audit of ad71839
+
+byre task tsk5ONa9a7bL7A, "Security audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk5ONa9a7bL7A in byre (GET /api/events?task_id=tsk5ONa9a7bL7A).
+
+## Summary
+
+## Security audit of ad71839f ("Security Audit · Sonnet high")
+
+**Set out to:** find real security problems in the whole codebase against the project's trust model and fix them at the root; change nothing if nothing real turned up.
+
+**Reviewed (found sound):** auth/session/spoof/OAuth-MCP code, all Mailgun/GitHub/build/calendar hooks (keys required, constant-time compares), /open and /ext tokens, blob/upload serving (CSP sandbox), the data-model write policies (insert clauses, wiki content rule), mail composition/ICS escaping, the share-card cache, the fetcher/thumbnailer, and every /api/do route (each calls `caller`). Issues #199 and #200 were already filed and open and were not touched.
+
+**Found and fixed (one finding):** any signed-in member could pin the single-instance server's CPU for hours with one cheap query. The query language allowed nested correlated `exists`/`count`/`select`/`in` scans with no work bound and no context check (reachable via `QUERY /api/q`, the MCP query tools and Ask's query tool). On the 101-person sample school, 2 nested levels took about 1 s and 3 would take about 340 s.
+
+**Fix** (`internal/db/query.go`, `members.go`): a per-run visit counter for runs on behalf of a person (not `Env.System`, not Authorize/BlobCell). It charges every scan evaluation, each row visited, each index lookup and the rows it returns, the fused-select pass, and each person `covers` walks. Past `queryVisits` (10,000,000) the run panics with a sentinel recovered in `RunAll` (`runGuarded`), so the query and all later queries in the batch return an error and no rows. Memo keys became a SHA-256 digest of the scan text, and a literal `in` became one set lookup (exact for order keys). Docs in `docs/datamodel.md`; tests in `internal/db/query_test.go`.
+
+**Key decisions:** panic/recover rather than a sticky flag (early scan termination makes negated `exists` succeed and could widen policy results, as review round 1 showed); the limit was checked against a snapshot of production data. The heaviest real page load was about 221,000 visits and the heaviest admin query about 182,000, so 10M is about 45x headroom and costs an attacker about 1 to 1.6 s CPU; kept at 10M, with the one constant raisable. Three review rounds each found another per-row amplifier (fused selects, long `in`, `covers`, uncharged lookups, memo key size), all fixed. A timing assertion in `TestALongInIsOneLookupPerRow` flaked under cold-build load (it was a 5 s bound), so it was loosened to 20,000 literals and a 15 s bound.
+
+**Deliberately left out:** helpers like `ancestors`/`household` per outer row are only bounded indirectly by the per-scan/lookup charges; the Mailgun 15-minute replay window (inbound filing de-duplicates); bare `\r` in mail header values (needs SPF/DKIM pass plus a CR-splitting MTA); raw HMAC key reuse across the session, spoof and unsubscribe tokens (shapes can't be swapped; adding a prefix would invalidate issued links); no `ReadHeaderTimeout`; public `/csp-report` untrimmed; `/auth/spoof` has no Sec-Fetch-Site check (SameSite=Lax covers it); og:image fetch has no address filter (no metadata header, only decodable images kept). Mail-heavy flows, Ask and MCP paths were not measured on the snapshot.
+
+**Merge of main:** merged cleanly with no conflicts (main added group security tests, policy and mail header changes, and admin/team web edits); build, vet and tests pass.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds a shared limit of 10 million scanned rows to queries run for a person, including scans performed by policies. Server jobs are exempt. The change documents the limit and adds a regression test for an expensive correlated query.
+
+- Exhaustion during result construction can turn permission checks into grants and return private included resources.
+- Fused selects bypass the row budget, leaving expensive client queries unbounded.
+
+### Snapshot #2, reviewer "Review · Grok high", grok grok-4.7: done
+
+A signed-in query run now stops after 10 million row visits, counting both ordinary scans and fused whole-table selects. Crossing the cap aborts that query and every later query in the batch with an error and no rows, so a truncated policy scan cannot be returned as a successful answer. Runs for the server itself (`Env.System`) and the single-row checks a write or a blob read makes are not capped.
+
+- A literal `in` on a non-indexed column still walks every literal on every visited row, so one nested `exists` plus a 256KB list remains hundreds of billions of comparisons after the new cap.
+- `covers` repeats its full people-set walk on every visited row and never calls `spend`, so a correlated `(not (covers ...))` multiplies the cap by the size of the set.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds a shared limit of ten million row visits to queries run on behalf of a person, returning an error when a scan exceeds it. Counts ordinary scans, fused selects and membership coverage checks, replaces literal `in` comparisons with set lookups, and documents and tests the limit.
+
+- Indexed scans with empty candidate lists bypass the work budget, leaving a single-request denial of service.
+- Literal `in` comparisons now incorrectly ignore case for order keys.
+
+### Snapshot #4, reviewer "Review · Grok high", grok grok-4.7: done
+
+A signed-in member's query, sent through `/api/q` or any other `Model.RunAll` with an empty `Env.System`, can no longer nest correlated scans, fused selects, empty index probes, or `covers` checks without bound. The run counts those row visits and, past 10 million, aborts that query and every later query in the batch with an error and no rows, so a truncated policy scan cannot widen the answer. Literal `in` lists are one hash lookup per row, order keys still match exactly, and memo keys are a SHA-256 digest of the scan text so a long query is not copied once per outer row. Server jobs and the single-row checks a write or blob read makes are not capped.
+
+No significant findings.
