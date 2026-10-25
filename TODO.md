@@ -12,9 +12,6 @@ Last verified: bff8f634
 
 # Data model
 
-- Family names are recomputed on every PERSON and MEMBER change
-  `personFamilyNames` and `memberFamilyName` (`internal/db/trigger.go`) have no column guard, so a phone-number edit recomputes the names of every family the person is in and writes nothing. A guard on the columns `familyName` reads (`name_long`, `hidden`, `deactivated`, `consent`, `source`, the grade columns) would skip that; unmeasured.
-
 # Issues
 
 - Wiki: comments on specific passages of a page

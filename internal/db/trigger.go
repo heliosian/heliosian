@@ -352,6 +352,9 @@ func inOrder(c Change) []Change {
 }
 
 func personFamilyNames(m *Model, c Change) ([]Edit, error) {
+	if c.Old != nil && c.New != nil && !slices.ContainsFunc([]string{"vc_name_long", "name_long_override", "hidden", "deactivated", "consent", "source"}, func(col string) bool { return c.Old[col] != c.New[col] }) {
+		return nil, nil
+	}
 	p := c.New
 	if p == nil {
 		p = c.Old
@@ -364,6 +367,9 @@ func personFamilyNames(m *Model, c Change) ([]Edit, error) {
 }
 
 func memberFamilyName(m *Model, c Change) ([]Edit, error) {
+	if c.Old != nil && c.New != nil && !slices.ContainsFunc([]string{"group", "person", "member"}, func(col string) bool { return c.Old[col] != c.New[col] }) {
+		return nil, nil
+	}
 	families := []string{}
 	for _, row := range []store.Row{c.Old, c.New} {
 		if row == nil {

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/store"
 )
 
 func schoolGroupsHeld(s *Store, person string) []string {
@@ -111,6 +112,69 @@ func TestFamilyNameFollowsItsMembers(t *testing.T) {
 
 	write(`{"batch": [{"set": "` + kai + `", "cells": {"consent": "withheld"}}]}`)
 	name("Chang-Ashdown Family", "with Kai withheld")
+}
+
+func TestFamilyNameTriggersSkipUnrelatedEdits(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fire func(*Model, Change) ([]Edit, error)
+		old  store.Row
+		new  store.Row
+	}{
+		{"person phone", personFamilyNames, store.Row{"id": student, "phone": "123"}, store.Row{"id": student, "phone": "456"}},
+		{"person unchanged", personFamilyNames, store.Row{"id": student, "name_long": "Juni Ashdown"}, store.Row{"id": student, "name_long": "Juni Ashdown"}},
+		{"member unrelated", memberFamilyName, store.Row{"group": "grp00000000020", "person": student, "member": "yes", "why": "old"}, store.Row{"group": "grp00000000020", "person": student, "member": "yes", "why": "new"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			edits, err := tc.fire(nil, Change{Old: tc.old, New: tc.new})
+			if err != nil || len(edits) != 0 {
+				t.Fatalf("unrelated edit produced %v, %v", edits, err)
+			}
+		})
+	}
+}
+
+func TestFamilyNameTriggersKeepRelevantChanges(t *testing.T) {
+	s, queue := sampleWithQueue(t)
+	b, err := ParseBatch([]byte(`{"batch": [{"set": "grp00000000020", "cells": {"name": "Stale Family"}}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+		t.Fatal(err)
+	}
+	p, _ := s.Model().Table("PERSON").Get(student)
+	member, _ := s.Model().Table("MEMBER").Find("grp00000000020", student)
+	for _, tc := range []struct {
+		name    string
+		fire    func(*Model, Change) ([]Edit, error)
+		row     store.Row
+		columns []string
+	}{
+		{"person", personFamilyNames, p, []string{"vc_name_long", "name_long_override", "hidden", "deactivated", "consent", "source"}},
+		{"member", memberFamilyName, member, []string{"group", "person", "member"}},
+	} {
+		check := func(t *testing.T, c Change) {
+			t.Helper()
+			edits, err := tc.fire(s.Model(), c)
+			if err != nil || len(edits) != 1 || edits[0].Set != "grp00000000020" || edits[0].Cells["name"] != "Ashdown Family" {
+				t.Fatalf("relevant change produced %v, %v", edits, err)
+			}
+		}
+		for _, column := range tc.columns {
+			t.Run(tc.name+"/"+column, func(t *testing.T) {
+				old := maps.Clone(tc.row)
+				old[column] = "different"
+				check(t, Change{Old: old, New: tc.row})
+			})
+		}
+		t.Run(tc.name+"/insert", func(t *testing.T) {
+			check(t, Change{New: tc.row})
+		})
+		t.Run(tc.name+"/delete", func(t *testing.T) {
+			check(t, Change{Old: tc.row})
+		})
+	}
 }
 
 func TestACommittedTriggerSeesWhatAStagedTriggerWrote(t *testing.T) {
