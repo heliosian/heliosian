@@ -234,7 +234,7 @@ func NewCore(cfg Config) *Core {
 	apps := []appSpec{
 		{Key: "who", Title: "Helios Who?", Mux: mux, Preview: whoAbout.PreviewHead, Moved: map[string]string{"/groups/": "/g/", "/families/": "/g/", "/classrooms/": "/g/", "/grades/": "/g/", "/people/": "/p/"}},
 		{Key: "home", Title: "Heliosian: Helios Community Apps", Mux: homeMux, Preview: homePages.PreviewHead},
-		{Key: "team", Title: "HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected, Moved: map[string]string{"/v/": "/g/", "/activities/": "/g/"}},
+		{Key: "team", Title: "HCA-Team: HCA Volunteer Portal", Mux: teamMux, Preview: activityPages.PreviewHead, Wrap: activityPages.Redirected, Moved: map[string]string{"/v/": "/g/", "/activities/": "/g/"}},
 		{Key: "birthday", Title: "Helios Staff Birthdays", Mux: birthdayMux, Preview: birthdayAbout.PreviewHead},
 		{Key: "celebrate", Title: "Helios Celebrate: Fun(d)raiser Parties", Mux: celebrateMux, Preview: partyPages.PreviewHead, Wrap: partyPages.Redirected, Moved: map[string]string{"/p/": "/g/", "/parties/": "/g/"}},
 		{Key: "when", Title: "Helios When: The school year, day by day", Mux: calendarMux, Preview: whenPages.PreviewHead, Moved: map[string]string{"/e/": "/g/", "/events/": "/g/"}},

@@ -206,11 +206,11 @@ export function privacyCount(n) {
 
 const privacyNames = {address: 'Address', phone: 'Phone number', 'phone number': 'Phone number'};
 
-export function privacyCard(fields, href, button = 'Review My Privacy in Helios Who') {
+export function privacyCard(fields, href, button = 'Review My Privacy in Helios Who?') {
   return alertList({
     count: fields.length,
     words: fields.length === 1 ? 'privacy setting doesn’t match Veracross' : 'privacy settings don’t match Veracross',
-    items: fields.map(f => ({title: `${privacyNames[f] || f} mismatch`, note: 'Visible on Veracross, hidden in Helios Who', href, icon: f === 'address' ? alertIcons.address : alertIcons.phone})),
+    items: fields.map(f => ({title: `${privacyNames[f] || f} mismatch`, note: 'Visible on Veracross, hidden in Helios Who?', href, icon: f === 'address' ? alertIcons.address : alertIcons.phone})),
     icon: '<svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
     button,
     href,
@@ -235,7 +235,7 @@ export function renderAlerts({stale = [], privacy = [], broken = false} = {}) {
       words: broken ? 'couldn’t check for things to update for the new year' : updates.length === 1 ? 'thing to update for the new year' : 'things to update for the new year',
       items: updates.map(label => ({title: label, note: 'Update it for the new year', href: badge.href, icon: updateIcon(label)})),
       icon: '<svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>',
-      button: 'Open My Family in Helios Who',
+      button: 'Open My Family in Helios Who?',
       href: badge.href,
     }));
   }

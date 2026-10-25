@@ -179,7 +179,7 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 /* The saved calendar the month is read under: a faint line above the
    month's name, its emoji and name with a small chevron, that drops the
-   rest down - the white menu Upcoming Events uses, centred. */
+   rest down - the white menu Upcoming Events uses, centered. */
 .mini-calendar { position: relative; display: flex; justify-content: center; margin: 0 0 10px; }
 
 .mini-calendar-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border: 0; border-radius: 999px; background: none; color: #fff; opacity: 0.6; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
@@ -247,7 +247,7 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 .mini-day.is-selected .mini-number { background: #fff; color: var(--brand-fill); font-weight: 700; opacity: 1; }
 
-/* A day that is not regular wears its day type's colour, lightened for the
+/* A day that is not regular wears its day type's color, lightened for the
    teal - When's early-dismissal amber, no-school red, no-aftercare violet. */
 .mini-day.dt-early .mini-number { color: #f4c06a; }
 .mini-day.dt-no-school .mini-number { color: #f59d8b; }
@@ -531,8 +531,8 @@ main {
 
 /* A widget's rows sit under day bars - a pale rounded bar with the
    weekday and the date, and how many things fall on it at its far end -
-   each row a dot in its colour on a line running down the day, what it is,
-   a pill, and a chevron. Each colour has its strong ink (--ink-tint) and
+   each row a dot in its color on a line running down the day, what it is,
+   a pill, and a chevron. Each color has its strong ink (--ink-tint) and
    its pale ground (--pale-tint): When's by where an event comes from,
    Team's in turn down the list. */
 .widget-when .is-school { --ink-tint: #2f7fd0; --pale-tint: #e3effb; }
@@ -585,7 +585,7 @@ main {
 
 .wg-party-pill .wg-pill { display: inline-block; padding: 5px 14px; font-size: 13px; background: var(--glass, var(--pale-tint, #fde4ec)); color: var(--ink-tint, #d0346a); }
 
-/* A picture list's colours, in turn down Team's list, as its rows wear them. */
+/* A picture list's colors, in turn down Team's list, as its rows wear them. */
 .wg-party.is-red, .is-letter.is-red { --ink-tint: #e0527e; --pale-tint: #fde4ec; }
 
 .wg-party.is-blue, .is-letter.is-blue { --ink-tint: #2f7fd0; --pale-tint: #e3effb; }
@@ -1079,9 +1079,9 @@ a.event-people:hover .event-person { text-decoration: underline; }
 /* Chips - the community apps and the "cards" style: upright cards on the
    same columns as the event cards, the picture on a white disc over the
    name, the line about it and Open App. The tints and their button
-   colours cycle through five by place in the grid - a chip may sit in a
+   colors cycle through five by place in the grid - a chip may sit in a
    slot beside the admin's pencil, so the slot carries the tint - the last
-   a lavender the palette does not otherwise carry. The button colours
+   a lavender the palette does not otherwise carry. The button colors
    are darkened from the palette hexes so white label text clears 4.5:1. */
 
 .chip-grid {
@@ -1349,7 +1349,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 }
 
 /* Heliosian's mark as an icon: the designer's white outline, masked so it
-   takes the colour of the words beside it, at each place's icon size. */
+   takes the color of the words beside it, at each place's icon size. */
 .icon-mask { display: inline-block; flex-shrink: 0; background: currentColor; -webkit-mask: var(--mask) center / contain no-repeat; mask: var(--mask) center / contain no-repeat; }
 
 .icon-heliosian { --mask: url('/brand/symbol-white.png'); }

@@ -125,7 +125,7 @@ function pickCard(sv) {
   profile.href = sv.profile;
   profile.target = '_blank';
   profile.rel = 'noopener';
-  profile.append(svg('open'), el('span', '', 'Open Helios Who'));
+  profile.append(svg('open'), el('span', '', 'Open Helios Who?'));
   actions.append(profile, button('Assign to Me', null, 'button', () => assignToMe(sv)));
   card.append(actions);
   return card;

@@ -229,9 +229,9 @@ function thresholdsCard() {
 }
 
 function privacyCard() {
-  return settingsCard('Privacy links', 'Where My Privacy sends people to fix a Veracross/Helios Who mismatch. Update these if either URL ever changes.', [
+  return settingsCard('Privacy links', 'Where My Privacy sends people to fix a Veracross/Helios Who? mismatch. Update these if either URL ever changes.', [
     ['Veracross Preferences URL', 'Veracross directory preferences', 'url'],
-    ['Helios Who Opt-In URL', 'Helios Who opt-in form', 'url'],
+    ['Helios Who Opt-In URL', 'Helios Who? opt-in form', 'url'],
   ]);
 }
 

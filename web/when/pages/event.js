@@ -524,7 +524,7 @@ const mineStanding = {
   waitlisted: {celebrate: 'Your household is on the waitlist'},
 };
 
-const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA Team event'};
+const linkedTitles = {celebrate: 'Fun(d)raiser party', team: 'HCA-Team event'};
 
 const seeWords = {celebrate: 'See the party', team: 'See the event'};
 

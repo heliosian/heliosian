@@ -182,7 +182,7 @@
    in alerts.js) as a pale yellow card with a gold bar. */
 /* The badges - RSVP's calendar, the approvals' hourglass, the late birthdays' cake, the directory's
    bell, and the privacy triangle, which has no count - as one family: a dark teal disc with the icon in white
-   and the count on a dot at its top right, ringed in the bar's own colour -
+   and the count on a dot at its top right, ringed in the bar's own color -
    red for replies owed, late birthdays and things to update, yellow for a privacy mismatch,
    amber for approvals. */
 .rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert, .topbar-alert.alerts-summary { position: relative; width: 32px; height: 32px; border-radius: 50%; background: var(--badge); color: #fff; }
@@ -1055,7 +1055,7 @@ body.is-spoofing .spoof-stop { color: #c2185b; }
 
 /* The app's own symbol - the designer's white outline at /brand/symbol-white.png
    on every app - as the mark on the rail's first item, drawn through a
-   mask so it takes the words' colour, lime when the row is the page's. */
+   mask so it takes the words' color, lime when the row is the page's. */
 .app-symbol { display: inline-block; flex-shrink: 0; width: 20px; height: 20px; background: currentColor; -webkit-mask: url('/brand/symbol-white.png') center / contain no-repeat; mask: url('/brand/symbol-white.png') center / contain no-repeat; }
 
 .app-nav a.is-active .app-symbol, .app-nav a.active .app-symbol, .nav-heading-toggle.active .app-symbol { color: var(--lime, #c1e524); }

@@ -70,6 +70,10 @@ Platform:
 - [toolbar.md](docs/toolbar.md) — the top bar every app shares: search with `/`, the account avatar, the switch between apps
 - [brand.md](docs/brand.md) — where every app's logo art lives, and how its icons and lockups are cut from it
 - [feedback.md](docs/feedback.md) — "Report a problem or idea": the form in every app, the `REPORT` row it becomes, and the queue a super admin files from
+- [datamodel.md](docs/datamodel.md) — the data model: its tables and columns, the query language and `/api/q`, the permissions, the triggers and the server jobs
+- [queryspeed.md](docs/queryspeed.md) — what a query costs, where a slow one spends its time, and how to measure a change
+- [storage.md](docs/storage.md) — the storage layers every write goes through: IO, the Book, the store, the model and the hooks
+- [tools.md](docs/tools.md) — the read-only tools over the data model that Helios MCP serves and Helios Ask gives its model
 
 Helios Who?, in `docs/who/`:
 
@@ -109,6 +113,7 @@ Helios Ask, in `docs/ask/`:
 
 - [ask.md](docs/ask/ask.md) — the chat app spec: the page, what Claude knows, what it can read
 - [data.md](docs/ask/data.md) — the call to Claude, the conversation, the tools and their limits
+
 Helios Admin, in `docs/admin/`:
 
 - [admin.md](docs/admin/admin.md) — the views of the data behind the apps: the table browser, the query runner, the schema diagram, and the OpenAPI spec of the query API
@@ -124,4 +129,5 @@ Helios MCP, in `docs/mcp/`:
 Audits, in `docs/audits/`:
 
 - [README.md](docs/audits/README.md) — how every audit is run: reading the existing issues first, and how findings are filed and closed
+
 Each app keeps its own docs under `docs/<app>/`, named for its hostname; the top level is only what every app shares.

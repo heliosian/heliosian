@@ -94,7 +94,7 @@
 
 .chip-toggle.active { background: var(--chip-color, var(--brand-fill)); color: #fff; box-shadow: none; }
 
-/* Lit, a role chip wears its role's colour. */
+/* Lit, a role chip wears its role's color. */
 .chip-toggle-student.active { background: var(--cat-teal); }
 
 .chip-toggle-parent.active { background: var(--cat-olive); }

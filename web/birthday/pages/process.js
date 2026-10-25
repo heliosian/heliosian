@@ -5,7 +5,7 @@ import {setTitle, setSearch} from '/shell.js';
 import {assignToMe} from '../edit.js';
 
 const pipeline = [
-  {key: 'unassigned', icon: 'groups', tint: 'grey', note: 'These staff members are not assigned to anyone yet. Pick some up for yourself.'},
+  {key: 'unassigned', icon: 'groups', tint: 'gray', note: 'These staff members are not assigned to anyone yet. Pick some up for yourself.'},
   {key: 'Wait', icon: 'calendar', tint: 'teal', note: 'These staff members are assigned, but their outreach date hasn\'t arrived yet.'},
   {key: 'Awaiting Outreach', icon: 'send', tint: 'yellow', note: 'These staff members are due for outreach. If they are assigned to you, please contact them soon.'},
   {key: 'Awaiting Response', icon: 'chat', tint: 'orange', note: 'Waiting to hear back. If they do not reply before the newsletter deadline, the donation goes to the default charity.'},

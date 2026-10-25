@@ -8,7 +8,7 @@ html, body { margin: 0; min-height: 100%; }
 
 /* The canvas behind the page, for standalone (home screen) mode: a route
    change can show a sliver of it for a frame at either edge, and the page
-   colour reads as the page where white would read as a flash. */
+   color reads as the page where white would read as a flash. */
 html { background: var(--page); }
 
 body {
@@ -700,7 +700,7 @@ h2.section { font-size: 20px; margin: 24px 0 12px; }
 .pipeline-count { font-size: 18px; font-weight: 500; color: color-mix(in srgb, var(--tint-ink, #33474c) var(--count-tint, 0%), #33474c); }
 
 /* Each stage's wash and ink, on the tile and the band alike. */
-.tint-grey { --tint-bg: var(--grey-tint-bg, #eef1f3); --tint-ink: var(--grey-tint-ink, #6b7c85); --tint-ring: rgba(107, 124, 133, 0.2); }
+.tint-gray { --tint-bg: var(--gray-tint-bg, #eef1f3); --tint-ink: var(--gray-tint-ink, #6b7c85); --tint-ring: rgba(107, 124, 133, 0.2); }
 .tint-teal { --tint-bg: var(--teal-tint-bg, #dff0f3); --tint-ink: var(--teal-tint-ink, #1f838a); --tint-ring: rgba(31, 131, 138, 0.2); }
 .tint-yellow { --tint-bg: var(--yellow-tint-bg, #fdf3d9); --tint-ink: var(--yellow-tint-ink, #d9a400); --tint-ring: rgba(217, 164, 0, 0.22); }
 .tint-orange { --tint-bg: var(--orange-tint-bg, #fde8d7); --tint-ink: var(--orange-tint-ink, #e8802e); --tint-ring: rgba(232, 128, 46, 0.2); }
@@ -991,7 +991,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .urow-open svg { width: 18px; height: 18px; }
 
-/* Faces without a photo, each in a colour of their own. */
+/* Faces without a photo, each in a color of their own. */
 .thumb.face-orange { background: var(--small-face, #e8802e); color: #fff; }
 .thumb.face-sky { background: var(--small-face, #6fb3c4); color: #fff; }
 .thumb.face-green { background: var(--small-face, #3f8f5c); color: #fff; }
@@ -1003,7 +1003,7 @@ a.trow[data-stage="stage-complete"]::before { background: #3aaa5c; }
 
 .calendar.compact .chip { font-size: 11px; padding: 1px 5px; }
 
-/* On the picker, a chip is a pale pill in its stage's colours, wrapping
+/* On the picker, a chip is a pale pill in its stage's colors, wrapping
    rather than cut short, and the picked one's day is warm. */
 .calendar.picker .chip { border: 0; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; border-radius: 10px; padding: 2px 6px; display: block; width: 100%; text-align: left; white-space: normal; overflow: visible; line-height: 1.25; }
 

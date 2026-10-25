@@ -75,7 +75,7 @@ var (
 	apps = []Value{
 		v("who", "Helios Who?, the directory"),
 		v("when", "Helios When, the calendar"),
-		v("team", "Helios Team, volunteering"),
+		v("team", "HCA-Team, volunteering"),
 		v("celebrate", "Helios Celebrate, the fundraiser parties"),
 		v("birthday", "Staff Birthdays"),
 		v("loop", "Helios Loop, the email lists"),

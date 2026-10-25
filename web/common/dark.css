@@ -2,13 +2,13 @@
    data-theme="dark", and this turns the palette every stylesheet draws
    from - the page and its cards, the lines, the words - to the deep teal
    the rails already wear. The rails, the buttons and the alerts keep their
-   colours: they were drawn for a dark ground. */
+   colors: they were drawn for a dark ground. */
 
 html[data-theme="dark"] {
   --brand-fill: #0f4e54;
   --brand-fill-dark: var(--brand-deep);
   --muted-fill: #4f6466;
-  /* When's day-type washes, deep enough for their coloured words. */
+  /* When's day-type washes, deep enough for their colored words. */
   --no-school-wash: #3a1f1a;
   --early-wash: #3a2c14;
   --no-aftercare-wash: #2b2340;
@@ -20,7 +20,7 @@ html[data-theme="dark"] {
   --ink: #e6eeee;
   --muted: #9fb3b5;
   --input: #1b3539;
-  /* The brand teal is a text colour as often as a fill; on a dark ground
+  /* The brand teal is a text color as often as a fill; on a dark ground
      it reads as its pale self. */
   --brand: #8fd6d1;
   --brand-dark: #b4e6e2;
@@ -138,8 +138,8 @@ html[data-theme="dark"] {
   --priority-text: #ff9aab;
   --priority-panel: rgba(194, 37, 63, 0.1);
   --priority-panel-line: rgba(194, 37, 63, 0.35);
-  --grey-tint-bg: #1f2b30;
-  --grey-tint-ink: #a9bcc5;
+  --gray-tint-bg: #1f2b30;
+  --gray-tint-ink: #a9bcc5;
   --teal-tint-bg: #12363a;
   --teal-tint-ink: #6fd0d6;
   --yellow-tint-bg: #3a3014;

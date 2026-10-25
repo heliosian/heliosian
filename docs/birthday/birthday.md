@@ -60,7 +60,7 @@ One shell, `web/birthday/index.html`, routes every page on the client. It is the
 
 - **My Jobs** (`/jobs`, and the front page once everyone has someone) — the viewer's assignments in three tabs: Do Now (awaiting outreach or a response), Wait, and All Done.
 - **Process** (`/process`) — everyone, by stage, with filters by department, month and assignee. Every unassigned row offers Assign to Me.
-- **Unassigned** (`/unassigned`, and the front page while anyone is unassigned; the tab shows only then) — the unassigned birthdays as a list beside the month they fall in, with a switch between the day to ask by and the birthday itself; picking one shows their card with Open Helios Who and Assign to Me.
+- **Unassigned** (`/unassigned`, and the front page while anyone is unassigned; the tab shows only then) — the unassigned birthdays as a list beside the month they fall in, with a switch between the day to ask by and the birthday itself; picking one shows their card with Open Helios Who? and Assign to Me.
 - **Staff** (`/staff/{slug}`, also by the person's ID or address) — the person, their three dates, the five steps with each step's actions, the donation band with this year beside last year (or the default charity), and their preference. Until a charity is recorded, the page names the one the weekly copy would use, Use Default records it, and Add Donation starts on it. Compose Email opens a draft from the settings' template with the person's details filled in.
 - **Calendar** (`/calendar`) — a month grid of birthdays colored by stage, with newsletter days marked, and the same Show switch as Unassigned's month.
 - **Charities** (`/charities`, `/charities/{name}`) — allowed and prohibited lists, and a page per charity showing who chose it.

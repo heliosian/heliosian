@@ -54,8 +54,8 @@ function privacyWarningBanner(label) {
   return infoBanner(
     'alert', 'warn',
     `Your ${label} is visible on Veracross but hidden here`,
-    "Hiding it in the Helios Who app does not hide it on Veracross - anyone with Veracross access can still see it there. " +
-      "To match what Veracross already shows, sync your Helios Who opt-in.",
+    "Hiding it in the Helios Who? app does not hide it on Veracross - anyone with Veracross access can still see it there. " +
+      "To match what Veracross already shows, sync your Helios Who? opt-in.",
     'Sync Now', privacyLinks().heliosWhoOptIn, true);
 }
 
@@ -97,11 +97,11 @@ export function privacyPage() {
 
   const intro = el('div', 'privacy-intro');
   intro.append(el('p', '',
-    "Helios Who's data comes from Veracross, but you can further restrict what's shown here. This means:"));
+    "Helios Who?'s data comes from Veracross, but you can further restrict what's shown here. This means:"));
   const list = el('ul', '');
   list.append(el('li', '', 'Hiding your phone or address here does not hide it on Veracross.'));
   list.append(el('li', '',
-    "Matching your Helios Who visibility to Veracross will never show more here than Veracross already shows."));
+    "Matching your Helios Who? visibility to Veracross will never show more here than Veracross already shows."));
   intro.append(list);
   content.append(intro);
 
@@ -109,7 +109,7 @@ export function privacyPage() {
   const table = el('table', 'data-grid privacy-table');
   const thead = el('thead');
   const headRow = el('tr');
-  for (const label of ['', 'Veracross', 'Helios Who', 'Shown Here']) {
+  for (const label of ['', 'Veracross', 'Helios Who?', 'Shown Here']) {
     headRow.append(el('th', '', label));
   }
   thead.append(headRow);
@@ -123,7 +123,7 @@ export function privacyPage() {
   const actions = el('div', 'privacy-actions');
   actions.append(
     privacyActionButton('edit', 'Update Veracross', links.veracrossPreferences),
-    privacyActionButton('sync', 'Update Helios Who Visibility', links.heliosWhoOptIn));
+    privacyActionButton('sync', 'Update Helios Who? Visibility', links.heliosWhoOptIn));
   content.append(actions);
 
   if (warnings.length > 0) {
@@ -180,7 +180,7 @@ export function privacyMismatchCardDismissed() {
 
 export function privacyMismatchText(warnings) {
   return `Your ${warnings.join(' and ')} ${warnings.length === 1 ? 'is' : 'are'} visible on ` +
-    'Veracross but hidden in Helios Who. Hiding it here does not hide it on Veracross.';
+    'Veracross but hidden here. Hiding it here does not hide it on Veracross.';
 }
 
 export function privacyMismatchCard(warnings) {
