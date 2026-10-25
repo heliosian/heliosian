@@ -1,0 +1,33 @@
+# Merge store.Queue into Store and drop multi-store machinery
+
+byre task tsk9mHwPtM8Hih, "Store write queue merge", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Merge the store's write queue into the store".
+Full transcripts: the events of task tsk9mHwPtM8Hih in byre (GET /api/events?task_id=tsk9mHwPtM8Hih).
+
+## Summary
+
+**Goal:** `store.Queue` and `store.Tx` were built for several stores sharing one queue (`Queue.loads` was a list of loads; a transaction held a list of `any`-typed stages found by `stageOf`), but production always builds one `db.Store` per queue. The task merged `Queue` into `Store[M]` and deleted the multi-store machinery.
+
+**What was built**
+- **Store:** `Store[M]` owns the write queue: the task loop (`Add`, `Hold`, `Release`, `Flush`, `Drain`), the `OnSwap` and `OnTick` hooks, `Tick`, `Refresh`, `Refreshed`, `Status` and `Transact` are its methods, in `internal/store/queue.go`. `store.New` takes no queue and starts the worker after the first successful load. A refresh runs the one load directly, so `Register` and `Load` are gone.
+- **Transaction:** `Tx[M]` is generic and holds one `*stage[M]`, created lazily by the first `Stage`. `Transact` builds, checks, swaps and writes that stage inline, so the stage's `owner`, `settle`, `swap` and `write` closures are gone.
+- **Book:** it no longer references a queue. `Book.Write` returns `(done, schedule)` and the store adds `book.flush` to its queue when asked.
+- **Callers:** every `queue *store.Queue` parameter and field across `internal/db`, `internal/app` (`Core.Queue` removed; `Production` returns and `Serve` takes `*db.Store`), `tools/startserver`, `tools/loadcheck` and `tools/searchplan` was dropped. db code uses `*store.Tx[Model]`.
+- **Tests:** test helpers were reshaped the same way (`sampleWithQueue` removed). `testkit.Rows` takes `interface{ Flush() }`, since testkit can't import db.
+- **Docs:** `docs/storage.md`, `docs/datamodel.md` and `AGENTS.md` now name the `Store.*` methods.
+
+**Key decisions**
+- Queue fields live directly on the store, with separate `work` and `commits` mutexes, rather than in an embedded worker type.
+- The one store test that relied on two stores sharing a queue (`TestACommitDuringARefreshIsKeptAndTheRefreshSwaps`) became a single-store test on the paused source.
+
+**Verification:** `go vet ./...` is clean. Tests pass for `internal/db`, `internal/store` (also under `-race`) and the other affected packages.
+
+**Left out:** there is no behaviour change. Batching, the refresh, hooks and `Status` work as before, and the `scheduled` flag that keeps one flush queued per book stays.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Merges the write queue, commit lock, refresh lifecycle, and swap/tick hooks into Store[M]. Transactions now hold one typed stage, and application wiring, workers, tools, tests, and documentation use the store directly. Removes the completed TODO item. Reviewed by reading code; no builds were run, as requested.
+
+No significant findings.
