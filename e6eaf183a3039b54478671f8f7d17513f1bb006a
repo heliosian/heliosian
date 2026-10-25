@@ -1,0 +1,26 @@
+# Simplify code found in simplicity audit of a84e25e
+
+byre task tskSR0KCZhIOoY, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskSR0KCZhIOoY in byre (GET /api/events?task_id=tskSR0KCZhIOoY).
+
+## Summary
+
+Simplicity audit of main at a84e25e (workflow stage "Simplicity Audit · Sonnet high"). Goal: find duplication, needless machinery, dead code and test-only production code, and fix them structurally.
+
+Found with `deadcode`, `staticcheck` and two throwaway scripts (unused exported identifiers in Go; unused JS exports and imports). The codebase was already in good shape, so the work is dead-code deletions and small consolidations.
+
+Go: deleted uncalled `db.HeldGoogle`, `db.GoogleMatchPlan`, `mail.Base`, `mail.Post`, `store.ParseSettings` (whole file), `Vertex.Model`, `mailtest.Recorder.Next`, `store.OrderColumn`, `ask.viewer.Emails`. Dropped the single-valued `dims` parameter from `Vertex.Embed` and `predict`, with `AskDims` and `SearchDims` becoming one `artifacts.Dims`. `vitals` now uses `trace.CPUTime` instead of its own copy. Moved test-only `sexp.equal` into `sexp_test.go` and `mail.SignMailgun` into `mailtest`, per AGENTS.md. Simplified a copy loop in `calendargoogle.go`.
+
+Web: deleted about 17 JS functions with no callers (`alertCard`, `newFeedAddress`, `copyToNextYear` with `writes.copyToYear`, `peopleList`, and others), the CSS, constants and imports only they used, and two doc sentences describing features with no UI.
+
+Left alone: package-level `auth.Fixed` (test-only, but replacing it changes what many db tests see on public paths), excess JS `export` keywords, comment and error-string style nits.
+
+Merged main (auth, mcp oauth, listmail, qclient and docs changes) with no conflicts; `go vet ./...` and the tests for the touched packages pass.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Removes unused Go and browser helpers and their obsolete styles and documentation. Moves test-only helpers out of production code, fixes embeddings to the existing search dimension, and shares CPU-time measurement between tracing and runtime sampling. Reviewed the diff and callers by reading code; no builds were run.
+
+No significant findings.
