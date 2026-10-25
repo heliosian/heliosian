@@ -1,0 +1,50 @@
+# Enforce party ticket permissions on invitations (#204)
+
+byre task tskSy73lJwRux8, "Invitation ticket permissions", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskSy73lJwRux8 in byre (GET /api/events?task_id=tskSy73lJwRux8).
+
+## Summary
+
+Audited main at e39742a against AGENTS.md, docs and earlier security findings. Found medium issue #204: invitation endpoints let members and outside invitation-link holders bypass party ticket payment, capacity, eligibility and paid-ticket deletion rules because membership writes ran as an unrestricted system job.
+
+Party membership edits now explicitly select the inviting viewer for policy authorization against the transaction's staged model, with rollback of guest/person/invitation records on refusal. Invitation bookkeeping and notification hooks keep the invitations job identity, preserving mail behavior; hosts retain their existing complimentary-place authority. Legitimate free-party guest additions/removals remain supported. The free-membership grant permits otherwise-unseen outside guests only with guest_of naming the caller or their household, and non-host party additions supply that link when omitted. Docs describe authorization versus system bookkeeping. No new policy about total guest counts was introduced.
+
+Review corrections separated authorization from hooks after the first approach caused extra notification mail, restored newly created free-party guests, and tightened the global guest exemption. Tests reproduce the original unpaid-ticket attack and cover payment/eligibility/capacity refusals, rollback, legitimate paid attendees, named-only/addressed free guests, public additions/removals, paid-ticket deletion refusal, caller/household links through /api/q, guest sign-in refusal, ten-invitation mail cap, closed-party refusal and exact invitation/calendar output with both real mailers.
+
+The latest main merged automatically via git merge --no-ff --no-commit main, with no conflicts or substantive resolution. Its shared modelAction handler and stock-batching refactors combine with this security work as written. Post-merge validation passed: timeout 30 go test ./internal/db --count=1 (16.5s), go vet ./..., and git diff --check. Earlier auth, MCP, mail, blob, app, Ask, image-search and serve tests passed. The merge is left uncommitted for byre to conclude.
+
+Deliberately left alone: public share previews, trusted super-admin log access, short-lived reusable OAuth codes, and pre-existing name-only guest additions with no total count limit (the documented limit controls mail). Existing #199/#200 fixes were already in the audited tree and were not duplicated. No live infrastructure audit or production deployment was performed during implementation.
+
+Behavior restriction: invitation routes can no longer bypass ticket payment, eligibility, capacity or paid-ticket deletion requirements; use Celebrate's ticket flow or ask a host to give/remove places. Direct API callers adding otherwise-unseen guests must identify a caller/household relationship. Legitimate free-party flows and notification behavior are preserved.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Guest-list writes that used to run entirely as the invitations system job (`iv.write` / `writeInvitations`, `Env{System: invitationsJob}`) now go through a new `writeGuests` in `internal/db/invitations.go`. It is used by `addGuests`, the outside `extGuest` and the new `extRemoveGuest`. `writeGuests` runs the batch with `Env{Viewer: from}`. Inside the transaction it marks every edit as server (unchecked) except MEMBER inserts, sets and deletes in a `party` group, which are authorized as the caller. A caller who isn't a host can therefore no longer give someone a free ticket, or bypass price, capacity or eligibility, through `add-guests` or the invitation link. Tests cover required payment, outside guests adding or removing paid tickets, and capacity and eligibility.
+
+- Dropping `System` from the env turns on the membership-mail and calendar-invite hooks for every guest-list write, including events and activities where nothing else changed.
+- No test covers the hook side effects, so the mail change goes unnoticed.
+
+### Snapshot #2, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Guest-list writes (`add-guests`, the outside `/open/ext/{token}/guest` add and remove) used to run entirely as the `invitations` system job, which skips every policy check. For a party, that let a non-host or an outside guest put a ticket-bearing `MEMBER` row on the list without paying, past capacity or `eligible`, and remove a paid ticket. The change adds `Edit.viewer`, an unexported per-edit override. `writeGuests` sets it on every `MEMBER` insert, set or delete in a party's own group, and `stageEdits` then authorizes that edit as the real person (`System` cleared, `Viewer` set) instead of the job. Everything else in the batch (PERSON, PERSON_EMAIL, MESSAGE, RECIPIENT, answer groups) stays system-authorized. The invitation cap (`mayInvite`) is still applied. Three new tests cover the paid, capacity, eligibility and outside-guest cases, plus one that guest adds still send the invitation mail.
+
+- A non-host can no longer add a brand-new outside guest to a party, free or paid, with no test for the free-party case
+- docs/datamodel.md still says guest-list writes are "written as the job `invitations`"
+- No test shows a legitimate paid or free party add still succeeds
+- The override is inferred inside a check callback by mutating the caller's edit slice
+
+### Snapshot #3, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Closes a hole where the invitation endpoints (`add-guests`, and the outside-guest links `/open/ext/{token}/guest`) wrote party `MEMBER` rows as the system job `invitations`. That skipped every ticket rule: price/payment, `eligible`, `capacity`. A non-host could hand out free tickets to a paid party. An outside guest could add or remove paid tickets. The change tags party membership edits (`Edit.viewer`, set by `guestMembership`) so `stageEdits` authorizes just those edits as the caller, against the staged model. All other edits (PERSON, PERSON_EMAIL, MESSAGE, RECIPIENT, answer groups) still run as the system job. It adds `writeGuests`, which also applies the 10-invitation cap. The `MEMBER` insert policy gets an `invited_guest` clause so an outside guest on a free party can still bring guests. Docs are updated and seven tests are added. The targeted `go test ./internal/db` run passes.
+
+- `invited_guest` and the `source = "guest"` exemption widen the direct `/api/q` MEMBER-insert policy beyond the invitation flow
+- Outside guests bringing name-only guests are still uncapped on free parties and events
+- The new tests leave out the direct-API path and the guest-brings-guest cap
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Party guest additions, reinstatements, and removals now undergo caller authorization within the write transaction, enforcing the existing ticket payment, eligibility, and capacity policies. The change preserves invitation bookkeeping and notification behavior, supports sponsored outside guests at free parties, and adds regression tests for these paths. Review was by code inspection only; no builds or tests were run.
+
+No significant findings.
