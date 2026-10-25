@@ -1,0 +1,34 @@
+# Fix inconsistencies found in consistency audit of ad71839
+
+byre task tske52xesONyON, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tske52xesONyON in byre (GET /api/events?task_id=tske52xesONyON).
+
+## Summary
+
+Consistency audit of main at ad71839, checking the whole codebase against AGENTS.md, docs/ and its own idioms.
+
+**What I checked.** Mechanical style rules (gofmt, `interface{}`, `make()`, lowercase log and error messages, comments in Go and JS, long flags with double dashes in docs). Also whether file paths and code names cited in docs exist, user-facing wording in `web/`, and the tools' output messages. The codebase was already clean on nearly all of it.
+
+**What changed.**
+- **Web UI failure messages** now share one form, "Couldn’t …" with a curly apostrophe, instead of mixing "Could not …", "Failed to load …" and a straight-apostrophe copy. Eight messages in `web/common/personcard.js`, `web/team/edit.js`, `web/home/adminpage.js`, `web/common/admin.js`, `web/who/pages/admin.js` and `web/who/pages/invites.js`. A reviewer caught that the first pass dropped the space after the colon in five; fixed.
+- **`docs/storage.md`:** `Store.Tick` is in `internal/store/queue.go`, not `store.go`; the sentence names both files.
+- **`tools/sheets` (`drop`):** its `dry run:` message now matches the six other `reporting only, pass --apply …` messages in that tool. A reviewer asked to revert this; I declined because the tool was inconsistent with itself.
+
+**Deliberately left alone.** The Claude prompts' British "summarise" (changing prompts could force paid re-extraction). The server's lowercase "could not …" error text (a different register from client toasts). CSS comments (the prevailing idiom). The tools using `log` while the server uses `slog`. Button label capitalization (Title Case vs sentence case, a design choice).
+
+**Merge of main.** `git merge --no-ff --no-commit main` reported "Already up to date", so nothing was merged and no conflicts arose. `go vet ./...` was run after.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+The audit's wording pass: it rewords failure messages in six web files ("Could not…"/"Failed to load…" to "Couldn’t…", which most of web/ already uses). It changes the dry-run log line in `tools/sheets`, and it corrects `docs/storage.md` so it points `Store.Tick` at `internal/store/queue.go`, where that function lives.
+
+- Six rewritten error strings lost the space after the colon, so messages render as "Couldn’t load the list:Network error".
+- The `tools/sheets` dry-run log line was reworded to "reporting only" with no inconsistency to fix.
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Standardizes failure messages across the web apps to the existing “Couldn’t…” wording and aligns the sheets tool’s preview message with its other commands. Corrects the storage documentation to identify where the refresh interval and Store.Tick implementation live. No behavior changes.
+
+No significant findings.
