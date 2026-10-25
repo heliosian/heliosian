@@ -1,0 +1,16 @@
+# Keep OAuth approvals revoked after sign-out (#199)
+
+byre task tskWZQ4asBwCIz, "OAuth sign-out audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskWZQ4asBwCIz in byre (GET /api/events?task_id=tskWZQ4asBwCIz).
+
+## Summary
+
+Security audit of main at a84e25e against the documented trust model and previous Security findings. Fixed #199: an OAuth client could reuse an approved code after sign-out, within its one-minute lifetime, to mint a freshly dated access token that survived revocation for up to thirty days. Grants now record approval time, exchange rejects approvals at or before sign-out, and tokens retain approval time so concurrent sign-out also revokes them. Token issuance requires an explicit timestamp; local tooling passes the current time, and OAuth expiry reports remaining lifetime. Updated documentation and added regressions for code revocation and timestamp preservation across repeated exchanges. Kept the deliberately reusable PKCE-bound codes, public previews, and admin authority; no other demonstrated exploit warranted a change. Existing token format is unchanged; in-flight pre-deploy authorization codes need approval again. Reproduced the bug before fixing it. Tests for MCP/authentication/query and import tools, targeted shared API tests, repository-wide go vet, and diff checks pass. Review completed. Merged main cleanly with no conflicts or substantive resolution changes and reran these checks successfully; left merge uncommitted for byre. No manual deployment or IAM changes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+OAuth authorization codes now record their approval time and are refused after the account signs out. Access tokens retain that approval time when a code is exchanged, preventing replay from renewing token lifetime or bypassing sign-out during an exchange. The change updates token issuance callers, documentation, and regression tests. Review was by code inspection; no builds or tests were run.
+
+No significant findings.
