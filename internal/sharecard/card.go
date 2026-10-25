@@ -144,6 +144,10 @@ func Wrap(d *font.Drawer, text string, width fixed.Int26_6) []string {
 }
 
 func (s *Style) Draw(c Card) ([]byte, error) {
+	return s.draw(c, s.Tagline())
+}
+
+func (s *Style) draw(c Card, tagline string) ([]byte, error) {
 	bold, medium, err := loadFaces()
 	if err != nil {
 		return nil, fmt.Errorf("share card fonts: %w", err)
@@ -217,7 +221,7 @@ func (s *Style) Draw(c Card) ([]byte, error) {
 		}
 		d.Face, d.Src = small, image.NewUniform(s.Accent)
 		d.Dot = fixed.P(x+2, y+62)
-		d.DrawString(strings.ToUpper(s.Tagline()))
+		d.DrawString(strings.ToUpper(tagline))
 	}
 
 	width := fixed.I(textRight - 72)

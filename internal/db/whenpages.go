@@ -118,6 +118,13 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name, whole := m.sharedPicture(g)
+	kicker := m.topCategory(g)
+	day, hours := whenLines(g)
+	button := map[string]string{"event": "RSVP", "party": "Get Tickets", "activity": "Sign Up"}[g["kind"]]
+	parts := []string{g["name"], kicker, day, hours, g["location"], name, button, cardWhole(whole)}
+	if p.style.Answered(w, r, parts...) {
+		return
+	}
 	var picture []byte
 	if name == whenHeader {
 		content, err := os.ReadFile(whenHeader)
@@ -129,15 +136,16 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	} else {
 		picture = m.cardPicture(r.Context(), p.bucket, "when pages", g, name)
 	}
-	kicker := m.topCategory(g)
-	day, hours := whenLines(g)
-	button := map[string]string{"event": "RSVP", "party": "Get Tickets", "activity": "Sign Up"}[g["kind"]]
 	card := sharecard.Card{
 		Kicker: kicker, Title: g["name"], Picture: picture, Whole: whole,
 		Lines:  whenCardLines(day, hours, g["location"]),
 		Button: button,
 	}
-	p.style.Serve(w, r, card, g["name"], kicker, day, hours, g["location"], name, button)
+	if name != "" && len(picture) == 0 {
+		p.style.ServeOnce(w, r, card, parts...)
+		return
+	}
+	p.style.Serve(w, r, card, parts...)
 }
 
 func (m *Model) sharedPicture(g store.Row) (string, bool) {
@@ -151,6 +159,13 @@ func (m *Model) sharedPicture(g store.Row) (string, bool) {
 		}
 	}
 	return whenHeader, false
+}
+
+func cardWhole(whole bool) string {
+	if whole {
+		return "whole"
+	}
+	return "cropped"
 }
 
 func (m *Model) topCategory(g store.Row) string {

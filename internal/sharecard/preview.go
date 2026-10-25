@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"heliosian/internal/lru"
 )
 
 func (s *Style) PreviewTags(title, desc, url, image string) string {
@@ -43,21 +45,68 @@ func ETag(parts ...string) string {
 	return `"` + hex.EncodeToString(sum[:8]) + `"`
 }
 
-func (s *Style) Serve(w http.ResponseWriter, r *http.Request, c Card, parts ...string) {
-	etag := ETag(slices.Concat(parts, []string{s.Name(), s.Tagline()})...)
-	if r.Header.Get("If-None-Match") == etag {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
-	png, err := s.Draw(c)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
+const cardCacheBudget = 32 << 20
+
+var cardCache = newCardCache()
+
+func newCardCache() *lru.Cache[string, []byte] {
+	return lru.New[string, []byte](cardCacheBudget, func(png []byte) int { return len(png) })
+}
+
+func (s *Style) cardTag(parts ...string) (string, string) {
+	name, tagline := s.Name(), s.Tagline()
+	return ETag(slices.Concat(parts, []string{name, tagline})...), tagline
+}
+
+func writeCard(w http.ResponseWriter, etag string, png []byte) {
 	w.Header().Set("Content-Type", "image/png")
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=3600")
 	w.Write(png)
+}
+
+func (s *Style) Answered(w http.ResponseWriter, r *http.Request, parts ...string) bool {
+	etag, _ := s.cardTag(parts...)
+	return s.answer(w, r, etag)
+}
+
+func (s *Style) answer(w http.ResponseWriter, r *http.Request, etag string) bool {
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return true
+	}
+	png, ok := cardCache.Get(etag)
+	if !ok {
+		return false
+	}
+	writeCard(w, etag, png)
+	return true
+}
+
+func (s *Style) Serve(w http.ResponseWriter, r *http.Request, c Card, parts ...string) {
+	s.serve(w, r, c, true, parts...)
+}
+
+// ServeOnce writes this request's card and leaves it out of the cache. A picture that did not
+// load shares its etag with the card that has the picture, so keeping it would hide the picture.
+func (s *Style) ServeOnce(w http.ResponseWriter, r *http.Request, c Card, parts ...string) {
+	s.serve(w, r, c, false, parts...)
+}
+
+func (s *Style) serve(w http.ResponseWriter, r *http.Request, c Card, keep bool, parts ...string) {
+	etag, tagline := s.cardTag(parts...)
+	if s.answer(w, r, etag) {
+		return
+	}
+	png, err := s.draw(c, tagline)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if keep {
+		cardCache.Put(etag, png)
+	}
+	writeCard(w, etag, png)
 }
 
 func (l *Listing) Words() []string {

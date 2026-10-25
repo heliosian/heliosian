@@ -1,8 +1,11 @@
 package db
 
 import (
+	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -26,6 +29,85 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 			`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png")
+}
+
+var missedPictureRun int
+
+func TestAMissedPictureIsDrawnAfterTheReadWorks(t *testing.T) {
+	missedPictureRun++
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	pages := NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	picture := pngOf(t, 48)
+	hash := blob.Hash(picture)
+	apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "poster", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(picture))}},
+		{Set: tacoNight, Cells: map[string]any{"flyer": "@poster", "subtitle": "A taco bar " + strconv.Itoa(missedPictureRun)}},
+	})
+	mux := http.NewServeMux()
+	pages.Register(mux)
+	t.Chdir("../..")
+	get := func() *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/"+tacoNight+".png", nil))
+		return rec
+	}
+	missed := get()
+	if missed.Code != http.StatusOK || missed.Header().Get("Content-Type") != "image/png" || missed.Body.Len() == 0 {
+		t.Fatalf("missing picture: %d %s, %d bytes", missed.Code, missed.Header().Get("Content-Type"), missed.Body.Len())
+	}
+	generation, err := bucket.Put(context.Background(), "content/"+hash, "image/png", picture, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shown := get()
+	if shown.Code != http.StatusOK || bytes.Equal(missed.Body.Bytes(), shown.Body.Bytes()) || missed.Header().Get("ETag") != shown.Header().Get("ETag") {
+		t.Fatalf("after the picture loaded: %d, same card %v, etag %s then %s", shown.Code, bytes.Equal(missed.Body.Bytes(), shown.Body.Bytes()), missed.Header().Get("ETag"), shown.Header().Get("ETag"))
+	}
+	if err := bucket.Remove(context.Background(), "content/"+hash, generation); err != nil {
+		t.Fatal(err)
+	}
+	kept := get()
+	if kept.Code != http.StatusOK || !bytes.Equal(shown.Body.Bytes(), kept.Body.Bytes()) {
+		t.Fatalf("the drawn picture was not kept: %d, same bytes %v", kept.Code, bytes.Equal(shown.Body.Bytes(), kept.Body.Bytes()))
+	}
+}
+
+func TestAPhotoAndAFlyerOfTheSamePictureDrawDifferentCards(t *testing.T) {
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	pages := NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	picture := pngOf(t, 64)
+	hash := blob.Hash(picture)
+	if _, err := bucket.Put(context.Background(), "content/"+hash, "image/png", picture, 0); err != nil {
+		t.Fatal(err)
+	}
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "pic", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(picture))}},
+		{Insert: "PHOTO", Row: map[string]any{"group": tacoNight, "original": "@pic", "reencode": "@pic", "ready": "Yes", "order": "m"}},
+	})
+	pic := ids[0]
+	mux := http.NewServeMux()
+	pages.Register(mux)
+	t.Chdir("../..")
+	get := func() *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/"+tacoNight+".png", nil))
+		return rec
+	}
+	cropped := get()
+	apply(t, s, []Edit{{Set: tacoNight, Cells: map[string]any{"flyer": pic}}})
+	full := get()
+	if cropped.Code != http.StatusOK || full.Code != http.StatusOK || bytes.Equal(cropped.Body.Bytes(), full.Body.Bytes()) || cropped.Header().Get("ETag") == full.Header().Get("ETag") {
+		t.Fatalf("photo then flyer: %d %d, same card %v, etag %s and %s", cropped.Code, full.Code, bytes.Equal(cropped.Body.Bytes(), full.Body.Bytes()), cropped.Header().Get("ETag"), full.Header().Get("ETag"))
+	}
+	apply(t, s, []Edit{{Set: tacoNight, Cells: map[string]any{"flyer": ""}}})
+	again := get()
+	if again.Code != http.StatusOK || !bytes.Equal(cropped.Body.Bytes(), again.Body.Bytes()) || again.Header().Get("ETag") != cropped.Header().Get("ETag") {
+		t.Fatalf("back to the photo: %d, same card %v, etag %s want %s", again.Code, bytes.Equal(cropped.Body.Bytes(), again.Body.Bytes()), again.Header().Get("ETag"), cropped.Header().Get("ETag"))
+	}
 }
 
 func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {

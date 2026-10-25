@@ -6,6 +6,9 @@ Last verified: bff8f634
 
 # Helios When
 
+- When search still embeds on every keystroke
+  It is rare in the logs, and debouncing would change when results appear.
+
 # Helios Loop
 
 # Helios Who?

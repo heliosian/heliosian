@@ -117,11 +117,20 @@ func (a *ActivityPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	name, whole := tr.picture(g)
 	under := tr.lineage(g)
 	day, hours := whenLines(tr.timed(g))
+	parts := []string{g["name"], under, day, hours, name, cardWhole(whole)}
+	if a.style.Answered(w, r, parts...) {
+		return
+	}
+	picture := tr.m.cardPicture(r.Context(), a.bucket, "activity pages", g, name)
 	card := sharecard.Card{
-		Kicker: under, Title: g["name"], Picture: tr.m.cardPicture(r.Context(), a.bucket, "activity pages", g, name), Whole: whole,
+		Kicker: under, Title: g["name"], Picture: picture, Whole: whole,
 		Lines: whenCardLines(day, hours, ""),
 	}
-	a.style.Serve(w, r, card, g["name"], under, day, hours, name)
+	if name != "" && len(picture) == 0 {
+		a.style.ServeOnce(w, r, card, parts...)
+		return
+	}
+	a.style.Serve(w, r, card, parts...)
 }
 
 func (t activityTree) lineage(g store.Row) string {
