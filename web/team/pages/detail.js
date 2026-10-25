@@ -378,7 +378,7 @@ function paintVolunteers(view) {
   }
 }
 
-function ownVolunteers(view, labelled) {
+function ownVolunteers(view, labeled) {
   const {node, listing, chairs, people, showPeople} = view;
   if (chairs.length || showPeople.length) {
     const grid = el('div', 'person-tiles vol-people');
@@ -392,7 +392,7 @@ function ownVolunteers(view, labelled) {
     for (const v of showPeople.filter(v => !isOption(v))) {
       grid.append(volunteerTile(node, v, false));
     }
-    if (labelled) {
+    if (labeled) {
       listing.append(el('div', 'side-group', view.filter.self));
     }
     listing.append(grid);

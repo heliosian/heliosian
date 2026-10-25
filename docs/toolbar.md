@@ -6,7 +6,7 @@ Every request the bar makes - the badges, the app switch's list, Spoof Mode's st
 
 ## Search
 
-The pill holds whatever the app searches - Who? finds people, grades and gradebands as you type; HCA-Team filters the page that is open, or jumps to the opportunities list with the words when the open page has no filter of its own; Heliosian filters its links; Helios When filters the whole year, and wears amber while it does (`docs/when/calendar.md`). A `/` badge at the pill's right edge names the shortcut: a bare `/` anywhere on the page (no modifier, nothing else focused) puts the cursor in the box, the way GitHub and Slack do, and `shell.js`'s `onSlash` is that binding. On a phone Who? and HCA-Team fold the box behind a magnifier in their compact bar, and `/` opens that overlay instead.
+The pill holds whatever the app searches - Who? finds people, grades and gradebands as you type; HCA-Team filters the page that is open, or jumps to the opportunities list with the words when the open page has no filter of its own; Heliosian filters its links; Helios When filters the whole year, and wears amber while it does (`docs/when/calendar.md`). A `/` badge at the pill's right edge names the shortcut: a bare `/` anywhere on the page (no modifier, nothing else focused) puts the cursor in the box, the way GitHub and Slack do, and `shell.js`'s `onSlash` is that binding.
 
 ## The alerts
 
@@ -50,4 +50,4 @@ The admin lists are one editor, `adminsCard({hint, title, load, save})` in the s
 
 ## On phones
 
-The bar is the topmost thing in every app, pinned under the status bar, at 48px: Who? and HCA-Team add a hamburger at its left for their drawer, the search box stays a box (no magnifier-and-overlay), and the keyboard hint and the switch's chevron drop. Under it Who? and HCA-Team keep a slim teal strip for the page title (or a back arrow and a record's name); Heliosian's rail is a drawer behind the hamburger, the same column slid in from the left.
+The bar is the topmost thing in every app, pinned under the status bar, at 48px: every app but Helios Ask adds a hamburger at its left for its drawer, the search box stays a box, and the keyboard hint and the switch's chevron drop. Under it the shell apps keep a slim teal strip for the page title (or a back arrow and a record's name); Heliosian's rail is a drawer behind the hamburger, the same column slid in from the left.

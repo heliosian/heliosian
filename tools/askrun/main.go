@@ -177,7 +177,7 @@ func ask(client *http.Client, base, cookie, conversation, message string) result
 	}
 	r := result{}
 	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 8<<20)
+	scanner.Buffer(make([]byte, 64*1024), 8<<20)
 	event, data := "", ""
 	seenDone := false
 	for scanner.Scan() {

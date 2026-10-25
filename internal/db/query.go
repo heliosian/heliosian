@@ -980,7 +980,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			out := newValueSet(false)
 			rows := f.run.table(table.Name)
 			start := seeds(f)
-			pending := make([]string, 0, len(start.keys))
+			pending := []string{}
 			for id := range start.keys {
 				pending = append(pending, id)
 			}
