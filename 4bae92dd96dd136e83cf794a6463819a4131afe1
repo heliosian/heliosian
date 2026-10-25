@@ -1,0 +1,22 @@
+# Fix performance issues found in audit of ad71839
+
+byre task tskk2inV21SK6o, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskk2inV21SK6o in byre (GET /api/events?task_id=tskk2inV21SK6o).
+
+## Summary
+
+Performance audit of main at ad71839 (Sonnet, high effort). Read AGENTS.md and docs (including docs/queryspeed.md), then surveyed request paths, timers and polling, the write/rebuild path, search, blob and static serving, and the browser's page-load queries. Ran the db scale benchmarks and profiled a GROUP write.
+
+One change: web/common/directory.js's shared directory PERSON query now names its columns (name_show grade classroom department job_title pronouns phone who_href). Before, it returned every readable PERSON column for every person, on each page load of HCA-Team, Celebrate, Loop, Staff Birthdays, When's guest list, and the Home and admin pickers. I checked every consumer of directory people reads only those columns. Measured with a scratch benchmark (deleted) over the 1701-person scale-test school: 12.3 ms and 725 KB before, 6.1 ms and 257 KB after. A Celebrate sample page rendered correctly and go test ./internal/app passed.
+
+Deliberately left alone: the per-write whole-sheet rebuild (about 65 ms for a GROUP edit at about 3000 groups; design-level), When search embedding per keystroke (already in TODO.md as a deliberate choice), per-request static file read, hash and gzip (documented dev design; 304s cover repeats), the consent poll and vitals sampler (cheap), students() rescanned per replace_with rule, and the share-card header read before the cache check (all small).
+
+Main was merged in afterwards with no conflicts (wording and docs changes only); go vet and the app and serve tests pass.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+The shared directory loader (`web/common/directory.js`) fetches every listed person on each page load. Its `PERSON` query had no `columns`, so each row came back with every column the viewer may read (the many `vc_*`, override, consent and bio columns). The change limits that query to `name_show grade classroom department job_title pronouns phone who_href`; `id` always comes back. These are the fields the directory helpers and its callers use.
+
+No significant findings.
