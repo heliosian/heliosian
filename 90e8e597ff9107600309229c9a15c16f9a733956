@@ -1,0 +1,20 @@
+# Point unsubscribed members to Loop’s Resubscribe control
+
+byre task tskcY6znG2RpAI, "Loop resubscribe guidance", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskcY6znG2RpAI in byre (GET /api/events?task_id=tskcY6znG2RpAI).
+
+## Summary
+
+Consistency audit of main at a84e25e. Fixed misleading Helios Loop unsubscribe guidance in both the POST confirmation and already-unsubscribed GET page. Both now direct people who can sign in to the existing Resubscribe control, while retaining manager-help guidance for outside recipients. No behavior changes.
+
+Updated the matching Loop documentation to distinguish stopping mail from membership exclusion and correctly describe unsubscribe tokens as list ID plus recipient address, explaining why links survive list renaming. Kept the audit focused on instructions that could mislead people; deliberately left cosmetic capitalization, dialect, comment and style cleanup alone.
+
+Validation passed: targeted unsubscribe/resubscribe tests under timeout 30, repository-wide go vet, formatting and diff checks, and both public confirmation pages exercised against the sample server. Review completed before merge readiness. The requested merge from main reported already up to date; vet and targeted tests passed again, with no conflicts or substantive merge-resolution changes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Updates both unsubscribe confirmation pages to explain how signed-in users can resume mail through Loop’s Resubscribe action, while directing others to a manager. Corrects the documentation to describe retained membership and tokens tied to the list ID, which survive list renames.
+
+No significant findings.
