@@ -1,0 +1,20 @@
+# Encode editable sender names in outgoing mail (#205)
+
+byre task tsk0Gs5fccKiBj, "Mail sender injection", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk0Gs5fccKiBj in byre (GET /api/events?task_id=tsk0Gs5fccKiBj).
+
+## Summary
+
+Security audit of main at 7b9b60a found and fixed #205: event hosts' editable profile names were interpolated directly into raw MIME From headers, enabling injected Reply-To and other headers in invitations sent by the service. The shared FromLine formatter now uses net/mail.Address.String so the complete name stays display-name data beside the configured service address. This covers structured sends and raw MIME composition without restricting profile edits, changing recipients, or losing Unicode and punctuation.
+
+Added a mail composition regression that failed before the fix and an integration regression through an ordinary member's profile edit and host invitation. Mail, auth and MCP tests, focused invitation and group authorization tests, go vet ./..., and git diff --check passed. Merged main with git merge --no-ff --no-commit main without conflicts or manual resolutions; reran those checks plus the incoming image-search and app package tests successfully. Merge left uncommitted for byre to conclude.
+
+Deliberately retained public share previews, trusted super-admin and sheet-editor authority, and token-bearing Cloud logs as documented (#61). Inspected other boundaries without establishing another concrete vulnerability warranting a change. No deployment, production-data changes, subagents, speculative network policy, or departures from the requested audit.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok high", grok grok-4.7: done
+
+Invitation mail puts each host's display name on the From line. That name used to be spliced in with only `<` stripped, so a host who set their name to include a newline could add headers such as Reply-To or Bcc while the message still went out from the service address. `FromLine` now builds the line with `net/mail.Address.String`, which quotes or RFC 2047-encodes the display name and leaves the mailbox as the configured sender. A unit test covers `Compose` with several hostile names, and an invitation test sets a host's editable name to header text and checks the raw message.
+
+No significant findings.
