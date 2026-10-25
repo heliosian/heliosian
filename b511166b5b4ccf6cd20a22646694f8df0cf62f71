@@ -1,0 +1,137 @@
+# Give documents thumbnails: images, pages and PDFs (closes #182)
+
+byre task tskCcVtcOHtEJh, "Document thumbnails", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Give documents thumbnails".
+Full transcripts: the events of task tskCcVtcOHtEJh in byre (GET /api/events?task_id=tskCcVtcOHtEJh).
+
+## Summary
+
+**Goal (issue #182, TODO "Give documents thumbnails"):** give documents a preview image, made off the request path, for images, PDFs and fetched pages.
+
+**Built:**
+- `DOCUMENT.thumbnail` is a reference to a 480-pixel-wide JPEG `CONTENT` row; `DOCUMENT.thumbnailed` is a moment (when the work finished, or found nothing to draw). Documents over the same bytes each get their own cells, all naming one thumbnail row. The read policy's `CONTENT` clause covers `(or (= content @row) (= thumbnail @row))` with `document_visible`, so it's served at `/api/blob/<doc>/thumbnail`.
+- The `Thumbnailer` worker (`internal/db/thumbnails.go`) runs in production only. It is woken by committed triggers on `DOCUMENT` and `CONTENT` and by the store tick.
+  - Images: `blob.Thumbnail`.
+  - HTML: the page's `og:image` (or `og:image:url`, `og:image:secure_url`, `twitter:image`), resolved against `<base href>` and the document's `url`, fetched with the fetcher's `fetchFrom`. A page naming none is marked thumbnailed with no thumbnail.
+  - Retries: 3 tries per (document, content), then left until restart.
+- The `thumbnailStale` staged trigger blanks both fields when a document's `content` changes.
+- PDFs: `tools/pdfthumbnails`, which ian runs by hand. It queries PDF documents with `thumbnailed` blank, downloads each `CONTENT` once via `/api/blob/<content>/blob`, and draws page 1 with poppler's `pdftoppm` at width 960. It posts the picture to the new `POST /api/do/thumbnail` (import mode only) with `document`, `content` and `picture`. The server scales the picture and refuses it if the content isn't still the document's, re-checking inside the transaction. The tool skips a refused document and logs drawn/failed/skipped counts.
+- `qclient` returns raw bytes when `out` is `*[]byte`.
+- Also: docs (`docs/datamodel.md`, `docs/dev.md`, `docs/storage.md`), the OpenAPI entry, and the sample `DOCUMENT.csv` header.
+
+**Decisions:**
+- The first build put the thumbnail on `CONTENT` (the issue suggested it). ian: "asked for it on document, meant on document". It moved to `DOCUMENT`.
+- The first build drew PDFs with go-pdfium's WebAssembly build (PDFium under wazero), with `CGO_ENABLED=0`. ian: "we're definitely not importing webassembly. or cgo." It was deleted, and go.mod is back to main.
+- Alternatives shown with real production PDFs: pdfcpu's embedded-image extraction gave the school logo for the year calendar and nothing for a text-only Google Doc export; writing a pure-Go rasterizer was too large. ian chose a laptop tool, like the calendar import's `pdftoppm` step.
+- Review findings fixed along the way:
+  - A sweeper self-reference fix (needed only for the `CONTENT` design; removed after the move).
+  - Bounded retries on tick.
+  - Honoring `<base href>`.
+  - Remaking the thumbnail on a content change.
+  - Retry budget keyed by (document, content).
+  - Binding an uploaded picture to the content ID it was drawn from.
+- The reviewer's repeated "automatic PDF path" finding was ignored, per ian's choice.
+
+**Rollout:** add the `DOCUMENT.thumbnail`/`thumbnailed` columns with `tools/createtabs` before deploying. The worker then works through existing images and pages (thousands of small writes). Then ian runs `go run ./tools/pdfthumbnails` (300+ PDFs, needs `brew install poppler`).
+
+**Left out:** no UI shows thumbnails yet (Inbox, search, Ask). New PDFs get a thumbnail only when the tool runs. A redirect's final address isn't kept for resolving a relative `og:image`.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a background worker that generates JPEG thumbnails for document images, the first page of PDFs, and fetched pages’ preview images. Stores thumbnail references and completion timestamps on CONTENT, adds document-based access rules, and removes the TODO item.
+
+- Thumbnail deduplication can create self-references that prevent orphan cleanup.
+- Transient thumbnail failures suppress all retries until a server restart.
+
+### Snapshot #2, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a background worker that generates JPEG thumbnails for document images, PDF first pages, and web pages with preview images. Stores thumbnail references and completion times on CONTENT, applies document visibility to thumbnail access, and extends content cleanup, tests, and documentation.
+
+No significant findings.
+
+### Snapshot #4, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a background worker that stores JPEG thumbnails on CONTENT for document images, PDF first pages and HTML preview images. Includes PDFium rendering through WebAssembly, access rules for thumbnail bytes, cleanup support, documentation and worker tests.
+
+- Relative preview URLs can resolve to the wrong address after redirects or with an HTML base element.
+- Unbounded PDF execution can block all subsequent thumbnail jobs.
+
+### Snapshot #7, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a production background worker that stores JPEG thumbnails for image documents and HTML pages with preview-image metadata. Adds document thumbnail fields, access rules, worker triggers, documentation, and tests, and removes the TODO item. PDF thumbnails are not implemented.
+
+- PDF thumbnails required by the task are missing.
+- Replacing a document's content leaves its old thumbnail indefinitely.
+
+### Snapshot #8, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a production background worker that stores document thumbnails as JPEG CONTENT rows, generates them from images and HTML link-preview pictures, and exposes them through document access policies. Content changes clear existing thumbnails, and the change adds worker tests and removes the TODO item. PDF thumbnails are not implemented.
+
+- PDF documents never receive the thumbnails required by the task.
+- Replacing content after three thumbnail failures does not restore processing until a server restart.
+
+### Snapshot #10, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds document thumbnail fields, an automatic worker for images and HTML preview images, access rules, and tests. PDF previews are generated by a separate laptop tool and uploaded through a new endpoint. No builds or tests were run; this review used code inspection.
+
+- PDF thumbnails are never generated automatically for new documents.
+- Thumbnail uploads can permanently attach a preview of superseded content.
+
+### Snapshot #11, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds document thumbnail fields, access rules, and a production worker that generates JPEG thumbnails for images and HTML pages with preview images. Adds an import endpoint and a laptop command for rendering PDF first pages, invalidates thumbnails when document content changes, and removes the TODO item.
+
+- PDF thumbnails require a manual laptop command; new PDFs never receive them automatically.
+
+## Decisions
+
+### Should the thumbnail stay on `CONTENT` (one per set of bytes, as built), or move to `DOCUMENT` (one per place the bytes appear)?
+
+**Background.** Documents are two tables. `CONTENT` holds the bytes: one row per SHA-256 and type, and the same bytes arriving twice are one row. `DOCUMENT` is one place those bytes appear: an email's part, a linked page, a year calendar. Several documents can hold the same `CONTENT`. A thumbnail is drawn only from the bytes: an image scaled down, a PDF's first page, or a page's `og:image`. So the same bytes always give the same picture. Issue #182 suggested `CONTENT` for that reason, and that's where I put it: `CONTENT.thumbnail` points to another `CONTENT` row holding a 480-pixel JPEG, and `CONTENT.thumbnailed` records when the worker finished.
+
+**A real example from production.** One PNG, `cnt1ujIL9lQuyX` (177,681 bytes, filed as `image.png`), is a `part` of 7 different emails: documents `docFsDdULsmIWp`, `doc6qJPEvZtTpW`, `docmFU2rMWCWjX`, `docCje1w8le6Se`, `docAeOxDmlAG7v`, `docYjdDV0PdNnJ`, `docgdgUVbTdWGz`. This isn't rare: more than 50 images in production are each held by more than one document (school logos and newsletter banners). The two placements on this one image:
+
+- (*) Keep it on CONTENT (as built)
+  - The worker draws `cnt1ujIL9lQuyX` once and writes 1 thumbnail row plus 2 cells on `cnt1ujIL9lQuyX` (`thumbnail`, `thumbnailed`).
+  - All 7 documents show the picture through `content.thumbnail`, served at `/api/blob/cnt1ujIL9lQuyX/thumbnail`. A reader sees it when they can read any of those 7 emails, through the new policy clause "the thumbnail of a document's bytes the viewer may see".
+  - An eighth email carrying the same logo gets the thumbnail at once, with no new write.
+  - Cost: for a page, a relative `og:image` (`/share/banner.png`) is resolved against the address of whichever document holding the page the worker happens to read first. Two documents holding the same HTML from different sites could disagree, but identical HTML at two addresses almost always names the same picture.
+- ( ) Move it to DOCUMENT
+  - Each of the 7 documents gets its own `thumbnail` cell: 7 cells plus 7 `thumbnailed` cells. They all point to the same thumbnail row, since identical JPEG bytes are still one `CONTENT` row.
+  - The worker draws per document, or draws once and writes all 7. The eighth email waits for the worker to set its own cell.
+  - It's served at `/api/blob/docFsDdULsmIWp/thumbnail` and read with the plain `document_visible` rule, so no new policy clause is needed.
+  - A page's relative `og:image` is resolved against that document's own `url`.
+
+I recommend keeping it on `CONTENT`. The picture depends only on the bytes, so there's one write per set of bytes instead of one per appearance (7 to 1 on this logo). The only per-document input, a relative `og:image` address, almost never differs between copies of the same page.
+
+ian@fc.run answered: asked for it on document, meant on document
+
+also, we're definitely not importing webassembly. or cgo.
+
+### With WebAssembly and cgo ruled out, what should a PDF document's thumbnail be?
+
+**Where this stands.** Thumbnails are now on `DOCUMENT`, as you asked: `DOCUMENT.thumbnail` points to a 480-pixel JPEG `CONTENT` row, and `DOCUMENT.thumbnailed` records when the worker finished. The WebAssembly PDF renderer (PDFium under wazero) is deleted, and go.mod matches main again. Images get thumbnails by scaling. Fetched pages use the picture they name in `og:image`. PDFs currently get nothing: no drawer, so `thumbnailed` stays blank. Tests, vet and gofmt are green.
+
+**The PDF problem.** Nothing in pure Go draws a PDF page. pdfcpu, which the server already uses to split large PDFs, can parse PDFs and pull out the images embedded in them, but it can't rasterize text or vector shapes.
+
+**Two real production PDFs, and what each option gives them:**
+- the 2026-2027 year calendar (`doc1vbgme8d9uv`, content `cntcIMMRPajGGz`, 259 KB): a page of text and coloured table cells, with the school logo embedded as a PNG
+- a linked Google Doc, "Jays Passion Share Presentation Schedule: 2020" (`docPtkctMkAjhE`, content `cntBERXzS2VvCG`, 57 KB): text and tables only, with no embedded image
+
+- (*) No PDF thumbnails for now
+  - Year calendar: no thumbnail. Jays schedule: no thumbnail.
+  - PDFs keep `thumbnailed` blank, so they get picked up automatically if a drawer is added later.
+  - Drawing PDF pages in pure Go becomes part of #179 ("an image of each page of a PDF, using a pure-Go renderer"). The PDF thumbnail would then be that work's page 1.
+- ( ) Use the largest image embedded on page 1 (pdfcpu)
+  - Year calendar: the Helios School logo (2500×1540 PNG, attached), not the calendar itself.
+  - Jays schedule: nothing, since page 1 embeds no image.
+  - It runs today with no new dependency, but the thumbnail often isn't a picture of the page.
+- ( ) Write a pure-Go PDF rasterizer now, in this task
+  - Year calendar and Jays schedule: a drawing of page 1. The attached calendar image shows what a real renderer gives; it was made by the deleted PDFium code.
+  - This is a large build: content streams, fonts and glyph outlines, images and colour spaces. It's the same renderer #179 needs.
+
+I recommend no PDF thumbnails for now. The embedded-image option shows a logo for the calendar and nothing for most PDFs, and a renderer is #179's job, which this would then reuse.
+
+ian@fc.run answered: we already do pdf work on the client in scripts that get run by me by hand sometimes. seems like we can do that for this case too?
