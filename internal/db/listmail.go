@@ -113,19 +113,15 @@ func groupOpen(g store.Row) bool {
 func (m *Model) mailList(local string) store.Row {
 	local = strings.ToLower(strings.TrimSpace(local))
 	groups := m.Table("GROUP")
-	for _, g := range groups.All() {
-		if groupOpen(g) && strings.EqualFold(g["slug"], local) {
-			return g
-		}
+	if g, ok := groups.Distinct("slug", local); ok && groupOpen(g) {
+		return g
 	}
-	for _, a := range m.Table("ALIAS").All() {
-		// local is lowercased, so an alias with an uppercase letter (a case-sensitive old ID) never matches.
-		if a["alias"] != local {
-			continue
-		}
-		if g, ok := groups.Get(a["target"]); ok && groupOpen(g) && g["slug"] != "" {
-			return g
-		}
+	a, ok := m.Table("ALIAS").Find(local)
+	if !ok {
+		return nil
+	}
+	if g, ok := groups.Get(a["target"]); ok && groupOpen(g) && g["slug"] != "" {
+		return g
 	}
 	return nil
 }
@@ -142,16 +138,12 @@ func (m *Model) personAt(address string) string {
 }
 
 func (m *Model) addressOf(person string) string {
-	emails := m.Shown("PERSON_EMAIL").Referencing("person", person)
-	for _, e := range emails {
+	for _, e := range m.Shown("PERSON_EMAIL").Referencing("person", person) {
 		if primary, _ := cells.YesNo(e["primary"], false); primary {
 			return e["address"]
 		}
 	}
-	if len(emails) == 0 {
-		return ""
-	}
-	return emails[0]["address"]
+	return ""
 }
 
 func (m *Model) effectivelyIn(group, person string) bool {

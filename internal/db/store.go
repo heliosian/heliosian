@@ -22,12 +22,8 @@ func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index 
 			in.deliver(delivery{change: Change{Table: tab, Old: before, New: after}, env: Env{System: refreshSystem, Now: time.Now()}})
 		}
 	}
-	s, err := store.New(parts(index, newServices(index), origin, refreshed), finishModel, checkModel, source, writer, queue)
+	s, err := store.New(parts(index, newServices(index), origin, refreshed), consentStep, checkModel, source, writer, queue)
 	return s, err
-}
-
-func finishModel(ctx context.Context, _, m *Model) error {
-	return consentStep(ctx, m)
 }
 
 func checkModel(ctx context.Context, base, m *Model) error {
@@ -57,7 +53,7 @@ func parts(index *SearchIndex, sv *services, origin func(app string) string, ref
 				tabs = append(tabs, store.Tab{Name: t.Name, Columns: t.Stored(), Key: []string{"id"}, AppendOnly: t.AppendOnly})
 			}
 		}
-		out = append(out, store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv, origin), Loaded: loaded(sheet), Refreshed: refreshed, Incremental: true})
+		out = append(out, store.Part[Model]{App: sheet, Tabs: tabs, Changes: changeLog, Build: build(sheet, index, sv, origin), Loaded: loaded(sheet), Refreshed: refreshed})
 	}
 	return out
 }

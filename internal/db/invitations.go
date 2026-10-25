@@ -548,14 +548,12 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	return sentAnswer{Result: []string{}, Sent: len(sending)}, nil
 }
 
-func (m *Model) recipientByToken(token string) (store.Row, bool) {
-	if row, ok := m.Table("RECIPIENT").Find(token); ok {
+func (m *Model) byToken(table, token string) (store.Row, bool) {
+	if row, ok := m.Table(table).Find(token); ok {
 		return row, true
 	}
-	for _, a := range m.Table("ALIAS").All() {
-		if a["alias"] == strings.ToLower(token) {
-			return m.Table("RECIPIENT").Get(a["target"])
-		}
+	if a, ok := m.Table("ALIAS").Find(strings.ToLower(token)); ok {
+		return m.Table(table).Get(a["target"])
 	}
 	return nil, false
 }

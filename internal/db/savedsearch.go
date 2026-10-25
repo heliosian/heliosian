@@ -11,7 +11,6 @@ import (
 	"heliosian/internal/cells"
 	"heliosian/internal/mail"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
 const (
@@ -49,20 +48,6 @@ func savedSearchQuery(lists [][]string, from, to string) string {
 		to+" 23:59", from, from, searchCondition(lists))
 }
 
-func (m *Model) savedSearchByToken(token string) (store.Row, bool) {
-	for _, row := range m.Table("SAVED_SEARCH").All() {
-		if row["token"] == token {
-			return row, true
-		}
-	}
-	for _, a := range m.Table("ALIAS").All() {
-		if a["alias"] == strings.ToLower(token) {
-			return m.Table("SAVED_SEARCH").Get(a["target"])
-		}
-	}
-	return nil, false
-}
-
 func RegisterFeeds(mux *http.ServeMux, s *Store, now func() time.Time) {
 	mux.HandleFunc("GET /open/feed/{file}", func(w http.ResponseWriter, r *http.Request) {
 		ics, ok, err := s.Model().savedSearchICS(r.Context(), strings.TrimSuffix(r.PathValue("file"), ".ics"), "https://"+r.Host, now())
@@ -82,7 +67,7 @@ func RegisterFeeds(mux *http.ServeMux, s *Store, now func() time.Time) {
 }
 
 func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now time.Time) ([]byte, bool, error) {
-	row, ok := m.savedSearchByToken(token)
+	row, ok := m.byToken("SAVED_SEARCH", token)
 	if !ok {
 		return nil, false, nil
 	}

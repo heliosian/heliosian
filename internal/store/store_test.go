@@ -23,7 +23,7 @@ type counts struct {
 	consents, reportAtConsent          int
 }
 
-func consent(_ context.Context, _, m *counts) error {
+func consent(_ context.Context, m *counts) error {
 	m.consents++
 	m.reportAtConsent = m.report
 	return nil
@@ -117,12 +117,8 @@ func reportPart() Part[counts] {
 		App:     "report",
 		Tabs:    []Tab{{Name: "Notes", Columns: []string{"Note"}, Key: []string{"Note"}}},
 		Changes: testChanges,
-		Reads:   []string{"app"},
 		Build: func(_ context.Context, tables Tables, m *counts) error {
-			if m.things > 3 {
-				return errors.New("too many things to report")
-			}
-			m.report = m.things*10 + len(tables["Notes"])
+			m.report = len(tables["Notes"])
 			m.reportBuilds++
 			return nil
 		},
@@ -398,21 +394,21 @@ func reportFixture(t *testing.T) (fixture, *Store[counts]) {
 	return f, s
 }
 
-func TestAPartRebuildsWithWhatItReads(t *testing.T) {
+func TestACommitRebuildsOnlyThePartItChanged(t *testing.T) {
 	f, s := reportFixture(t)
-	if m := s.Model(); m.report != 21 || m.reportBuilds != 1 {
+	if m := s.Model(); m.report != 1 || m.reportBuilds != 1 {
 		t.Fatalf("loaded %+v", *m)
 	}
 	if err := commitAndWait(s, context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"})); err != nil {
 		t.Fatal(err)
 	}
-	if m := s.Model(); m.things != 3 || m.report != 31 || m.reportBuilds != 2 {
-		t.Fatalf("after a change to what the report reads: %+v", *m)
+	if m := s.Model(); m.things != 3 || m.report != 1 || m.reportBuilds != 1 {
+		t.Fatalf("after a change to another part: %+v", *m)
 	}
 	if err := commitAndWait(s, context.Background(), access.System("job"), "report", Insert("Notes", Row{"Note": "second"})); err != nil {
 		t.Fatal(err)
 	}
-	if m := s.Model(); m.report != 32 || m.reportBuilds != 3 {
+	if m := s.Model(); m.report != 2 || m.reportBuilds != 2 {
 		t.Fatalf("after a change to the report's own sheet: %+v", *m)
 	}
 	if _, rows, _ := f.dir.Table("report", "Notes"); len(rows) != 2 {
@@ -422,20 +418,20 @@ func TestAPartRebuildsWithWhatItReads(t *testing.T) {
 
 func TestConsentRunsAfterEveryPart(t *testing.T) {
 	_, s := reportFixture(t)
-	if m := s.Model(); m.consents != 1 || m.reportAtConsent != 21 {
+	if m := s.Model(); m.consents != 1 || m.reportAtConsent != 1 {
 		t.Fatalf("loaded %+v", *m)
 	}
-	if err := commitAndWait(s, context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"})); err != nil {
+	if err := commitAndWait(s, context.Background(), access.System("job"), "report", Insert("Notes", Row{"Note": "second"})); err != nil {
 		t.Fatal(err)
 	}
-	if m := s.Model(); m.consents != 2 || m.reportAtConsent != 31 {
+	if m := s.Model(); m.consents != 2 || m.reportAtConsent != 2 {
 		t.Fatalf("after a change: %+v", *m)
 	}
 }
 
 func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 	f := newFixture(t)
-	refusing := func(_ context.Context, _, m *counts) error {
+	refusing := func(_ context.Context, m *counts) error {
 		if m.things > 2 {
 			return errors.New("three things")
 		}
@@ -448,29 +444,6 @@ func TestConsentThatRefusesRefusesTheWrite(t *testing.T) {
 	err = commitAndWait(s, context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"}))
 	if err == nil || !strings.Contains(err.Error(), "three things") {
 		t.Fatalf("a write the consent step refuses: %v", err)
-	}
-}
-
-func TestAPartThatRefusesRefusesTheWriteItReads(t *testing.T) {
-	f, s := reportFixture(t)
-	err := commitAndWait(s, context.Background(), access.System("job"), "app", Insert("Things", Row{"Name": "cap"}), Insert("Things", Row{"Name": "sock"}))
-	if err == nil || !strings.Contains(err.Error(), "too many things") {
-		t.Fatalf("a write the report refuses was taken: %v", err)
-	}
-	if m := s.Model(); m.things != 2 || m.report != 21 || len(f.rows(t, "Things")) != 2 {
-		t.Fatalf("a refused write reached memory or the sheet: %+v", *m)
-	}
-}
-
-func TestPartsReadingNothingThereAreRefused(t *testing.T) {
-	f := newFixture(t)
-	if _, err := New([]Part[counts]{reportPart()}, consent, noCheck, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "no part app") {
-		t.Fatalf("a part reading a missing part was taken: %v", err)
-	}
-	loop := part()
-	loop.Reads = []string{"report"}
-	if _, err := New([]Part[counts]{reportPart(), loop}, consent, noCheck, f.dir, f.dir, f.queue); err == nil || !strings.Contains(err.Error(), "reads itself") {
-		t.Fatalf("parts reading each other were taken: %v", err)
 	}
 }
 
@@ -728,7 +701,6 @@ func TestARefreshRebuildsOnlyThePartsWhoseSheetsChanged(t *testing.T) {
 		appBuilds++
 		return build(ctx, tables, m)
 	}
-	app.Incremental, report.Incremental = true, true
 	s, err := New([]Part[counts]{app, report}, consent, noCheck, f.dir, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
@@ -746,21 +718,27 @@ func TestARefreshRebuildsOnlyThePartsWhoseSheetsChanged(t *testing.T) {
 	if err := f.dir.Insert("report", "Notes", []map[string]string{{"Note": "second"}}); err != nil {
 		t.Fatal(err)
 	}
-	if m := refresh(); appBuilds != 1 || m.reportBuilds != 2 || m.report != 22 {
+	if m := refresh(); appBuilds != 1 || m.reportBuilds != 2 || m.report != 2 {
 		t.Fatalf("a new note rebuilt app %d times and report %d times, report %d", appBuilds, m.reportBuilds, m.report)
 	}
 	if err := f.dir.Insert("app", "Things", []map[string]string{{"Name": "sock"}}); err != nil {
 		t.Fatal(err)
 	}
-	if m := refresh(); appBuilds != 2 || m.reportBuilds != 3 || m.report != 32 {
-		t.Fatalf("a new thing rebuilt app %d times and report %d times, report %d", appBuilds, m.reportBuilds, m.report)
+	if m := refresh(); appBuilds != 2 || m.reportBuilds != 2 || m.things != 3 {
+		t.Fatalf("a new thing rebuilt app %d times and report %d times, things %d", appBuilds, m.reportBuilds, m.things)
 	}
 }
 
 func TestARefreshThatCannotTakeACommitKeepsTheModel(t *testing.T) {
 	f := newFixture(t)
 	paused := pausedSource{Dir: f.dir, pause: &atomic.Bool{}, reading: make(chan struct{}), release: make(chan struct{})}
-	s, err := New([]Part[counts]{reportPart(), part()}, consent, noCheck, paused, f.dir, f.queue)
+	atMostThree := func(_ context.Context, _, m *counts) error {
+		if m.things > 3 {
+			return errors.New("four things")
+		}
+		return nil
+	}
+	s, err := New([]Part[counts]{part()}, consent, atMostThree, paused, f.dir, f.queue)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,10 +752,8 @@ func TestARefreshThatCannotTakeACommitKeepsTheModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	paused.release <- struct{}{}
-	<-paused.reading
-	paused.release <- struct{}{}
 	f.queue.Flush()
-	if m := s.Model(); m.things != 3 || m.report != 31 {
+	if m := s.Model(); m.things != 3 {
 		t.Fatalf("a refresh the commit could not be replayed on swapped in: %+v", *m)
 	}
 	select {
@@ -863,18 +839,21 @@ func TestARefreshSwapsEveryPartOrNone(t *testing.T) {
 	}
 	f.queue.Refresh()
 	f.queue.Flush()
-	if m := s.Model(); m.uses != 2 || m.report != 22 {
+	if m := s.Model(); m.uses != 2 || m.report != 2 {
 		t.Fatalf("a refresh missed a part: %+v", *m)
+	}
+	if err := f.dir.Insert("report", "Notes", []map[string]string{{"Note": "third"}}); err != nil {
+		t.Fatal(err)
 	}
 	if err := f.dir.Delete("app", "Uses", Row{"By": "ann"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.dir.Insert("app", "Things", []map[string]string{{"Name": "cap"}, {"Name": "sock"}}); err != nil {
+	if err := f.dir.Update("app", "Things", Row{"Name": "hat"}, Row{"Color": "plaid"}); err != nil {
 		t.Fatal(err)
 	}
 	f.queue.Refresh()
 	f.queue.Flush()
-	if m := s.Model(); m.uses != 2 || m.things != 2 || m.report != 22 {
+	if m := s.Model(); m.uses != 2 || m.report != 2 {
 		t.Fatalf("a refresh one part refused swapped the others in: %+v", *m)
 	}
 }

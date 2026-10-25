@@ -176,10 +176,8 @@ func groupSlugMoved(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	old := strings.ToLower(c.Old["slug"])
-	for _, a := range m.Table("ALIAS").All() {
-		if a["alias"] == old {
-			return nil, nil
-		}
+	if _, taken := m.Table("ALIAS").Find(old); taken {
+		return nil, nil
 	}
 	return []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": old, "target": c.New["id"], "hidden": true}}}, nil
 }

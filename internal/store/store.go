@@ -21,19 +21,17 @@ const (
 )
 
 type Part[M any] struct {
-	App         string
-	Tabs        []Tab
-	Changes     *ChangeLog
-	Reads       []string
-	Build       func(ctx context.Context, tables Tables, m *M) error
-	Loaded      func(m *M, took time.Duration)
-	Refreshed   func(tab string, before, after Row)
-	Incremental bool
+	App       string
+	Tabs      []Tab
+	Changes   *ChangeLog
+	Build     func(ctx context.Context, tables Tables, m *M) error
+	Loaded    func(m *M, took time.Duration)
+	Refreshed func(tab string, before, after Row)
 }
 
 type Store[M any] struct {
 	parts  []Part[M]
-	finish func(ctx context.Context, base, m *M) error
+	finish func(ctx context.Context, m *M) error
 	check  func(ctx context.Context, base, m *M) error
 	books  map[string]*Book
 	queue  *Queue
@@ -42,13 +40,9 @@ type Store[M any] struct {
 	model  *M
 }
 
-func New[M any](parts []Part[M], finish, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
-	ordered, err := order(parts)
-	if err != nil {
-		return nil, err
-	}
-	s := &Store[M]{parts: ordered, finish: finish, check: check, books: map[string]*Book{}, queue: queue}
-	for _, p := range ordered {
+func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
+	s := &Store[M]{parts: parts, finish: finish, check: check, books: map[string]*Book{}, queue: queue}
+	for _, p := range parts {
 		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer, queue)
 		if err != nil {
 			return nil, err
@@ -66,46 +60,6 @@ func New[M any](parts []Part[M], finish, check func(ctx context.Context, base, m
 	swap()
 	queue.Register(s.load)
 	return s, nil
-}
-
-func order[M any](parts []Part[M]) ([]Part[M], error) {
-	byApp := map[string]Part[M]{}
-	for _, p := range parts {
-		if _, ok := byApp[p.App]; ok {
-			return nil, fmt.Errorf("part %s declared twice", p.App)
-		}
-		byApp[p.App] = p
-	}
-	out := []Part[M]{}
-	placed, visiting := map[string]bool{}, map[string]bool{}
-	var place func(app string) error
-	place = func(app string) error {
-		if placed[app] {
-			return nil
-		}
-		if visiting[app] {
-			return fmt.Errorf("part %s reads itself", app)
-		}
-		p, ok := byApp[app]
-		if !ok {
-			return fmt.Errorf("no part %s", app)
-		}
-		visiting[app] = true
-		for _, read := range p.Reads {
-			if err := place(read); err != nil {
-				return fmt.Errorf("%s: %w", app, err)
-			}
-		}
-		placed[app] = true
-		out = append(out, p)
-		return nil
-	}
-	for _, p := range parts {
-		if err := place(p.App); err != nil {
-			return nil, err
-		}
-	}
-	return out, nil
 }
 
 func (s *Store[M]) load(ctx context.Context) (Settle, error) {
@@ -128,7 +82,6 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 		tables[app] = book.replay(tables[app], plans)
 	}
 	stale := s.stale(held, tables)
-	edited := maps.Clone(stale)
 	model := base
 	if base == nil || len(stale) == len(s.parts) {
 		built, err := s.build(ctx, tables, new(M), nil, took)
@@ -179,7 +132,7 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 				p.Loaded(final, took[p.App])
 			}
 			if before != nil {
-				s.refreshed(before, next, edited)
+				s.refreshed(before, next, stale)
 			}
 		}, nil
 	}, nil
@@ -188,7 +141,7 @@ func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 func (s *Store[M]) stale(held, read map[string]Tables) map[string]bool {
 	out := map[string]bool{}
 	for _, p := range s.parts {
-		if !p.Incremental || !sameTables(held[p.App], read[p.App]) {
+		if !sameTables(held[p.App], read[p.App]) {
 			out[p.App] = true
 		}
 	}
@@ -245,7 +198,7 @@ func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M,
 	next := *base
 	building := trace.From(ctx).Tally("build")
 	for _, p := range s.parts {
-		if changed != nil && !changed[p.App] && !slices.ContainsFunc(p.Reads, func(read string) bool { return changed[read] }) {
+		if changed != nil && !changed[p.App] {
 			continue
 		}
 		start := time.Now()
@@ -261,17 +214,10 @@ func (s *Store[M]) build(ctx context.Context, tables map[string]Tables, base *M,
 		if took != nil {
 			took[p.App] += time.Since(start)
 		}
-		if changed != nil {
-			changed[p.App] = true
-		}
-	}
-	prior := base
-	if changed == nil {
-		prior = nil
 	}
 	start := time.Now()
 	finishing := building.Tally("finish")
-	err := s.finish(trace.With(ctx, finishing), prior, &next)
+	err := s.finish(trace.With(ctx, finishing), &next)
 	finishing.Add(time.Since(start))
 	if err != nil {
 		return nil, err

@@ -24,7 +24,7 @@ type extCopy struct {
 }
 
 func (m *Model) invitedGroup(token string) (store.Row, store.Row, bool) {
-	rcp, ok := m.recipientByToken(token)
+	rcp, ok := m.byToken("RECIPIENT", token)
 	if !ok {
 		return nil, nil, false
 	}
@@ -273,7 +273,7 @@ func (m *Model) replyRecipient(tag string) (store.Row, bool) {
 			return row, true
 		}
 	}
-	return m.recipientByToken(tag)
+	return m.byToken("RECIPIENT", tag)
 }
 
 func (iv *Invitations) replies(w http.ResponseWriter, r *http.Request) {
