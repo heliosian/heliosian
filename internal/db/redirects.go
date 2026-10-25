@@ -42,10 +42,10 @@ func redirectTo(w http.ResponseWriter, r *http.Request, to string, status int) {
 func (t activityTree) canonical(path string) string {
 	at := redirectPath(path)
 	g := t.at(at)
-	if g == nil || t.path(g) == at {
+	if g == nil || g["path"] == at {
 		return ""
 	}
-	return t.path(g)
+	return g["path"]
 }
 
 func (t activityTree) resolve(path string) store.Row {
@@ -73,7 +73,7 @@ func (t activityTree) destination(path string) string {
 			return next
 		}
 		if g := t.at(next); g != nil {
-			return t.path(g)
+			return g["path"]
 		}
 		if seen[strings.ToLower(next)] {
 			return ""

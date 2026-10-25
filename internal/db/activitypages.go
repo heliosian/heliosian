@@ -59,7 +59,7 @@ func (a *ActivityPages) PreviewHead(r *http.Request) string {
 	if first := strings.Split(strings.Trim(r.URL.Path, "/"), "/")[0]; first == "g" {
 		g = tr.resolve(r.URL.Path)
 	}
-	if g == nil || !tr.shown(g) {
+	if g == nil {
 		return a.upcomingHead(tr, origin, time.Now().In(School))
 	}
 	desc := blurb(g["description"])
@@ -77,7 +77,7 @@ func (a *ActivityPages) PreviewHead(r *http.Request) string {
 	if under := tr.lineage(g); under != "" {
 		title += " · " + under
 	}
-	return a.style.PreviewTags(title, desc, origin+tr.path(g), origin+"/open/share/"+g["id"]+".png")
+	return a.style.PreviewTags(title, desc, origin+g["path"], origin+"/open/share/"+g["id"]+".png")
 }
 
 func (a *ActivityPages) upcomingHead(tr activityTree, origin string, at time.Time) string {
@@ -112,7 +112,7 @@ func (a *ActivityPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 func (a *ActivityPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	tr := a.tree()
 	g := tr.group(strings.TrimSuffix(r.PathValue("id"), ".png"))
-	if !tr.shown(g) {
+	if !tr.isActivity(g) {
 		http.NotFound(w, r)
 		return
 	}
@@ -156,12 +156,8 @@ func (t activityTree) picture(g store.Row) (string, bool) {
 		if n["flyer"] != "" {
 			return n["flyer"], true
 		}
-		photos := t.m.Table("PHOTO").Referencing("group", n["id"])
-		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
-		for _, p := range photos {
-			if p["image"] != "" {
-				return p["image"], false
-			}
+		if image := t.m.groupPhoto(n["id"]); image != "" {
+			return image, false
 		}
 	}
 	return "", false

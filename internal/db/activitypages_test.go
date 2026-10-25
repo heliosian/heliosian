@@ -34,15 +34,17 @@ func activityPagesSample(t *testing.T) (*Store, *store.Queue, *ActivityPages, *h
 
 func TestActivityPreviews(t *testing.T) {
 	_, _, pages, mux := activityPagesSample(t)
-	type hidden struct {
+	type unlisted struct {
 		pages *ActivityPages
 		mux   *http.ServeMux
 	}
-	hiddens := []hidden{}
-	for _, cells := range []map[string]any{{"visible_to": ""}, {"status": "pending"}} {
-		s, queue, p, m := activityPagesSample(t)
-		apply(t, s, queue, []Edit{{Set: "grp00000000511", Cells: cells}})
-		hiddens = append(hiddens, hidden{p, m})
+	unlistedPages := []unlisted{}
+	for _, group := range []string{"grp00000000511", activityNight} {
+		for _, cells := range []map[string]any{{"visible_to": ""}, {"status": "pending"}, {"status": "closed"}} {
+			s, queue, p, m := activityPagesSample(t)
+			apply(t, s, queue, []Edit{{Set: group, Cells: cells}})
+			unlistedPages = append(unlistedPages, unlisted{p, m})
+		}
 	}
 	t.Chdir("../..")
 	page := []string{`og:title" content="International Night"`, `og:url" content="https://team.heliosian.com/g/international-night"`,
@@ -53,9 +55,9 @@ func TestActivityPreviews(t *testing.T) {
 		testkit.Preview{URL: "https://team.heliosian.com/my", Want: []string{`og:title" content="HCA-Team"`, `og:image" content="https://team.heliosian.com/open/share/upcoming.png"`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + activityNight + ".png", "/open/share/upcoming.png"}, "/open/share/grp00000000510.png", "/open/share/grp00000000040.png")
-	for _, h := range hiddens {
-		testkit.Previews(t, h.pages.PreviewHead, testkit.Preview{URL: "https://team.heliosian.com/g/international-night", Want: []string{`og:title" content="HCA-Team"`}, Never: []string{activityNight}})
-		testkit.Cards(t, h.mux, nil, "/open/share/"+activityNight+".png")
+	for _, p := range unlistedPages {
+		testkit.Previews(t, p.pages.PreviewHead, testkit.Preview{URL: "https://team.heliosian.com/g/international-night", Want: page})
+		testkit.Cards(t, p.mux, []string{"/open/share/" + activityNight + ".png"})
 	}
 }
 

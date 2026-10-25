@@ -17,6 +17,17 @@ import (
 	"heliosian/internal/store"
 )
 
+func (m *Model) groupPhoto(group string) string {
+	photos := m.Table("PHOTO").Referencing("group", group)
+	slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
+	for _, ph := range photos {
+		if ph["image"] != "" {
+			return ph["image"]
+		}
+	}
+	return ""
+}
+
 type madeColumn struct {
 	table, original, made string
 }

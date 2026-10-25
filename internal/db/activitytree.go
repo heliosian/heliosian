@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/cells"
 	"heliosian/internal/store"
 )
 
@@ -17,13 +16,7 @@ type activityTree struct {
 
 func (a *ActivityPages) tree() activityTree {
 	m := a.s.Model()
-	tr := activityTree{m: m, groups: m.Table("GROUP")}
-	for _, g := range tr.groups.All() {
-		if g["kind"] == "group" && g["slug"] == "everyone" {
-			tr.everyone = g["id"]
-		}
-	}
-	return tr
+	return activityTree{m: m, groups: m.Table("GROUP"), everyone: m.slugGroup("everyone")}
 }
 
 func (t activityTree) group(id string) store.Row {
@@ -83,24 +76,9 @@ func (t activityTree) shown(g store.Row) bool {
 	return true
 }
 
-func (t activityTree) path(g store.Row) string {
-	return g["path"]
-}
-
 func (t activityTree) named(key string) store.Row {
-	if g := t.group(key); t.isActivity(g) {
+	if g := t.m.sharedGroup(key); t.isActivity(g) {
 		return g
-	}
-	slug := cells.NormalizePretty(key)
-	for _, g := range t.groups.All() {
-		if g["slug"] == slug && t.isActivity(g) {
-			return g
-		}
-	}
-	if a, ok := t.m.Table("ALIAS").Find(key); ok {
-		if g := t.group(a["target"]); t.isActivity(g) {
-			return g
-		}
 	}
 	return nil
 }

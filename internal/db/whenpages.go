@@ -158,12 +158,8 @@ func (m *Model) sharedPicture(g store.Row) (string, bool) {
 	}
 	groups := m.Table("GROUP")
 	for n, ok := g, true; ok; n, ok = groups.Get(n["parent"]) {
-		photos := m.Table("PHOTO").Referencing("group", n["id"])
-		slices.SortStableFunc(photos, func(x, y store.Row) int { return store.CompareKeys(x["order"], y["order"]) })
-		for _, ph := range photos {
-			if ph["image"] != "" {
-				return ph["image"], false
-			}
+		if image := m.groupPhoto(n["id"]); image != "" {
+			return image, false
 		}
 	}
 	return whenHeader, false
