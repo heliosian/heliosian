@@ -1,0 +1,45 @@
+# Rebuild only changed tables on writes; build Who? tag menus on open
+
+byre task tskiemlnUdUtvb, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskiemlnUdUtvb in byre (GET /api/events?task_id=tskiemlnUdUtvb).
+
+## Summary
+
+Performance audit of main at a84e25e (the "Audit" workflow's Performance stage). It set out to find slowness users notice and fix the root causes.
+
+**Method.** Production's Cloud Run request log, filtered to exclude long-lived streams (MCP, the admin dashboard), showed bulk write chunks to `POST /api/q` taking 10–15 s per 20 edits (~0.5 s per edit). These were ian's STOCK migration runs. Ian's run was confirmed by the `write` log lines and memory logs. I took a read-only snapshot of production's sheets (`tools/snapshot`) and deleted it afterwards. Against it I profiled writes with a one-off under `local/writeprof`, and profiled Who?'s search box in Chrome with `local/typeprof` (chromedp CPU profile) through `startserver --snapshot --run`.
+
+**Change 1: a write rebuilds only the tables it changed** (`internal/db/store.go`, `model.go`, `consentstep.go`, `effective.go`).
+- Each edit used to rebuild every table of its spreadsheet. A STOCK edit re-checked, re-generated and re-indexed all 60k DOCUMENT rows, re-ran `checkDocuments` and compared every row in `checkReferences`, and the consent step redrew every table's view.
+- Now `Rows` remembers the stored slice it was built from (`stored`, `builtFrom`), and a part rebuild keeps the built rows of any table whose stored slice is unchanged. This is safe because plans and replays copy only the tabs they change, and every data source returns fresh rows when read.
+- The sheet checks became a `sheetChecks` table, each run only when a table it reads was rebuilt.
+- `consentStep` keeps the previous view of a table whose rows are unchanged and none of whose row IDs moved between hidden and shown; `Model.hidden` holds the previous hidden set. `viewChanges` returns at once for identical views.
+- Laptop timings on production data, before → after:
+  - STOCK edit: 420 → 7.7 ms
+  - 20-edit STOCK batch: 4.98 s → 0.155 s
+  - MEMBER edit: 58 → 8.4 ms
+  - PERSON edit: 21 → 5.9 ms
+  - wiki DOCUMENT rename: 319 → 225 ms (DOCUMENT itself still rebuilds)
+- Test `TestAWriteBuildsOnlyTheTablesItChanged` checks that tables and views are kept, that an edited table's check still refuses a bad write, and that hiding a person still hides their email. It is mutation-checked: it fails on the old code, and fails if the hidden/shown condition is removed.
+- Docs: `docs/storage.md` (Store) and `docs/datamodel.md` (Consent step).
+
+**Change 2: Who? builds a person card's tag menu when it opens, not when the card is drawn** (`web/who/tags.js`).
+- The eager menus were about 45% of the search handler's JavaScript time.
+- Every keystroke on 535 cards took 64–470 ms before and 13–25 ms after.
+- Every path that opens the menu already rendered it first. The click handler now renders before showing it.
+
+**Left out deliberately:**
+- Making DOCUMENT's own rebuild row-by-row (~225 ms remaining on DOCUMENT writes): a much bigger change.
+- A server cache for `/api/blob`: Cloud Storage fetches over 250 ms happen about twice a day, and the server keeps no cache by design.
+- Client issues found but not fixed: full model reloads after every write in Who?, When, Team and Celebrate; When's search posting on every keystroke with no debounce; Who?'s Email List grid and map rebuilt on every keystroke.
+- Server issues found but not fixed: share cards fetching and redrawing before the ETag check; Sheets writes reading the whole tab first, including the growing CHANGES log; image search making one transaction per preview.
+
+The final merge of main was clean with no conflicts. `go vet ./...` passes, and so do the db, store, mail, auth, mcp and app tests.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+The change reuses built tables and consent views when their inputs are unchanged, skips sheet checks whose inputs were not rebuilt, and avoids scanning identical views for derived-data invalidation. Tag menus now create their contents when opened. A regression test covers table reuse, email validation, and propagated hiding. Review was limited to reading code, as requested; no builds or tests were run.
+
+No significant findings.
