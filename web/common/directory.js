@@ -21,7 +21,7 @@ function all(answer, table) {
 
 async function load() {
   const [people, emails, photos, members, roles, groups] = await Promise.all([
-    q('(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc))'),
+    q('(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns name_show grade classroom department job_title pronouns phone who_href))'),
     q('(from PERSON_EMAIL (where primary) (columns person address))'),
     q('(from PHOTO (where ready) (order order asc) (columns person group))'),
     q('(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns person group))'),
