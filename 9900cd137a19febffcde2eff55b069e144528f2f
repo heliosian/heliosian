@@ -1,0 +1,50 @@
+# Fix broken logo on Helios Admin sign-in page
+
+byre task tskJXqgHPhDYMS, "admin sign-in logo", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskJXqgHPhDYMS in byre (GET /api/events?task_id=tskJXqgHPhDYMS).
+
+## Summary
+
+**Goal:** ian saw a broken "?" image instead of the logo on Helios Admin's sign-in page (admin.heliosian.com) and asked what broke.
+
+**Finding:** Nothing recent did. Every app's sign-in page (`web/templates/login.html`) loads `/brand/logo-lockup-light.png`, icons, splash screens and `/manifest.webmanifest` from `web/public/<app>/`, served without sign-in. `web/public/admin/` had never existed in git, so those paths fell through to the sign-in page HTML (curl showed `content-type: text/html` for the PNG). The designer's Admin art had been in `asset-sources/admin/exports/` since 2026-10-03, but only `web/public/common/brand/apps/admin.png` was ever cut from it.
+
+**Built:** `web/public/admin/brand/` cut from those exports with ImageMagick per `docs/brand.md`, mirroring MCP's file list and widths: favicon-16/32, icon-192/512, apple-touch-icon, maskable-icon-192/512 (mark at 62% on #0f4e54), logo-mark, logo-tile (22% rounded mask), symbol-white, logo-lockup-horizontal (horizontal teal export), logo-lockup and logo-lockup-light (vertical export, nearer those files' shape, so taller than MCP's), and all 32 splash screens. Added `web/public/admin/manifest.webmanifest` (from MCP's, named Helios Admin) and listed `admin` in `docs/brand.md`.
+
+**Decisions:** ian chose the full set over cutting only the sign-in logo. Manifest description text was the agent's own wording.
+
+**Not done:** No in-browser check of the sign-in page; production shows the fix only after deploy.
+
+## Reviews
+
+### Snapshot #2, reviewer "",  : skipped
+
+### Snapshot #4, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds the missing Admin brand assets used by the shared sign-in page, including its logo, favicons, home-screen icons and device splash screens. Adds an Admin web app manifest and lists Admin among the documented brand sources. Read-only checks confirmed that the sign-in asset references exist and the splash-screen and manifest image dimensions match their declarations; no builds were run.
+
+No significant findings.
+
+## Decisions
+
+### Nothing recent broke this — Helios Admin's sign-in page has never had its logo. Shall I cut Admin's brand files from the designer's exports so the sign-in page, favicon and home-screen icon work?
+
+**What's happening.** Every app's sign-in page is one template (`web/templates/login.html`) that shows `<img src="/brand/logo-lockup-light.png" alt="Helios Admin">`. An app's public files come from `web/public/<app>/` (served before sign-in). There is no `web/public/admin/` folder in git, and there never has been (`git log --all -- web/public/admin` is empty). So on admin.heliosian.com, `/brand/logo-lockup-light.png` falls through to the sign-in page itself:
+
+```
+$ curl -sI https://admin.heliosian.com/brand/logo-lockup-light.png
+HTTP/2 200
+content-type: text/html; charset=utf-8
+content-length: 8770        <- the sign-in page, not a PNG
+```
+
+The same is true of Admin's `/brand/icon-192.png`, favicons, splash screens and `/manifest.webmanifest`. You're normally signed in to Admin, so you'd only see it when the session lapses. Today's merges (a1b3d07, e644de6, 134a42a, 417eba6) don't touch this.
+
+**What exists.** The designer's Admin art is already in the repo: `asset-sources/admin/exports/` holds `app icon.png`, `favicon.png`, `horizontal - teal/white.png`, `vertical - teal/white.png` and `symbol_white.png` (added 2026-10-03, updated 2026-10-05). Only `web/public/common/brand/apps/admin.png`, the mark in the app switch, was ever cut from them.
+
+- (*) Cut the full set
+  Create `web/public/admin/brand/` with the same files and widths as `web/public/mcp/brand/` (`favicon-16/32.png`, `icon-192/512.png`, `apple-touch-icon.png`, `maskable-icon-192/512.png`, `logo-mark.png`, `logo-tile.png`, `logo-lockup.png`, `logo-lockup-light.png`, `logo-lockup-horizontal.png`, `symbol-white.png`, and `splash/` with every size the template lists), cut per `docs/brand.md` with ImageMagick (I'll `brew install imagemagick`), plus `web/public/admin/manifest.webmanifest` copied from MCP's with the name "Helios Admin". Add `admin` to the app list in `docs/brand.md`. On the sign-in page, the "?" box becomes the white Admin vertical lockup, like every other app's. Then it needs a deploy to show on production.
+- ( ) Only the sign-in logo
+  Cut just `web/public/admin/brand/logo-lockup-light.png`. The broken box goes away, but the favicon, home-screen icon, splash screens and manifest stay missing.
+
+ian@fc.run chose: Cut the full set
