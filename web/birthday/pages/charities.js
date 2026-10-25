@@ -1,5 +1,5 @@
 import {state, staffPath, isAdmin} from '../state.js';
-import {pageHead} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {el, link, svg, button} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';

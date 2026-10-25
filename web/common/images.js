@@ -1,4 +1,4 @@
-import {openCropTool} from '/crop.js';
+import {openImageCrop} from '/crop.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
 import {el, svg, toast} from '/elements.js';
@@ -210,10 +210,7 @@ export function imageTools(apiBase, {state}) {
       show('');
       changed();
     });
-    crop.addEventListener('click', () => openCropTool(preview.src, false, async blob => {
-      await upload(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-      return true;
-    }));
+    crop.addEventListener('click', () => openImageCrop(preview.src, upload));
     const find = el('button', 'button button-secondary button-small image-find', 'Find an image');
     find.type = 'button';
     find.hidden = plain || !imageSearchOn();

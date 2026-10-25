@@ -50,7 +50,3 @@ export function categoryMark(name) {
   node.setAttribute('aria-hidden', 'true');
   return node;
 }
-
-export function displayURL(url) {
-  return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-}

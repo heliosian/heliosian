@@ -1,4 +1,5 @@
-import {parseWhen} from '/datecard.js';
+import {rowsOf} from '/rail.js';
+import {availabilityOf} from '/calendar.js';
 
 const upcoming = '(= kind "party") (not (in status "closed" "pending")) (not (blank visible_to)) (not (blank start)) (or (>= start today) (>= end today))';
 
@@ -11,25 +12,6 @@ export const partyQueries = {
 };
 
 const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out'};
-
-function rows(data, name, table) {
-  return data[name].result.map(id => data[name].resources[table][id]);
-}
-
-function availabilityOf(g, sold, now) {
-  const last = parseWhen(g.end || g.start);
-  if (last && last.date < now) {
-    return 'past';
-  }
-  if (g.status !== 'open' || !g.visible_to || g.join !== 'direct') {
-    return 'closed';
-  }
-  const capacity = Number(g.capacity) || 0;
-  if (!capacity || sold < capacity) {
-    return 'available';
-  }
-  return g.waitlist ? 'waitlist' : 'sold-out';
-}
 
 function joinNames(names) {
   if (names.length < 2) {
@@ -62,23 +44,23 @@ export function partiesWidget(data) {
   const now = new Date();
   const viewer = data.partyViewer.result[0];
   const first = {};
-  for (const p of [...rows(data, 'partyHousehold', 'PERSON'), ...rows(data, 'partyViewer', 'PERSON')]) {
+  for (const p of [...rowsOf(data.partyHousehold, 'PERSON'), ...rowsOf(data.partyViewer, 'PERSON')]) {
     first[p.id] = p.id === viewer ? 'You' : p.name_short;
   }
   const holderOf = m => [m.person, m.guest_of, m.added_by].find(id => id && first[id]) || '';
   const members = {};
-  for (const m of rows(data, 'partyTickets', 'MEMBER')) {
+  for (const m of rowsOf(data.partyTickets, 'MEMBER')) {
     (members[m.group] = members[m.group] || []).push(m);
   }
   const picture = {};
-  for (const ph of rows(data, 'partyPhotos', 'PHOTO')) {
+  for (const ph of rowsOf(data.partyPhotos, 'PHOTO')) {
     picture[ph.group] = picture[ph.group] || ph.id;
   }
   const circle = list => {
     const who = [...new Set(list.map(holderOf).filter(Boolean).map(id => first[id]))];
     return who.includes('You') ? ['You', ...who.filter(n => n !== 'You')] : who;
   };
-  return rows(data, 'parties', 'GROUP').map(g => {
+  return rowsOf(data.parties, 'GROUP').map(g => {
     const tickets = members[g.id] || [];
     const availability = availabilityOf(g, tickets.length, now);
     const going = circle(tickets);

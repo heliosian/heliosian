@@ -1,6 +1,6 @@
 import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf} from '../state.js';
-import {selectPill} from '../dom.js';
 import {el, svg} from '/elements.js';
+import {selectPill} from '/form.js';
 import {tabStrip} from '/tabs.js';
 import {inTab, listTabs, listPath, listTab, listCategory, searchParties} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';

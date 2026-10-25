@@ -5,7 +5,8 @@ import {myFamily} from '../families.js';
 import {personByKey, photoOrInitials, personPhotoUrl, roleWithPronouns, gradeChain} from '../people.js';
 import {familyPhotoNeedsUpdate, staleItems, todoChecklist} from '../stale.js';
 import {saveCells, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
-import {openPhotoLightbox, cropBadge, cropped, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
+import {cropBadge, cropped, familyPhotoMenu, togglePhotoMenu} from '../photos.js';
+import {openPhotoLightbox} from '/crop.js';
 import {fromURL, peopleCrumbs, listedFrom, breadcrumbs} from '../crumbs.js';
 import {render, notFound, trail} from '/router.js';
 

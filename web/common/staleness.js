@@ -1,12 +1,8 @@
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 
 const personColumns = 'name_show name_short photo_updated facts facts_updated';
 
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
-
-function agedPast(updated, years) {
+export function agedPast(updated, years) {
   const when = Date.parse(updated);
   return Number.isNaN(when) || Date.now() - when > years * 365.25 * 24 * 60 * 60 * 1000;
 }

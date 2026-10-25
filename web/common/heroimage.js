@@ -1,4 +1,4 @@
-import {openCropTool, openPhotoLightbox} from '/crop.js';
+import {openImageCrop, openPhotoLightbox} from '/crop.js';
 import {el, svg, toast, imageThumb, copyText} from '/elements.js';
 
 function heroButton(icon, label, onClick) {
@@ -83,10 +83,7 @@ export function heroImageBar({image, imageUrl, query, tools, save}) {
     item('search', 'Find an image', () => tools.openImageSearch(query, picked => save(picked.name)));
   }
   if (image) {
-    item('crop', 'Crop', () => openCropTool(imageUrl, false, async blob => {
-      await put(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
-      return true;
-    }));
+    item('crop', 'Crop', () => openImageCrop(imageUrl, put));
     item('trash', 'Remove', () => save(''));
   }
   toggle.addEventListener('click', ev => {

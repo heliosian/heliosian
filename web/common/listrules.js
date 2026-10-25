@@ -1,6 +1,6 @@
 import {el, button, iconButton} from '/elements.js';
 import {select as selectInput, text as textInput} from '/form.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 
 const whoWords = {'': 'the people', parents: 'their parents', children: 'their children', household: 'their households'};
 
@@ -14,10 +14,6 @@ let names = {group: () => null, person: () => ''};
 
 export function nameRulesWith(lookup) {
   names = lookup;
-}
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
 }
 
 export async function ruleChoices() {

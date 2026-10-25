@@ -1,5 +1,5 @@
 import {state, stageName, stageClass, isUnassigned, matches, staffPath, tableDate, weekday, team} from '../state.js';
-import {pageHead} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {assignToMe} from '../edit.js';

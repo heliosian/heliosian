@@ -18,6 +18,10 @@ export function link(href, className, text) {
   return node;
 }
 
+export function badge(text, kind) {
+  return el('span', 'badge ' + (kind || ''), text);
+}
+
 const paths = {
   activity: 'M18 8h1a4 4 0 0 1 0 8h-1M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8zM6 1v3M10 1v3M14 1v3',
   archive: 'M3 4h18v4H3zM5 8v12h14V8M10 12h4',

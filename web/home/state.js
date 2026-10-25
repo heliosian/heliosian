@@ -1,8 +1,8 @@
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 import {teamQueries, teamWidget} from './team.js';
 import {partyQueries, partiesWidget} from './parties.js';
 import {birthdayWork} from '/birthdays.js';
-import {loadCalendar, buildCalendar, builtinWords, wordsFor, wordsCondition, matchingQuery, roomsOn, rowsOf, by} from '/calendar.js';
+import {loadCalendar, buildCalendar, builtinWords, wordsFor, wordsCondition, matchingQuery, roomsOn, by} from '/calendar.js';
 
 export const state = {model: null};
 

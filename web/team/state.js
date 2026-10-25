@@ -1,6 +1,6 @@
 import {parseWhen} from '/datecard.js';
 import {api} from '/api.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 import {directory, emailOf, photoOf} from '/directory.js';
 
 export const state = {model: null, showPrevious: false, showHidden: false, year: '', category: ''};
@@ -13,14 +13,6 @@ const addingWords = {anyone: ADDING.yes, approval: ADDING.approval, managers: AD
 
 export function addingValue(words) {
   return Object.keys(addingWords).find(k => addingWords[k] === words) || 'managers';
-}
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
 }
 
 function schoolYears(now) {

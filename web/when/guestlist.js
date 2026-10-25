@@ -1,6 +1,6 @@
 import {api} from '/api.js';
 import {postFlyer} from '/images.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf, write} from '/rail.js';
 import {directory, listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff} from '/directory.js';
 import {nameRulesWith, ruleOf, ruleRow} from '/listrules.js';
 import {keyBetween} from '/order.js';
@@ -9,14 +9,6 @@ import {state, me, isParty} from './state.js';
 const names = {groups: {}, people: {}};
 
 nameRulesWith({group: id => names.groups[id] || null, person: id => names.people[id] || 'Someone'});
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
-
-function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
 
 function stamp() {
   const d = new Date();

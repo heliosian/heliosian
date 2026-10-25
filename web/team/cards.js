@@ -1,8 +1,7 @@
 import {state, me, family, whenParts, coChairs, shownVolunteers, descendants, canJoin, mySignUp, signUpOf, rootOf, parentOf, category} from './state.js';
 import {plain} from '/markdown.js';
 import {parseWhen} from '/datecard.js';
-import {badge} from './dom.js';
-import {el, link, svg, imageThumb, button} from '/elements.js';
+import {el, link, svg, imageThumb, button, badge} from '/elements.js';
 import {openSignUp} from './edit.js';
 import {navigate} from '/router.js';
 import {roleTag} from '/people.js';

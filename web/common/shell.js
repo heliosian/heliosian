@@ -116,6 +116,19 @@ export function setTitle(title) {
   document.title = title === app.name ? title : `${title} · ${app.name}`;
 }
 
+export function pageHead(title, actions) {
+  const head = el('div', 'page-head');
+  const main = el('div', 'page-head-main');
+  main.append(el('h1', 'page-title', title));
+  head.append(main);
+  if (actions && actions.length) {
+    const wrap = el('div', 'page-actions');
+    wrap.append(...actions);
+    head.append(wrap);
+  }
+  return head;
+}
+
 export function syncViewportHeight() {
   const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   const height = standalone ? screen.height : window.innerHeight;

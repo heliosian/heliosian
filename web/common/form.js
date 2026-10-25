@@ -57,6 +57,14 @@ export function fillSelect(input, options, value) {
   }
 }
 
+export function selectPill(icon, options, value, onPick) {
+  const wrap = el('label', 'select-pill');
+  const input = select(options.map(o => ({label: o.label, value: o.key})), value);
+  input.addEventListener('change', () => onPick(input.value));
+  wrap.append(svg(icon), input, svg('chevron-down'));
+  return wrap;
+}
+
 export function checkbox(label, checked, hint) {
   const wrap = el('label', 'field field-toggle');
   const input = el('input');

@@ -1,7 +1,8 @@
 import {el, svg} from '/elements.js';
 import {load} from '/router.js';
 import {api} from '/api.js';
-import {write, today} from './state.js';
+import {today} from './state.js';
+import {write} from '/rail.js';
 import {keyBetween} from '/order.js';
 
 function failed(status, err) {

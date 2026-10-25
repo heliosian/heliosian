@@ -1,19 +1,10 @@
-import {api} from '/api.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 import {directory, emailOf, photoOf} from '/directory.js';
 import {birthdayTeam, birthdaySchoolYear, stageOf, urgencyOf, levels, staffPathOf} from '/birthdays.js';
 
 export const state = {model: null};
 
 const byHandle = new Map();
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
 
 export const levelValues = {'Skip': 'skip', 'No Newsletter': 'no_newsletter'};
 

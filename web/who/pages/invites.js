@@ -1,4 +1,5 @@
-import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId, q, rowsOf, write} from '../state.js';
+import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId} from '../state.js';
+import {q, rowsOf, write} from '/rail.js';
 import {firstName, lastName, hue} from '../dom.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';

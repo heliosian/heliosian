@@ -1,4 +1,4 @@
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 
 export const birthdayTeam = 'bday';
 
@@ -77,10 +77,6 @@ export const levels = {skip: 'Skip', no_newsletter: 'No Newsletter'};
 
 export function staffPathOf(p) {
   return `/staff/${encodeURIComponent(p.slug || p.id)}`;
-}
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
 }
 
 function day(d) {

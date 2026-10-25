@@ -1,23 +1,7 @@
-import {signedIn} from '/api.js';
+import {q, rowsOf, all} from '/rail.js';
 
 let asked = null;
 let index = null;
-
-async function q(text) {
-  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'text/plain'}, body: text}));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
-}
-
-function rows(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
-
-function all(answer, table) {
-  return Object.values(answer.resources[table] || {});
-}
 
 async function load() {
   const [people, emails, photos, members, roles, groups] = await Promise.all([
@@ -29,7 +13,7 @@ async function load() {
     q('(from GROUP (where (in kind "grade" "classroom" "department")) (columns kind name slug))'),
   ]);
   const out = {
-    people: rows(people, 'PERSON'),
+    people: rowsOf(people, 'PERSON'),
     byId: {},
     byEmail: {},
     email: {},
@@ -48,7 +32,7 @@ async function load() {
       out.byEmail[e.address] = out.byId[e.person];
     }
   }
-  for (const ph of rows(photos, 'PHOTO')) {
+  for (const ph of rowsOf(photos, 'PHOTO')) {
     const of = ph.person || ph.group;
     out.photo[of] = out.photo[of] || `/api/blob/${ph.id}/thumbnail`;
   }

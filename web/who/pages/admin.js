@@ -1,4 +1,5 @@
-import {model, q, rowsOf, write} from '../state.js';
+import {model} from '../state.js';
+import {q, rowsOf, write, all} from '/rail.js';
 import {el} from '/elements.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {api} from '/api.js';
@@ -16,10 +17,6 @@ function byId(rows) {
     out[r.id] = r;
   }
   return out;
-}
-
-function all(answer, table) {
-  return Object.values(answer.resources[table] || {});
 }
 
 async function fetchState() {

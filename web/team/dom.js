@@ -3,14 +3,6 @@ import {parseWhen} from '/datecard.js';
 import {whenPickers} from '/form.js';
 import {el, svg} from '/elements.js';
 
-export function badge(text, kind) {
-  return el('span', 'badge ' + (kind || ''), text);
-}
-
-export function displayURL(url) {
-  return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-}
-
 export function searchBox(placeholder, onInput) {
   const box = el('div', 'search');
   const input = el('input');
@@ -19,21 +11,6 @@ export function searchBox(placeholder, onInput) {
   input.addEventListener('input', () => onInput(input.value.trim().toLowerCase()));
   box.append(svg('search'), input);
   return box;
-}
-
-export function selectPill(icon, options, value, onPick) {
-  const wrap = el('label', 'select-pill');
-  wrap.append(svg(icon));
-  const select = el('select');
-  for (const o of options) {
-    const opt = el('option', '', o.label);
-    opt.value = o.key;
-    opt.selected = o.key === value;
-    select.append(opt);
-  }
-  select.addEventListener('change', () => onPick(select.value));
-  wrap.append(select, svg('chevron-down'));
-  return wrap;
 }
 
 export function treeFilter(node, below, onChange, start) {

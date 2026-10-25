@@ -1,6 +1,18 @@
 import {el, svg, link} from '/elements.js';
 import {appOrigin, currentApp} from '/appswitch.js';
-import {signedIn} from '/api.js';
+import {api, signedIn} from '/api.js';
+
+export function write(batch) {
+  return api('POST', '/api/q', {batch});
+}
+
+export async function q(text) {
+  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'text/plain'}, body: text}));
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.json();
+}
 
 export async function queries(named) {
   const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
@@ -83,11 +95,11 @@ export function navQueries() {
   };
 }
 
-function rowsOf(answer, table) {
+export function rowsOf(answer, table) {
   return answer.result.map(id => answer.resources[table][id]);
 }
 
-function all(answer, table) {
+export function all(answer, table) {
   return Object.values(answer.resources[table] || {});
 }
 

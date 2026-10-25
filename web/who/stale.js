@@ -2,11 +2,7 @@ import {staleYears, viewer, isStudent, isStaff, isParent, familyOf, adultsOf, ki
 import {firstName, infoBanner} from './dom.js';
 import {el, svg, link} from '/elements.js';
 import {uploadPhoto} from './edit.js';
-
-function agedPast(updated, years) {
-  const when = Date.parse(updated);
-  return Number.isNaN(when) || Date.now() - when > years * 365.25 * 24 * 60 * 60 * 1000;
-}
+import {agedPast} from '/staleness.js';
 
 export function monthYear(dateStr) {
   const when = Date.parse(dateStr);

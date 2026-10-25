@@ -1,4 +1,5 @@
-import {state, me, allows, longDate, whenLabel, years, allYears, activity, parentOf, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, isFamily, selectedYear, write} from './state.js';
+import {state, me, allows, longDate, whenLabel, years, allYears, activity, parentOf, ADDING, category as categoryOf, descendants, rootOf, eventCategories, headingChoices, isFamily, selectedYear} from './state.js';
+import {write} from '/rail.js';
 import * as writes from './writes.js';
 
 import {whenEditor, treeFilter} from './dom.js';

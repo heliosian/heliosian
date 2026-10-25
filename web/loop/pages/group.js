@@ -1,12 +1,11 @@
-import {state, person, personView, loadModel, write, rowsOf, domain} from '../state.js';
-import {queries, sourceLine} from '/rail.js';
+import {state, person, personView, loadModel, domain} from '../state.js';
+import {queries, sourceLine, write, rowsOf} from '/rail.js';
 import {csvField} from '/datagrid.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
-import {pageHead} from '../dom.js';
 import {visibilityWords} from './groups.js';
 import {el, svg, button, iconButton, copyText, toast} from '/elements.js';
 import {plain} from '/markdown.js';
-import {setTitle} from '/shell.js';
+import {setTitle, pageHead} from '/shell.js';
 import {api} from '/api.js';
 import {load, navigate} from '/router.js';
 import {openLayer, popup} from '/modal.js';

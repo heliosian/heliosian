@@ -1,6 +1,6 @@
-import {api, signedIn} from '/api.js';
+import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
-import {tagCondition, navQueries, listKinds, today, datedFrom, liveLists, queries, fetchGroups} from '/rail.js';
+import {tagCondition, navQueries, listKinds, today, datedFrom, liveLists, queries, fetchGroups, q, rowsOf, all} from '/rail.js';
 
 export {today};
 
@@ -43,26 +43,6 @@ let geocodes = {};
 let familiesByPerson = {};
 let membersByGroup = {};
 let roles = {students: new Set(), parents: new Set(), staff: new Set()};
-
-export async function q(text) {
-  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'text/plain'}, body: text}));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  return res.json();
-}
-
-export function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
-
-function all(answer, table) {
-  return Object.values(answer.resources[table] || {});
-}
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
 
 export function tagKey(id) {
   return 'tag:' + id;

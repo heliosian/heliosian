@@ -1,4 +1,5 @@
-import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, write, celebration, category, categoriesOf} from './state.js';
+import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, celebration, category, categoriesOf} from './state.js';
+import {write} from '/rail.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, known, personByEmail, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';

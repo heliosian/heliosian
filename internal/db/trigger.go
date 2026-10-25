@@ -45,10 +45,10 @@ var stagedTriggers = []stagedTrigger{
 // Staged before the row's own delete; a blank table is every table.
 var deleteTriggers = []stagedTrigger{
 	{fire: aliasesGone},
-	{table: "DOCUMENT", fire: toDosGone},
-	{table: "DOCUMENT", fire: linksGone},
-	{table: "DOCUMENT", fire: photosGone},
-	{table: "TODO", fire: marksGone},
+	{table: "DOCUMENT", fire: deleteReferencing("TODO", "document")},
+	{table: "DOCUMENT", fire: deleteReferencing("DOCUMENT_GROUP", "document")},
+	{table: "DOCUMENT", fire: deleteReferencing("PHOTO", "document")},
+	{table: "TODO", fire: deleteReferencing("TODO_MARK", "todo")},
 }
 
 var committedTriggers = []committedTrigger{
@@ -288,28 +288,14 @@ func hiddenGone(m *Model, c Change) ([]Edit, error) {
 	return append(writes, Edit{Delete: c.Old["hidden_for"]}), nil
 }
 
-func toDosGone(m *Model, c Change) ([]Edit, error) {
-	writes := []Edit{}
-	for _, row := range m.Table("TODO").Referencing("document", c.Old["id"]) {
-		writes = append(writes, Edit{Delete: row["id"]})
+func deleteReferencing(table, column string) func(*Model, Change) ([]Edit, error) {
+	return func(m *Model, c Change) ([]Edit, error) {
+		writes := []Edit{}
+		for _, row := range m.Table(table).Referencing(column, c.Old["id"]) {
+			writes = append(writes, Edit{Delete: row["id"]})
+		}
+		return writes, nil
 	}
-	return writes, nil
-}
-
-func linksGone(m *Model, c Change) ([]Edit, error) {
-	writes := []Edit{}
-	for _, row := range m.Table("DOCUMENT_GROUP").Referencing("document", c.Old["id"]) {
-		writes = append(writes, Edit{Delete: row["id"]})
-	}
-	return writes, nil
-}
-
-func marksGone(m *Model, c Change) ([]Edit, error) {
-	writes := []Edit{}
-	for _, row := range m.Table("TODO_MARK").Referencing("todo", c.Old["id"]) {
-		writes = append(writes, Edit{Delete: row["id"]})
-	}
-	return writes, nil
 }
 
 func aliasesGone(m *Model, c Change) ([]Edit, error) {
@@ -475,14 +461,6 @@ func madeNotMade(_ *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	return []Edit{{Set: c.New["id"], Cells: blank}}, nil
-}
-
-func photosGone(m *Model, c Change) ([]Edit, error) {
-	out := []Edit{}
-	for _, row := range m.Table("PHOTO").Referencing("document", c.Old["id"]) {
-		out = append(out, Edit{Delete: row["id"]})
-	}
-	return out, nil
 }
 
 func unchecked(*Model, Change) error {

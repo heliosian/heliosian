@@ -160,10 +160,7 @@ func (mm *MembershipMailer) tickets(ctx context.Context, m *Model, g store.Row, 
 		to = append(without(m.withParents(holders[0]), payer), payer)
 	}
 	l := mm.partyLetter(m, g)
-	hi := "Hi"
-	if first := m.firstName(to[0]); first != "" {
-		hi += " " + first
-	}
+	hi := m.greeting(to[0])
 	by := ""
 	switch {
 	case !billed && actor != "":
@@ -237,10 +234,7 @@ func (mm *MembershipMailer) waiting(ctx context.Context, m *Model, g store.Row, 
 	hosts := m.hostsOfParty(g)
 	note := changes[0].note
 	l := mm.partyLetter(m, g)
-	hi := "Hi"
-	if first := m.firstName(asker); first != "" {
-		hi += " " + first
-	}
+	hi := m.greeting(asker)
 	l.Heading = "You're on the waitlist"
 	l.Intro = fmt.Sprintf("%s - %s is full, so your family is on its waitlist for %d %s. Nothing is billed unless a place opens up; the hosts give places as they do, and you'll get a note when it happens.", hi, g["name"], n, tickets)
 	l.Rows = [][2]string{{"Waitlist", fmt.Sprintf("%d %s", n, tickets)}}

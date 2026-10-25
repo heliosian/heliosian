@@ -1,7 +1,6 @@
-import {api} from '/api.js';
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
-import {navQueries, navLists, viewerListCondition, listIncludes, listKinds, queries, fetchGroups} from '/rail.js';
+import {navQueries, navLists, viewerListCondition, listIncludes, listKinds, queries, fetchGroups, rowsOf} from '/rail.js';
 import {nameRulesWith} from '/listrules.js';
 
 nameRulesWith({group: id => state.model.groupNames[id] || null, person: id => personView(id).name});
@@ -12,14 +11,6 @@ export const state = {model: null, people: []};
 
 let byId = {};
 let bySlug = {};
-
-export function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
 
 const lists = `(select GROUP.id @g ${viewerListCondition})`;
 

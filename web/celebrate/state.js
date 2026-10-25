@@ -1,6 +1,7 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {api} from '/api.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
+import {availabilityOf} from '/calendar.js';
 import {directory, emailOf, photoOf, isStudent, isParent, isStaff, gradeOf, relativesOf} from '/directory.js';
 import {chipsOf, withoutChips, plain} from '/markdown.js';
 
@@ -11,10 +12,6 @@ export function familyShown(p) {
 }
 
 const byId = new Map();
-
-function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
 
 function groupBy(rows, key) {
   const out = {};
@@ -38,21 +35,6 @@ export function summaryOf(description) {
 
 function linksOf(markdown) {
   return [...(markdown || '').matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)].map(m => ({text: m[1], url: m[2]}));
-}
-
-function availabilityOf(g, sold, now) {
-  const last = parseWhen(g.end || g.start);
-  if (last && last.date < now) {
-    return 'past';
-  }
-  if (g.status !== 'open' || !g.visible_to || g.join !== 'direct') {
-    return 'closed';
-  }
-  const capacity = Number(g.capacity) || 0;
-  if (!capacity || sold < capacity) {
-    return 'available';
-  }
-  return g.waitlist ? 'waitlist' : 'sold-out';
 }
 
 export async function loadModel() {
@@ -265,10 +247,6 @@ function applyModel(model) {
   if (!state.celebration || !model.celebrations.some(c => c.id === state.celebration)) {
     state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].id : '');
   }
-}
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
 }
 
 export function me() {

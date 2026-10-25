@@ -1,10 +1,10 @@
-import {state, tags, lists, listAt, byId, tagKey, viewerId, write, q, rowsOf, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
+import {state, tags, lists, listAt, byId, tagKey, viewerId, tagPeople, tagManagers, groupPath, loadMembers} from './state.js';
 import {loadLastTag, saveLastTag, loadTagUsage, recordTagUsage} from './storage.js';
 import {firstName} from './dom.js';
 import {el, svg} from '/elements.js';
 import {photoOrInitials, personPhotoUrl} from './people.js';
 import {clampFilterPanel} from '/rules.js';
-import {groupApp} from '/rail.js';
+import {groupApp, write, q, rowsOf} from '/rail.js';
 import {createPersonPicker} from '/picker.js';
 import {listed} from '/directory.js';
 import {navigate, render as renderPage} from '/router.js';

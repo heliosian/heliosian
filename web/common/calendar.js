@@ -1,13 +1,9 @@
-import {queries} from '/rail.js';
-import {api} from '/api.js';
+import {queries, rowsOf, write} from '/rail.js';
+import {parseWhen} from '/datecard.js';
 
 export const eventKinds = '(in kind "event" "party" "activity")';
 
 const dayRoles = {'Regular': 'regular', 'No School': 'no-school', 'Early Dismissal': 'early-dismissal'};
-
-export function rowsOf(answer, table) {
-  return answer.result.map(id => answer.resources[table][id]);
-}
 
 export function by(rows, key) {
   const out = {};
@@ -30,6 +26,21 @@ function datesBetween(start, end) {
     out.push(d);
   }
   return out;
+}
+
+export function availabilityOf(g, sold, now) {
+  const last = parseWhen(g.end || g.start);
+  if (last && last.date < now) {
+    return 'past';
+  }
+  if (g.status !== 'open' || !g.visible_to || g.join !== 'direct') {
+    return 'closed';
+  }
+  const capacity = Number(g.capacity) || 0;
+  if (!capacity || sold < capacity) {
+    return 'available';
+  }
+  return g.waitlist ? 'waitlist' : 'sold-out';
 }
 
 function namesWords(names) {
@@ -274,7 +285,7 @@ export async function answerEvent(e, word, viewer) {
     batch.push({insert: 'MEMBER', row: {group: e.groups[answerGroups[word]], person: viewer, member: 'yes', added_by: viewer}});
   }
   if (batch.length) {
-    await api('POST', '/api/q', {batch});
+    await write(batch);
   }
 }
 

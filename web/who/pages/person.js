@@ -5,7 +5,8 @@ import {el, svg, link, iconLink, editToggle} from '/elements.js';
 import {personByKey, baseRole, gradeChain, photoOrInitials, formatPronouns, familyPhoto} from '../people.js';
 import {photoNeedsUpdate, factsNeedUpdate, staleItems, todoChecklist, monthYear} from '../stale.js';
 import {saveCells, namesFor, editPencil, fieldEditor, uploadIcon, uploadPhoto, pronounceEditor} from '../edit.js';
-import {openPhotoLightbox, cropBadge, cropped, photoMenu, togglePhotoMenu, photoGrid} from '../photos.js';
+import {cropBadge, cropped, photoMenu, togglePhotoMenu, photoGrid} from '../photos.js';
+import {openPhotoLightbox} from '/crop.js';
 import {fromCrumbs, breadcrumbs} from '../crumbs.js';
 import {familyCard} from './family.js';
 

@@ -189,6 +189,13 @@ func (m *Model) firstName(person string) string {
 	return ""
 }
 
+func (m *Model) greeting(person string) string {
+	if first := m.firstName(person); first != "" {
+		return "Hi " + first
+	}
+	return "Hi"
+}
+
 func (m *Model) signUpRows(change placeChange) [][2]string {
 	rows := [][2]string{{"Who", m.nameOf(change.person)}}
 	if change.note != "" {
@@ -235,10 +242,10 @@ func (m *Model) membersOf(group string) []string {
 	return out
 }
 
-func (m *Model) managersAbove(g store.Row) []string {
+func (m *Model) membersIn(groups []store.Row, column string) []string {
 	out := []string{}
-	for _, row := range m.activities(g) {
-		for _, p := range m.membersOf(row["managed_by"]) {
+	for _, row := range groups {
+		for _, p := range m.membersOf(row[column]) {
 			if !slices.Contains(out, p) {
 				out = append(out, p)
 			}
@@ -247,16 +254,12 @@ func (m *Model) managersAbove(g store.Row) []string {
 	return out
 }
 
+func (m *Model) managersAbove(g store.Row) []string {
+	return m.membersIn(m.activities(g), "managed_by")
+}
+
 func (m *Model) notified(g store.Row) []string {
-	out := []string{}
-	for _, row := range m.chain(g) {
-		for _, p := range m.membersOf(row["notify"]) {
-			if !slices.Contains(out, p) {
-				out = append(out, p)
-			}
-		}
-	}
-	return out
+	return m.membersIn(m.chain(g), "notify")
 }
 
 func without(people []string, drop ...string) []string {
@@ -358,10 +361,7 @@ func (mm *MembershipMailer) calendar(e mail.Event, method string) mail.Attachmen
 func (mm *MembershipMailer) thank(ctx context.Context, m *Model, g store.Row, change placeChange) {
 	chairs := without(m.managersAbove(g), change.person)
 	l := mm.letter(m, g)
-	hi := "Hi"
-	if first := m.firstName(change.person); first != "" {
-		hi += " " + first
-	}
+	hi := m.greeting(change.person)
 	by := ""
 	if change.actor != "" && change.actor != change.person {
 		by = fmt.Sprintf(" %s signed you up.", m.nameOf(change.actor))
@@ -416,10 +416,7 @@ func (mm *MembershipMailer) removed(ctx context.Context, m *Model, g store.Row, 
 func (mm *MembershipMailer) leads(ctx context.Context, m *Model, g store.Row, change placeChange) {
 	others := without(m.managersAbove(g), change.person)
 	l := mm.letter(m, g)
-	hi := "Hi"
-	if first := m.firstName(change.person); first != "" {
-		hi += " " + first
-	}
+	hi := m.greeting(change.person)
 	l.Heading = "You're a co-chair of " + g["name"]
 	l.Intro = fmt.Sprintf("%s - %s made you a co-chair. You can now edit the page, add things under it, and see and manage everyone who signs up.", hi, m.nameOf(change.actor))
 	if len(others) > 0 {

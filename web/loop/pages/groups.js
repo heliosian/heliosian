@@ -1,5 +1,5 @@
 import {state, domain} from '../state.js';
-import {pageHead} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {shown, groupFilters} from '../filters.js';
 import {el, svg, link, iconButton, copyText} from '/elements.js';
 import {plain} from '/markdown.js';

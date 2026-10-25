@@ -163,15 +163,7 @@ func (m *Model) householdOf(person string) []string {
 }
 
 func (m *Model) hostsOf(g store.Row) []string {
-	out := []string{}
-	for _, row := range m.chain(g) {
-		for _, p := range m.membersOf(row["managed_by"]) {
-			if !slices.Contains(out, p) {
-				out = append(out, p)
-			}
-		}
-	}
-	return out
+	return m.membersIn(m.chain(g), "managed_by")
 }
 
 func (m *Model) onList(g store.Row, person string) bool {

@@ -186,18 +186,7 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		name, whole = m.groupPhoto(g["id"]), false
 	}
 	day, hours := whenLines(g)
-	parts := []string{g["name"], g["subtitle"], day, hours, g["location"], name, cardWhole(whole)}
-	if p.style.Answered(w, r, parts...) {
-		return
-	}
-	picture := m.cardPicture(r.Context(), p.bucket, "party pages", g, name)
-	card := sharecard.Card{
-		Title: g["name"], Subtitle: g["subtitle"], Picture: picture, Whole: whole,
-		Lines: whenCardLines(day, hours, g["location"]),
-	}
-	if name != "" && len(picture) == 0 {
-		p.style.ServeOnce(w, r, card, parts...)
-		return
-	}
-	p.style.Serve(w, r, card, parts...)
+	load := func() ([]byte, error) { return m.cardPicture(r.Context(), p.bucket, "party pages", g, name), nil }
+	card := sharecard.Card{Title: g["name"], Subtitle: g["subtitle"], Lines: whenCardLines(day, hours, g["location"])}
+	serveGroupCard(w, r, p.style, card, name, whole, load, g["name"], g["subtitle"], day, hours, g["location"])
 }

@@ -1,4 +1,5 @@
-import {state, me, activity, category, descendants, yearGroup, addingValue, write, formatWhen} from './state.js';
+import {state, me, activity, category, descendants, yearGroup, addingValue, formatWhen} from './state.js';
+import {write} from '/rail.js';
 import {known} from '/directory.js';
 import {keyBetween} from '/order.js';
 import {picked, postPhoto, postFlyer} from '/images.js';

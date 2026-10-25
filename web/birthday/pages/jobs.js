@@ -1,5 +1,5 @@
 import {state, mine, matches} from '../state.js';
-import {pageHead} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {el} from '/elements.js';
 import {tabStrip} from '/tabs.js';
 import {setTitle, setSearch} from '/shell.js';

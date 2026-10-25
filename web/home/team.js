@@ -1,3 +1,5 @@
+import {rowsOf} from '/rail.js';
+
 export const teamQueries = {
   activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by leads team_href))',
   headings: '(from GROUP (where (= kind "category") (= parent.kind "activity")) (columns kind parent visible_to))',
@@ -10,10 +12,6 @@ export const teamQueries = {
 };
 
 const neededCount = 12;
-
-function rows(data, name, table) {
-  return data[name].result.map(id => data[name].resources[table][id]);
-}
 
 function schoolYear(today) {
   const [y, m] = today.split('-').map(Number);
@@ -30,7 +28,7 @@ export function teamWidget(data, now) {
   const year = schoolYear(today);
   const everyone = data.everyone.result[0] || '';
   const groups = new Map();
-  for (const g of [...rows(data, 'activities', 'GROUP'), ...rows(data, 'headings', 'GROUP')]) {
+  for (const g of [...rowsOf(data.activities, 'GROUP'), ...rowsOf(data.headings, 'GROUP')]) {
     groups.set(g.id, g);
   }
   const isYear = g => g.kind === 'activity' && !groups.has(g.parent);
@@ -65,18 +63,18 @@ export function teamWidget(data, now) {
     return true;
   };
   const taken = {};
-  for (const m of rows(data, 'taken', 'MEMBER')) {
+  for (const m of rowsOf(data.taken, 'MEMBER')) {
     taken[m.group] = (taken[m.group] || 0) + 1;
   }
   const picture = {};
-  for (const p of rows(data, 'teamPhotos', 'PHOTO')) {
+  for (const p of rowsOf(data.teamPhotos, 'PHOTO')) {
     picture[p.group] = picture[p.group] || p.id;
   }
   const on = {};
-  for (const m of rows(data, 'mine', 'MEMBER')) {
+  for (const m of rowsOf(data.mine, 'MEMBER')) {
     on[m.group] = 'Volunteer';
   }
-  const chairing = new Set([...rows(data, 'led', 'MEMBER'), ...rows(data, 'chairs', 'MEMBER')].map(m => m.group));
+  const chairing = new Set([...rowsOf(data.led, 'MEMBER'), ...rowsOf(data.chairs, 'MEMBER')].map(m => m.group));
   for (const g of groups.values()) {
     if (on[g.id] && (chairing.has(g.leads) || chairing.has(g.managed_by))) {
       on[g.id] = 'Co-Chair';

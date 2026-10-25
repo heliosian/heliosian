@@ -1,6 +1,7 @@
 import {state, me, years, myRows, sortByStart, matches, rootOf, parentOf, descendants, family} from '../state.js';
-import {toggle, selectPill} from '../dom.js';
+import {toggle} from '../dom.js';
 import {el} from '/elements.js';
+import {selectPill} from '/form.js';
 import {setTitle, setSearch} from '/shell.js';
 import {activityCard} from '../cards.js';
 

@@ -1,5 +1,5 @@
 import {state, isUnassigned, parseDate, staffPath, newsletterPath, stageClass, stageName, mediumDate, shortDate, staffFor} from '../state.js';
-import {pageHead} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';

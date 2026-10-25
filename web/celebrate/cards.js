@@ -1,7 +1,6 @@
 import {partyPath, availabilityLabel, myTickets} from './state.js';
 import {parseWhen} from '/datecard.js';
-import {badge} from './dom.js';
-import {el, link, svg, button} from '/elements.js';
+import {el, link, svg, button, badge} from '/elements.js';
 import {card} from '/cardgrid.js';
 import {openBuy} from './edit.js';
 

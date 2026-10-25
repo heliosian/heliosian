@@ -6,7 +6,8 @@ import {field, text} from '/form.js';
 import {dayColumn} from './day.js';
 import {initShell, appSymbol, onSlash} from '/shell.js';
 import {load, render, setPath} from '/router.js';
-import {write, saveFeed, makeDefault, orderFeeds as orderSaved, forgetView} from './writes.js';
+import {saveFeed, makeDefault, orderFeeds as orderSaved, forgetView} from './writes.js';
+import {write} from '/rail.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Calendar'},

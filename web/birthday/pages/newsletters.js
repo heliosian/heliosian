@@ -1,5 +1,6 @@
 import {state, isAdmin, year, staffFor, charity, issueDates, longDate, mediumDate, monthDay, dateCell, parseDate, newsletterPath} from '../state.js';
-import {pageHead, menu, copyRich} from '../dom.js';
+import {menu, copyRich} from '../dom.js';
+import {pageHead} from '/shell.js';
 import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle, setSearch} from '/shell.js';
 import {staffRow, emptyPanel} from '../cards.js';

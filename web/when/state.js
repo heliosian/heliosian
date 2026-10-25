@@ -1,8 +1,8 @@
 import {parseWhen} from '/datecard.js';
-import {queries} from '/rail.js';
+import {queries, rowsOf} from '/rail.js';
 import {api} from '/api.js';
 import {render} from '/router.js';
-import {loadCalendar, buildCalendar, wordsFor as wordsOfCalendar, wordsCondition, matchingQuery, rowsOf, answerEvent} from '/calendar.js';
+import {loadCalendar, buildCalendar, wordsFor as wordsOfCalendar, wordsCondition, matchingQuery, answerEvent} from '/calendar.js';
 
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: '', matching: new Set(), found: new Set()};

@@ -1,4 +1,5 @@
-import {state, anyAllowance, me, money, whenLine, celebration, categoriesOf, parties, party, write} from '../state.js';
+import {state, anyAllowance, me, money, whenLine, celebration, categoriesOf, parties, party} from '../state.js';
+import {write} from '/rail.js';
 import {el, button} from '/elements.js';
 import {openCelebration, openCategory, openSettings, saveSetting} from '../edit.js';
 import {load} from '/router.js';

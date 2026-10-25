@@ -1,11 +1,7 @@
-import {api} from '/api.js';
+import {write} from '/rail.js';
 import {postPhoto} from '/images.js';
 import {keyBetween} from '/order.js';
 import {state, me, wordsFor, classroomNames, tagIds} from './state.js';
-
-export function write(batch) {
-  return api('POST', '/api/q', {batch});
-}
 
 export async function saveFeed(f, {name, emoji, classrooms, tags}) {
   const search = JSON.stringify(wordsFor(classrooms.length ? classrooms : classroomNames(), tags.length ? tags : tagIds()));

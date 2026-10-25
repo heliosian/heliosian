@@ -1,6 +1,6 @@
 import {state, me, family, allows, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, matches, shownVolunteers, listHidden, listRevealed, addLabel} from '../state.js';
-import {badge, searchBox, treeFilter} from '../dom.js';
-import {el, link, svg, button, toast} from '/elements.js';
+import {searchBox, treeFilter} from '../dom.js';
+import {el, link, svg, button, toast, badge} from '/elements.js';
 import {render as markdown} from '/markdown.js';
 import {setTitle} from '/shell.js';
 import {load, render} from '/router.js';

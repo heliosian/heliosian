@@ -1,7 +1,8 @@
 import {state, allows, years, allYears, sortByStart, selectedYear, listedIn, addLabel, categoryPath, categoryFromAddress, PRIORITY, isPriority, descendants} from '../state.js';
 import {searchOpportunities} from '../chrome.js';
-import {toggle, selectPill} from '../dom.js';
+import {toggle} from '../dom.js';
 import {el, imageThumb, button, svg} from '/elements.js';
+import {selectPill} from '/form.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {render} from '/router.js';
 import {activityCard, categoryClass, priorityRow, wanted} from '../cards.js';

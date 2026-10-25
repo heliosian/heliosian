@@ -114,9 +114,12 @@ func NewCore(cfg Config) *Core {
 			return dataStore.Model().App(key)["subtitle"]
 		}
 	}
+	appNameOf := func(key string) string {
+		return dataStore.Model().App(key)["name"]
+	}
 	appName := func(key string) func() string {
 		return func() string {
-			return dataStore.Model().App(key)["name"]
+			return appNameOf(key)
 		}
 	}
 	whoAbout := directoryAbout(appName("who"), taglineOf("who"))
@@ -217,8 +220,8 @@ func NewCore(cfg Config) *Core {
 	}
 	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	feedback := db.NewFeedback(dataStore, cfg.Bucket, tokens, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
-	feedback.RegisterTriage(api, func(key string) string { return appName(key)() })
-	feedback.Register(api, cfg.Domain, func(key string) string { return appName(key)() })
+	feedback.RegisterTriage(api, appNameOf)
+	feedback.Register(api, cfg.Domain, appNameOf)
 	db.Register(api, dataStore, pictures, tokens)
 	db.RegisterSearch(api, dataStore, search, tokens)
 	geocode.NewSuggestions(cfg.Geocoder).Register(api)

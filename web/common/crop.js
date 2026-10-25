@@ -198,37 +198,44 @@ export function openCropTool(imageUrl, square, onSave) {
     });
   }
 
-  save.addEventListener('click', () => {
+  save.addEventListener('click', async () => {
     const stageRect = stage.getBoundingClientRect();
     const scaleX = img.naturalWidth / stageRect.width;
     const scaleY = img.naturalHeight / stageRect.height;
-    const sx = left * scaleX;
-    const sy = top * scaleY;
-    const sWidth = width * scaleX;
-    const sHeight = height * scaleY;
-    const maxOut = 1600;
-    const shrink = Math.max(sWidth, sHeight) > maxOut ? maxOut / Math.max(sWidth, sHeight) : 1;
-    const outWidth = Math.max(1, Math.round(sWidth * shrink));
-    const outHeight = Math.max(1, Math.round(sHeight * shrink));
-    const canvas = document.createElement('canvas');
-    canvas.width = outWidth;
-    canvas.height = outHeight;
-    canvas.getContext('2d').drawImage(img, sx, sy, sWidth, sHeight, 0, 0, outWidth, outHeight);
+    const box = {
+      left: Math.round(left * scaleX),
+      top: Math.round(top * scaleY),
+      width: Math.max(1, Math.round(width * scaleX)),
+      height: Math.max(1, Math.round(height * scaleY)),
+    };
     save.disabled = true;
     save.textContent = 'Saving…';
-    canvas.toBlob(async blob => {
-      if (!blob) {
-        save.disabled = false;
-        save.textContent = 'Save crop';
-        return;
-      }
-      const ok = await onSave(blob);
-      if (ok) {
-        close();
-      } else {
-        save.disabled = false;
-        save.textContent = 'Save crop';
-      }
-    }, 'image/jpeg', 0.92);
+    if (await onSave(box, img)) {
+      close();
+      return;
+    }
+    save.disabled = false;
+    save.textContent = 'Save crop';
+  });
+}
+
+function cropBlob(img, box) {
+  const maxOut = 1600;
+  const shrink = Math.max(box.width, box.height) > maxOut ? maxOut / Math.max(box.width, box.height) : 1;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(box.width * shrink));
+  canvas.height = Math.max(1, Math.round(box.height * shrink));
+  canvas.getContext('2d').drawImage(img, box.left, box.top, box.width, box.height, 0, 0, canvas.width, canvas.height);
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.92));
+}
+
+export function openImageCrop(imageUrl, onFile) {
+  openCropTool(imageUrl, false, async (box, img) => {
+    const blob = await cropBlob(img, box);
+    if (!blob) {
+      return false;
+    }
+    await onFile(new File([blob], 'crop.jpg', {type: 'image/jpeg'}));
+    return true;
   });
 }
