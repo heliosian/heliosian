@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"testing"
@@ -61,5 +62,32 @@ func TestComposeCarriesReplyTo(t *testing.T) {
 	out := Compose("HCA-Team <team@example.org>", Message{To: []string{"a@example.org"}, ReplyTo: []string{"b@example.org"}, Subject: "Hi", HTML: "<p>Hi</p>"})
 	if !strings.Contains(out, "Reply-To: b@example.org\r\n") || !strings.Contains(out, "multipart/alternative") {
 		t.Fatalf("composed:\n%s", out)
+	}
+}
+
+func TestSenderNamesStayInsideTheFromAddress(t *testing.T) {
+	for _, name := range []string{
+		"Rowan Ashdown",
+		"Rowan, Maya and Étienne",
+		"Rowan <attacker@example.net>",
+		"when@reply.heliosian.com\r\nReply-To: attacker@example.net\r\nX-Injected: yes",
+		"Rowan\nBcc: attacker@example.net",
+	} {
+		t.Run(name, func(t *testing.T) {
+			raw := Compose("Helios When <when@reply.heliosian.com>", Message{
+				FromName: name, To: []string{"guest@example.org"}, ReplyTo: []string{"host@example.org"}, Subject: "Invitation", Text: "Come along",
+			})
+			msg, err := netmail.ReadMessage(strings.NewReader(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(msg.Header["Reply-To"]) != 1 || msg.Header.Get("Reply-To") != "host@example.org" || msg.Header.Get("X-Injected") != "" || msg.Header.Get("Bcc") != "" {
+				t.Fatalf("the display name injected headers: %v", msg.Header)
+			}
+			from, err := msg.Header.AddressList("From")
+			if err != nil || len(from) != 1 || from[0].Address != "when@reply.heliosian.com" || from[0].Name != name {
+				t.Fatalf("sender = %v, %v; want the service address with display name %q", from, err, name)
+			}
+		})
 	}
 }

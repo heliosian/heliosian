@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	netmail "net/mail"
 	"slices"
 	"strings"
 	"testing"
@@ -170,6 +171,44 @@ func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	if code := h.reply(organizer, maya, h.event+whenUID, "ACCEPTED"); code != http.StatusOK || h.s.Model().answerOf(h.group(), staff) != "" {
 		t.Errorf("someone else's reply to rowan's address was taken")
 	}
+}
+
+func TestAnInvitationEncodesTheHostsEditableName(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Insert: "MEMBER", Row: map[string]any{"group": h.group()["managed_by"], "person": parent, "member": "yes"}}})
+	name := "when@reply.heliosian.com\r\nReply-To: attacker@example.net\r\nX-Injected: yes"
+	body, err := json.Marshal(Batch{Batch: []Edit{{Set: parent, Cells: map[string]any{"name_long_override": name}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := send(t, h.s, http.MethodPost, "application/json", rowan, string(body)); rec.Code != http.StatusOK {
+		t.Fatalf("a member sets their own name: %d %s", rec.Code, rec.Body)
+	}
+	if rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "people": []map[string]string{{"person": staff}}}); rec.Code != http.StatusOK {
+		t.Fatalf("the host adds a guest: %d %s", rec.Code, rec.Body)
+	}
+	if rec := h.do(rowan, http.MethodPost, "/api/do/invite", map[string]any{"group": h.event}); rec.Code != http.StatusOK {
+		t.Fatalf("the host sends: %d %s", rec.Code, rec.Body)
+	}
+	h.waitFor("the copy marked sent", func() bool { return h.copyOf(staff)["sent"] != "" })
+	for _, raw := range h.sender.Raws() {
+		if raw.Recipient != h.copyOf(staff)["id"] {
+			continue
+		}
+		msg, err := netmail.ReadMessage(strings.NewReader(string(raw.Message)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(msg.Header["Reply-To"]) != 1 || msg.Header.Get("X-Injected") != "" || strings.Contains(msg.Header.Get("Reply-To"), "attacker@example.net") {
+			t.Fatalf("the host's name injected invitation headers: %v", msg.Header)
+		}
+		from, err := msg.Header.AddressList("From")
+		if err != nil || len(from) != 1 || from[0].Address != mail.AddressOf(mailtest.From) || !strings.Contains(from[0].Name, name) {
+			t.Fatalf("the invitation's sender = %v, %v", from, err)
+		}
+		return
+	}
+	t.Fatal("no invitation was recorded")
 }
 
 func TestNewcomersAreInvitedOnlyWithAutoInvite(t *testing.T) {
