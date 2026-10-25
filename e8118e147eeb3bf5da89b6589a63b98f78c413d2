@@ -1,0 +1,22 @@
+# Probe rail tags by manager and skip uncapped sign-ups
+
+byre task tskBFfAlpcWoiZ, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskBFfAlpcWoiZ in byre (GET /api/events?task_id=tskBFfAlpcWoiZ).
+
+## Summary
+
+Performance audit of heliosian at 90d314a. Two query changes, behavior-preserving on production result sets. Merged main (school-assignment restriction and the simplicity audit) with no conflicts.
+
+Rail tags (`tagCondition` in web/common/rail.js, used by navTags, navTagManagers, and Who tagMembers) now probe `(in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))` and still recheck `manages`. A kind probe was most of the GROUP table. Production Who batch medians: owner 94.4 → 75.1 ms, parent 146.5 → 103.0 ms. Tag queries alone: parent 58.7 → 8.4 ms. Scale-test GROUP read checks: kind-only 2476, shipped 6.
+
+Calendar `places` (web/common/calendar.js) loads sign-ups only for parties and activities with a non-blank capacity. The page uses that list only for the fullness check. Production calendar batch: parent 172.1 → 141.4 ms, owner 58.8 → 57.5 ms. Sign-up groups 292 → 52 (parent) and 315 → 53 (owner); remaining members matched.
+
+Left alone: photo `group.kind` rewrite (slower), navJoined sidebar_group on real memberships, calendar event redaction the month pager needs, When per-keystroke search (TODO.md), Who directory rebuild per keystroke, untraced home team/party/mail batch, share-card cold draws. Docs and page_test cover both shipped shapes. Review of snapshot 1 found nothing significant.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Argon high", antigravity gemini-4-argon: done
+
+Adds a `managed_by` membership probe to `tagCondition` in `web/common/rail.js` so `navTags`, `navTagManagers`, and `tagMembers` probe the viewer's effective groups instead of scanning every `kind = "group"` row, and restricts `calendarQueries.places` in `web/common/calendar.js` to parties and activities with a non-blank `capacity`. Updates `internal/db/page_test.go` and `docs/queryspeed.md` to cover both query shapes.
+
+No significant findings.
