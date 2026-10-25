@@ -1,0 +1,29 @@
+# Fix stale doc statements and settle docs on American spelling
+
+byre task tskJgqd6Vxgtmk, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskJgqd6Vxgtmk in byre (GET /api/events?task_id=tskJgqd6Vxgtmk).
+
+## Summary
+
+Consistency audit of main at 134a42a7 (the "Audit" workflow's Consistency stage). It set out to make the codebase consistent with its own rules: one dialect and one name per concept in user-facing words, docs that match the code, comments and code style within AGENTS.md's rules.
+
+Found: the Go code already met every rule checked (no comments beyond two-line subtle-logic notes, `any` everywhere, lowercase slog messages, braces on every body, `make` only for lengths and channels, double-dash flags). What fell short was the docs. Changed, docs and comments only, no behavior:
+
+- Stale doc statements fixed against the code. README.md's Layout listed `internal/static`, which no longer exists, described `internal/blob` as an in-memory media cache with thumbnails (it is the plain Cloud Storage layer with no cache), and omitted 15 internal packages, now each listed with a verified one-liner. docs/deploy.md described a blob-store prefetch at startup, a 256 MiB `dataBudget` cache, a `birthdayBase` constant and boot log lines that no longer exist; its min-instances, memory and startup-log paragraphs and the `gcloud logging read` filter now name what the server does and logs today. docs/dev.md named ten testkit helpers that do not exist; it now names the real exports. docs/who/directory.md pointed at `familyNameFor` and a `shortName` field; it now points at the `familyName` trigger and Who?'s `familyShortName`. `policySource` became `PolicySource` in three docs. docs/audits/code.md dropped `mail.ICSEscape`. docs/who/pwa.md lost the bullet allowing a service worker, which the project never uses.
+- American English throughout the docs and three stylesheets' comments (about 75 words: colour, grey, centred, labelled, licence, behaviour, neighbour, travelling), because the code, the schema's `color` column and the UI's own strings are American and the project states no dialect.
+- "Sign in" as the one term: docs/screenshots.md's "Log in"/"logins" and Helios Who?'s manifest description "Please log in with…".
+- One garbled CSS comment in web/when/style.css fixed.
+
+Method: a scratchpad checker that extracted every backticked path and identifier from the docs and looked for it in the code, then verifying each miss by hand; rg scans for comments, dialect words, log and error message style, braceless bodies and single-dash flags.
+
+Deliberately left out: `cancelled`, the schema's enum value, keeps its spelling; Claude prompts with "summarise"/"organised" are behavior; button-label capitalization is split evenly between Title Case and sentence case (Helios When has both "Make Default"/"Make default" and "Send Now"/"Send now") with no stated rule, so it was reported as a design decision for ian rather than changed; the hundreds of descriptive section comments in every app's style.css break the no-comments rule but mislead nobody, so they stayed; test-only strings and the `labelled` parameter name are not user-facing; `team-admins` in docs/team is a production-data statement the sample data cannot confirm.
+
+The final merge-in of main (four commits from the other audit stages and the Helios Admin logo) was clean with no conflicts; `go vet ./...` and the auth and app package tests passed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Standardizes American English spelling in documentation and CSS comments, and changes the directory manifest’s wording to “sign in.” Updates stale documentation about storage, startup logs, test helpers, policy identifiers, and family names, and expands the README’s package guide. No application logic or CSS rules change.
+
+No significant findings.
