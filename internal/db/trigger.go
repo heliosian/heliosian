@@ -566,6 +566,10 @@ func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	}
 	for _, column := range []string{"classroom", "crew", "department"} {
 		if g := overrideOr(p, column); g != "" {
+			group, ok := m.Table("GROUP").Get(g)
+			if !ok || group["kind"] != column {
+				return nil, fmt.Errorf("%s's %s must name a %s group", p["id"], column, column)
+			}
 			out[g] = true
 		}
 	}
