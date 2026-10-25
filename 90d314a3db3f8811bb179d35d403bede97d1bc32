@@ -1,0 +1,51 @@
+# Probe Who directory and rail group scans
+
+byre task tskq41JCBmhiom, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskq41JCBmhiom in byre (GET /api/events?task_id=tskq41JCBmhiom).
+
+## Summary
+
+Performance audit of heliosian at f686822. Who's directory and the shared nav rail were walking the whole GROUP table on first load.
+
+Shipped: the directory probes the kinds it lists; room-parent groups are a second probed query; the rail's running lists probe `(descendants …)` of groups whose managed_by holds the viewer, with `manages` kept as a recheck. `(descendants S)` is the rows in S and every row under them. A scalar seed's memo key includes the outer row ids it reads. Each visited row and each child-index lookup counts toward the existing 10-million-row budget, so a correlated tree walk past that budget is refused with the same error as any other over-wide query.
+
+Measured on a laptop serving production sheets, one process, five interleaved rounds. Parent Who batch median 80.0ms to 57.2ms; owner 48.3ms to 30.5ms. Rows and order unchanged. The same batch without descendants, measured on production, went from 246.2ms to 240.0ms and was rejected. On the synthetic school the old rail walk read-checks GROUP 2966 times and the shipped navManaged query 6. BenchmarkSidebar runs the shipped navManaged, navJoined, groups, roomGroups, and effective strings from rail.js and who/state.js. A test reads those files, parses and runs them, and holds navManaged under a tenth of the walk's GROUP checks.
+
+Left alone: When's per-keystroke search, Who's per-keystroke directory rebuild, trimming group columns, and share-card caching. descendants stays in the query language because the form without it was not a gain. Production timing of the descendant probe waits until deploy, because the live server answers 400 for the operator until then.
+
+Merging main at the end found this branch already contained main (f686822). No conflicts. `go vet ./internal/db` and `go test ./internal/db` passed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Rewrites Who?’s directory and shared navigation queries to use index probes instead of scanning whole tables. Adds a `descendants` query operator to find managed group subtrees, with documentation and tests.
+
+- Descendants memoization reuses the first enclosing row’s subtree for later rows, producing incorrect correlated query results.
+
+### Snapshot #2, reviewer "Review · Argon high", antigravity gemini-4-argon: failed
+
+the reviewer's turn ended with an error (error): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 33m25s.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Optimizes Who?’s directory and shared navigation queries by exposing indexed filters and splitting group selections. Adds a memoized `descendants` query operator to find managed groups through their parent hierarchy, with documentation and tests for membership equivalence and correlated evaluation.
+
+- Descendant traversal bypasses the query work budget, allowing correlated queries to consume quadratic time and memory.
+
+### Snapshot #4, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Makes the Who? page load and the shared rail cheaper by letting their queries probe indexes instead of walking every group. It adds a `(descendants S)` set to the query language (`internal/db/query.go`): the rows in `S` plus every row under them through `parent`. It is memoized per run, and each node and child lookup counts against the visit budget. The rail's "running lists" query now pre-filters with `(in id (descendants (select GROUP.id (in managed_by <viewer's groups>))))` and keeps `(manages @g)`, so the answer is unchanged. `tagCondition` writes out `own_group`'s four conditions inline so they become separate cheap filters. Who?'s `groups` and `effective` queries are split into branches that each probe, so `roomGroups` is a new query whose rows are appended to `groups`. Docs and the MCP `Language` text describe the new operator. Tests: equivalence with `manages`, per-outer-row isolation, the probe check, and the budget refusal. I ran the new tests and `TestInAConstantSelectProbes`, `TestAQueryThatVisitsTooManyRowsIsRefused` and `TestManyFusedSelectsAreCountedToo`; they pass. By reading, the `descendants` prefilter is a superset-equivalent of `manages`, and the split Who? queries are equivalent to the originals.
+
+- The gain is not measured in the work and the benchmark doesn't cover the changed query forms
+- A new, permanent query-language operator is added for a rail-only speedup, and the edited web query strings have no test
+
+### Snapshot #5, reviewer "Review · Argon high", antigravity gemini-4-argon: failed
+
+the reviewer's turn ended with an error (error): Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 12m40s.
+
+### Snapshot #6, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Optimizes the shared navigation rail and Who? directory queries to use indexes instead of scanning every group. Adds a memoized `descendants` query operator with cycle protection and query-budget accounting, updates query documentation, and adds regression tests and benchmarks tied to the shipped JavaScript queries. Reviewed by reading the code; builds and tests were not run, as requested.
+
+No significant findings.
