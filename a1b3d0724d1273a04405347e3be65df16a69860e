@@ -1,0 +1,20 @@
+# Simplify activity sharing and group photo selection
+
+byre task tskGGmf07nXrgy, "Simplify activity sharing", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskGGmf07nXrgy in byre (GET /api/events?task_id=tskGGmf07nXrgy).
+
+## Summary
+
+Audited main at 134a42a for structural simplicity, informed by the project rules and previous audit findings. Fixed activity sharing: private, pending and closed activities and activities under such parents now receive their own public link previews and share cards, as AGENTS.md requires. Sharing now uses activity identity independently of public upcoming-list eligibility; page permissions and upcoming listings retain their behavior. Updated existing preview checks and HCA-Team documentation.
+
+Reused the shared group ID/slug/alias resolver and indexed Everyone lookup, removed the activity path wrapper, and consolidated three ordered group-photo selectors into Model.groupPhoto in pictures.go. Kept each app's distinct flyer/ancestor precedence and redirect rules rather than introduce configurable policies or change behavior. No data migration or deployment was needed.
+
+Focused activity, party and event preview/redirect tests, repository-wide go vet, and git diff --check passed. After review, ran the requested git merge --no-ff --no-commit main: already up to date, so there were no conflicts or merge-resolution changes. Re-ran the focused tests and repository-wide vet successfully before landing.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Activity previews and share cards now work regardless of the activity’s visibility or status, including those of its parents. The change also reuses shared group lookup and photo selection helpers, removes a redundant path accessor, and updates documentation and preview tests.
+
+No significant findings.
