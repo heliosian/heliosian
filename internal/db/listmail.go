@@ -567,7 +567,7 @@ func (l *ListMailer) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	}
 	m := l.s.Model()
 	if person := m.personAt(email); person != "" && m.unsubscribed(g, person) {
-		writePage(w, g["name"], "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
+		writePage(w, g["name"], "Already unsubscribed", fmt.Sprintf(`<p>%s gets no mail from %s.</p><p class="address">If you can sign in to Helios Loop, open the email list and choose Resubscribe to get its mail again. Otherwise, ask a manager for help.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
 		return
 	}
 	body := fmt.Sprintf(`<p>Stop getting mail from <strong>%s</strong> at %s?</p><p class="address">%s</p><form method="post"><button type="submit">Unsubscribe</button></form>`,
@@ -614,7 +614,7 @@ func (l *ListMailer) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	writePage(w, g["name"], "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">A manager of the email list can put you back on it.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
+	writePage(w, g["name"], "Unsubscribed", fmt.Sprintf(`<p>%s gets no more mail from %s.</p><p class="address">If you can sign in to Helios Loop, open the email list and choose Resubscribe to get its mail again. Otherwise, ask a manager for help.</p>`, html.EscapeString(email), html.EscapeString(g["name"])))
 }
 
 func (l *ListMailer) unsubscribeByMail(ctx context.Context, subject, sender string) {
