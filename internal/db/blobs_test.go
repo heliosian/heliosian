@@ -13,7 +13,7 @@ import (
 func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, nil, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodGet, blobPath+path, nil)
 	if etag != "" {
 		r.Header.Set("If-None-Match", etag)
@@ -24,12 +24,12 @@ func fetchBlob(t *testing.T, s *Store, pics *Pictures, as, path, etag string) *h
 }
 
 func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	if _, err := pics.bucket.Put(context.Background(), "content/h1", "application/octet-stream", []byte("<script>alert(1)</script>"), 0); err != nil {
 		t.Fatal(err)
 	}
-	content := apply(t, s, queue, []Edit{
+	content := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "page", Row: map[string]any{"hash": "h1", "blob": "content/h1", "mime": "text/html", "size": "25"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@page"}},
 	})[0]
@@ -43,9 +43,9 @@ func TestContentIsServedAsItsMimeInASandbox(t *testing.T) {
 }
 
 func TestABlobIsServedToWhoeverMayReadItsCell(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
-	rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, 5))
+	s := sample(t)
+	pics := newPictures(s)
+	rec := addPhoto(t, s, pics, importing, staff, pngOf(t, 5))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}

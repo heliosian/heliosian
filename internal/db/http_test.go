@@ -11,7 +11,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/trace"
 )
@@ -40,10 +39,10 @@ func serveAs(mux http.Handler, rec *httptest.ResponseRecorder, r *http.Request, 
 	auth.Fixed(as, mux).ServeHTTP(rec, r)
 }
 
-func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body string, headers ...string) *httptest.ResponseRecorder {
+func send(t *testing.T, s *Store, method, kind, as, body string, headers ...string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(method, "/api/q", strings.NewReader(body))
 	if kind != "" {
 		r.Header.Set("Content-Type", kind)
@@ -57,9 +56,9 @@ func send(t *testing.T, s *Store, queue *store.Queue, method, kind, as, body str
 }
 
 func TestTokens(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	hide := Batch{Batch: []Edit{{Set: "per00000000001", Cells: map[string]any{"hidden": "Yes"}}}}
-	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, hide); err != nil {
+	if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, hide); err != nil {
 		t.Fatal(err)
 	}
 	code, out, body := ask(t, s, "application/json", importing, `["from", "PERSON"]`)
@@ -72,11 +71,11 @@ func TestTokens(t *testing.T) {
 	if _, out, _ := ask(t, s, "application/json", superAdmin, `["from", "MEMBER", ["where", ["=", {"n": "person"}, "per00000000001"]]]`); len(out.Result) != 0 {
 		t.Fatalf("a super admin in the browser sees %d of a hidden person's memberships", len(out.Result))
 	}
-	rec := send(t, s, queue, http.MethodPost, "application/json", importing, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
+	rec := send(t, s, http.MethodPost, "application/json", importing, `{"batch": [{"set": "per00000000001", "cells": {"vc_name": "June Ashdown"}}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a super admin setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
-	rec = send(t, s, queue, http.MethodPost, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), `{"batch": [{"set": "per00000000003", "cells": {"vc_name": "Maya Berg"}}]}`)
+	rec = send(t, s, http.MethodPost, "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), `{"batch": [{"set": "per00000000003", "cells": {"vc_name": "Maya Berg"}}]}`)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent's token setting a vc_ column got %d %s", rec.Code, rec.Body.String())
 	}
@@ -89,8 +88,8 @@ func TestTokens(t *testing.T) {
 }
 
 func TestGuestsNeverSignIn(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	rec := send(t, s, queue, http.MethodPost, "application/json", superAdmin, `{"batch": [
+	s := sample(t)
+	rec := send(t, s, http.MethodPost, "application/json", superAdmin, `{"batch": [
 		{"insert": "PERSON", "as": "g", "row": {"source": "guest", "name_long_override": "Pat Coach"}},
 		{"insert": "PERSON_EMAIL", "row": {"person": "@g", "address": "coach@example.net", "primary": true, "source": "guest"}}]}`)
 	if rec.Code != http.StatusOK {
@@ -111,9 +110,9 @@ func TestGuestsNeverSignIn(t *testing.T) {
 }
 
 func TestSpoof(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	query := `["from", "PERSON"]`
-	rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "rowan.ashdown@example.org")
+	rec := send(t, s, "QUERY", "application/json", importing, query, SpoofHeader, "rowan.ashdown@example.org")
 	var spoofed answer
 	if err := json.Unmarshal(rec.Body.Bytes(), &spoofed); rec.Code != http.StatusOK || err != nil {
 		t.Fatalf("a super admin spoofing got %d %s", rec.Code, rec.Body.String())
@@ -122,17 +121,17 @@ func TestSpoof(t *testing.T) {
 	if len(spoofed.Result) != len(parent.Result) {
 		t.Fatalf("spoofing Rowan, import mode or not, sees %d people; Rowan sees %d", len(spoofed.Result), len(parent.Result))
 	}
-	if rec := send(t, s, queue, "QUERY", "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), query, SpoofHeader, superAdmin); rec.Code != http.StatusForbidden {
+	if rec := send(t, s, "QUERY", "application/json", "bearer:"+testTokens.Issue("rowan.ashdown@example.org", time.Now()), query, SpoofHeader, superAdmin); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent spoofing got %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := send(t, s, queue, "QUERY", "application/json", importing, query, SpoofHeader, "nobody@example.org"); rec.Code != http.StatusForbidden {
+	if rec := send(t, s, "QUERY", "application/json", importing, query, SpoofHeader, "nobody@example.org"); rec.Code != http.StatusForbidden {
 		t.Fatalf("spoofing an address nobody has got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func ask(t *testing.T, s *Store, kind, as, query string) (int, answer, string) {
 	t.Helper()
-	rec := send(t, s, nil, "QUERY", kind, as, query)
+	rec := send(t, s, "QUERY", kind, as, query)
 	var out answer
 	if rec.Code == http.StatusOK {
 		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
@@ -181,7 +180,7 @@ func child(t *testing.T, s *trace.Span, name string) *trace.Span {
 }
 
 func TestServeQueryTrace(t *testing.T) {
-	rec := send(t, sample(t), nil, "QUERY", "text/plain", "Rowan.Ashdown@example.org", picnicText)
+	rec := send(t, sample(t), "QUERY", "text/plain", "Rowan.Ashdown@example.org", picnicText)
 	var root trace.Span
 	if err := json.Unmarshal([]byte(rec.Header().Get("Trace")), &root); err != nil {
 		t.Fatalf("Trace header %q: %v", rec.Header().Get("Trace"), err)
@@ -263,7 +262,7 @@ func TestColumnsAnswerOnlyThose(t *testing.T) {
 func TestServeSeveralQueries(t *testing.T) {
 	s := sample(t)
 	body := `{"queries": {"picnic": ` + strings.ReplaceAll(picnicJSON, "\n", "") + `, "names": "(from PERSON (columns name_show))"}}`
-	rec := send(t, s, nil, "QUERY", "application/json", "Rowan.Ashdown@example.org", body)
+	rec := send(t, s, "QUERY", "application/json", "Rowan.Ashdown@example.org", body)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("%d %s", rec.Code, rec.Body.String())
 	}
@@ -286,14 +285,14 @@ func TestServeSeveralQueries(t *testing.T) {
 			t.Fatalf("the picnic's %s, also answered by name alone, lost the rest of its row: %v", person, out.Resources["PERSON"][person])
 		}
 	}
-	rec = send(t, s, nil, "QUERY", "application/json", "Rowan.Ashdown@example.org", `{"queries": {"bad": "(from NOWHERE)"}}`)
+	rec = send(t, s, "QUERY", "application/json", "Rowan.Ashdown@example.org", `{"queries": {"bad": "(from NOWHERE)"}}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "queries.bad") {
 		t.Fatalf("a bad named query got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestServeQueryAsTheViewer(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	q := `["from", "SAVED_SEARCH"]`
 	if _, out, _ := ask(t, s, "application/json", "rowan@example.com", q); len(out.Result) != 1 {
 		t.Fatalf("Rowan's second address sees %d saved searches", len(out.Result))
@@ -302,7 +301,7 @@ func TestServeQueryAsTheViewer(t *testing.T) {
 		t.Fatalf("Maya, a super admin, sees %d of Rowan's saved searches", len(out.Result))
 	}
 	demote := Batch{Batch: []Edit{{Delete: "mem00000000007"}}}
-	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, demote); err != nil {
+	if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, demote); err != nil {
 		t.Fatal(err)
 	}
 	if _, out, _ := ask(t, s, "application/json", superAdmin, q); len(out.Result) != 0 {
@@ -311,13 +310,13 @@ func TestServeQueryAsTheViewer(t *testing.T) {
 }
 
 func TestOnlyListedActivePeopleGetIn(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	refused := func(as, why string) {
 		t.Helper()
 		if code, _, body := ask(t, s, "application/json", as, `["from", "PERSON"]`); code != http.StatusForbidden {
 			t.Errorf("%s reading: %d %s", why, code, body)
 		}
-		rec := send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000043", "person": "per00000000002", "member": "yes"}}]}`)
+		rec := send(t, s, http.MethodPost, "application/json", as, `{"batch": [{"insert": "MEMBER", "row": {"group": "grp00000000043", "person": "per00000000002", "member": "yes"}}]}`)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("%s writing: %d %s", why, rec.Code, rec.Body.String())
 		}
@@ -327,9 +326,9 @@ func TestOnlyListedActivePeopleGetIn(t *testing.T) {
 	}
 	refused("stranger@example.org", "an address the sheets don't hold")
 	for column, value := range map[string]string{"hidden": "Yes", "deactivated": "2026-09-30 12:00", "consent": "withheld"} {
-		apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{column: value}}})
+		apply(t, s, []Edit{{Set: parent, Cells: map[string]any{column: value}}})
 		refused("rowan@example.com", "a parent with "+column+" "+value)
-		apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{column: map[string]string{"consent": "listed"}[column]}}})
+		apply(t, s, []Edit{{Set: parent, Cells: map[string]any{column: map[string]string{"consent": "listed"}[column]}}})
 	}
 }
 
@@ -357,8 +356,8 @@ func TestServeQueryRefuses(t *testing.T) {
 }
 
 func TestServeWriteTrace(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	rec := send(t, s, queue, http.MethodPost, "application/json", "rowan.ashdown@example.org", `{"batch": [
+	s := sample(t)
+	rec := send(t, s, http.MethodPost, "application/json", "rowan.ashdown@example.org", `{"batch": [
 		{"insert": "MEMBER", "row": {"group": "grp00000000043", "person": "per00000000002", "member": "yes"}},
 		{"insert": "MEMBER", "row": {"group": "grp00000000042", "person": "per00000000004", "member": "yes"}}]}`)
 	if rec.Code != http.StatusOK {
@@ -381,9 +380,9 @@ func TestServeWriteTrace(t *testing.T) {
 }
 
 func TestServeWrites(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(as, batch string) (int, string) {
-		rec := send(t, s, queue, http.MethodPost, "application/json", as, batch)
+		rec := send(t, s, http.MethodPost, "application/json", as, batch)
 		return rec.Code, rec.Body.String()
 	}
 	answer := func(group, person string) bool {
@@ -429,12 +428,12 @@ func TestServeWrites(t *testing.T) {
 }
 
 func TestEmailsAreLowerCase(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	_, err := applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "Maya@Example.org", "person": staff, "source": "manual"}}})
+	s := sample(t)
+	_, err := applyErr(s, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "Maya@Example.org", "person": staff, "source": "manual"}}})
 	if err == nil || !strings.Contains(err.Error(), "lower case") {
 		t.Fatalf("a capitalised address: %v", err)
 	}
-	_, err = applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "juni.ashdown.noemail@example.org", "person": student, "source": "manual"}}})
+	_, err = applyErr(s, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "juni.ashdown.noemail@example.org", "person": student, "source": "manual"}}})
 	if err == nil || !strings.Contains(err.Error(), "placeholder") {
 		t.Fatalf("a placeholder address: %v", err)
 	}

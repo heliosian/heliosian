@@ -19,28 +19,28 @@ import (
 )
 
 func TestTheLoadRefusesWikiPagesInALoopOrUnderOtherDocuments(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	loop := []Edit{
 		{Insert: "DOCUMENT", As: "one", Row: map[string]any{"kind": "wiki", "name": "One"}},
 		{Insert: "DOCUMENT", As: "two", Row: map[string]any{"kind": "wiki", "name": "Two", "parent": "@one"}},
 		{Set: "@one", Cells: map[string]any{"parent": "@two"}},
 	}
-	if _, err := applyErr(s, queue, loop); err == nil {
+	if _, err := applyErr(s, loop); err == nil {
 		t.Fatal("two wiki pages under each other loaded")
 	}
 	mail := s.Model().Table("DOCUMENT").All()[0]
-	if _, err := applyErr(s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "wiki", "name": "Three", "parent": mail["id"]}}}); err == nil {
+	if _, err := applyErr(s, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "wiki", "name": "Three", "parent": mail["id"]}}}); err == nil {
 		t.Fatalf("a wiki page under %s %s loaded", mail["kind"], mail["id"])
 	}
 }
 
 func TestWikiSideCards(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(page wikiPage) string {
 		t.Helper()
-		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,17 +73,17 @@ func TestWikiSideCards(t *testing.T) {
 	if len(cards(id)) != 1 {
 		t.Fatal("a save sending no cards changed them")
 	}
-	if _, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Delete: after[0]["id"]}, {Delete: id}}}); err != nil {
+	if _, err := Write(ctx, s, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Delete: after[0]["id"]}, {Delete: id}}}); err != nil {
 		t.Fatalf("deleting the page and its card: %v", err)
 	}
 }
 
 func TestTheImportStartsWikiPages(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(page wikiPage) (string, error) {
-		id, _, err := saveWiki(ctx, s, queue, pics, access.System(setupEnv.System), setupEnv, page)
+		id, _, err := saveWiki(ctx, s, pics, access.System(setupEnv.System), setupEnv, page)
 		return id, err
 	}
 	top, err := save(wikiPage{Name: "Academics", Body: "How the school teaches."})
@@ -100,11 +100,11 @@ func TestTheImportStartsWikiPages(t *testing.T) {
 }
 
 func TestWikiSlugs(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(viewer string, page wikiPage) (string, error) {
-		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
 		return id, err
 	}
 	slugOf := func(id string) string {
@@ -147,7 +147,7 @@ func TestWikiSlugs(t *testing.T) {
 	if _, err := save(parent, wikiPage{Document: id, Name: "Pickup", Slug: "", Body: "At the side gate."}); err != nil || slugOf(id) != "" {
 		t.Fatalf("a wiki admin's removal of the slug: %v %q", err, slugOf(id))
 	}
-	imported, _, err := saveWiki(ctx, s, queue, pics, access.System(setupEnv.System), setupEnv, wikiPage{Name: "Imported", Body: "From the doc."})
+	imported, _, err := saveWiki(ctx, s, pics, access.System(setupEnv.System), setupEnv, wikiPage{Name: "Imported", Body: "From the doc."})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,11 +160,11 @@ func TestWikiSlugs(t *testing.T) {
 }
 
 func TestWikiAddresses(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(page wikiPage) (string, error) {
-		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
 		return id, err
 	}
 	pathOf := func(id string) string {
@@ -222,15 +222,15 @@ func TestWikiAddresses(t *testing.T) {
 }
 
 func TestWikiHiddenPages(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
-	id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: student, Now: testNow}, wikiPage{Name: "Pickup", Body: "At the gate."})
+	id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: student, Now: testNow}, wikiPage{Name: "Pickup", Body: "At the gate."})
 	if err != nil {
 		t.Fatal(err)
 	}
 	hide := func(viewer string, hidden bool) error {
-		_, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"hidden": hidden}}}})
+		_, err := Write(ctx, s, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"hidden": hidden}}}})
 		return err
 	}
 	hiddenOf := func() string {
@@ -246,21 +246,21 @@ func TestWikiHiddenPages(t *testing.T) {
 	if err := hide(parent, false); err != nil || hiddenOf() != "No" {
 		t.Fatalf("a wiki admin showing the page again: %v %q", err, hiddenOf())
 	}
-	if _, err := applyErr(s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "newsletter", "name": "News", "hidden": "Yes"}}}); err == nil {
+	if _, err := applyErr(s, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "newsletter", "name": "News", "hidden": "Yes"}}}); err == nil {
 		t.Fatal("a hidden newsletter loaded")
 	}
 }
 
 func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
-	page, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Field trips", Body: "Trips."})
+	page, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Field trips", Body: "Trips."})
 	if err != nil {
 		t.Fatal(err)
 	}
 	picture := pngOf(t, 4)
-	rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
+	rec := postFile(t, s, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a parent adds a picture to a wiki page: %d %s", rec.Code, rec.Body.String())
 	}
@@ -269,7 +269,7 @@ func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 		t.Fatal(err)
 	}
 	photo := out.Result[0]
-	again := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
+	again := postFile(t, s, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": page}, "photo", picture)
 	var second stored
 	if err := json.Unmarshal(again.Body.Bytes(), &second); again.Code != http.StatusOK || err != nil || len(second.Result) != 1 || second.Result[0] != photo {
 		t.Fatalf("the same picture placed on the page again, from a side card or a retried save: %d %s, want %s", again.Code, again.Body.String(), photo)
@@ -279,7 +279,7 @@ func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 		t.Fatalf("the page's picture reads %v", row)
 	}
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		serveAs(mux, rec, httptest.NewRequest(http.MethodGet, path, nil), "maya.lindqvist@example.org")
@@ -291,22 +291,22 @@ func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 	if rec := get("/api/blob/" + photo + "/original"); rec.Code != http.StatusNotFound {
 		t.Fatalf("the picture as uploaded answered %d", rec.Code)
 	}
-	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": "doc00000000001"}, "photo", pngOf(t, 5)); rec.Code != http.StatusForbidden {
+	if rec := postFile(t, s, pics, "rowan.ashdown@example.org", "photo", map[string]string{"document": "doc00000000001"}, "photo", pngOf(t, 5)); rec.Code != http.StatusForbidden {
 		t.Fatalf("a picture of a document that is no wiki page: %d %s", rec.Code, rec.Body.String())
 	}
 	keep := func(body string) {
 		t.Helper()
-		if _, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Document: page, Name: "Field trips", Body: body}); err != nil {
+		if _, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Document: page, Name: "Field trips", Body: body}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	other, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Museums", Body: "Downtown."})
+	other, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, wikiPage{Name: "Museums", Body: "Downtown."})
 	if err != nil {
 		t.Fatal(err)
 	}
 	copied := "![](/api/blob/" + photo + "/image)"
 	for _, borrowed := range []wikiPage{{Document: other, Name: "Museums", Body: copied}, {Name: "Zoo", Body: copied}, {Document: other, Name: "Museums", Body: "Downtown.", Sides: []wikiSide{{Name: "Card", Body: copied}}}} {
-		if _, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, borrowed); err == nil {
+		if _, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, borrowed); err == nil {
 			t.Fatalf("a page borrowed another page's picture: %+v", borrowed)
 		}
 	}
@@ -321,15 +321,15 @@ func TestWikiPicturesArePhotosOfThePage(t *testing.T) {
 }
 
 func TestWikiPages(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(viewer string, page wikiPage) (string, error) {
-		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, page)
 		return id, err
 	}
 	written := func(viewer string, e Edit) error {
-		_, err := Write(ctx, s, queue, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{e}})
+		_, err := Write(ctx, s, access.Actor{Email: "test"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{e}})
 		return err
 	}
 	bodyOf := func(id string) string {
@@ -369,7 +369,7 @@ func TestWikiPages(t *testing.T) {
 		t.Fatalf("a guest's page: %v", err)
 	}
 	sum := sha256.Sum256([]byte("a guest's words"))
-	if _, err := (&sweeper{s: s, queue: queue, bucket: pics.bucket}).sweepObjects(ctx, time.Now().Add(time.Second)); err != nil {
+	if _, err := (&sweeper{s: s, bucket: pics.bucket}).sweepObjects(ctx, time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	if found, _ := pics.bucket.Exists(ctx, "content/"+hex.EncodeToString(sum[:])); found {

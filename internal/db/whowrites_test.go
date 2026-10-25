@@ -19,9 +19,9 @@ import (
 )
 
 func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	ids, err := write(parent,
 		Edit{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "name": "Soccer Managers", "status": "open", "added_by": parent}},
@@ -77,9 +77,9 @@ func TestATagIsMadeAndRunByItsManagers(t *testing.T) {
 
 func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 	const superAdmins, whoAdmins, superStaff = "grp00000000005", "grp00000000006", "mem00000000007"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": superAdmins, "person": parent, "member": "yes"}}); err == nil {
 		t.Error("a parent makes themselves a super admin")
@@ -157,7 +157,7 @@ func TestWhoWrites(t *testing.T) {
 	}
 }
 
-func postRecording(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as string, fields map[string]string, mimeType string, content []byte) *httptest.ResponseRecorder {
+func postRecording(t *testing.T, s *Store, pics *Pictures, as string, fields map[string]string, mimeType string, content []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
@@ -173,7 +173,7 @@ func postRecording(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, a
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/pronunciation", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
@@ -182,8 +182,8 @@ func postRecording(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, a
 }
 
 func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	sound, err := os.ReadFile("../blob/testdata/chrome.webm")
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 		{"PERSON", "person", student},
 		{"GROUP", "group", "grp00000000020"},
 	} {
-		rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{c.field: c.id}, "audio/webm;codecs=opus", sound)
+		rec := postRecording(t, s, pics, "rowan.ashdown@example.org", map[string]string{c.field: c.id}, "audio/webm;codecs=opus", sound)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("a parent records their family's %s: %d %s", c.field, rec.Code, rec.Body.String())
 		}
@@ -220,16 +220,16 @@ func TestAPronunciationIsRecordedForWhomTheViewerMayEdit(t *testing.T) {
 	}
 
 	other := []byte("someone else's name")
-	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": staff}, "audio/mpeg", other); rec.Code != http.StatusForbidden {
+	if rec := postRecording(t, s, pics, "rowan.ashdown@example.org", map[string]string{"person": staff}, "audio/mpeg", other); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent records a stranger's name: %d %s", rec.Code, rec.Body.String())
 	}
 	if found, _ := pics.bucket.Exists(context.Background(), "content/"+blob.Hash(other)); found {
 		t.Fatal("a refused recording was stored")
 	}
-	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": student}, "application/octet-stream", other); rec.Code != http.StatusBadRequest {
+	if rec := postRecording(t, s, pics, "rowan.ashdown@example.org", map[string]string{"person": student}, "application/octet-stream", other); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a recording of no audio type: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postRecording(t, s, queue, pics, "rowan.ashdown@example.org", map[string]string{"person": student, "group": "grp00000000020"}, "audio/webm", other); rec.Code != http.StatusBadRequest {
+	if rec := postRecording(t, s, pics, "rowan.ashdown@example.org", map[string]string{"person": student, "group": "grp00000000020"}, "audio/webm", other); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a recording of a person and a family: %d %s", rec.Code, rec.Body.String())
 	}
 }

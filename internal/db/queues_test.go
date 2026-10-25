@@ -8,12 +8,12 @@ import (
 )
 
 func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	before := map[string]int{}
 	for _, q := range s.Model().queueCounts() {
 		before[q.Name] = q.Pending
 	}
-	apply(t, s, queue, []Edit{
+	apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
 		{Insert: "CONTENT", Row: map[string]any{"hash": "c3", "blob": "content/c3", "mime": "image/png", "size": "300"}},

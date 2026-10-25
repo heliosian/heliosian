@@ -14,21 +14,19 @@ import (
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/qclient"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
 func sampleClient(t *testing.T) *qclient.Client {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), tokens, time.Now)
+	db.Register(mux, s, db.NewPictures(s, blob.NewMemoryBucket()), tokens, time.Now)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return &qclient.Client{Base: srv.URL, Token: tokens.Issue("maya.lindqvist@example.org", time.Now()), Mode: qclient.ImportMode}
@@ -90,8 +88,7 @@ func TestWrite(t *testing.T) {
 
 func TestLocalReachesADevServer(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +96,7 @@ func TestLocalReachesADevServer(t *testing.T) {
 	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })
 	tokens.Key = auth.AccessKey(sessionKey)
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, db.NewPictures(s, queue, blob.NewMemoryBucket()), tokens, time.Now)
+	db.Register(mux, s, db.NewPictures(s, blob.NewMemoryBucket()), tokens, time.Now)
 	srv := httptest.NewTLSServer(mux)
 	t.Cleanup(srv.Close)
 	c := qclient.Local(srv.URL, sessionKey, "maya.lindqvist@example.org", "", "")

@@ -39,7 +39,6 @@ type InvitationConfig struct {
 
 type Invitations struct {
 	s       *Store
-	queue   *store.Queue
 	pics    *Pictures
 	config  InvitationConfig
 	in      *inbox
@@ -47,8 +46,8 @@ type Invitations struct {
 	started atomic.Bool
 }
 
-func RegisterInvitations(mux, api *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time, config InvitationConfig) *Invitations {
-	iv := &Invitations{s: s, queue: queue, pics: pics, config: config, in: s.Model().services.inbox(inviteInbox), kick: newWake()}
+func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time, config InvitationConfig) *Invitations {
+	iv := &Invitations{s: s, pics: pics, config: config, in: s.Model().services.inbox(inviteInbox), kick: newWake()}
 	asked := func(path string, ask func() any, run func(ctx context.Context, m *Model, env Env, actor access.Actor, body any) (any, error)) {
 		api.HandleFunc("POST "+path, func(w http.ResponseWriter, r *http.Request) {
 			m := s.Model()
@@ -89,7 +88,7 @@ func RegisterInvitations(mux, api *http.ServeMux, s *Store, queue *store.Queue, 
 
 func (iv *Invitations) Start() {
 	iv.started.Store(true)
-	iv.queue.OnTick(iv.kick.poke)
+	iv.s.OnTick(iv.kick.poke)
 	iv.kick.poke()
 }
 
@@ -97,11 +96,11 @@ func (iv *Invitations) write(ctx context.Context, actor access.Actor, edits []Ed
 	if len(edits) == 0 {
 		return nil, nil
 	}
-	return Write(ctx, iv.s, iv.queue, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits})
+	return Write(ctx, iv.s, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits})
 }
 
 func (iv *Invitations) writeInvitations(ctx context.Context, actor access.Actor, edits []Edit, group, from string, more int) ([]string, error) {
-	return writeChecked(ctx, iv.s, iv.queue, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits}, func(m *Model) error {
+	return writeChecked(ctx, iv.s, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits}, func(m *Model) error {
 		return m.mayInvite(group, from, more)
 	})
 }

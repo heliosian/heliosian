@@ -9,15 +9,14 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit/mailtest"
 )
 
 const avery = "per00000020018"
 
-func partyMailer(s *Store, queue *store.Queue) *mailtest.Recorder {
+func partyMailer(s *Store) *mailtest.Recorder {
 	sender := mailtest.NewRecorder(mailtest.From)
-	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: mailtest.Discard(), Celebrate: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	NewMembershipMailer(s, MembershipMailConfig{Sender: mailtest.Discard(), Celebrate: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
 	return sender
 }
 
@@ -31,8 +30,8 @@ func subjects(messages []mail.Message) []string {
 }
 
 func TestBuyingTicketsIsJoiningTheParty(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	sender := partyMailer(s, queue)
+	s, write := celebrateSample(t)
+	sender := partyMailer(s)
 	paid := func(person string) Edit {
 		return Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": person, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00"}}
 	}
@@ -82,12 +81,12 @@ func TestBuyingTicketsIsJoiningTheParty(t *testing.T) {
 }
 
 func TestTheWaitlistAndPassingATicketOnMailWhoTheyShould(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	made := apply(t, s, queue, []Edit{
+	s, write := celebrateSample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "join": "direct", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
 		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
 	})
-	sender := partyMailer(s, queue)
+	sender := partyMailer(s)
 	if _, err := write(parent,
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": made[0], "person": avery, "member": "yes", "added_by": parent, "note": "Two if we can"}},
 		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest"}},
@@ -111,8 +110,8 @@ func TestTheWaitlistAndPassingATicketOnMailWhoTheyShould(t *testing.T) {
 }
 
 func TestPassingATicketOnMailsItsNewHolder(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	sender := partyMailer(s, queue)
+	s, write := celebrateSample(t)
+	sender := partyMailer(s)
 	if _, err := write(parent, Edit{Set: "mem00000000025", Cells: map[string]any{"person": avery}}); err != nil {
 		t.Fatalf("someone can't pass their ticket to someone in their family: %v", err)
 	}
@@ -127,17 +126,17 @@ const (
 	tacoNight   = "grp00000000521"
 )
 
-func celebrateSample(t *testing.T) (*Store, *store.Queue, func(viewer string, edits ...Edit) ([]string, error)) {
+func celebrateSample(t *testing.T) (*Store, func(viewer string, edits ...Edit) ([]string, error)) {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000009", "person": student, "member": "yes"}}})
-	return s, queue, func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000009", "person": student, "member": "yes"}}})
+	return s, func(viewer string, edits ...Edit) ([]string, error) {
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 }
 
 func TestPartiesAreHostedWhileTheCelebrationTakesThem(t *testing.T) {
-	s, _, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	hosted := func(status string) []Edit {
 		return []Edit{
 			{Insert: "GROUP", As: "p", Row: map[string]any{"kind": "party", "parent": celebration, "name": "Dumpling Night", "status": status, "added_by": parent, "listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
@@ -179,7 +178,7 @@ func TestPartiesAreHostedWhileTheCelebrationTakesThem(t *testing.T) {
 }
 
 func TestHostingAPartyWithItsWaitlistInOneWrite(t *testing.T) {
-	s, _, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"adding": "approval"}}); err != nil {
 		t.Fatalf("a Celebrate admin can't open hosting: %v", err)
 	}
@@ -230,7 +229,7 @@ func TestHostingAPartyWithItsWaitlistInOneWrite(t *testing.T) {
 }
 
 func TestCelebrateAdminsKeepACelebrationsCategories(t *testing.T) {
-	_, _, write := celebrateSample(t)
+	_, write := celebrateSample(t)
 	made, err := write(student, Edit{Insert: "GROUP", Row: map[string]any{"kind": "category", "parent": celebration, "name": "Adult Social", "status": "open", "order": "m", "added_by": student, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}})
 	if err != nil {
 		t.Fatalf("a Celebrate admin can't add a category to a celebration: %v", err)
@@ -250,8 +249,8 @@ func TestCelebrateAdminsKeepACelebrationsCategories(t *testing.T) {
 }
 
 func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": parent, "member": "yes"}}})
+	s, write := celebrateSample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": parent, "member": "yes"}}})
 	made, err := write(parent,
 		Edit{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "added_by": parent, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
 		Edit{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
@@ -275,16 +274,16 @@ func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
 	}
 }
 
-func tacoWaitlist(t *testing.T, s *Store, queue *store.Queue, capacity string) string {
+func tacoWaitlist(t *testing.T, s *Store, capacity string) string {
 	t.Helper()
-	return apply(t, s, queue, []Edit{
+	return apply(t, s, []Edit{
 		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "join": "direct", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
 		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w", "capacity": capacity}},
 	})[0]
 }
 
 func TestAHostAddsAPaidGuestAndAFreeTicket(t *testing.T) {
-	s, _, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	if _, err := write(staff,
 		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
 		Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@g", "address": "robin.guest@example.com", "primary": true, "source": "guest"}},
@@ -308,8 +307,8 @@ func TestAHostAddsAPaidGuestAndAFreeTicket(t *testing.T) {
 }
 
 func TestPlacesPastCapacityGoOnTheWaitlistInTheSameWrite(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	waitlist := tacoWaitlist(t, s, queue, "2")
+	s, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, "2")
 	if _, err := write(parent,
 		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": parent, "added": "2026-10-15 09:00:00"}},
@@ -331,8 +330,8 @@ func TestPlacesPastCapacityGoOnTheWaitlistInTheSameWrite(t *testing.T) {
 }
 
 func TestSomeoneInAnotherFamilyMayGoOnTheWaitlistInTheSameWrite(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	waitlist := tacoWaitlist(t, s, queue, "2")
+	s, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, "2")
 	if _, err := write(parent,
 		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": parent, "added": "2026-10-15 09:00:00"}},
@@ -346,8 +345,8 @@ func TestSomeoneInAnotherFamilyMayGoOnTheWaitlistInTheSameWrite(t *testing.T) {
 }
 
 func TestAFamilyLeavesTheWaitlistWithItsExtraPlaces(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	waitlist := tacoWaitlist(t, s, queue, "1")
+	s, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, "1")
 	made, err := write(parent,
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": parent, "member": "yes", "added_by": parent, "note": "Two if we can", "added": "2026-10-15 09:00:00"}},
 		Edit{Insert: "PERSON", As: "w0", Row: map[string]any{"source": "guest"}},
@@ -362,7 +361,7 @@ func TestAFamilyLeavesTheWaitlistWithItsExtraPlaces(t *testing.T) {
 }
 
 func TestATicketPassesToANewGuestWithAnAddress(t *testing.T) {
-	s, _, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	if _, err := write(parent,
 		Edit{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Robin Guest"}},
 		Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@g", "address": "robin.guest@example.com", "primary": true, "source": "guest"}},
@@ -376,8 +375,8 @@ func TestATicketPassesToANewGuestWithAnAddress(t *testing.T) {
 }
 
 func TestAnyGuestMayBeBoughtAPlace(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	made := apply(t, s, queue, []Edit{
+	s, write := celebrateSample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "elsewhere", Row: map[string]any{"kind": "group", "name": "Somewhere Hidden", "status": "open"}},
 		{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Isaac Guest"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@elsewhere", "person": "@g", "member": "yes", "guest_of": staff}},
@@ -395,7 +394,7 @@ func TestAnyGuestMayBeBoughtAPlace(t *testing.T) {
 }
 
 func TestAPlaceMayBeBoughtForSomeoneInAnotherFamily(t *testing.T) {
-	s, _, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	if _, err := write(parent,
 		Edit{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": staff, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00:00"}},
 		Edit{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": staff, "member": "yes", "added_by": parent, "guest_of": parent, "added": "2026-10-15 09:00:00"}},
@@ -408,9 +407,9 @@ func TestAPlaceMayBeBoughtForSomeoneInAnotherFamily(t *testing.T) {
 }
 
 func TestDeletingARowTakesItsAliases(t *testing.T) {
-	s, queue, write := celebrateSample(t)
-	waitlist := tacoWaitlist(t, s, queue, "1")
-	made := apply(t, s, queue, []Edit{
+	s, write := celebrateSample(t)
+	waitlist := tacoWaitlist(t, s, "1")
+	made := apply(t, s, []Edit{
 		{Insert: "MEMBER", As: "w", Row: map[string]any{"group": waitlist, "person": guest, "member": "yes", "added": "2026-03-08 09:53"}},
 		{Insert: "ALIAS", Row: map[string]any{"alias": "t9mqt6y0rw8ac", "target": "@w", "hidden": true}},
 	})
@@ -427,12 +426,12 @@ func TestDeletingARowTakesItsAliases(t *testing.T) {
 }
 
 func TestPaymentsAreTheirPayersHoldersHostsAndAdmins(t *testing.T) {
-	s, queue, write := celebrateSample(t)
+	s, write := celebrateSample(t)
 	payment := map[string]any{"person": parent, "group": tacoNight, "amount": "80", "added": "2026-10-11 18:13"}
 	if _, err := write(student, Edit{Insert: "PAYMENT", Row: payment}); err == nil {
 		t.Error("a Celebrate admin wrote a payment, which only the server does")
 	}
-	made := apply(t, s, queue, []Edit{
+	made := apply(t, s, []Edit{
 		{Insert: "PAYMENT", Row: payment},
 		{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": guest, "group": tacoNight, "amount": "40", "added": "2026-10-11 18:13", "stripe_invoice": "in_1UPW1SEdXpaCNGo9yXCCTItm"}},
 	})
@@ -443,7 +442,7 @@ func TestPaymentsAreTheirPayersHoldersHostsAndAdmins(t *testing.T) {
 	if len(as(t, s, guest, read(made[1]))) != 1 {
 		t.Error("a ticket's holder can't read what it cost")
 	}
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": guest, "member": "yes"}}})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": guest, "member": "yes"}}})
 	for _, viewer := range []string{parent, guest, student} {
 		if len(as(t, s, viewer, read(made[0]))) != 1 {
 			t.Errorf("%s can't read the payment", viewer)

@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/logging"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
 const (
@@ -166,7 +166,7 @@ func Server(domain string, apps, aliased map[string]http.Handler) *http.Server {
 	return &http.Server{Addr: ":" + Port(), Handler: compress(secure(domain, cacheControl(route(domain, apps, aliased)))), Protocols: protocols}
 }
 
-func Serve(server *http.Server, queue *store.Queue) {
+func Serve(server *http.Server, s *db.Store) {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGTERM, os.Interrupt)
 	go func() {
@@ -178,13 +178,13 @@ func Serve(server *http.Server, queue *store.Queue) {
 	}()
 	time.AfterFunc(deployOverlap, func() {
 		slog.Info("reading again for the previous revision's last writes")
-		queue.Refresh()
+		s.Refresh()
 	})
 	slog.Info("listening", "port", Port())
 	if err := ListenAndServe(server); err != http.ErrServerClosed {
 		logging.Fatal("serve", "error", err)
 	}
-	<-queue.Drain()
+	<-s.Drain()
 	slog.Info("queue drained")
 }
 

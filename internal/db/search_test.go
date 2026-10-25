@@ -30,7 +30,7 @@ func testOrigin(app string) string {
 	return "https://" + app + ".test"
 }
 
-func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store, *store.Queue, *Searcher) {
+func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store, *Searcher) {
 	t.Helper()
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
@@ -39,10 +39,10 @@ func newSearcher(t *testing.T, claude http.Handler, bucket *blob.Bucket) (*Store
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, queue := sampleWithQueue(t)
-	x := NewSearcher(s, queue, bucket, vertex)
+	s := sample(t)
+	x := NewSearcher(s, bucket, vertex)
 	x.StartMaking("test")
-	return s, queue, x
+	return s, x
 }
 
 func sampleBucket(t *testing.T) *blob.Bucket {
@@ -54,11 +54,11 @@ func sampleBucket(t *testing.T) *blob.Bucket {
 	return bucket
 }
 
-func searcher(t *testing.T) (*Store, *store.Queue, *blob.Bucket, *Searcher) {
+func searcher(t *testing.T) (*Store, *blob.Bucket, *Searcher) {
 	t.Helper()
 	bucket := sampleBucket(t)
-	s, queue, x := newSearcher(t, testkit.SearchClaude(), bucket)
-	return s, queue, bucket, x
+	s, x := newSearcher(t, testkit.SearchClaude(), bucket)
+	return s, bucket, x
 }
 
 func waitRows(t *testing.T, s *Store, x *Searcher) map[string]SearchRow {
@@ -136,15 +136,15 @@ func sendMail(t *testing.T, s *Store, pics *Pictures, subject, body string) stri
 }
 
 func TestReadyAfterTheStoredEntriesAreIndexed(t *testing.T) {
-	s, _, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	rows := waitRows(t, s, x)
 	waitIndexed(t, x, rows)
 	vertex, err := artifacts.NewVertex()
 	if err != nil {
 		t.Fatal(err)
 	}
-	s2, queue2 := sampleWithQueue(t)
-	started := NewSearcher(s2, queue2, bucket, vertex)
+	s2 := sample(t)
+	started := NewSearcher(s2, bucket, vertex)
 	select {
 	case <-started.Ready():
 	case <-time.After(5 * time.Second):
@@ -162,7 +162,7 @@ func TestReadyAfterTheStoredEntriesAreIndexed(t *testing.T) {
 }
 
 func TestEveryRowIsMadeUnasked(t *testing.T) {
-	s, _, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	rows := waitRows(t, s, x)
 	waitIndexed(t, x, rows)
 	held, err := bucket.List(context.Background(), searchFolder+"/")
@@ -179,7 +179,7 @@ func TestEveryRowIsMadeUnasked(t *testing.T) {
 }
 
 func TestAnEntryAnotherWriterStoredIsTakenUp(t *testing.T) {
-	s, _, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	rows := waitRows(t, s, x)
 	waitIndexed(t, x, rows)
 	var hash string
@@ -219,7 +219,7 @@ func TestAnEntryAnotherWriterStoredIsTakenUp(t *testing.T) {
 func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
-	s, _, x := newSearcher(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	s, x := newSearcher(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		request, _ := io.ReadAll(r.Body)
 		mu.Lock()
 		asked[string(request)]++
@@ -262,7 +262,7 @@ func TestAnAnswerCutShortIsTriedThreeTimes(t *testing.T) {
 func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 	var mu sync.Mutex
 	asked := map[string]int{}
-	s, _, x := newSearcher(t, testkit.ClaudeReplying(func(request string) string {
+	s, x := newSearcher(t, testkit.ClaudeReplying(func(request string) string {
 		mu.Lock()
 		defer mu.Unlock()
 		asked[request]++
@@ -284,7 +284,7 @@ func TestAShortSummaryCountsAsAFailure(t *testing.T) {
 }
 
 func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
-	s, queue, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	rows := runAs(t, s.Model(), "", `(from SEARCH (where (= target "grp00000000040")))`).Rows()
 	if len(rows) != 1 {
@@ -293,10 +293,10 @@ func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
 	object := rows[0]["object"]
 	old := x.snapshot().entries[object]
 	b := Batch{Batch: []Edit{{Delete: rows[0]["id"]}}}
-	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
+	if _, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: "per00000000002", Now: testNow}, b); err == nil {
 		t.Fatal("a parent deleted a search entry")
 	}
-	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+	if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b); err != nil {
 		t.Fatal(err)
 	}
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
@@ -310,7 +310,7 @@ func TestDeletingASearchEntryMakesItAgain(t *testing.T) {
 }
 
 func TestEveryShownRowHasAnInput(t *testing.T) {
-	s, _, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	makeAll(t, s, x)
 	inputs := s.Model().SearchInputs(nil)
 	if _, ok := inputs["grp00000000041"]; ok {
@@ -340,9 +340,9 @@ func found(t *testing.T, x *Searcher, m *Model, env Env, words string, limits ma
 }
 
 func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
 	makeAll(t, s, x)
 	x.mu.RLock()
@@ -366,9 +366,9 @@ func TestAnEmailsMarkdownIsSearchedByThoseItWasSentTo(t *testing.T) {
 }
 
 func TestEveryChunkCarriesTheHeader(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	paragraphs := []string{}
 	for i := range 40 {
 		paragraphs = append(paragraphs, fmt.Sprintf("<p>Paragraph %d of the long letter about the spring camping trip and what every family needs to pack for three nights.</p>", i))
@@ -396,8 +396,8 @@ func TestFillerWordsAreNotSearched(t *testing.T) {
 }
 
 func TestListsAdminsManagersSessionsDaysAndCategoriesAreNotSearched(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	ids := apply(t, s, queue, []Edit{
+	s := sample(t)
+	ids := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "clubs", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Clubs", "status": "open", "visible_to": "grp00000000004"}},
 		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "day_part", "name": "Pickup", "parent": "@clubs", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03 15:15:00", "end": "2026-11-03 15:30:00"}},
 		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "day", "name": "No School", "parent": "@clubs", "status": "open", "visible_to": "grp00000000004", "start": "2026-11-03"}},
@@ -421,7 +421,7 @@ func TestListsAdminsManagersSessionsDaysAndCategoriesAreNotSearched(t *testing.T
 }
 
 func TestANameOnlyPersonIsFoundByNameAlone(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	v := x.snapshot()
 	rowan, maya := v.rows["per00000000002"], v.rows["per00000000003"]
@@ -465,9 +465,9 @@ func TestTheHeaderSaysWhatTheThingIs(t *testing.T) {
 }
 
 func TestTheSameTextIsFoundOnce(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	extracts := []string{}
 	for _, subject := range []string{"Tide pools", "Tide pools again"} {
 		extracts = append(extracts, sendMail(t, s, pics, subject, "Bring <b>boots</b> for the tide pools."))
@@ -496,9 +496,9 @@ func TestTheSameTextIsFoundOnce(t *testing.T) {
 }
 
 func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	tidePools := "Bring boots for the tide pools. We meet at the north end of the beach at nine, walk the rocks with the ranger, count the anemones, sea stars and crabs in each pool, sketch what we find in our field journals, eat lunch on the bluff above the cove and walk back to the bus by one. Pack water, a hat, sunscreen and a change of socks in case a wave comes over the rocks."
 	extracts := []string{}
 	for i, body := range []string{tidePools + " See you Friday.", tidePools + " See you Monday.", "Rain boots are on sale at the book fair this week, in every size from toddler to adult, with half the money going to the library."} {
@@ -516,9 +516,9 @@ func TestNearlyTheSameTextIsFoundOnce(t *testing.T) {
 }
 
 func TestAHitJoinsItsOwnEmailBeforeItsCopy(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	headers := "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nList-Id: <hummingbirds.parents.heliosschool.org>\r\nMIME-Version: 1.0\r\n"
 	body := "<p>Bring <b>boots</b> for the tide pools.</p>"
 	first := uploadMail(t, s, pics, headers+"Date: Fri, 13 Feb 2026 01:48:03 +0000\r\nSubject: Tide pools\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+body+"\r\n")
@@ -568,9 +568,9 @@ func TestAHitJoinsItsOwnEmailBeforeItsCopy(t *testing.T) {
 }
 
 func TestAnEmailsPartsAreOneResult(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
 	makeAll(t, s, x)
 	x.mu.RLock()
@@ -590,11 +590,11 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 }
 
 func TestARefNamesThePagesItWasReadFrom(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	if _, err := bucket.Put(t.Context(), "content/m1", "text/markdown", []byte("# Egg drop\n\nEach team drops one egg from the balcony."), 0); err != nil {
 		t.Fatal(err)
 	}
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "whole", Row: map[string]any{"hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}},
 		{Insert: "CONTENT", As: "run", Row: map[string]any{"hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}},
 		{Insert: "CONTENT", As: "text", Row: map[string]any{"hash": "m1", "blob": "content/m1", "mime": "text/markdown", "size": "52"}},
@@ -611,7 +611,7 @@ func TestARefNamesThePagesItWasReadFrom(t *testing.T) {
 	if ref := results[0].Refs[0]; ref.Extract != extract || ref.Document != ids[3] || ref.FirstPage != 21 || ref.LastPage != 25 {
 		t.Fatalf("the rules' ref: %+v, want %s read from pages 21 to 25 of %s", ref, extract, ids[3])
 	}
-	apply(t, s, queue, []Edit{{Set: pages, Cells: map[string]any{"first_page": "22"}}})
+	apply(t, s, []Edit{{Set: pages, Cells: map[string]any{"first_page": "22"}}})
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		x.mu.RLock()
 		first := x.rows[extract].FirstPage
@@ -789,7 +789,7 @@ func TestANameMustHoldEveryWord(t *testing.T) {
 }
 
 func TestAWikiPageIsSearchedAsItself(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	results := found(t, x, s.Model(), Env{Viewer: parent, Now: testNow}, "drop-off and pickup", testLimits)["DOCUMENT"]
 	if len(results) == 0 || len(results[0].Refs) != 1 {
@@ -808,9 +808,9 @@ func TestAWikiPageIsSearchedAsItself(t *testing.T) {
 }
 
 func TestAResultKeepsFiveRefs(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	for i := range 7 {
 		sendMail(t, s, pics, fmt.Sprintf("Tide pools %d", i), "Bring <b>boots</b> for the tide pools.")
 	}
@@ -822,15 +822,15 @@ func TestAResultKeepsFiveRefs(t *testing.T) {
 }
 
 func TestARemovedExtractLeavesTheIndex(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	extract := sendMail(t, s, pics, "Tide pools", "Bring <b>boots</b> for the tide pools.")
 	makeAll(t, s, x)
 	x.mu.RLock()
 	object := x.rows[extract].Object
 	x.mu.RUnlock()
-	apply(t, s, queue, []Edit{{Delete: extract}})
+	apply(t, s, []Edit{{Delete: extract}})
 	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
 		_, indexed := x.snapshot().rows[extract]
 		held, err := bucket.Exists(context.Background(), object)
@@ -845,7 +845,7 @@ func TestARemovedExtractLeavesTheIndex(t *testing.T) {
 }
 
 func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	m := s.Model()
 	if got := hitIDs(found(t, x, m, Env{Viewer: parent, Now: testNow}, "picnic", testLimits)["GROUP"]); !slices.Contains(got, "grp00000000040") {
@@ -857,7 +857,7 @@ func TestSearchKeepsToWhatTheCallerMayRead(t *testing.T) {
 }
 
 func TestMeaningStopsAtTheFloor(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	v := x.snapshot()
 	picnic := v.rows["grp00000000040"]
@@ -874,10 +874,10 @@ func TestMeaningStopsAtTheFloor(t *testing.T) {
 }
 
 func TestAChangedRowLosesItsOldEntry(t *testing.T) {
-	s, queue, bucket, x := searcher(t)
+	s, bucket, x := searcher(t)
 	makeAll(t, s, x)
 	before := s.Model().SearchInputs(nil)["grp00000000040"].Object
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"location": "the meadow"}}})
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"location": "the meadow"}}})
 	after := s.Model().SearchInputs(nil)["grp00000000040"].Object
 	if after == before {
 		t.Fatal("a new location left the picnic's input unchanged")
@@ -901,14 +901,14 @@ func TestAChangedRowLosesItsOldEntry(t *testing.T) {
 }
 
 func TestARenamedClassroomReachesItsPeoplesEntries(t *testing.T) {
-	s, queue, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	students := s.Model().Table("PERSON").Referencing("classroom", "grp00000000010")
 	if len(students) == 0 {
 		t.Fatal("the sample has nobody in grp00000000010")
 	}
 	before := s.Model().SearchInputs(nil)[students[0]["id"]].Object
-	apply(t, s, queue, []Edit{{Set: "grp00000000010", Cells: map[string]any{"name": "Sea Otters"}}})
+	apply(t, s, []Edit{{Set: "grp00000000010", Cells: map[string]any{"name": "Sea Otters"}}})
 	rows := waitRows(t, s, x)
 	if rows[students[0]["id"]].Object == before || !strings.Contains(rows[students[0]["id"]].Input, "Classroom: Sea Otters") {
 		t.Fatalf("%s's input after the rename: %q", students[0]["id"], rows[students[0]["id"]].Input)
@@ -916,7 +916,7 @@ func TestARenamedClassroomReachesItsPeoplesEntries(t *testing.T) {
 }
 
 func TestIncrementalSearchAgreesWithAFullPass(t *testing.T) {
-	s, queue, _, x := searcher(t)
+	s, _, x := searcher(t)
 	waitRows(t, s, x)
 	m := s.Model()
 	groups, classrooms, people, documents := []string{}, []string{}, []string{}, []string{}
@@ -949,7 +949,7 @@ func TestIncrementalSearchAgreesWithAFullPass(t *testing.T) {
 			edit = Edit{Set: pick(documents), Cells: map[string]any{"name": fmt.Sprintf("Retitled %d", i)}}
 		}
 		t.Logf("edit %d: %s %v", i, edit.Set, edit.Cells)
-		apply(t, s, queue, []Edit{edit})
+		apply(t, s, []Edit{edit})
 		waitRows(t, s, x)
 	}
 }
@@ -962,13 +962,13 @@ func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := sampleBucket(t)
 	stray := SearchObject("a row long gone")
 	if _, err := bucket.Put(context.Background(), stray, "application/json", []byte(`{"summary":"gone"}`), 0); err != nil {
 		t.Fatal(err)
 	}
-	x := NewSearcher(s, queue, bucket, vertex)
+	x := NewSearcher(s, bucket, vertex)
 	x.StartMaking("test")
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
 		held, err := bucket.Exists(context.Background(), stray)
@@ -985,7 +985,7 @@ func TestAStrayEntryIsRemovedOnceMaking(t *testing.T) {
 }
 
 func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	q := `(from SEARCH (where (= target "grp00000000040")))`
 	rows := as(t, s, staff, q)
@@ -1005,7 +1005,7 @@ func TestTheIndexIsATableForSuperAdmins(t *testing.T) {
 }
 
 func TestSearchAnswersOnceByTable(t *testing.T) {
-	s, _, _, x := searcher(t)
+	s, _, x := searcher(t)
 	makeAll(t, s, x)
 	mux := http.NewServeMux()
 	RegisterSearch(mux, s, x, testTokens, func() time.Time { return testNow })
@@ -1035,8 +1035,8 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 			t.Errorf("limits %v were taken", bad)
 		}
 	}
-	s, queue, _, x := searcher(t)
-	apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "event", "name": "Spring Picnic", "parent": "grp00000000060", "status": "open", "visible_to": "grp00000000004", "start": "2027-04-10 12:00:00"}}})
+	s, _, x := searcher(t)
+	apply(t, s, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "event", "name": "Spring Picnic", "parent": "grp00000000060", "status": "open", "visible_to": "grp00000000004", "start": "2027-04-10 12:00:00"}}})
 	makeAll(t, s, x)
 	env := Env{Viewer: parent, Now: testNow}
 	if all := found(t, x, s.Model(), env, "picnic", testLimits)["GROUP"]; len(all) < 2 {

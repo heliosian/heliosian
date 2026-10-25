@@ -25,7 +25,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/tools"
 )
@@ -40,7 +39,6 @@ var sampleNow = time.Date(2026, 9, 28, 9, 0, 0, 0, db.School)
 type sample struct {
 	sources Sources
 	data    *db.Store
-	queue   *store.Queue
 	pics    *db.Pictures
 }
 
@@ -51,8 +49,7 @@ func origin(app string) string {
 func sampleSources(t *testing.T) sample {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), origin)
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), origin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +62,9 @@ func sampleSources(t *testing.T) sample {
 		t.Fatal(err)
 	}
 	now := func() time.Time { return sampleNow }
-	search := db.NewSearcher(s, queue, bucket, vertex)
+	search := db.NewSearcher(s, bucket, vertex)
 	set := tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: now})
-	return sample{sources: Sources{Data: s, Tools: set, Now: now}, data: s, queue: queue, pics: db.NewPictures(s, queue, bucket)}
+	return sample{sources: Sources{Data: s, Tools: set, Now: now}, data: s, pics: db.NewPictures(s, bucket)}
 }
 
 func requestAs(email string) *http.Request {
@@ -88,7 +85,7 @@ func sampleTurn(t *testing.T, email string) *turn {
 func (s sample) mail(t *testing.T, subject, published string) string {
 	t.Helper()
 	env := db.Env{System: "mail", Now: sampleNow}
-	ids, err := db.Write(context.Background(), s.data, s.queue, access.System(env.System), env, db.Batch{Batch: []db.Edit{
+	ids, err := db.Write(context.Background(), s.data, access.System(env.System), env, db.Batch{Batch: []db.Edit{
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": subject, "published": published}},
 		{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@mail", "group": "grp00000000030", "relation": "sent_to"}},
 	}})
@@ -128,7 +125,7 @@ func TestLingoReadsTheModel(t *testing.T) {
 		edits = append(edits, db.Edit{Insert: in.Table, As: in.As, Row: in.Row})
 	}
 	env := db.Env{System: "test", Whole: true, Now: sampleNow}
-	if _, err := db.Write(context.Background(), src.data, src.queue, access.System(env.System), env, db.Batch{Batch: edits}); err != nil {
+	if _, err := db.Write(context.Background(), src.data, access.System(env.System), env, db.Batch{Batch: edits}); err != nil {
 		t.Fatal(err)
 	}
 	tr := src.turn(rowan)

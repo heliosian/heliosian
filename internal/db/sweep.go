@@ -19,17 +19,16 @@ const (
 
 type sweeper struct {
 	s      *Store
-	queue  *store.Queue
 	bucket *blob.Bucket
 	in     *inbox
 	tick   wake
 }
 
-func StartSweeper(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	x := &sweeper{s: s, queue: queue, bucket: bucket, in: s.Model().services.inbox(sweepInbox), tick: newWake()}
+func StartSweeper(s *Store, bucket *blob.Bucket) {
+	x := &sweeper{s: s, bucket: bucket, in: s.Model().services.inbox(sweepInbox), tick: newWake()}
 	go x.run()
 	go x.runObjects()
-	queue.OnTick(x.tick.poke)
+	s.OnTick(x.tick.poke)
 	x.in.wake.poke()
 	x.tick.poke()
 }
@@ -122,7 +121,7 @@ func (m *Model) contentReferenced(id string) bool {
 
 func (x *sweeper) sweep() (int, <-chan struct{}, error) {
 	rows := 0
-	written, err := x.queue.Transact(context.Background(), access.System(sweepActor), func(tx *store.Tx) error {
+	written, err := x.s.Transact(context.Background(), access.System(sweepActor), func(tx *store.Tx[Model]) error {
 		gone := x.s.In(tx).unreferencedContent()
 		gone = gone[:min(len(gone), sweepBatch)]
 		rows = len(gone)

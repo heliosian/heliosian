@@ -14,20 +14,20 @@ import (
 )
 
 func TestAFetchedPageGetsNoImagesOfItsOwn(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	page := []byte(`<html><body><p>Hot lunch starts Monday.</p><img src="https://example.org/menu.png"></body></html>`)
 	if _, err := bucket.Put(t.Context(), "content/p1", "text/html; charset=utf-8", page, 0); err != nil {
 		t.Fatal(err)
 	}
-	linked := apply(t, s, queue, []Edit{
+	linked := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "page", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": "text/html; charset=utf-8", "size": "90"}},
 		{Insert: "DOCUMENT", As: "lunch", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Hot lunch", "extracted": "2026-02-12 01:48:03"}},
 		{Insert: "DOCUMENT", As: "part", Row: map[string]any{"relation": "part", "parent": "@lunch", "content": "@page", "extracted": "2026-02-12 01:48:03"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@part", "url": "https://example.org/lunch", "content": "@page"}},
 	})[4]
-	NewExtractor(s, queue, bucket, "test")
+	NewExtractor(s, bucket, "test")
 	made(t, s, "DOCUMENT", linked, "extracted")
 	under := children(s, linked)
 	if len(under) != 1 || under[0]["relation"] != "extract" {
@@ -42,10 +42,10 @@ func TestExtractingAnEmailChoosesItsLinks(t *testing.T) {
 		}
 		return `{"links": [{"n": 1, "key": "` + linkKey("https://docs.example.org/handbook") + `", "decision": "fetch"}, {"n": 2, "key": "` + linkKey("https://forms.example.org/signup") + `", "decision": "form"}]}`
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	root := uploadMail(t, s, pics, "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: Handbook week\r\nList-Id: <community.heliosschool.org>\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"+
 		`<p>Read the <a href="https://docs.example.org/handbook">handbook</a>, then <a href="https://forms.example.org/signup">sign up</a>.</p><img src="https://example.org/banner.png">`+"\r\n")
 	made(t, s, "DOCUMENT", root, "extracted")

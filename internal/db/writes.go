@@ -97,17 +97,17 @@ func resolve(text string, names map[string]string) (string, error) {
 	return id, nil
 }
 
-func Write(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch) ([]string, error) {
-	return writeChecked(ctx, s, queue, actor, env, b, nil)
+func Write(ctx context.Context, s *Store, actor access.Actor, env Env, b Batch) ([]string, error) {
+	return writeChecked(ctx, s, actor, env, b, nil)
 }
 
-func writeChecked(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, b Batch, check func(*Model) error) ([]string, error) {
+func writeChecked(ctx context.Context, s *Store, actor access.Actor, env Env, b Batch, check func(*Model) error) ([]string, error) {
 	whole := s.Model().whole(env)
 	span := trace.From(ctx)
 	waiting := span.Start("lock")
 	var written []string
 	var committing *trace.Span
-	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
+	_, err := s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		waiting.End()
 		defer func() { committing = span.Start("commit") }()
 		if check != nil {
@@ -149,7 +149,7 @@ func (w *pendingWrites) server(e Edit) string {
 	return w.add(e)
 }
 
-func stageEdits(s *Store, tx *store.Tx, env Env, edits []Edit, label string, whole bool) ([]string, error) {
+func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label string, whole bool) ([]string, error) {
 	span := trace.From(tx.Context())
 	authorizing, staging, firing, checking := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire"), span.Tally("check")
 	var authorized time.Duration
@@ -210,7 +210,7 @@ func stageEdits(s *Store, tx *store.Tx, env Env, edits []Edit, label string, who
 	return written, nil
 }
 
-func stageWrite(s *Store, tx *store.Tx, w Edit, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
+func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
 	m := s.In(tx)
 	switch {
 	case w.Insert != "" && w.Set == "" && w.Delete == "" && w.Cells == nil:

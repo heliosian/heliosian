@@ -13,37 +13,30 @@ import (
 	"heliosian/internal/store"
 )
 
-func sampleWithQueue(t *testing.T) (*Store, *store.Queue) {
+func sample(t *testing.T) *Store {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s, queue
-}
-
-func sample(t *testing.T) *Store {
-	t.Helper()
-	s, _ := sampleWithQueue(t)
 	return s
 }
 
-func apply(t testing.TB, s *Store, queue *store.Queue, edits []Edit) []string {
+func apply(t testing.TB, s *Store, edits []Edit) []string {
 	t.Helper()
 	if len(edits) == 0 {
 		return nil
 	}
-	ids, err := applyErr(s, queue, edits)
+	ids, err := applyErr(s, edits)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return ids
 }
 
-func applyErr(s *Store, queue *store.Queue, edits []Edit) ([]string, error) {
-	return Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: edits})
+func applyErr(s *Store, edits []Edit) ([]string, error) {
+	return Write(context.Background(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: edits})
 }
 
 func memberRow(t testing.TB, s *Store, group, person string) string {
@@ -78,9 +71,9 @@ func TestSampleLoads(t *testing.T) {
 }
 
 func TestAWriteBuildsOnlyTheTablesItChanged(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	before := s.Model()
-	apply(t, s, queue, []Edit{{Set: "per00000000002", Cells: map[string]any{"facts": "keeps bees"}}})
+	apply(t, s, []Edit{{Set: "per00000000002", Cells: map[string]any{"facts": "keeps bees"}}})
 	after := s.Model()
 	if after.Table("PERSON") == before.Table("PERSON") {
 		t.Error("the write kept the PERSON rows it changed")
@@ -96,26 +89,26 @@ func TestAWriteBuildsOnlyTheTablesItChanged(t *testing.T) {
 			t.Errorf("the write drew %s's view again, though it changed nothing there", table)
 		}
 	}
-	_, err := applyErr(s, queue, []Edit{{Set: "eml00000000001", Cells: map[string]any{"primary": "No"}}})
+	_, err := applyErr(s, []Edit{{Set: "eml00000000001", Cells: map[string]any{"primary": "No"}}})
 	if err == nil || !strings.Contains(err.Error(), "0 primary addresses") {
 		t.Errorf("taking away Rowan's only primary address answered %v", err)
 	}
 	if _, ok := s.Model().Shown("PERSON_EMAIL").Get("eml00000000001"); !ok {
 		t.Fatal("Rowan's address isn't shown before Rowan is hidden")
 	}
-	apply(t, s, queue, []Edit{{Set: "per00000000002", Cells: map[string]any{"hidden": true}}})
+	apply(t, s, []Edit{{Set: "per00000000002", Cells: map[string]any{"hidden": true}}})
 	if _, ok := s.Model().Shown("PERSON_EMAIL").Get("eml00000000001"); ok {
 		t.Error("hiding Rowan left Rowan's address shown")
 	}
 }
 
 func TestGeneratedSchoolFieldsTakeTheOverride(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	juni, _ := s.Model().Table("PERSON").Get("per00000000001")
 	if juni["grade"] != "3" || juni["classroom"] != "grp00000000010" {
 		t.Fatalf("Veracross's grade and classroom read %q %q", juni["grade"], juni["classroom"])
 	}
-	apply(t, s, queue, []Edit{
+	apply(t, s, []Edit{
 		{Set: "per00000000001", Cells: map[string]any{"grade_override": "4", "job_title_override": "Reader"}},
 	})
 	juni, _ = s.Model().Table("PERSON").Get("per00000000001")
@@ -157,7 +150,7 @@ func TestDocumentsKnowTheirSourceAndTerminal(t *testing.T) {
 }
 
 func TestGeneratedNames(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	people := s.Model().Table("PERSON")
 	for id, want := range map[string]string{"per00000000001": "Juni Ashdown", "per00000000004": "Guest"} {
 		row, _ := people.Get(id)
@@ -165,7 +158,7 @@ func TestGeneratedNames(t *testing.T) {
 			t.Fatalf("%s shows as %q, want %q", id, row["name_show"], want)
 		}
 	}
-	apply(t, s, queue, []Edit{{Set: "per00000000001", Cells: map[string]any{"name_long_override": "June Ashdown"}}})
+	apply(t, s, []Edit{{Set: "per00000000001", Cells: map[string]any{"name_long_override": "June Ashdown"}}})
 	row, _ := s.Model().Table("PERSON").Get("per00000000001")
 	if row["name_long"] != "June Ashdown" || row["name_short"] != "Juni" {
 		t.Fatalf("after an override: long %q short %q", row["name_long"], row["name_short"])
@@ -196,8 +189,8 @@ func TestCommitsTheModelRefuses(t *testing.T) {
 		"neither":          {Edit{Insert: "DOCUMENT", Row: map[string]any{}}, "a kind and no parent"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			s, queue := sampleWithQueue(t)
-			_, err := applyErr(s, queue, []Edit{c.edit})
+			s := sample(t)
+			_, err := applyErr(s, []Edit{c.edit})
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want %q", err, c.want)
 			}
@@ -220,7 +213,7 @@ func TestALoadRefusesRowsWithoutTheirOwnID(t *testing.T) {
 			}
 			appendRows(t, filepath.Join(root, GroupsSheet, "GROUP.csv"), []map[string]string{c.row})
 			dir := &data.Dir{Root: root}
-			if _, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex(), testOrigin); err == nil || !strings.Contains(err.Error(), c.want) {
+			if _, err := NewStore(dir, dir, NewSearchIndex(), testOrigin); err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want %q", err, c.want)
 			}
 		})
@@ -242,8 +235,7 @@ func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := &data.Dir{Root: root}
-			queue := store.NewQueue()
-			s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
+			s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -251,8 +243,8 @@ func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
 			if err := edit(dir); err != nil {
 				t.Fatal(err)
 			}
-			queue.Refresh()
-			queue.Flush()
+			s.Refresh()
+			s.Flush()
 			if s.Model() != before {
 				t.Fatal("a refresh swapped in a model with a reference that names no row")
 			}
@@ -261,8 +253,8 @@ func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
 }
 
 func TestCommitAcrossSheets(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	sam := apply(t, s, queue, []Edit{
+	s := sample(t)
+	sam := apply(t, s, []Edit{
 		{Insert: "PERSON", As: "sam", Row: map[string]any{"source": "manual", "name_long_override": "Sam Ortiz"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": "@sam", "member": "yes"}},
 	})[0]

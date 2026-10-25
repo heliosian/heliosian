@@ -4,125 +4,90 @@ import (
 	"context"
 	"log/slog"
 	"slices"
-	"sync"
 	"time"
 )
 
-type Load func(context.Context) (Settle, error)
-
-type Settle func() (swap func(), err error)
-
-type Queue struct {
-	mu          sync.Mutex
-	cond        *sync.Cond
-	pending     []func()
-	holds       int
-	draining    bool
-	done        chan struct{}
-	lastRefresh time.Time
-
-	commits   sync.Mutex
-	loads     []Load
-	swapped   []func()
-	ticked    []func()
-	refreshed chan struct{}
-	firstOnce sync.Once
+func (s *Store[M]) Add(task func()) {
+	s.work.Lock()
+	defer s.work.Unlock()
+	s.pending = append(s.pending, task)
+	s.cond.Signal()
 }
 
-func NewQueue() *Queue {
-	q := &Queue{done: make(chan struct{}), refreshed: make(chan struct{})}
-	q.cond = sync.NewCond(&q.mu)
-	go q.run()
-	return q
+func (s *Store[M]) Hold() {
+	s.work.Lock()
+	defer s.work.Unlock()
+	s.holds++
 }
 
-func (q *Queue) Add(task func()) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.pending = append(q.pending, task)
-	q.cond.Signal()
+func (s *Store[M]) Release() {
+	s.work.Lock()
+	defer s.work.Unlock()
+	s.holds--
+	s.cond.Signal()
 }
 
-func (q *Queue) Hold() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.holds++
-}
-
-func (q *Queue) Release() {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.holds--
-	q.cond.Signal()
-}
-
-func (q *Queue) Flush() {
+func (s *Store[M]) Flush() {
 	done := make(chan struct{})
-	q.Add(func() { close(done) })
+	s.Add(func() { close(done) })
 	<-done
 }
 
-func (q *Queue) Drain() <-chan struct{} {
-	q.mu.Lock()
-	q.draining = true
-	q.cond.Signal()
-	q.mu.Unlock()
-	return q.done
+func (s *Store[M]) Drain() <-chan struct{} {
+	s.work.Lock()
+	s.draining = true
+	s.cond.Signal()
+	s.work.Unlock()
+	return s.done
 }
 
-func (q *Queue) run() {
+func (s *Store[M]) run() {
 	for {
-		q.mu.Lock()
-		for len(q.pending) == 0 && (!q.draining || q.holds > 0) {
-			q.cond.Wait()
+		s.work.Lock()
+		for len(s.pending) == 0 && (!s.draining || s.holds > 0) {
+			s.cond.Wait()
 		}
-		if len(q.pending) == 0 {
-			q.mu.Unlock()
-			close(q.done)
+		if len(s.pending) == 0 {
+			s.work.Unlock()
+			close(s.done)
 			return
 		}
-		task := q.pending[0]
-		q.pending = q.pending[1:]
-		q.mu.Unlock()
+		task := s.pending[0]
+		s.pending = s.pending[1:]
+		s.work.Unlock()
 		task()
 	}
 }
 
-func (q *Queue) Register(load Load) {
-	q.commits.Lock()
-	defer q.commits.Unlock()
-	q.loads = append(q.loads, load)
-}
-
-func (q *Queue) OnSwap(swapped func()) {
-	q.commits.Lock()
-	defer q.commits.Unlock()
-	q.swapped = append(q.swapped, swapped)
+func (s *Store[M]) OnSwap(swapped func()) {
+	s.commits.Lock()
+	defer s.commits.Unlock()
+	s.swapped = append(s.swapped, swapped)
 	swapped()
 }
 
-func (q *Queue) afterSwap() {
-	for _, swapped := range q.swapped {
+func (s *Store[M]) afterSwap() {
+	for _, swapped := range s.swapped {
 		swapped()
 	}
 }
 
-func (q *Queue) OnTick(tick func()) {
-	q.commits.Lock()
-	defer q.commits.Unlock()
-	q.ticked = append(q.ticked, tick)
+func (s *Store[M]) OnTick(tick func()) {
+	s.commits.Lock()
+	defer s.commits.Unlock()
+	s.ticked = append(s.ticked, tick)
 }
 
-func (q *Queue) Tick() {
+func (s *Store[M]) Tick() {
 	refresh, tick := time.Tick(refreshInterval), time.Tick(tickInterval)
 	for {
 		select {
 		case <-refresh:
-			q.Refresh()
+			s.Refresh()
 		case <-tick:
-			q.commits.Lock()
-			ticked := slices.Clone(q.ticked)
-			q.commits.Unlock()
+			s.commits.Lock()
+			ticked := slices.Clone(s.ticked)
+			s.commits.Unlock()
 			for _, f := range ticked {
 				f()
 			}
@@ -130,12 +95,12 @@ func (q *Queue) Tick() {
 	}
 }
 
-func (q *Queue) Refresh() {
-	q.Add(q.refresh)
+func (s *Store[M]) Refresh() {
+	s.Add(s.refresh)
 }
 
-func (q *Queue) Refreshed() <-chan struct{} {
-	return q.refreshed
+func (s *Store[M]) Refreshed() <-chan struct{} {
+	return s.first
 }
 
 type Status struct {
@@ -144,45 +109,32 @@ type Status struct {
 	LastRefresh time.Time `json:"lastRefresh"`
 }
 
-func (q *Queue) Status() Status {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return Status{Pending: len(q.pending), Held: q.holds, LastRefresh: q.lastRefresh}
+func (s *Store[M]) Status() Status {
+	s.work.Lock()
+	defer s.work.Unlock()
+	return Status{Pending: len(s.pending), Held: s.holds, LastRefresh: s.lastRefresh}
 }
 
-func (q *Queue) refresh() {
+func (s *Store[M]) refresh() {
 	start := time.Now()
-	q.commits.Lock()
-	loads := slices.Clone(q.loads)
-	q.commits.Unlock()
-	settles := []Settle{}
-	for _, load := range loads {
-		settle, err := load(context.Background())
-		if err != nil {
-			slog.Error("refresh", "error", err)
-			return
-		}
-		settles = append(settles, settle)
+	settle, err := s.load(context.Background())
+	if err != nil {
+		slog.Error("refresh", "error", err)
+		return
 	}
-	q.commits.Lock()
-	defer q.commits.Unlock()
+	s.commits.Lock()
+	defer s.commits.Unlock()
 	settled := time.Now()
-	swaps := []func(){}
-	for _, settle := range settles {
-		swap, err := settle()
-		if err != nil {
-			slog.Error("refresh", "error", err)
-			return
-		}
-		swaps = append(swaps, swap)
+	swap, err := settle()
+	if err != nil {
+		slog.Error("refresh", "error", err)
+		return
 	}
-	for _, swap := range swaps {
-		swap()
-	}
-	q.afterSwap()
-	q.mu.Lock()
-	q.lastRefresh = time.Now()
-	q.mu.Unlock()
-	q.firstOnce.Do(func() { close(q.refreshed) })
+	swap()
+	s.afterSwap()
+	s.work.Lock()
+	s.lastRefresh = time.Now()
+	s.work.Unlock()
+	s.firstOnce.Do(func() { close(s.first) })
 	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond), "locked", time.Since(settled).Round(time.Millisecond))
 }

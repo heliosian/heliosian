@@ -21,7 +21,6 @@ type StockHit struct {
 
 type Stock struct {
 	s           *Store
-	queue       *store.Queue
 	bucket      *blob.Bucket
 	mu          sync.Mutex
 	pending     map[string]chan struct{}
@@ -30,8 +29,8 @@ type Stock struct {
 	previews    map[string]*stockPreview
 }
 
-func NewStock(s *Store, queue *store.Queue, bucket *blob.Bucket) *Stock {
-	return &Stock{s: s, queue: queue, bucket: bucket, pending: map[string]chan struct{}{}, remembering: map[string]*stockWrite{}, reserved: map[string]*stockWrite{}, previews: map[string]*stockPreview{}}
+func NewStock(s *Store, bucket *blob.Bucket) *Stock {
+	return &Stock{s: s, bucket: bucket, pending: map[string]chan struct{}{}, remembering: map[string]*stockWrite{}, reserved: map[string]*stockWrite{}, previews: map[string]*stockPreview{}}
 }
 
 type stockWrite struct {
@@ -67,9 +66,9 @@ func (st *Stock) Remember(hits []StockHit) []string {
 		ids[i] = w.id
 	}
 	if len(fresh) > 0 {
-		st.queue.Hold()
+		st.s.Hold()
 		go func() {
-			defer st.queue.Release()
+			defer st.s.Release()
 			err := st.remember(context.Background(), fresh, writes)
 			if err != nil {
 				slog.Error("remember stock hits", "error", err)
@@ -112,7 +111,7 @@ func (st *Stock) wait(ctx context.Context, id string) error {
 func (st *Stock) remember(ctx context.Context, hits []StockHit, writes []*stockWrite) error {
 	for start := 0; start < len(hits); start += stockBatch {
 		chunk := hits[start:min(len(hits), start+stockBatch)]
-		_, err := st.queue.Transact(ctx, access.System(stockActor), func(tx *store.Tx) error {
+		_, err := st.s.Transact(ctx, access.System(stockActor), func(tx *store.Tx[Model]) error {
 			edits := []Edit{}
 			for n, h := range chunk {
 				row := map[string]any{"source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL}
@@ -202,7 +201,7 @@ func (st *Stock) fetch(ctx context.Context, id, column string, row store.Row, fe
 		return "", err
 	}
 	held := ""
-	_, err = st.queue.Transact(ctx, access.System(stockActor), func(tx *store.Tx) error {
+	_, err = st.s.Transact(ctx, access.System(stockActor), func(tx *store.Tx[Model]) error {
 		m := st.s.In(tx)
 		now, ok := m.Table("STOCK").Get(id)
 		if !ok {

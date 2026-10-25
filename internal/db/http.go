@@ -152,8 +152,8 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email}, true
 }
 
-func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
-	registerDo(mux, s, queue, pics, tokens, now)
+func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+	registerDo(mux, s, pics, tokens, now)
 	registerBlobs(mux, s, pics, tokens, now)
 	registerExplain(mux, s, tokens, now)
 	mux.HandleFunc("GET /api/openapi.json", openapi)
@@ -239,7 +239,7 @@ func Register(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, 
 		}
 		slog.InfoContext(r.Context(), "write", "viewer", env.Viewer, "system", env.System, "writes", len(b.Batch))
 		root := trace.New("request")
-		ids, err := Write(trace.With(r.Context(), root), s, queue, actor, env, b)
+		ids, err := Write(trace.With(r.Context(), root), s, actor, env, b)
 		root.End()
 		w.Header().Set("Trace", root.Header())
 		if err != nil {

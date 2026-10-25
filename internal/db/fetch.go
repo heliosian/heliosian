@@ -47,7 +47,6 @@ var googleExports = []string{"document", "presentation", "spreadsheets"}
 
 type Fetcher struct {
 	s      *Store
-	queue  *store.Queue
 	bucket *blob.Bucket
 	mu     sync.Mutex
 	tries  map[string]int
@@ -68,10 +67,10 @@ func (b busy) Error() string {
 	return fmt.Sprintf("answered 429, asking for a wait of %s", b.wait)
 }
 
-func StartFetcher(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	f := &Fetcher{s: s, queue: queue, bucket: bucket, tries: map[string]int{}, in: s.Model().services.inbox(fetchInbox)}
+func StartFetcher(s *Store, bucket *blob.Bucket) {
+	f := &Fetcher{s: s, bucket: bucket, tries: map[string]int{}, in: s.Model().services.inbox(fetchInbox)}
 	go f.run()
-	queue.OnTick(f.in.wake.poke)
+	s.OnTick(f.in.wake.poke)
 	f.in.wake.poke()
 }
 
@@ -289,7 +288,7 @@ func retryAfter(header string) time.Duration {
 	return min(max(wait, time.Second), fetchLongest)
 }
 
-func (f *Fetcher) still(tx *store.Tx, ids []string) []string {
+func (f *Fetcher) still(tx *store.Tx[Model], ids []string) []string {
 	out := []string{}
 	for _, id := range ids {
 		if now, ok := f.s.In(tx).Table("DOCUMENT").Get(id); ok && now["content"] == "" && now["fetch"] == "" {
@@ -300,7 +299,7 @@ func (f *Fetcher) still(tx *store.Tx, ids []string) []string {
 }
 
 func (f *Fetcher) stop(ctx context.Context, ids []string, why string) error {
-	_, err := f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
+	_, err := f.s.Transact(ctx, access.System(fetchActor), func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
 		for _, id := range f.still(tx, ids) {
 			w.add(Edit{Set: id, Cells: map[string]any{"fetch": why}})
@@ -316,7 +315,7 @@ func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 	if err != nil {
 		return err
 	}
-	_, err = f.queue.Transact(ctx, access.System(fetchActor), func(tx *store.Tx) error {
+	_, err = f.s.Transact(ctx, access.System(fetchActor), func(tx *store.Tx[Model]) error {
 		open := f.still(tx, ids)
 		if len(open) == 0 {
 			return nil

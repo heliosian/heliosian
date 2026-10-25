@@ -48,9 +48,9 @@ func (st *Stock) Preview(ctx context.Context, id string, fetch func(store.Row) (
 		st.mu.Unlock()
 		return nil, "", p.err
 	}
-	st.queue.Hold()
+	st.s.Hold()
 	go func() {
-		defer st.queue.Release()
+		defer st.s.Release()
 		_, _, err := st.Keep(context.Background(), id, "preview", func(store.Row) ([]byte, string, error) {
 			return p.data, p.mime, nil
 		})

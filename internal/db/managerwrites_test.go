@@ -9,9 +9,9 @@ import (
 
 func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	const night = "grp00000000512"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	child := func(viewer string, cells map[string]any) ([]string, error) {
 		row := map[string]any{"parent": night, "kind": "activity", "name": "Decor", "status": "open", "added_by": viewer, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}
@@ -51,7 +51,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 	if _, err := child(student, map[string]any{"status": "pending"}); err == nil {
 		t.Error("someone suggests a role under an event that takes no additions")
 	}
-	apply(t, s, queue, []Edit{{Set: night, Cells: map[string]any{"adding": "approval"}}})
+	apply(t, s, []Edit{{Set: night, Cells: map[string]any{"adding": "approval"}}})
 	if _, err := child(student, nil); err == nil {
 		t.Error("a suggestion under an event that wants approval goes live")
 	}
@@ -124,7 +124,7 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 		t.Errorf("a chair can't delete an empty role: %v", err)
 	}
 
-	apply(t, s, queue, []Edit{{Insert: "GROUP_SOURCE", Row: map[string]any{"group": night, "calendar_event": "x"}}})
+	apply(t, s, []Edit{{Insert: "GROUP_SOURCE", Row: map[string]any{"group": night, "calendar_event": "x"}}})
 	if _, err := write(parent, Edit{Set: night, Cells: map[string]any{"start": "2027-02-07 17:30"}}); err == nil {
 		t.Error("a chair changes the time of an event the calendar import brings")
 	}
@@ -135,9 +135,9 @@ func TestAGroupsManagersRunWhatIsUnderIt(t *testing.T) {
 
 func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 	const night, managers, leads = "grp00000000512", "grp00000000513", "grp00000000514"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	offersRow := map[string]any{"kind": "group", "parent": night, "name": "International Night Co-Chair Offers", "status": "open", "join": "direct", "eligible": night,
 		"visible_to": "grp00000000004", "posting": "none", "replying": "none"}
@@ -189,12 +189,12 @@ func TestOffersToCoChairWaitForTheChairs(t *testing.T) {
 
 func TestAChairNamesAnActivitysLeads(t *testing.T) {
 	const night = "grp00000000512"
-	s, queue := sampleWithQueue(t)
-	decor := apply(t, s, queue, []Edit{
+	s := sample(t)
+	decor := apply(t, s, []Edit{
 		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
 	})[0]
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	leadsRow := map[string]any{"kind": "group", "parent": decor, "name": "Decor Leads", "status": "open",
 		"visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}

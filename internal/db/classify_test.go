@@ -16,7 +16,7 @@ import (
 
 func uploadMail(t *testing.T, s *Store, pics *Pictures, eml string) string {
 	t.Helper()
-	rec := postMail(t, s, pics.queue, pics, importing, []byte(eml))
+	rec := postMail(t, s, pics, importing, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
@@ -39,8 +39,8 @@ func sentTo(s *Store, document string) []string {
 }
 
 func TestABodyIsItsExtractNotTheLinksAfterIt(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	ids := apply(t, s, queue, []Edit{
+	s := sample(t)
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "m1", "blob": "content/m1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "h1", "blob": "content/h1", "mime": "text/html; charset=utf-8", "size": "90"}},
 		{Insert: "CONTENT", As: "text", Row: map[string]any{"hash": "t1", "blob": "content/t1", "mime": "text/markdown", "size": "40"}},
@@ -60,8 +60,8 @@ func TestABodyIsItsExtractNotTheLinksAfterIt(t *testing.T) {
 }
 
 func TestTheNewestMailIsClassifiedFirst(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	ids := apply(t, s, queue, []Edit{
+	s := sample(t)
+	ids := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Middle", "published": "2026-10-10 09:00:00"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Oldest", "published": "2019-03-01 09:00:00"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Newest", "published": "2027-01-05 09:00:00"}},
@@ -103,12 +103,12 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 		asked = append(asked, "Picnic")
 		return `{"classrooms": [], "grades": [], "nobody": false}`
 	}))
-	s, queue := sampleWithQueue(t)
-	gradeParents := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"}}})[0]
+	s := sample(t)
+	gradeParents := apply(t, s, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "grade-3-parents", "name": "Grade 3 Parents", "visible_to": "grp00000000004"}}})[0]
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
-	StartClassifier(s, queue, bucket, "test")
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
+	StartClassifier(s, bucket, "test")
 	mail := func(subject, list string) string {
 		header := "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Thu, 12 Feb 2026 01:48:03 +0000\r\nSubject: " + subject + "\r\n"
 		if list != "" {
@@ -151,7 +151,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	mu.Lock()
 	regraded = true
 	mu.Unlock()
-	apply(t, s, queue, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
+	apply(t, s, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
 	deadline = time.Now().Add(2 * time.Second)
 	for strings.Join(sentTo(s, trip), " ") != gradeParents {
 		if time.Now().After(deadline) {
@@ -162,7 +162,7 @@ func TestUnlistedMailIsSentToWhomClaudeReads(t *testing.T) {
 	mu.Lock()
 	circled = true
 	mu.Unlock()
-	apply(t, s, queue, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
+	apply(t, s, []Edit{{Set: trip, Cells: map[string]any{"classified": "2026-01-01"}}})
 	deadline = time.Now().Add(2 * time.Second)
 	for {
 		if _, held := s.Model().Table("DOCUMENT").Get(trip); !held {

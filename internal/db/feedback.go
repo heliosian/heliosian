@@ -48,7 +48,6 @@ type FeedbackConfig struct {
 
 type Feedback struct {
 	s      *Store
-	queue  *store.Queue
 	bucket *blob.Bucket
 	tokens auth.Tokens
 	now    func() time.Time
@@ -56,8 +55,8 @@ type Feedback struct {
 	recent *ratelimit.Limiter
 }
 
-func NewFeedback(s *Store, queue *store.Queue, bucket *blob.Bucket, tokens auth.Tokens, now func() time.Time, config FeedbackConfig) *Feedback {
-	return &Feedback{s: s, queue: queue, bucket: bucket, tokens: tokens, now: now, config: config, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
+func NewFeedback(s *Store, bucket *blob.Bucket, tokens auth.Tokens, now func() time.Time, config FeedbackConfig) *Feedback {
+	return &Feedback{s: s, bucket: bucket, tokens: tokens, now: now, config: config, recent: ratelimit.New(feedbackPerWindow, feedbackWindow)}
 }
 
 type feedbackSubmission struct {
@@ -135,7 +134,7 @@ func (f *Feedback) file(w http.ResponseWriter, r *http.Request, app, appName str
 		"time_zone": clipText(in.Timezone, 80), "errors": strings.Join(clipErrors(in.Errors), "\n"),
 		"status": "new", "added_by": env.Viewer, "added": now.In(School).Format(cells.StampFormat),
 	}
-	ids, err := Write(r.Context(), f.s, f.queue, access.System(feedbackActor), Env{System: feedbackActor, Now: now}, Batch{Batch: []Edit{{Insert: "REPORT", Row: row}}})
+	ids, err := Write(r.Context(), f.s, access.System(feedbackActor), Env{System: feedbackActor, Now: now}, Batch{Batch: []Edit{{Insert: "REPORT", Row: row}}})
 	if err != nil {
 		slog.ErrorContext(r.Context(), "feedback: saving failed", "error", err, "kind", in.Kind, "summary", summary, "details", in.Details)
 		http.Error(w, "we couldn't take the report just now; please try again in a moment", http.StatusServiceUnavailable)
@@ -173,7 +172,7 @@ func (f *Feedback) keepScreenshot(id string, shot screenshot) error {
 	if err != nil {
 		return err
 	}
-	_, err = f.queue.Transact(ctx, access.System(feedbackActor), func(tx *store.Tx) error {
+	_, err = f.s.Transact(ctx, access.System(feedbackActor), func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
 		content, err := stageContent(f.s.In(tx), w, map[string]string{}, kept)
 		if err != nil {
@@ -425,7 +424,7 @@ func (f *Feedback) RegisterTriage(mux *http.ServeMux, appName func(key string) s
 		}
 		slog.InfoContext(r.Context(), "feedback: filed", "id", report["id"], "issue", issue)
 		edit := Edit{Set: report["id"], Cells: map[string]any{"status": "filed", "issue": issue, "handled": f.now().In(School).Format(cells.StampFormat), "handled_by": env.Viewer}}
-		if _, err := Write(r.Context(), f.s, f.queue, actor, env, Batch{Batch: []Edit{edit}}); err != nil {
+		if _, err := Write(r.Context(), f.s, actor, env, Batch{Batch: []Edit{edit}}); err != nil {
 			serve.Error(w, r, err)
 			return
 		}

@@ -36,9 +36,9 @@ type specDoc struct {
 
 func served(t *testing.T) specDoc {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
 	if rec.Code != http.StatusOK {

@@ -86,7 +86,7 @@ func TestWhoSeesWhichRows(t *testing.T) {
 }
 
 func TestBirthdaysShowToTheGroupTheAppIsOpenTo(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	check := func(when string, years, charities []int) {
 		t.Helper()
 		for i, viewer := range []string{nobody, student, parent, staff, guest} {
@@ -98,13 +98,13 @@ func TestBirthdaysShowToTheGroupTheAppIsOpenTo(t *testing.T) {
 		}
 	}
 	check("open to the Staff Birthdays team", []int{0, 0, 7, 7, 0}, []int{0, 0, 5, 5, 0})
-	apply(t, s, queue, []Edit{{Set: "app00000000003", Cells: map[string]any{"visible_to": "grp00000000020"}}})
+	apply(t, s, []Edit{{Set: "app00000000003", Cells: map[string]any{"visible_to": "grp00000000020"}}})
 	check("open to the Ashdown family", []int{0, 7, 7, 7, 0}, []int{0, 5, 5, 5, 0})
 }
 
 func TestSuperAdminsReadEveryReport(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "REPORT", Row: map[string]any{"app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "REPORT", Row: map[string]any{"app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"}}})
 	for i, viewer := range []string{nobody, student, parent, staff, guest} {
 		if got, want := len(as(t, s, viewer, "(from REPORT)")), []int{0, 0, 1, 1, 0}[i]; got != want {
 			t.Errorf("as %q: %d reports, want %d", viewer, got, want)
@@ -113,8 +113,8 @@ func TestSuperAdminsReadEveryReport(t *testing.T) {
 }
 
 func TestMailShowsToWhomItWasSentAndToSuperAdmins(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	made := apply(t, s, queue, []Edit{
+	s := sample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "mail", "name": "Not yet placed"}},
 		{Insert: "DOCUMENT", As: "sent", Row: map[string]any{"kind": "mail", "name": "To Hummingbirds parents"}},
 		{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@sent", "group": "grp00000000030", "relation": "sent_to"}},
@@ -135,8 +135,8 @@ func TestMailShowsToWhomItWasSentAndToSuperAdmins(t *testing.T) {
 }
 
 func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	made := apply(t, s, queue, []Edit{
+	s := sample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "pdf", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "application/pdf", "size": "200"}},
 		{Insert: "CONTENT", As: "text", Row: map[string]any{"hash": "c3", "blob": "content/c3", "mime": "text/markdown", "size": "30"}},
@@ -159,8 +159,8 @@ func TestDocumentsUnderAMailedPostFollowIt(t *testing.T) {
 }
 
 func TestSuperAdminsWriteAnythingAndServerJobsAreUnchecked(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	made := apply(t, s, queue, []Edit{
+	s := sample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
 		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs this week"}},
@@ -191,8 +191,8 @@ func TestSuperAdminsWriteAnythingAndServerJobsAreUnchecked(t *testing.T) {
 }
 
 func TestAPersonsSlugReads(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: "per00000000001", Cells: map[string]any{"slug": "juni.ashdown"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: "per00000000001", Cells: map[string]any{"slug": "juni.ashdown"}}})
 	r := runAs(t, s.Model(), "per00000000003", `(from PERSON (where (= slug "juni.ashdown")))`)
 	if got := r.Resources["PERSON"]["per00000000001"]["slug"]; got != "juni.ashdown" {
 		t.Errorf("a member reads the slug as %q: %v", got, r.Resources)
@@ -200,20 +200,20 @@ func TestAPersonsSlugReads(t *testing.T) {
 }
 
 func TestAPersonsOldSlugReadsWhileTheyDo(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "maya.l", "target": "per00000000003"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "maya.l", "target": "per00000000003"}}})
 	if got := as(t, s, parent, `(from ALIAS (where (= alias "maya.l")))`); len(got) != 1 || got[0]["target"] != "per00000000003" {
 		t.Fatalf("a parent reads Maya's old slug as %v", got)
 	}
-	apply(t, s, queue, []Edit{{Set: "per00000000003", Cells: map[string]any{"hidden": "Yes"}}})
+	apply(t, s, []Edit{{Set: "per00000000003", Cells: map[string]any{"hidden": "Yes"}}})
 	if got := as(t, s, parent, `(from ALIAS (where (= alias "maya.l")))`); len(got) != 0 {
 		t.Fatalf("a parent reads a hidden person's old slug: %v", got)
 	}
 }
 
 func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	reply := apply(t, s, queue, []Edit{
+	s := sample(t)
+	reply := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "admins", Row: map[string]any{"posting": "members", "replying": "members", "kind": "admins", "name": "When Admins", "status": "open"}},
 		{Set: "@admins", Cells: map[string]any{"visible_to": "@admins"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@admins", "person": student, "member": "yes"}},
@@ -230,8 +230,8 @@ func TestAnAppsAdminsReadItsMailsContent(t *testing.T) {
 }
 
 func TestAWaitlistShowsToTheWaitingThePartysManagersAndAdmins(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	made := apply(t, s, queue, []Edit{
+	s := sample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "managers", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Fondue Night Managers", "status": "open"}},
 		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
 		{Insert: "GROUP", As: "party", Row: map[string]any{"posting": "members", "replying": "members", "kind": "party", "name": "Fondue Night", "status": "open", "visible_to": "grp00000000004", "managed_by": "@managers"}},
@@ -253,15 +253,15 @@ func TestAWaitlistShowsToTheWaitingThePartysManagersAndAdmins(t *testing.T) {
 	if got := cellAs(t, s, parent, `(from GROUP (where (= id "`+party+`")))`, "waitlist"); got != waitlist {
 		t.Errorf("the party's waitlist as the parent = %q", got)
 	}
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000006", "person": guest, "member": "yes"}}})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000006", "person": guest, "member": "yes"}}})
 	if n := len(as(t, s, guest, places)); n != 1 {
 		t.Errorf("a Who? admin sees %d places on the waitlist, want 1", n)
 	}
 }
 
 func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	made := apply(t, s, queue, []Edit{
+	s := sample(t)
+	made := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "managers", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "name": "Fairs Managers", "status": "open"}},
 		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers", "visible_to": "@managers"}},
 		{Insert: "GROUP", As: "fairs", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Fairs", "status": "open", "visible_to": "grp00000000004", "managed_by": "@managers"}},
@@ -282,24 +282,24 @@ func TestManagersAreTheManagingGroupsMembers(t *testing.T) {
 	if n := len(as(t, s, student, `(from GROUP (where (= id "`+managers+`")))`)); n != 1 {
 		t.Error("whoever sees the category can't read the group that manages it")
 	}
-	apply(t, s, queue, []Edit{{Set: managers, Cells: map[string]any{"visible_to": ""}}})
+	apply(t, s, []Edit{{Set: managers, Cells: map[string]any{"visible_to": ""}}})
 	if n := len(as(t, s, student, `(from MEMBER (where (= group "`+managers+`")))`)); n != 0 {
 		t.Errorf("hidden managers: whoever sees the category reads %d of them, want 0", n)
 	}
 	if n := len(as(t, s, parent, `(from MEMBER (where (= group "`+managers+`")))`)); n != 1 {
 		t.Errorf("hidden managers: a manager reads %d of them, want 1", n)
 	}
-	apply(t, s, queue, []Edit{{Set: managing, Cells: map[string]any{"member": "excluded"}}})
+	apply(t, s, []Edit{{Set: managing, Cells: map[string]any{"member": "excluded"}}})
 	if n := len(as(t, s, parent, fair)); n != 0 {
 		t.Error("someone kept out of the managers group still manages")
 	}
 }
 
 func TestAHostChangesHowAnEventIsShared(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}})
 	write := func(cells map[string]any) error {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}})
+		_, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}})
 		return err
 	}
 	for _, c := range []struct {
@@ -322,7 +322,7 @@ func TestAHostChangesHowAnEventIsShared(t *testing.T) {
 		t.Errorf("the picnic ends %s and shown to %s, not open and invite-only", g["status"], g["visible_to"])
 	}
 	batch := func(edits ...Edit) error {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: edits})
+		_, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: edits})
 		return err
 	}
 	if err := batch(Edit{Set: "grp00000000040", Cells: map[string]any{"audience": "grp00000000020"}}); err == nil {
@@ -339,8 +339,8 @@ func TestAHostChangesHowAnEventIsShared(t *testing.T) {
 }
 
 func TestAWhenAdminChangesHowAnEventIsShared(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Delete: memberRow(t, s, "grp00000000005", staff)},
 		{Delete: memberRow(t, s, "grp00000000041", staff)},
 		{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}},
@@ -349,14 +349,14 @@ func TestAWhenAdminChangesHowAnEventIsShared(t *testing.T) {
 		{"listed": false, "visible_to": "grp00000000040", "members_visible_to": ""},
 		{"listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"},
 	} {
-		if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}}); err != nil {
+		if _, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{{Set: "grp00000000040", Cells: cells}}}); err != nil {
 			t.Errorf("a When admin can't share the picnic as %v: %v", cells, err)
 		}
 	}
 	if g, _ := s.Model().Table("GROUP").Get("grp00000000040"); g["status"] != "open" || g["listed"] != "Yes" {
 		t.Errorf("the picnic ends %s and listed %q, not open and on the calendar", g["status"], g["listed"])
 	}
-	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
+	if _, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "parent": "grp00000000040", "name": "Fall Picnic Audience", "status": "open", "added_by": staff, "listed": false, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		{Set: "grp00000000040", Cells: map[string]any{"audience": "@audience"}},
 		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000000004"}},
@@ -365,7 +365,7 @@ func TestAWhenAdminChangesHowAnEventIsShared(t *testing.T) {
 	}
 	picnic, _ := s.Model().Table("GROUP").Get("grp00000000040")
 	rules := s.Model().Table("RULE").Referencing("group", picnic["audience"])
-	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
+	if _, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{
 		{Set: "grp00000000040", Cells: map[string]any{"name": "Autumn Picnic"}},
 		{Delete: rules[0]["id"]},
 		{Insert: "RULE", Row: map[string]any{"group": picnic["audience"], "order": "i", "target": "grp00000000004"}},
@@ -375,13 +375,13 @@ func TestAWhenAdminChangesHowAnEventIsShared(t *testing.T) {
 }
 
 func TestAnAppsAdminsAppointManagers(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Delete: memberRow(t, s, "grp00000000005", staff)},
 		{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}},
 	})
 	write := func(viewer string, edits ...Edit) error {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		_, err := Write(context.Background(), s, access.Actor{Email: "maya@example.com"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 		return err
 	}
 	if err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000041", "person": parent, "member": "yes"}}); err != nil {
@@ -424,8 +424,8 @@ func cellAs(t *testing.T, s *Store, viewer, src, column string) string {
 }
 
 func TestPhoneFollowsConsent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Set: parent, Cells: map[string]any{"vc_phone": "555-0100"}},
 		{Set: staff, Cells: map[string]any{"vc_phone": "555-0200", "phone_override": "555-0300"}},
 		{Set: "grp00000000020", Cells: map[string]any{"vc_phone": "555-0400"}},
@@ -457,8 +457,8 @@ func TestPhoneFollowsConsent(t *testing.T) {
 }
 
 func TestFamilyAddressFollowsItsConsent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"vc_address": "12 Oak St"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: "grp00000000020", Cells: map[string]any{"vc_address": "12 Oak St"}}})
 	q := `(from GROUP (where (= id "grp00000000020")))`
 	if got := cellAs(t, s, student, q, "address"); got != "12 Oak St" {
 		t.Fatalf("a shared address reads %q", got)
@@ -466,7 +466,7 @@ func TestFamilyAddressFollowsItsConsent(t *testing.T) {
 	if got := cellAs(t, s, student, q, "vc_address"); got != "" {
 		t.Fatalf("the imported address behind a shared one reads %q", got)
 	}
-	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"address_consent": "withheld"}}})
+	apply(t, s, []Edit{{Set: "grp00000000020", Cells: map[string]any{"address_consent": "withheld"}}})
 	for _, viewer := range []string{student, parent, staff} {
 		for _, column := range []string{"address", "vc_address", "address_override"} {
 			if got := cellAs(t, s, viewer, q, column); got != "" {
@@ -477,8 +477,8 @@ func TestFamilyAddressFollowsItsConsent(t *testing.T) {
 }
 
 func TestWithheldPeopleVanish(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
 	for _, viewer := range []string{nobody, student, parent, staff} {
 		for _, q := range []string{
 			`(from PERSON (where (= id "per00000000001")))`,
@@ -505,8 +505,8 @@ func TestWithheldPeopleVanish(t *testing.T) {
 }
 
 func TestWithheldPersonSignsInAsNobody(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{"consent": "withheld"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: parent, Cells: map[string]any{"consent": "withheld"}}})
 	m := s.Model()
 	if got := m.SignedIn("rowan@example.com"); got != "" {
 		t.Errorf("a withheld parent signs in as %q", got)
@@ -517,11 +517,11 @@ func TestWithheldPersonSignsInAsNobody(t *testing.T) {
 }
 
 func TestAGuestSharesAnAddressButNeverSignsInWithIt(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	if _, err := applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "rowan@example.com", "person": guest, "primary": "Yes", "source": "guest"}}}); err != nil {
+	s := sample(t)
+	if _, err := applyErr(s, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "rowan@example.com", "person": guest, "primary": "Yes", "source": "guest"}}}); err != nil {
 		t.Fatalf("a guest can't share a person's address: %v", err)
 	}
-	_, err := applyErr(s, queue, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "rowan@example.com", "person": staff, "source": "manual"}}})
+	_, err := applyErr(s, []Edit{{Insert: "PERSON_EMAIL", Row: map[string]any{"address": "rowan@example.com", "person": staff, "source": "manual"}}})
 	if err == nil || !strings.Contains(err.Error(), "two rows have the same") {
 		t.Errorf("two people who aren't guests share an address: %v", err)
 	}
@@ -532,15 +532,15 @@ func TestAGuestSharesAnAddressButNeverSignsInWithIt(t *testing.T) {
 	if got := m.PersonOf("rowan@example.com"); got != parent {
 		t.Errorf("the shared address belongs to %q, not the parent", got)
 	}
-	apply(t, s, queue, []Edit{{Set: parent, Cells: map[string]any{"consent": "withheld"}}})
+	apply(t, s, []Edit{{Set: parent, Cells: map[string]any{"consent": "withheld"}}})
 	if got := s.Model().SignedIn("rowan@example.com"); got != "" {
 		t.Errorf("a withheld parent signs in as %q through their guest", got)
 	}
 }
 
 func TestWritesCantReachWithheldRows(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
 	env := Env{Viewer: parent, Now: testNow}
 	for name, c := range map[string]struct {
 		w    Edit
@@ -549,7 +549,7 @@ func TestWritesCantReachWithheldRows(t *testing.T) {
 		"set":       {Edit{Set: student, Cells: map[string]any{"name_long_override": "Juni A."}}, "no PERSON " + student},
 		"reference": {Edit{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000040", "person": student, "member": "yes"}}, "names no row " + student},
 	} {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
+		_, err := Write(context.Background(), s, access.Actor{Email: "rowan@example.com"}, env, Batch{Batch: []Edit{c.w}})
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s on the withheld student: %v, want %q", name, err, c.want)
 		}
@@ -557,8 +557,8 @@ func TestWritesCantReachWithheldRows(t *testing.T) {
 }
 
 func TestWithheldFamilyNeverAppears(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"consent": "withheld"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: "grp00000000020", Cells: map[string]any{"consent": "withheld"}}})
 	for _, viewer := range []string{nobody, student, parent, staff} {
 		if n := len(as(t, s, viewer, `(from GROUP (where (= id "grp00000000020")))`)); n != 0 {
 			t.Errorf("the withheld family as %q: %d rows", viewer, n)
@@ -580,16 +580,16 @@ func TestGuestsAreAlwaysShown(t *testing.T) {
 }
 
 func TestConsentFailsClosed(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: staff, Cells: map[string]any{"consent": ""}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: staff, Cells: map[string]any{"consent": ""}}})
 	if _, ok := s.Model().Shown("PERSON").Get(staff); ok {
 		t.Fatal("a person with no consent yet is shown")
 	}
 }
 
 func TestOnlyTheImportSeesWithheldRows(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: student, Cells: map[string]any{"consent": "withheld"}}})
 	q := mustParse(t, `(from PERSON (where (= id "per00000000001")))`)
 	if n := len(s.Model().Run(t.Context(), q, setupEnv).IDs); n != 1 {
 		t.Errorf("the import sees %d withheld students, want 1", n)
@@ -600,8 +600,8 @@ func TestOnlyTheImportSeesWithheldRows(t *testing.T) {
 }
 
 func TestPrivateColumnsNeverShow(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: staff, Cells: map[string]any{"vc_phone": "555-0200"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: staff, Cells: map[string]any{"vc_phone": "555-0200"}}})
 	for _, table := range []string{"PERSON", "GROUP"} {
 		ts, _ := Lookup(table)
 		for _, row := range s.Model().Shown(table).All() {
@@ -618,8 +618,8 @@ func TestPrivateColumnsNeverShow(t *testing.T) {
 }
 
 func TestPaymentAndToken(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "PAYMENT", Row: map[string]any{"person": parent, "group": "grp00000000040", "amount": "7.25", "added": "2026-09-28 18:30"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "PAYMENT", Row: map[string]any{"person": parent, "group": "grp00000000040", "amount": "7.25", "added": "2026-09-28 18:30"}}})
 	q := `(from PAYMENT (where (= group "grp00000000040")))`
 	for _, viewer := range []string{student, parent, staff} {
 		if got := cellAs(t, s, viewer, q, "amount"); got != "7.25" {
@@ -637,8 +637,8 @@ func TestPaymentAndToken(t *testing.T) {
 }
 
 func TestHiddenPersonIsUnreachable(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: student, Cells: map[string]any{"hidden": "Yes"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: student, Cells: map[string]any{"hidden": "Yes"}}})
 	if n := len(as(t, s, parent, `(from PERSON (where (= id "per00000000001")))`)); n != 0 {
 		t.Fatal("a hidden person is listed")
 	}
@@ -671,8 +671,8 @@ func importingAs(t *testing.T, s *Store, viewer, src string) []store.Row {
 }
 
 func TestPersonFlagsAreKeptFromReaders(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Set: student, Cells: map[string]any{"deactivated": "2026-09-30 12:00"}},
 		{Set: parent, Cells: map[string]any{"signed_out": "2026-09-30 11:00"}},
 	})
@@ -693,8 +693,8 @@ func TestPersonFlagsAreKeptFromReaders(t *testing.T) {
 }
 
 func TestPendingIsForManagersAndAdmins(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"status": "pending"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"status": "pending"}}})
 	q := `(from GROUP (where (= id "grp00000000040")))`
 	if n := len(as(t, s, parent, q)); n != 0 {
 		t.Fatal("a pending event is visible")
@@ -702,15 +702,15 @@ func TestPendingIsForManagersAndAdmins(t *testing.T) {
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a host can't see their pending event")
 	}
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"managed_by": ""}}})
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"managed_by": ""}}})
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a super admin can't see a pending event")
 	}
-	apply(t, s, queue, []Edit{{Delete: memberRow(t, s, "grp00000000005", staff)}})
+	apply(t, s, []Edit{{Delete: memberRow(t, s, "grp00000000005", staff)}})
 	if n := len(as(t, s, staff, q)); n != 0 {
 		t.Fatal("a pending event is visible to someone neither host nor When admin")
 	}
-	apply(t, s, queue, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
+	apply(t, s, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
 	if n := len(as(t, s, staff, q)); n != 1 {
 		t.Fatal("a When admin can't see a pending event")
 	}
@@ -740,7 +740,7 @@ func change(t *testing.T, s *Store, table string, key []string, cells store.Row)
 }
 
 func TestAuthorize(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	picnic := func(person string) []string { return []string{"grp00000000040", person} }
 	notGoing := func(person string) Change {
 		return Change{Table: "MEMBER", New: store.Row{"group": "grp00000000043", "person": person, "member": "yes"}}
@@ -787,15 +787,15 @@ func TestAuthorize(t *testing.T) {
 			t.Errorf("%s: %v", c.name, err)
 		}
 	}
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000044", "person": parent, "member": "yes"}}})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000044", "person": parent, "member": "yes"}}})
 	if err := s.Model().Authorize(Env{Viewer: parent, Now: testNow}, change(t, s, "MEMBER", picnic(guest), store.Row{"member": "excluded"})); err == nil {
 		t.Fatal("an event's lead may exclude anyone, as if they managed it")
 	}
-	apply(t, s, queue, []Edit{{Delete: memberRow(t, s, "grp00000000005", staff)}})
+	apply(t, s, []Edit{{Delete: memberRow(t, s, "grp00000000005", staff)}})
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err == nil {
 		t.Fatal("someone neither super admin nor When admin may change an event's status")
 	}
-	apply(t, s, queue, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
+	apply(t, s, []Edit{{Set: whenApp, Cells: map[string]any{"admins": "grp00000000003"}}})
 	if err := s.Model().Authorize(Env{Viewer: staff, Now: testNow}, change(t, s, "GROUP", []string{"grp00000000040"}, store.Row{"status": "pending"})); err != nil {
 		t.Fatalf("a When admin may not change an event's status: %v", err)
 	}

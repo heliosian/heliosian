@@ -11,15 +11,14 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/ops"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/vitals"
 )
 
-func dashboardAs(t *testing.T, s *Store, queue *store.Queue, board *ops.Board, as, path string) *httptest.ResponseRecorder {
+func dashboardAs(t *testing.T, s *Store, board *ops.Board, as, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	mux := http.NewServeMux()
-	RegisterDashboard(mux, mux, s, queue, board)
+	RegisterDashboard(mux, mux, s, board)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	rec := httptest.NewRecorder()
@@ -28,20 +27,20 @@ func dashboardAs(t *testing.T, s *Store, queue *store.Queue, board *ops.Board, a
 }
 
 func TestTheDashboardIsForSuperAdmins(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	board := ops.New(testkit.OpsDeps(t, map[string]ops.Measurable{}))
 	vitals.RecordError(time.Now(), "dashboard test failure", map[string]string{"app": "admin"})
-	if rec := dashboardAs(t, s, queue, board, "rowan.ashdown@example.org", "/api/dashboard"); rec.Code != http.StatusForbidden {
+	if rec := dashboardAs(t, s, board, "rowan.ashdown@example.org", "/api/dashboard"); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent reads the dashboard: %d", rec.Code)
 	}
-	if rec := dashboardAs(t, s, queue, board, "rowan.ashdown@example.org", "/"); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/resources" {
+	if rec := dashboardAs(t, s, board, "rowan.ashdown@example.org", "/"); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/resources" {
 		t.Fatalf("a parent at / gets %d to %q", rec.Code, rec.Header().Get("Location"))
 	}
 	var system map[string]bool
-	if rec := dashboardAs(t, s, queue, board, "rowan.ashdown@example.org", "/api/system"); json.Unmarshal(rec.Body.Bytes(), &system) != nil || system["allowed"] {
+	if rec := dashboardAs(t, s, board, "rowan.ashdown@example.org", "/api/system"); json.Unmarshal(rec.Body.Bytes(), &system) != nil || system["allowed"] {
 		t.Fatalf("a parent is told %s", rec.Body.String())
 	}
-	rec := dashboardAs(t, s, queue, board, "maya.lindqvist@example.org", "/api/dashboard")
+	rec := dashboardAs(t, s, board, "maya.lindqvist@example.org", "/api/dashboard")
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/event-stream" {
 		t.Fatalf("a super admin reads the dashboard: %d %s", rec.Code, rec.Header().Get("Content-Type"))
 	}

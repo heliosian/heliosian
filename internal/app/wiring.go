@@ -36,7 +36,6 @@ import (
 	"heliosian/internal/serve"
 	"heliosian/internal/sharecard"
 	"heliosian/internal/spreadsheets"
-	"heliosian/internal/store"
 	"heliosian/internal/tools"
 	"heliosian/internal/vitals"
 )
@@ -87,7 +86,6 @@ type Core struct {
 	Data      *db.Store
 	Pictures  *db.Pictures
 	Search    *db.Searcher
-	Queue     *store.Queue
 	ListMail  *db.ListMailer
 	Invites   *db.Invitations
 	Birthdays *db.BirthdayMailer
@@ -101,17 +99,16 @@ func NewCore(cfg Config) *Core {
 	if err := mime.AddExtensionType(".webmanifest", "application/manifest+json"); err != nil {
 		logging.Fatal("register manifest mime type", "error", err)
 	}
-	queue := store.NewQueue()
-	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, queue, db.NewSearchIndex(), hosts.Origin(cfg.Domain))
+	dataStore, err := db.NewStore(cfg.Source, cfg.Writer, db.NewSearchIndex(), hosts.Origin(cfg.Domain))
 	if err != nil {
 		logging.Fatal("load the data sheets", "error", err)
 	}
-	cfg.ImageSearch.Stock = db.NewStock(dataStore, queue, cfg.Bucket)
+	cfg.ImageSearch.Stock = db.NewStock(dataStore, cfg.Bucket)
 	cfg.ImageSearch.Limits = imagesearch.NewLimits()
-	sessions := db.NewSessions(dataStore, queue)
-	pictures := db.NewPictures(dataStore, queue, cfg.Bucket)
-	db.NewMembershipMailer(dataStore, queue, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
-	search := db.NewSearcher(dataStore, queue, cfg.Bucket, cfg.Embedder)
+	sessions := db.NewSessions(dataStore)
+	pictures := db.NewPictures(dataStore, cfg.Bucket)
+	db.NewMembershipMailer(dataStore, db.MembershipMailConfig{Sender: cfg.Mail, Celebrate: cfg.CelebrateMail, Origin: hosts.Origin(cfg.Domain)})
+	search := db.NewSearcher(dataStore, cfg.Bucket, cfg.Embedder)
 	taglineOf := func(key string) func() string {
 		return func() string {
 			return dataStore.Model().App(key)["subtitle"]
@@ -180,7 +177,7 @@ func NewCore(cfg Config) *Core {
 	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
-	db.RegisterMailHook(askMux, dataStore, queue, pictures, cfg.ArtifactsMail.SigningKey)
+	db.RegisterMailHook(askMux, dataStore, pictures, cfg.ArtifactsMail.SigningKey)
 	loopMux := http.NewServeMux()
 	loopMux.Handle("GET /open/share/about.png", loopAbout)
 	for _, page := range []string{"/{$}", "/new", "/g/{key}"} {
@@ -188,8 +185,8 @@ func NewCore(cfg Config) *Core {
 			serve.File(w, r, "web/loop/index.html")
 		})
 	}
-	listMail := db.RegisterListMail(loopMux, dataStore, queue, pictures, cfg.ListMail)
-	deliveries := db.NewDeliveries(dataStore, queue, cfg.ListMail.SigningKey)
+	listMail := db.RegisterListMail(loopMux, dataStore, pictures, cfg.ListMail)
+	deliveries := db.NewDeliveries(dataStore, cfg.ListMail.SigningKey)
 	deliveries.Register(loopMux)
 	deliveries.Register(calendarMux)
 	askAbout := ask.About(appName("ask"), taglineOf("ask"))
@@ -218,10 +215,10 @@ func NewCore(cfg Config) *Core {
 	db.RegisterFeeds(calendarMux, dataStore, schoolNow)
 	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle)
 	whenPages.Register(calendarMux)
-	invitations := db.RegisterInvitations(calendarMux, api, dataStore, queue, pictures, tokens, schoolNow, db.InvitationConfig{
+	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, schoolNow, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
-	birthdays := db.NewBirthdayMailer(dataStore, queue, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
+	birthdays := db.NewBirthdayMailer(dataStore, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
 	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, api, mcp.Deps{
@@ -245,15 +242,15 @@ func NewCore(cfg Config) *Core {
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
 	}
 	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
-	feedback := db.NewFeedback(dataStore, queue, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
+	feedback := db.NewFeedback(dataStore, cfg.Bucket, tokens, schoolNow, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})
 	feedback.RegisterTriage(api, func(key string) string { return appName(key)() })
 	feedback.Register(api, cfg.Domain, func(key string) string { return appName(key)() })
-	db.Register(api, dataStore, queue, pictures, tokens, schoolNow)
+	db.Register(api, dataStore, pictures, tokens, schoolNow)
 	db.RegisterSearch(api, dataStore, search, tokens, schoolNow)
 	geocode.NewSuggestions(cfg.Geocoder).Register(api)
 	db.RegisterCompose(api, dataStore, cfg.Composer, tokens, schoolNow)
 	db.RegisterDrafts(api, dataStore, cfg.Describer, tokens, schoolNow)
-	db.RegisterQueues(api, dataStore, queue, tokens, schoolNow)
+	db.RegisterQueues(api, dataStore, tokens, schoolNow)
 	optIn := optInForm(func() string { return dataStore.Model().Setting("platform", "Helios Who Opt-In URL") })
 	for _, a := range apps {
 		a.Mux.Handle("GET "+OptInPath, optIn)
@@ -261,17 +258,17 @@ func NewCore(cfg Config) *Core {
 	cfg.Ops.Buckets = map[string]ops.Measurable{blob.MediaBucket: cfg.Bucket}
 	external := ops.New(cfg.Ops)
 	external.Register(adminMux, cfg.Hooks)
-	db.RegisterDashboard(adminMux, api, dataStore, queue, external)
-	go queue.Tick()
+	db.RegisterDashboard(adminMux, api, dataStore, external)
+	go dataStore.Tick()
 	go vitals.Sampler()
 	go func() {
-		<-queue.Refreshed()
+		<-dataStore.Refreshed()
 		pictures.Start()
 	}()
 	return &Core{
-		Sessions: sessions, Data: dataStore, Pictures: pictures, Search: search, Queue: queue, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
+		Sessions: sessions, Data: dataStore, Pictures: pictures, Search: search, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
-		Settled: queue.Refreshed(),
+		Settled: dataStore.Refreshed(),
 		apps:    apps,
 		api:     api,
 	}
@@ -311,7 +308,7 @@ func (c *Core) Aliased() map[string]http.Handler {
 	return out
 }
 
-func Production(domain, site string) (*http.Server, *store.Queue) {
+func Production(domain, site string) (*http.Server, *db.Store) {
 	cloud := os.Getenv("K_SERVICE") != ""
 	if !cloud {
 		intercept.Install(mail.Host, intercept.Mail(localMail))
@@ -377,28 +374,28 @@ func Production(domain, site string) (*http.Server, *store.Queue) {
 		debug.SetMemoryLimit(memoryLimit)
 		watcher := calendarWatcher(core, sessionKey, anthropicKey)
 		muxes["when"].Handle("POST "+db.CalendarHookPath, watcher)
-		server.RegisterOnShutdown(func() { core.Queue.Add(watcher.Stop) })
+		server.RegisterOnShutdown(func() { core.Data.Add(watcher.Stop) })
 		go func() {
 			<-core.Settled
 			core.ListMail.Start()
 			core.Invites.Start()
 			core.Birthdays.Start()
-			db.StartConsent(core.Data, core.Queue, sheet)
+			db.StartConsent(core.Data, sheet)
 			core.Search.StartMaking(anthropicKey)
 			watcher.Start()
-			db.NewExtractor(core.Data, core.Queue, bucket, anthropicKey)
-			db.StartClassifier(core.Data, core.Queue, bucket, anthropicKey)
-			db.StartDigest(core.Data, core.Queue, bucket, anthropicKey, time.Now)
-			db.StartSweeper(core.Data, core.Queue, bucket)
-			db.StartFetcher(core.Data, core.Queue, bucket)
-			db.StartThumbnailer(core.Data, core.Queue, bucket)
-			db.StartGeocoder(core.Data, core.Queue, geocoder)
+			db.NewExtractor(core.Data, bucket, anthropicKey)
+			db.StartClassifier(core.Data, bucket, anthropicKey)
+			db.StartDigest(core.Data, bucket, anthropicKey, time.Now)
+			db.StartSweeper(core.Data, bucket)
+			db.StartFetcher(core.Data, bucket)
+			db.StartThumbnailer(core.Data, bucket)
+			db.StartGeocoder(core.Data, geocoder)
 		}()
 	} else {
 		db.StartIdleWorkers(core.Data)
 	}
 	<-core.Search.Ready()
-	return server, core.Queue
+	return server, core.Data
 }
 
 const memoryLimit = 3 << 30
@@ -410,5 +407,5 @@ func calendarWatcher(core *Core, sessionKey, anthropicKey string) *db.CalendarWa
 	}
 	mac := hmac.New(sha256.New, []byte(sessionKey))
 	mac.Write([]byte("calendar watch"))
-	return db.NewCalendarWatcher(core.Data, core.Queue, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
+	return db.NewCalendarWatcher(core.Data, cal, anthropicKey, hex.EncodeToString(mac.Sum(nil)))
 }

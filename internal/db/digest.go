@@ -159,7 +159,6 @@ type listedToDo struct {
 
 type Digest struct {
 	s       *Store
-	queue   *store.Queue
 	bucket  *blob.Bucket
 	client  anthropic.Client
 	skipped map[string]bool
@@ -167,8 +166,8 @@ type Digest struct {
 	now     func() time.Time
 }
 
-func StartDigest(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string, now func() time.Time) *Digest {
-	d := &Digest{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, in: s.Model().services.inbox(digestInbox), now: now}
+func StartDigest(s *Store, bucket *blob.Bucket, anthropicKey string, now func() time.Time) *Digest {
+	d := &Digest{s: s, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, in: s.Model().services.inbox(digestInbox), now: now}
 	go d.run()
 	d.in.wake.poke()
 	return d
@@ -348,7 +347,7 @@ func (d *Digest) read(id string) error {
 }
 
 func (d *Digest) write(id, summary string, points []string, repeated map[int]string, toDos []digestToDo) error {
-	_, err := d.queue.Transact(context.Background(), access.System(digestActor), func(tx *store.Tx) error {
+	_, err := d.s.Transact(context.Background(), access.System(digestActor), func(tx *store.Tx[Model]) error {
 		m := d.s.In(tx)
 		if _, ok := m.Table("DOCUMENT").Get(id); !ok {
 			return nil

@@ -78,19 +78,18 @@ func TestEmailsSkipPlaceholders(t *testing.T) {
 func sampleServer(t *testing.T) (client, *db.Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	pics := db.NewPictures(s, queue, blob.NewMemoryBucket())
+	pics := db.NewPictures(s, blob.NewMemoryBucket())
 	runner := db.Batch{Batch: []db.Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000005", "person": "per00000000002", "member": "yes"}}}}
-	if _, err := db.Write(context.Background(), s, queue, access.System("test"), db.Env{System: "test"}, runner); err != nil {
+	if _, err := db.Write(context.Background(), s, access.System("test"), db.Env{System: "test"}, runner); err != nil {
 		t.Fatal(err)
 	}
 	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" })
 	mux := http.NewServeMux()
-	db.Register(mux, s, queue, pics, tokens, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
+	db.Register(mux, s, pics, tokens, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	return client{&qclient.Client{Base: srv.URL, Token: tokens.Issue("rowan.ashdown@example.org", time.Now()), Mode: qclient.ImportMode}}, s

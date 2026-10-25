@@ -7,8 +7,8 @@ import (
 )
 
 func TestSigningOutRefusesEarlierSessions(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	sessions := NewSessions(s, queue)
+	s := sample(t)
+	sessions := NewSessions(s)
 	if _, ok := sessions.SignedOut("rowan.ashdown@example.org"); ok {
 		t.Fatal("rowan has a sign-out before ever signing out")
 	}

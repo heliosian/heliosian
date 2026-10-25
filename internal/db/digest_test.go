@@ -35,12 +35,12 @@ func TestTheDigestReadsMailIntoToDosThatKeepTheirMarks(t *testing.T) {
 		t.Errorf("claude was asked about something else: %s", request)
 		return `{}`
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
-	StartClassifier(s, queue, bucket, "test")
-	StartDigest(s, queue, bucket, "test", func() time.Time { return testNow })
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
+	StartClassifier(s, bucket, "test")
+	StartDigest(s, bucket, "test", func() time.Time { return testNow })
 	mail := func(subject string) string {
 		return "From: Maya Lindqvist <maya.lindqvist@example.org>\r\nDate: Tue, 29 Sep 2026 15:00:00 +0000\r\nSubject: " + subject + "\r\nList-Id: <parentsandstaff.heliosschool.org>\r\n" +
 			"Content-Type: text/html; charset=utf-8\r\n\r\n<p>" + subject + ": sign the slip at https://example.org/slip.</p>\r\n"
@@ -88,7 +88,7 @@ func TestTheDigestReadsMailIntoToDosThatKeepTheirMarks(t *testing.T) {
 		}
 	}
 	mark := func(viewer string, edits []Edit) error {
-		_, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		_, err := Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 		return err
 	}
 	if err := mark(parent, []Edit{{Insert: "TODO_MARK", Row: map[string]any{"person": parent, "todo": slip, "state": "done"}}}); err != nil {
@@ -113,7 +113,7 @@ func TestTheDigestReadsMailIntoToDosThatKeepTheirMarks(t *testing.T) {
 		t.Errorf("the reminder kept %d to-dos on a point that repeats the trip's", n)
 	}
 	answers["Field trip"] = `{"summary": "Again.", "points": ["Return the slip."], "asks": "A slip.", "todos": [{"title": "Return the tide pool slip", "summary": "Signed slip", "details": "Return it.", "link": "", "due": "2026-10-02", "point": 1}], "repeats": []}`
-	apply(t, s, queue, []Edit{{Set: trip, Cells: map[string]any{"digest": "2026-01-01"}}})
+	apply(t, s, []Edit{{Set: trip, Cells: map[string]any{"digest": "2026-01-01"}}})
 	waitFor("the field trip read again", func() bool {
 		row, _ := s.Model().Table("DOCUMENT").Get(trip)
 		return row["digest"] == DigestRevision && row["summary"] == "Again."
@@ -125,7 +125,7 @@ func TestTheDigestReadsMailIntoToDosThatKeepTheirMarks(t *testing.T) {
 	if _, ok := s.Model().Table("TODO_MARK").Find(parent, slip); !ok {
 		t.Error("the re-read took the parent's mark")
 	}
-	apply(t, s, queue, []Edit{{Delete: slip}})
+	apply(t, s, []Edit{{Delete: slip}})
 	if n := s.Model().Table("TODO_MARK").Len(); n != 0 {
 		t.Errorf("%d marks outlived their to-do", n)
 	}

@@ -11,7 +11,7 @@ import (
 )
 
 func TestPartyPreviewsAndShareCards(t *testing.T) {
-	s, _ := sampleWithQueue(t)
+	s := sample(t)
 	pages := NewPartyPages(s, blob.NewMemoryBucket(), PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
 	mux := http.NewServeMux()
 	pages.Register(mux)
@@ -29,8 +29,8 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 }
 
 func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Insert: "ALIAS", Row: map[string]any{"alias": "P001", "target": tacoNight, "hidden": true}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "celebrate", "old": "/parties/ha725m8r", "new": "/g/taco-night"}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/parties/teamonly", "new": "/g/taco-night"}},

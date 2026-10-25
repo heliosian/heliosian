@@ -65,15 +65,15 @@ func TestAPagesPictureThatFailsIsTriedAgain(t *testing.T) {
 		w.Write(banner)
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	page := []byte(`<html><head><meta property="og:image" content="` + site.URL + `/banner.png"></head><body>Spring fair</body></html>`)
-	linked := apply(t, s, queue, []Edit{
+	linked := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "page", Row: storedContent(t, bucket, "text/html", page)},
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Spring fair"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": site.URL + "/fair", "content": "@page"}},
 	})[2]
-	StartThumbnailer(s, queue, bucket)
+	StartThumbnailer(s, bucket)
 	for deadline := time.Now().Add(5 * time.Second); asked.Load() < 1; time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the page's picture was never asked for")
@@ -92,18 +92,18 @@ func TestAPagesPictureThatFailsIsTriedAgain(t *testing.T) {
 }
 
 func TestNewContentRemakesTheThumbnail(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "red", Row: storedContent(t, bucket, "image/png", redPNG(t, 960, 720))},
 		{Insert: "CONTENT", As: "black", Row: storedContent(t, bucket, "image/png", pngOf(t, 600))},
 		{Insert: "CONTENT", As: "text", Row: storedContent(t, bucket, "text/markdown", []byte("# Flyer"))},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Fair flyer", "content": "@red"}},
 	})
 	black, text, flyer := ids[1], ids[2], ids[3]
-	StartThumbnailer(s, queue, bucket)
+	StartThumbnailer(s, bucket)
 	red := thumbnailed(t, s, flyer)["thumbnail"]
-	apply(t, s, queue, []Edit{{Set: flyer, Cells: map[string]any{"content": black}}})
+	apply(t, s, []Edit{{Set: flyer, Cells: map[string]any{"content": black}}})
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		row, _ := s.Model().Table("DOCUMENT").Get(flyer)
 		if row["thumbnail"] != "" && row["thumbnail"] != red {
@@ -113,22 +113,22 @@ func TestNewContentRemakesTheThumbnail(t *testing.T) {
 			t.Fatalf("the flyer kept its old thumbnail after its content changed: %v", row)
 		}
 	}
-	apply(t, s, queue, []Edit{{Set: flyer, Cells: map[string]any{"content": text}}})
+	apply(t, s, []Edit{{Set: flyer, Cells: map[string]any{"content": text}}})
 	if row, _ := s.Model().Table("DOCUMENT").Get(flyer); row["thumbnail"] != "" || row["thumbnailed"] != "" {
 		t.Fatalf("the flyer kept a thumbnail after its content became text: %v", row)
 	}
 }
 
 func TestNewContentIsTriedAfterOldContentGaveUp(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "broken", Row: storedContent(t, bucket, "image/png", []byte("\x89PNG not really"))},
 		{Insert: "CONTENT", As: "good", Row: storedContent(t, bucket, "image/png", redPNG(t, 600, 400))},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Fair flyer", "content": "@broken"}},
 	})
 	good, flyer := ids[1], ids[2]
-	StartThumbnailer(s, queue, bucket)
+	StartThumbnailer(s, bucket)
 	for range thumbnailTries + 2 {
 		s.Model().services.inbox(thumbnailInbox).wake.poke()
 		time.Sleep(50 * time.Millisecond)
@@ -136,33 +136,33 @@ func TestNewContentIsTriedAfterOldContentGaveUp(t *testing.T) {
 	if row, _ := s.Model().Table("DOCUMENT").Get(flyer); row["thumbnailed"] != "" {
 		t.Fatalf("a broken image was thumbnailed: %v", row)
 	}
-	apply(t, s, queue, []Edit{{Set: flyer, Cells: map[string]any{"content": good}}})
+	apply(t, s, []Edit{{Set: flyer, Cells: map[string]any{"content": good}}})
 	if row := thumbnailed(t, s, flyer); row["thumbnail"] == "" {
 		t.Fatalf("the flyer's new image got no thumbnail: %v", row)
 	}
 }
 
 func TestAPDFsThumbnailIsPostedFromALaptop(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	calendar := apply(t, s, queue, []Edit{
+	pics := NewPictures(s, bucket)
+	calendar := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "pdf", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 2))},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "name": "Year calendar", "content": "@pdf"}},
 	})[1]
 	page := redPNG(t, 960, 1242)
 	pdf, _ := s.Model().Table("DOCUMENT").Get(calendar)
 	drawn := map[string]string{"document": calendar, "content": pdf["content"]}
-	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "thumbnail", drawn, "picture", page); rec.Code != http.StatusForbidden {
+	if rec := postFile(t, s, pics, "rowan.ashdown@example.org", "thumbnail", drawn, "picture", page); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent set a thumbnail: %d %s", rec.Code, rec.Body.String())
 	}
-	newer := apply(t, s, queue, []Edit{{Insert: "CONTENT", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 3))}})[0]
-	apply(t, s, queue, []Edit{{Set: calendar, Cells: map[string]any{"content": newer}}})
-	if rec := postFile(t, s, queue, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusBadRequest {
+	newer := apply(t, s, []Edit{{Insert: "CONTENT", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 3))}})[0]
+	apply(t, s, []Edit{{Set: calendar, Cells: map[string]any{"content": newer}}})
+	if rec := postFile(t, s, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a picture of the old pdf was taken after the calendar changed: %d %s", rec.Code, rec.Body.String())
 	}
 	drawn["content"] = newer
-	if rec := postFile(t, s, queue, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusOK {
+	if rec := postFile(t, s, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusOK {
 		t.Fatalf("the import could not set a thumbnail: %d %s", rec.Code, rec.Body.String())
 	}
 	row, _ := s.Model().Table("DOCUMENT").Get(calendar)
@@ -177,7 +177,7 @@ func TestAPDFsThumbnailIsPostedFromALaptop(t *testing.T) {
 	if img, err := jpeg.Decode(bytes.NewReader(raw)); err != nil || img.Bounds().Dx() != 480 {
 		t.Fatalf("the stored thumbnail: %v %v", img, err)
 	}
-	if rec := postFile(t, s, queue, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, pics, importing, "thumbnail", drawn, "picture", page); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a thumbnail was posted twice: %d", rec.Code)
 	}
 }
@@ -192,12 +192,12 @@ func TestDocumentsGetThumbnails(t *testing.T) {
 		w.Write(banner)
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
+	pics := NewPictures(s, bucket)
 	withPicture := []byte(`<html><head><base href="/news/"><meta property="og:image" content="share/banner.png"></head><body>Spring fair</body></html>`)
 	without := []byte(`<html><head><title>Bare</title></head><body>Nothing to show</body></html>`)
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "pdf", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 2))},
 		{Insert: "CONTENT", As: "photo", Row: storedContent(t, bucket, "image/png", redPNG(t, 960, 720))},
 		{Insert: "CONTENT", As: "page", Row: storedContent(t, bucket, "text/html; charset=utf-8", withPicture)},
@@ -212,7 +212,7 @@ func TestDocumentsGetThumbnails(t *testing.T) {
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": "@calendar", "content": "@text"}},
 	})
 	flyer, calendar, part, page, bare, extract := ids[5], ids[6], ids[8], ids[9], ids[10], ids[11]
-	StartThumbnailer(s, queue, bucket)
+	StartThumbnailer(s, bucket)
 	for _, id := range []string{flyer, part, page} {
 		row := thumbnailed(t, s, id)
 		thumb, ok := s.Model().Table("CONTENT").Get(row["thumbnail"])
@@ -247,7 +247,7 @@ func TestDocumentsGetThumbnails(t *testing.T) {
 		}
 	}
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
 		serveAs(mux, rec, httptest.NewRequest(http.MethodGet, path, nil), "rowan.ashdown@example.org")

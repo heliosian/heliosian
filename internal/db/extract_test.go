@@ -37,10 +37,10 @@ func bytesOf(t *testing.T, s *Store, bucket *blob.Bucket, doc store.Row) string 
 }
 
 func TestMailIsReadIntoATree(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
 	logo := pngOf(t, 3)
 	eml := strings.Join([]string{
 		"From: Maya Lindqvist <maya.lindqvist@example.org>",
@@ -85,7 +85,7 @@ func TestMailIsReadIntoATree(t *testing.T) {
 		"--outer--",
 		"",
 	}, "\r\n")
-	rec := postMail(t, s, queue, pics, importing, []byte(eml))
+	rec := postMail(t, s, pics, importing, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}
@@ -177,11 +177,11 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		}
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	NewExtractor(s, queue, bucket, "test")
-	StartFetcher(s, queue, bucket)
+	pics := NewPictures(s, bucket)
+	NewExtractor(s, bucket, "test")
+	StartFetcher(s, bucket)
 	body := strings.Join([]string{
 		`<html><body><p>See the schedule.</p>`,
 		`<img src="` + site.URL + `/logo.png">`,
@@ -217,7 +217,7 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 		"--alt--",
 		"",
 	}, "\r\n")
-	rec := postMail(t, s, queue, pics, importing, []byte(eml))
+	rec := postMail(t, s, pics, importing, []byte(eml))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
 	}

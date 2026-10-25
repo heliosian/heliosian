@@ -37,16 +37,15 @@ var pageImageProperties = []string{"og:image", "og:image:url", "og:image:secure_
 
 type Thumbnailer struct {
 	s      *Store
-	queue  *store.Queue
 	bucket *blob.Bucket
 	tries  map[[2]string]int
 	in     *inbox
 }
 
-func StartThumbnailer(s *Store, queue *store.Queue, bucket *blob.Bucket) {
-	t := &Thumbnailer{s: s, queue: queue, bucket: bucket, tries: map[[2]string]int{}, in: s.Model().services.inbox(thumbnailInbox)}
+func StartThumbnailer(s *Store, bucket *blob.Bucket) {
+	t := &Thumbnailer{s: s, bucket: bucket, tries: map[[2]string]int{}, in: s.Model().services.inbox(thumbnailInbox)}
 	go t.run()
-	queue.OnTick(t.in.wake.poke)
+	s.OnTick(t.in.wake.poke)
 	t.in.wake.poke()
 }
 
@@ -105,10 +104,10 @@ func (t *Thumbnailer) make(doc store.Row) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return thumb != nil, saveThumbnail(ctx, t.s, t.queue, t.bucket, access.System(thumbnailActor), Env{System: thumbnailActor}, doc, thumb, true)
+	return thumb != nil, saveThumbnail(ctx, t.s, t.bucket, access.System(thumbnailActor), Env{System: thumbnailActor}, doc, thumb, true)
 }
 
-func saveThumbnail(ctx context.Context, s *Store, queue *store.Queue, bucket *blob.Bucket, actor access.Actor, env Env, doc store.Row, thumb []byte, whole bool) error {
+func saveThumbnail(ctx context.Context, s *Store, bucket *blob.Bucket, actor access.Actor, env Env, doc store.Row, thumb []byte, whole bool) error {
 	var kept madeBytes
 	if thumb != nil {
 		var err error
@@ -116,7 +115,7 @@ func saveThumbnail(ctx context.Context, s *Store, queue *store.Queue, bucket *bl
 			return err
 		}
 	}
-	_, err := queue.Transact(ctx, actor, func(tx *store.Tx) error {
+	_, err := s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		m := s.In(tx)
 		now, ok := m.Table("DOCUMENT").Get(doc["id"])
 		if !ok || now["thumbnailed"] != "" || now["content"] != doc["content"] {

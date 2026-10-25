@@ -11,10 +11,10 @@ const birthdayAdmin = "per00000020001"
 
 func birthdaySample(t *testing.T) (*Store, func(viewer string, edits ...Edit) ([]string, error)) {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000700", "person": birthdayAdmin, "member": "yes"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000700", "person": birthdayAdmin, "member": "yes"}}})
 	return s, func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 }
 

@@ -22,7 +22,6 @@ type MembershipMailConfig struct {
 
 type MembershipMailer struct {
 	s      *Store
-	queue  *store.Queue
 	config MembershipMailConfig
 	in     *inbox
 }
@@ -42,8 +41,8 @@ var teamBrand = mail.Brand{Name: "HCA-Team", Color: "#1f4d53", Tagline: "the HCA
 
 var heliosianBrand = mail.Brand{Name: "Heliosian", Color: "#1f4d53", Tagline: "the Helios community apps"}
 
-func NewMembershipMailer(s *Store, queue *store.Queue, config MembershipMailConfig) *MembershipMailer {
-	mm := &MembershipMailer{s: s, queue: queue, config: config, in: s.Model().services.inbox(mailInbox)}
+func NewMembershipMailer(s *Store, config MembershipMailConfig) *MembershipMailer {
+	mm := &MembershipMailer{s: s, config: config, in: s.Model().services.inbox(mailInbox)}
 	go mm.run()
 	return mm
 }
@@ -467,13 +466,13 @@ func (mm *MembershipMailer) send(ctx context.Context, sender *mail.Mailgun, m *M
 	log := slog.With("group", g["id"], "kind", kind, "subject", subject)
 	edits := m.copyEdits(g["id"], kind, subject, append(slices.Clone(to), cc...))
 	env := Env{System: mailerSystem, Now: time.Now()}
-	ids, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), env, Batch{Batch: edits})
+	ids, err := Write(ctx, mm.s, access.System(mailerSystem), env, Batch{Batch: edits})
 	if err != nil {
 		log.Error("membership mail: not recorded", "error", err)
 		return
 	}
 	sent := sendCopies(ctx, sender, composeShared(msg, sender.From(), ids[0]), m.outCopies(edits, ids))
-	if _, err := Write(ctx, mm.s, mm.queue, access.System(mailerSystem), env, Batch{Batch: sent}); err != nil {
+	if _, err := Write(ctx, mm.s, access.System(mailerSystem), env, Batch{Batch: sent}); err != nil {
 		log.Error("membership mail: sends not recorded", "error", err)
 		return
 	}

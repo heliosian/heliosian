@@ -12,14 +12,14 @@ import (
 )
 
 func TestRememberAnswersWhileAnotherTransactionIsBlocked(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	st := NewStock(s, queue, blob.NewMemoryBucket())
+	s := sample(t)
+	st := NewStock(s, blob.NewMemoryBucket())
 	blocked := make(chan struct{})
 	release := make(chan struct{})
 	finished := make(chan struct{})
 	go func() {
 		defer close(finished)
-		_, err := queue.Transact(context.Background(), access.System(stockActor), func(tx *store.Tx) error {
+		_, err := s.Transact(context.Background(), access.System(stockActor), func(tx *store.Tx[Model]) error {
 			close(blocked)
 			<-release
 			return nil

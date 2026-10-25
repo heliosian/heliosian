@@ -9,14 +9,14 @@ import (
 
 func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 	const night, nightLeads, taco, students = "grp00000000512", "grp00000000514", "grp00000000521", "grp00000000001"
-	s, queue := sampleWithQueue(t)
-	ids := apply(t, s, queue, []Edit{
+	s := sample(t)
+	ids := apply(t, s, []Edit{
 		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others", "capacity": "2"}},
 		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Booth", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "direct", "eligible": students}},
 	})
 	decor, booth := ids[0], ids[1]
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	join := func(viewer, group, person string, extra map[string]any) ([]string, error) {
 		row := map[string]any{"group": group, "person": person, "member": "yes", "added_by": viewer}
@@ -37,7 +37,7 @@ func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 	if _, err := join(student, decor, parent, nil); err == nil {
 		t.Error("a sign-up goes past the capacity")
 	}
-	apply(t, s, queue, []Edit{{Set: decor, Cells: map[string]any{"join": "direct", "capacity": ""}}})
+	apply(t, s, []Edit{{Set: decor, Cells: map[string]any{"join": "direct", "capacity": ""}}})
 	if _, err := join(student, decor, staff, nil); err == nil {
 		t.Error("someone outside the family is signed up where join is direct")
 	}
@@ -67,21 +67,21 @@ func TestJoiningFollowsTheGroupsJoinEligibleCapacityAndPrice(t *testing.T) {
 	if _, err := write(student, Edit{Delete: mine[0]}); err != nil {
 		t.Errorf("someone can't leave: %v", err)
 	}
-	apply(t, s, queue, []Edit{{Set: booth, Cells: map[string]any{"join": "none"}}})
+	apply(t, s, []Edit{{Set: booth, Cells: map[string]any{"join": "none"}}})
 	if _, err := write(student, Edit{Delete: inBooth[0]}); err != nil {
 		t.Errorf("someone can't leave once it is closed: %v", err)
 	}
 }
 
 func TestWhoeverMayJoinAGroupTakingOthersAddsAnyone(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	party := apply(t, s, queue, []Edit{
+	s := sample(t)
+	party := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "party", Row: map[string]any{"kind": "event", "status": "open", "name": "Birthday Party", "visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
 		{Set: "@party", Cells: map[string]any{"eligible": "@party"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@party", "person": student, "member": "yes"}},
 	})[0]
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	join := func(viewer, person string) ([]string, error) {
 		return write(viewer, Edit{Insert: "MEMBER", Row: map[string]any{"group": party, "person": person, "member": "yes", "added_by": viewer}})
@@ -99,8 +99,8 @@ func TestWhoeverMayJoinAGroupTakingOthersAddsAnyone(t *testing.T) {
 
 func TestARuleUnderItsTargetTakesInEverythingBelow(t *testing.T) {
 	const night, picnic, picnicGoing = "grp00000000512", "grp00000000040", "grp00000000042"
-	s, queue := sampleWithQueue(t)
-	list := apply(t, s, queue, []Edit{
+	s := sample(t)
+	list := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "decor", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}},
 		{Insert: "GROUP", As: "list", Row: map[string]any{"kind": "group", "status": "open", "name": "Picnic Everyone", "visible_to": "grp00000000004", "posting": "members", "replying": "members"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@decor", "person": staff, "member": "yes"}},

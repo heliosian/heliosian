@@ -53,7 +53,7 @@ func (sv *services) inbox(name inboxName) *inbox {
 	return sv.inboxes[name]
 }
 
-func (sv *services) collect(tx *store.Tx, in *inbox, d delivery) {
+func (sv *services) collect(tx *store.Tx[Model], in *inbox, d delivery) {
 	h := tx.Value(sv, func() any {
 		h := &heldWrite{write: sv.writes.Add(1), by: map[*inbox][]delivery{}}
 		tx.Swapped(func() {

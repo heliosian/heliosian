@@ -46,7 +46,6 @@ type ListMailConfig struct {
 
 type ListMailer struct {
 	s         *Store
-	queue     *store.Queue
 	pics      *Pictures
 	mail      ListMailConfig
 	receiving sync.Mutex
@@ -55,8 +54,8 @@ type ListMailer struct {
 	work      chan string
 }
 
-func RegisterListMail(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, lm ListMailConfig) *ListMailer {
-	l := &ListMailer{s: s, queue: queue, pics: pics, mail: lm, queued: map[string]bool{}, work: make(chan string, 256)}
+func RegisterListMail(mux *http.ServeMux, s *Store, pics *Pictures, lm ListMailConfig) *ListMailer {
+	l := &ListMailer{s: s, pics: pics, mail: lm, queued: map[string]bool{}, work: make(chan string, 256)}
 	mux.HandleFunc("POST /hooks/mail/mime", l.inbound)
 	mux.HandleFunc("GET /open/unsubscribe/{token}", l.unsubscribePage)
 	mux.HandleFunc("POST /open/unsubscribe/{token}", l.unsubscribe)
@@ -80,7 +79,7 @@ func (l *ListMailer) ready() bool {
 }
 
 func (l *ListMailer) write(ctx context.Context, edits ...Edit) ([]string, error) {
-	return Write(ctx, l.s, l.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits})
+	return Write(ctx, l.s, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits})
 }
 
 func (l *ListMailer) enqueue(id string) {

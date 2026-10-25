@@ -51,10 +51,10 @@ func (s *sharedRows) DeleteMany(string, string, string, []string) error {
 
 func birthdayMailer(t *testing.T) (*Store, *BirthdayMailer, *mailtest.Recorder, *sharedRows) {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	sender := mailtest.NewRecorder(mailtest.From)
 	shared := &sharedRows{}
-	bm := NewBirthdayMailer(s, queue, BirthdayMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }, Shared: shared})
+	bm := NewBirthdayMailer(s, BirthdayMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }, Shared: shared})
 	return s, bm, sender, shared
 }
 

@@ -13,10 +13,10 @@ import (
 )
 
 func TestJoiningAFamilyReachesTheGroupsOfItsParents(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	s.Model().generated(effective)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000020", "person": "per00000000004", "member": "yes"}}})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000020", "person": "per00000000004", "member": "yes"}}})
 	m := s.Model()
 	fresh := *m
 	fresh.derived = newDerived()
@@ -33,10 +33,10 @@ func TestJoiningAFamilyReachesTheGroupsOfItsParents(t *testing.T) {
 }
 
 func TestAMembershipLeavesOtherGroupsEffectiveMembersCached(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	s.Model().generated(effective)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000060", "person": "per00000000002", "member": "yes"}}})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000060", "person": "per00000000002", "member": "yes"}}})
 	m := s.Model()
 	m.derived.mu.Lock()
 	_, everyone := m.derived.byGroup["grp00000000004"]
@@ -48,7 +48,7 @@ func TestAMembershipLeavesOtherGroupsEffectiveMembersCached(t *testing.T) {
 }
 
 func TestEffectiveMembersCarriedAcrossWritesMatchAFreshBuild(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	idsOf := func(table string) []string {
 		out := []string{}
@@ -114,7 +114,7 @@ func TestEffectiveMembersCarriedAcrossWritesMatchAFreshBuild(t *testing.T) {
 		case 8:
 			edit = Edit{Insert: "RULE", Row: map[string]any{"group": pick(groups), "order": fmt.Sprintf("o%03dm", i), "search": pick([]string{"a", "ash", "example"})}}
 		}
-		if _, err := Write(t.Context(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{edit}}); err != nil {
+		if _, err := Write(t.Context(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{edit}}); err != nil {
 			t.Logf("edit %d refused: %v", i, err)
 			continue
 		}
@@ -130,9 +130,9 @@ func TestEffectiveMembersCarriedAcrossWritesMatchAFreshBuild(t *testing.T) {
 }
 
 func TestAWriteBuildsEffectiveMembersBeforeAnyoneAsks(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	StartWarmer(s)
-	apply(t, s, queue, []Edit{{Set: "grp00000000030", Cells: map[string]any{"subtitle": "changed"}}})
+	apply(t, s, []Edit{{Set: "grp00000000030", Cells: map[string]any{"subtitle": "changed"}}})
 	m := s.Model()
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	for deadline := time.Now().Add(2 * time.Second); ; time.Sleep(5 * time.Millisecond) {

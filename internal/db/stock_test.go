@@ -10,8 +10,8 @@ import (
 )
 
 func TestOverlappingSearchesRememberEachHitOnce(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	st := NewStock(s, queue, blob.NewMemoryBucket())
+	s := sample(t)
+	st := NewStock(s, blob.NewMemoryBucket())
 	hit := func(id string) StockHit {
 		return StockHit{Source: "Pexels", SourceID: id, PreviewURL: "https://example.org/" + id + "/small", URL: "https://example.org/" + id}
 	}

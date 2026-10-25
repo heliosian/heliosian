@@ -26,7 +26,7 @@ func TestThumbnailsAndImageDownloadsDoNotWaitForStockWrites(t *testing.T) {
 		w.Write(pic)
 	}))
 	defer provider.Close()
-	stock, _, queue := sampleStockQueue(t)
+	stock, s := sampleStockQueue(t)
 	search := Search{Pexels: "key", Stock: stock}
 	blocked := make(chan struct{})
 	release := make(chan struct{})
@@ -34,7 +34,7 @@ func TestThumbnailsAndImageDownloadsDoNotWaitForStockWrites(t *testing.T) {
 	unblock := func() { once.Do(func() { close(release) }) }
 	defer unblock()
 	go func() {
-		_, err := queue.Transact(context.Background(), access.System("imagesearch"), func(tx *store.Tx) error {
+		_, err := s.Transact(context.Background(), access.System("imagesearch"), func(tx *store.Tx[db.Model]) error {
 			close(blocked)
 			<-release
 			return nil

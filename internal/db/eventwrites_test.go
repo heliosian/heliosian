@@ -9,15 +9,15 @@ import (
 
 func TestEventsAreAddedAnsweredAndApproved(t *testing.T) {
 	const community = "grp00000000060"
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Set: community, Cells: map[string]any{"adding": "approval"}},
 		{Insert: "GROUP", As: "admins", Row: map[string]any{"kind": "admins", "name": "When Admins", "status": "open", "managed_by": "grp00000000005"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@admins", "person": student, "member": "yes"}},
 		{Set: whenApp, Cells: map[string]any{"admins": "@admins"}},
 	})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	event := func(status string) map[string]any {
 		return map[string]any{"kind": "event", "parent": community, "name": "Hummingbirds playdate", "status": status, "start": "2026-11-01 10:00", "added_by": parent, "listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}
@@ -57,10 +57,10 @@ func TestEventsAreAddedAnsweredAndApproved(t *testing.T) {
 
 func TestWhoeverAddsAnEventHostsItAndAPrivateOneGoesLive(t *testing.T) {
 	const community = "grp00000000060"
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: community, Cells: map[string]any{"adding": "approval"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: community, Cells: map[string]any{"adding": "approval"}}})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	hosted := func(cells map[string]any) []Edit {
 		row := map[string]any{"kind": "event", "parent": community, "name": "Euler Dinner & Set", "status": "open", "start": "2026-11-04 17:30", "added_by": parent}
@@ -111,9 +111,9 @@ func TestWhoeverAddsAnEventHostsItAndAPrivateOneGoesLive(t *testing.T) {
 }
 
 func TestSavedSearchesAreTheirOwnersAlone(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	made, err := write(parent, Edit{Insert: "SAVED_SEARCH", Row: map[string]any{"person": parent, "name": "Mine", "search": `[["community"]]`}})
 	if err != nil {

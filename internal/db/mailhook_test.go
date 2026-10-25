@@ -120,10 +120,10 @@ func hookMail(mux *http.ServeMux, key, raw string) int {
 }
 
 func TestTheMailHookFilesOnlyTheCommunitysVouchedMail(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	mux := http.NewServeMux()
-	RegisterMailHook(mux, s, queue, pics, "key")
+	RegisterMailHook(mux, s, pics, "key")
 	before := s.Model().Table("DOCUMENT").Len()
 	direct := strings.NewReplacer("smtp.mailfrom=hummingbirds.parents+bncABC@", "smtp.mailfrom=maya.lindqvist@", "<class-1@", "<class-2@").Replace(classMail)
 	for _, raw := range []string{personalMail, direct, classMail, classMail} {

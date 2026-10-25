@@ -13,7 +13,7 @@ import (
 func getJSON(t *testing.T, s *Store, as, path string, into any) int {
 	t.Helper()
 	mux := http.NewServeMux()
-	Register(mux, s, nil, nil, testTokens, func() time.Time { return testNow })
+	Register(mux, s, nil, testTokens, func() time.Time { return testNow })
 	rec := httptest.NewRecorder()
 	auth.Fixed(as, mux).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 	if rec.Code == http.StatusOK {

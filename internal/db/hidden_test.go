@@ -10,9 +10,9 @@ import (
 
 func TestHidingIsJoiningForOneselfAlone(t *testing.T) {
 	const night = "grp00000000512"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	made, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "name": "Decor", "status": "open", "added_by": parent, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}})
 	if err != nil {

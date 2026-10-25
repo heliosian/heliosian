@@ -10,11 +10,11 @@ import (
 )
 
 func TestStockHitIsReadyBeforeLaterBatchesFinish(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	st := NewStock(s, queue, blob.NewMemoryBucket())
+	s := sample(t)
+	st := NewStock(s, blob.NewMemoryBucket())
 	blocked := make(chan struct{})
 	release := make(chan struct{})
-	queue.OnSwap(func() {
+	s.OnSwap(func() {
 		if s.Model().Table("STOCK").Len() > stockBatch {
 			close(blocked)
 			<-release
@@ -27,7 +27,7 @@ func TestStockHitIsReadyBeforeLaterBatchesFinish(t *testing.T) {
 	ids := st.Remember(hits)
 	defer func() {
 		close(release)
-		<-queue.Drain()
+		<-s.Drain()
 	}()
 	select {
 	case <-blocked:

@@ -296,11 +296,11 @@ type Searcher struct {
 	ready   chan struct{}
 }
 
-func NewSearcher(s *Store, queue *store.Queue, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
+func NewSearcher(s *Store, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
 	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1), ready: make(chan struct{})}
 	go x.follow()
 	go x.index()
-	queue.OnTick(x.rebuild)
+	s.OnTick(x.rebuild)
 	x.rebuild()
 	return x
 }

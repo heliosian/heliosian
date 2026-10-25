@@ -12,14 +12,13 @@ import (
 
 func TestEveryWriteAppendsAChangeToTheSheet(t *testing.T) {
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"name": "Autumn Picnic"}}})
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"name": "Autumn Picnic"}}})
 	changes := []store.Row{}
-	for _, row := range testkit.Rows(t, dir, queue, GroupsSheet, ChangesTab) {
+	for _, row := range testkit.Rows(t, dir, s, GroupsSheet, ChangesTab) {
 		if row["row"] == "grp00000000040" {
 			changes = append(changes, row)
 		}

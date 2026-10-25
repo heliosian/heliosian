@@ -15,9 +15,9 @@ import (
 
 const activityNight = "grp00000000512"
 
-func activityPagesSample(t *testing.T) (*Store, *store.Queue, *ActivityPages, *http.ServeMux) {
+func activityPagesSample(t *testing.T) (*Store, *ActivityPages, *http.ServeMux) {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	style := &sharecard.Style{
 		Palette: sharecard.Palette{
 			Page: color.RGBA{0xee, 0xf6, 0xea, 0xff}, Brand: color.RGBA{0x0c, 0x4c, 0x54, 0xff}, Accent: color.RGBA{0x00, 0x74, 0x6f, 0xff},
@@ -29,11 +29,11 @@ func activityPagesSample(t *testing.T) (*Store, *store.Queue, *ActivityPages, *h
 	pages := NewActivityPages(s, blob.NewMemoryBucket(), style)
 	mux := http.NewServeMux()
 	pages.Register(mux)
-	return s, queue, pages, mux
+	return s, pages, mux
 }
 
 func TestActivityPreviews(t *testing.T) {
-	_, _, pages, mux := activityPagesSample(t)
+	_, pages, mux := activityPagesSample(t)
 	type unlisted struct {
 		pages *ActivityPages
 		mux   *http.ServeMux
@@ -41,8 +41,8 @@ func TestActivityPreviews(t *testing.T) {
 	unlistedPages := []unlisted{}
 	for _, group := range []string{"grp00000000511", activityNight} {
 		for _, cells := range []map[string]any{{"visible_to": ""}, {"status": "pending"}, {"status": "closed"}} {
-			s, queue, p, m := activityPagesSample(t)
-			apply(t, s, queue, []Edit{{Set: group, Cells: cells}})
+			s, p, m := activityPagesSample(t)
+			apply(t, s, []Edit{{Set: group, Cells: cells}})
 			unlistedPages = append(unlistedPages, unlisted{p, m})
 		}
 	}
@@ -62,7 +62,7 @@ func TestActivityPreviews(t *testing.T) {
 }
 
 func TestActivityNeeds(t *testing.T) {
-	s, queue, pages, _ := activityPagesSample(t)
+	s, pages, _ := activityPagesSample(t)
 	at := time.Date(2026, time.October, 1, 9, 0, 0, 0, School)
 	tr := pages.tree()
 	list := tr.needs(at)
@@ -72,20 +72,20 @@ func TestActivityNeeds(t *testing.T) {
 	if got := tr.needs(time.Date(2027, time.March, 1, 9, 0, 0, 0, School)); len(got) != 0 {
 		t.Fatalf("a past event is a need: %v", got)
 	}
-	apply(t, s, queue, []Edit{{Set: activityNight, Cells: map[string]any{"capacity": "3"}}})
+	apply(t, s, []Edit{{Set: activityNight, Cells: map[string]any{"capacity": "3"}}})
 	tr = pages.tree()
 	if note := tr.needNote(tr.group(activityNight)); note != "Friday, February 5 · 2 spots left" {
 		t.Fatalf("note: %q", note)
 	}
-	apply(t, s, queue, []Edit{{Set: activityNight, Cells: map[string]any{"capacity": "1"}}})
+	apply(t, s, []Edit{{Set: activityNight, Cells: map[string]any{"capacity": "1"}}})
 	if got := pages.tree().needs(at); len(got) != 0 {
 		t.Fatalf("a full event is a need: %v", got)
 	}
 }
 
 func TestActivityRedirects(t *testing.T) {
-	s, queue, pages, _ := activityPagesSample(t)
-	apply(t, s, queue, []Edit{
+	s, pages, _ := activityPagesSample(t)
+	apply(t, s, []Edit{
 		{Insert: "ALIAS", Row: map[string]any{"alias": "E001", "target": activityNight}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/old-booth", "new": "/g/international-night"}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/activities/nsSPomxFcPrSfoRCAgzI", "new": "/v/international-night"}},

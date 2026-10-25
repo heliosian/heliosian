@@ -12,7 +12,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/ops"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 	"heliosian/internal/vitals"
 )
 
@@ -44,16 +43,15 @@ type dashboard struct {
 
 type board struct {
 	store  *Store
-	queue  *store.Queue
 	ops    *ops.Board
 	mu     sync.Mutex
 	model  *Model
 	queues []queueCount
 }
 
-func RegisterDashboard(mux, api *http.ServeMux, s *Store, queue *store.Queue, external *ops.Board) {
-	b := &board{store: s, queue: queue, ops: external}
-	queue.OnSwap(vitals.Poke)
+func RegisterDashboard(mux, api *http.ServeMux, s *Store, external *ops.Board) {
+	b := &board{store: s, ops: external}
+	s.OnSwap(vitals.Poke)
 	allowed := func(r *http.Request) bool {
 		return s.Model().SuperAdmin(auth.Email(r))
 	}
@@ -116,7 +114,7 @@ func (b *board) snapshot() dashboard {
 	}
 	out := dashboard{At: time.Now(), Queues: b.queues, Ops: b.ops.Snapshot()}
 	b.mu.Unlock()
-	status := b.queue.Status()
+	status := b.store.Status()
 	out.LastRefresh = status.LastRefresh
 	out.Queues = append(slices.Clone(out.Queues), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 	errors := vitals.Errors()

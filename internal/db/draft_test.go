@@ -15,9 +15,9 @@ import (
 )
 
 func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
 	personAt := func(as, address string) string {
 		t.Helper()
 		rec := doCall(t, mux, as, "/api/do/person-at", `{"address": "`+address+`"}`)
@@ -31,7 +31,7 @@ func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 	}
 	addGuest := func(as, address string) *httptest.ResponseRecorder {
 		t.Helper()
-		return send(t, s, queue, http.MethodPost, "application/json", as, `{"batch": [
+		return send(t, s, http.MethodPost, "application/json", as, `{"batch": [
 			{"insert": "PERSON", "as": "g", "row": {"source": "guest", "name_long_override": "Pat Coach"}},
 			{"insert": "PERSON_EMAIL", "row": {"person": "@g", "address": "`+address+`", "primary": true, "source": "guest"}}]}`)
 	}
@@ -51,7 +51,7 @@ func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 	if got := personAt(superAdmin, "rowan.ashdown@example.org"); got != parent {
 		t.Fatalf("a directory address answered %s", got)
 	}
-	apply(t, s, queue, []Edit{
+	apply(t, s, []Edit{
 		{Delete: memberRow(t, s, "grp00000000513", parent)},
 		{Delete: memberRow(t, s, "grp00000020073", parent)},
 		{Delete: memberRow(t, s, "grp00000020075", parent)},
@@ -60,7 +60,7 @@ func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 	if rec := addGuest("rowan.ashdown@example.org", "friend@example.net"); rec.Code != http.StatusForbidden {
 		t.Fatalf("someone who runs no group, with no party to bring a guest to, added a guest: %d", rec.Code)
 	}
-	apply(t, s, queue, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "direct"}}})
+	apply(t, s, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "direct"}}})
 	if rec := addGuest("rowan.ashdown@example.org", "friend@example.net"); rec.Code != http.StatusOK {
 		t.Fatalf("someone who sees a party they could buy at can't add a guest to bring: %d %s", rec.Code, rec.Body)
 	}
@@ -68,8 +68,8 @@ func TestAGuestIsFoundByAddressOrAdded(t *testing.T) {
 
 func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 	const hummingbirds, picnicManagers = "grp00000000010", "grp00000000041"
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
 	mux := http.NewServeMux()
 	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, func() time.Time { return testNow })
 	ask := func(as, body string) (*httptest.ResponseRecorder, draftAnswer) {

@@ -78,7 +78,6 @@ type Book struct {
 	changes *ChangeLog
 	source  data.Source
 	writer  data.Writer
-	queue   *Queue
 
 	mu        sync.Mutex
 	waiting   []waitingWrite
@@ -104,8 +103,8 @@ type change struct {
 	before, after Row
 }
 
-func NewBook(app string, tabs []Tab, changes *ChangeLog, source data.Source, writer data.Writer, queue *Queue) (*Book, error) {
-	b := &Book{app: app, tabs: tabs, byName: map[string]Tab{}, changes: changes, source: source, writer: writer, queue: queue}
+func NewBook(app string, tabs []Tab, changes *ChangeLog, source data.Source, writer data.Writer) (*Book, error) {
+	b := &Book{app: app, tabs: tabs, byName: map[string]Tab{}, changes: changes, source: source, writer: writer}
 	for _, t := range tabs {
 		if len(t.Key) == 0 {
 			return nil, fmt.Errorf("%s: tab %s names no key", app, t.Name)
@@ -186,16 +185,14 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 	return Plan{Tables: tables, writes: writes, log: log}, nil
 }
 
-func (b *Book) Write(p Plan) <-chan struct{} {
-	done := make(chan struct{})
+func (b *Book) Write(p Plan) (done <-chan struct{}, schedule bool) {
+	waiting := make(chan struct{})
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.waiting = append(b.waiting, waitingWrite{plan: p, done: done})
-	if !b.scheduled {
-		b.scheduled = true
-		b.queue.Add(b.flush)
-	}
-	return done
+	b.waiting = append(b.waiting, waitingWrite{plan: p, done: waiting})
+	schedule = !b.scheduled
+	b.scheduled = true
+	return waiting, schedule
 }
 
 func (b *Book) unwritten() []Plan {

@@ -14,7 +14,6 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 )
 
@@ -28,10 +27,10 @@ const (
 
 var sampleNow = time.Date(2026, 9, 28, 9, 0, 0, 0, db.School)
 
-func write(t *testing.T, s *db.Store, queue *store.Queue, edits ...db.Edit) []string {
+func write(t *testing.T, s *db.Store, edits ...db.Edit) []string {
 	t.Helper()
 	env := db.Env{System: "test", Whole: true, Now: sampleNow}
-	ids, err := db.Write(context.Background(), s, queue, access.System(env.System), env, db.Batch{Batch: edits})
+	ids, err := db.Write(context.Background(), s, access.System(env.System), env, db.Batch{Batch: edits})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +45,7 @@ func schoolDayEdits() []db.Edit {
 	return edits
 }
 
-func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
+func sample(t *testing.T) (*Set, *db.Store) {
 	t.Helper()
 	intercept.GoogleLogin(t.TempDir())
 	intercept.Install(intercept.VertexHost, intercept.Vertex())
@@ -56,8 +55,7 @@ func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), func(app string) string { return "https://" + app + ".heliosian.com" })
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), func(app string) string { return "https://" + app + ".heliosian.com" })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +63,8 @@ func sample(t *testing.T) (*Set, *db.Store, *store.Queue) {
 	if err := bucket.FillFrom("../../sampledata/bucket"); err != nil {
 		t.Fatal(err)
 	}
-	search := db.NewSearcher(s, queue, bucket, vertex)
-	return New(Deps{Data: s, Search: search, Bucket: bucket, Now: func() time.Time { return sampleNow }}), s, queue
+	search := db.NewSearcher(s, bucket, vertex)
+	return New(Deps{Data: s, Search: search, Bucket: bucket, Now: func() time.Time { return sampleNow }}), s
 }
 
 func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer, error) {
@@ -75,8 +73,8 @@ func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer
 }
 
 func TestEachToolAnswersTheSampleParent(t *testing.T) {
-	set, s, queue := sample(t)
-	write(t, s, queue, schoolDayEdits()...)
+	set, s := sample(t)
+	write(t, s, schoolDayEdits()...)
 	for _, c := range []struct {
 		tool, input string
 		wants       []string
@@ -127,8 +125,8 @@ func TestEachToolAnswersTheSampleParent(t *testing.T) {
 }
 
 func TestAnEventIsForWhomItsAudienceHolds(t *testing.T) {
-	set, s, queue := sample(t)
-	write(t, s, queue,
+	set, s := sample(t)
+	write(t, s,
 		db.Edit{Insert: "GROUP", As: "e", Row: map[string]any{"kind": "event", "name": "Hummingbirds Hike", "start": "2026-10-05 09:00", "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		db.Edit{Insert: "GROUP", As: "a", Row: map[string]any{"kind": "group", "parent": "@e", "name": "Hummingbirds Hike Audience", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		db.Edit{Set: "@e", Cells: map[string]any{"audience": "@a"}},
@@ -146,8 +144,8 @@ func TestAnEventIsForWhomItsAudienceHolds(t *testing.T) {
 }
 
 func TestADayIsOnePlanPerClassroom(t *testing.T) {
-	set, s, queue := sample(t)
-	write(t, s, queue, schoolDayEdits()...)
+	set, s := sample(t)
+	write(t, s, schoolDayEdits()...)
 	day := func(name string) []db.Edit {
 		return []db.Edit{
 			{Insert: "GROUP", As: "t", Row: map[string]any{"kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
@@ -166,20 +164,20 @@ func TestADayIsOnePlanPerClassroom(t *testing.T) {
 		}
 		return out.Plans
 	}
-	write(t, s, queue, append(day("Early Dismissal"), db.Edit{Insert: "RULE", Row: map[string]any{"group": "@d", "order": "i", "target": "grp00000000010"}})...)
+	write(t, s, append(day("Early Dismissal"), db.Edit{Insert: "RULE", Row: map[string]any{"group": "@d", "order": "i", "target": "grp00000000010"}})...)
 	got := plans()
 	if len(got) != 2 || got[0].Type != "Regular" || !slices.Equal(got[0].Classrooms, []string{"Condors", "Egrets", "Falcons", "Hawks", "Herons", "Jays", "Ospreys", "Ravens"}) || got[0].ForYou || got[1].Type != "Early Dismissal" || !slices.Equal(got[1].Classrooms, []string{"Hummingbirds"}) || !got[1].ForYou {
 		t.Errorf("an early dismissal for the Hummingbirds over a regular day: %+v", got)
 	}
-	write(t, s, queue, day("No School")...)
+	write(t, s, day("No School")...)
 	if got := plans(); len(got) != 1 || got[0].Type != "No School" || len(got[0].Classrooms) != 0 {
 		t.Errorf("no school for everyone over the rest: %+v", got)
 	}
 }
 
 func TestACityOnlyFamilyIsNeverMeasured(t *testing.T) {
-	set, s, queue := sample(t)
-	vega := write(t, s, queue,
+	set, s := sample(t)
+	vega := write(t, s,
 		db.Edit{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "family", "status": "open", "name": "Vega Family", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "vc_address": "Moss Beach, CA", "address_consent": "shared", "consent": "listed"}},
 		db.Edit{Insert: "GEOCODE", Row: map[string]any{"address": "Moss Beach, CA", "lat": "37.5272", "lng": "-122.5131"}},
 	)[0]
@@ -196,7 +194,7 @@ func TestACityOnlyFamilyIsNeverMeasured(t *testing.T) {
 }
 
 func TestEveryHrefIsNotedWithItsRow(t *testing.T) {
-	set, s, _ := sample(t)
+	set, s := sample(t)
 	answer, err := run(t, set, s, "helios_classroom", `{"name": "Hummingbirds"}`)
 	if err != nil {
 		t.Fatal(err)
@@ -213,7 +211,7 @@ func TestEveryHrefIsNotedWithItsRow(t *testing.T) {
 }
 
 func TestEveryToolHasWordsAndAnObjectSchema(t *testing.T) {
-	set, _, _ := sample(t)
+	set, _ := sample(t)
 	for _, tool := range set.Tools {
 		if tool.Words == "" || tool.Schema == nil || tool.Schema.Type != "object" || !strings.HasPrefix(tool.Name, "helios_") {
 			t.Errorf("%s: words %q, schema %+v", tool.Name, tool.Words, tool.Schema)

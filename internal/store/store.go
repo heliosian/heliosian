@@ -34,16 +34,32 @@ type Store[M any] struct {
 	finish func(ctx context.Context, m *M) error
 	check  func(ctx context.Context, base, m *M) error
 	books  map[string]*Book
-	queue  *Queue
 	mu     sync.RWMutex
 	tables map[string]Tables
 	model  *M
+
+	commits   sync.Mutex
+	swapped   []func()
+	ticked    []func()
+	first     chan struct{}
+	firstOnce sync.Once
+
+	work        sync.Mutex
+	cond        *sync.Cond
+	pending     []func()
+	holds       int
+	draining    bool
+	done        chan struct{}
+	lastRefresh time.Time
 }
 
-func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer, queue *Queue) (*Store[M], error) {
-	s := &Store[M]{parts: parts, finish: finish, check: check, books: map[string]*Book{}, queue: queue}
+type Settle func() (swap func(), err error)
+
+func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer) (*Store[M], error) {
+	s := &Store[M]{parts: parts, finish: finish, check: check, books: map[string]*Book{}, first: make(chan struct{}), done: make(chan struct{})}
+	s.cond = sync.NewCond(&s.work)
 	for _, p := range parts {
-		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer, queue)
+		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer)
 		if err != nil {
 			return nil, err
 		}
@@ -58,7 +74,7 @@ func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, c
 		return nil, err
 	}
 	swap()
-	queue.Register(s.load)
+	go s.run()
 	return s, nil
 }
 
@@ -237,36 +253,24 @@ func (s *Store[M]) current() (map[string]Tables, *M) {
 	return s.tables, s.model
 }
 
-func (s *Store[M]) Stage(tx *Tx, app string, ops ...Op) error {
+func (s *Store[M]) write(book *Book, plan Plan) <-chan struct{} {
+	done, schedule := book.Write(plan)
+	if schedule {
+		s.Add(book.flush)
+	}
+	return done
+}
+
+func (s *Store[M]) Stage(tx *Tx[M], app string, ops ...Op) error {
 	book, ok := s.books[app]
 	if !ok {
 		return fmt.Errorf("no sheet %s", app)
 	}
-	st := tx.stageOf(s)
-	if st == nil {
+	if tx.stage == nil {
 		tables, model := s.current()
-		st = &stage{owner: s, start: model, tables: tables, model: model, dirty: map[string]bool{}, plans: map[string]Plan{}}
-		st.settle = func() error {
-			final, err := s.Built(tx)
-			if err != nil {
-				return err
-			}
-			return s.check(tx.ctx, st.start.(*M), final)
-		}
-		st.swap = func() {
-			s.mu.Lock()
-			s.tables, s.model = st.tables, st.model.(*M)
-			s.mu.Unlock()
-		}
-		st.write = func() <-chan struct{} {
-			var done <-chan struct{}
-			for _, app := range st.order {
-				done = s.books[app].Write(st.plans[app])
-			}
-			return done
-		}
-		tx.staged = append(tx.staged, st)
+		tx.stage = &stage[M]{start: model, tables: tables, model: model, dirty: map[string]bool{}, plans: map[string]Plan{}}
 	}
+	st := tx.stage
 	start := time.Now()
 	plan, err := book.Plan(tx.ctx, st.tables[app], tx.actor.Email, ops)
 	trace.From(tx.ctx).Tally("plan").Add(time.Since(start))
@@ -285,8 +289,8 @@ func (s *Store[M]) Stage(tx *Tx, app string, ops ...Op) error {
 	return nil
 }
 
-func (s *Store[M]) Built(tx *Tx) (*M, error) {
-	st := tx.stageOf(s)
+func (s *Store[M]) Built(tx *Tx[M]) (*M, error) {
+	st := tx.stage
 	if st == nil {
 		return s.Model(), nil
 	}
@@ -294,22 +298,22 @@ func (s *Store[M]) Built(tx *Tx) (*M, error) {
 		return nil, st.err
 	}
 	if len(st.dirty) > 0 {
-		model, err := s.build(tx.ctx, st.tables, st.model.(*M), st.dirty, nil)
+		model, err := s.build(tx.ctx, st.tables, st.model, st.dirty, nil)
 		if err != nil {
 			st.err = access.Invalid("%v", err)
 			return nil, st.err
 		}
 		st.model, st.dirty = model, map[string]bool{}
 	}
-	return st.model.(*M), nil
+	return st.model, nil
 }
 
-func (s *Store[M]) In(tx *Tx) *M {
+func (s *Store[M]) In(tx *Tx[M]) *M {
 	if tx == nil {
 		return s.Model()
 	}
 	if m, err := s.Built(tx); err == nil {
 		return m
 	}
-	return tx.stageOf(s).model.(*M)
+	return tx.stage.model
 }

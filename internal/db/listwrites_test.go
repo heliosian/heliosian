@@ -10,8 +10,8 @@ import (
 
 func TestALoopListIsMadeWithANewGuestOnIt(t *testing.T) {
 	const everyone = "grp00000000004"
-	s, queue := sampleWithQueue(t)
-	ids, err := Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{
+	s := sample(t)
+	ids, err := Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "name": "Coaches Managers", "status": "open", "added_by": parent}},
 		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": parent, "member": "yes"}},
@@ -30,10 +30,10 @@ func TestALoopListIsMadeWithANewGuestOnIt(t *testing.T) {
 
 func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 	const everyone, hummingbirds, hummingbirdsParents, nightManagers, picnic, picnicManagers = "grp00000000004", "grp00000000010", "grp00000000030", "grp00000000513", "grp00000000040", "grp00000000041"
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: picnicManagers, Cells: map[string]any{"members_visible_to": ""}}})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	makeList := func(viewer, slug string, rules ...map[string]any) ([]string, error) {
 		edits := []Edit{
@@ -127,9 +127,9 @@ func TestALoopListIsMadeAndRunByItsManagers(t *testing.T) {
 
 func TestTheMailerRecordsPostsAndUnsubscribes(t *testing.T) {
 	const hummingbirdsParents = "grp00000000030"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: edits})
 	}
 	ids, err := write(
 		Edit{Insert: "MESSAGE", As: "in", Row: map[string]any{"direction": "in", "kind": "post", "group": hummingbirdsParents, "subject": "Field trip", "created": "2026-10-09 09:00", "state": "received"}},

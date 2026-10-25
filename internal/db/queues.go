@@ -28,7 +28,7 @@ type queueReport struct {
 	LastRefresh time.Time    `json:"lastRefresh"`
 }
 
-func RegisterQueues(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
+func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("GET /api/queues", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, tokens, now())
@@ -39,7 +39,7 @@ func RegisterQueues(mux *http.ServeMux, s *Store, queue *store.Queue, tokens aut
 			http.Error(w, "super admins only", http.StatusForbidden)
 			return
 		}
-		status := queue.Status()
+		status := s.Status()
 		report := queueReport{Queues: m.queueCounts(), LastRefresh: status.LastRefresh}
 		report.Queues = append(report.Queues, queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 		serve.Write(w, r, http.StatusOK, report)

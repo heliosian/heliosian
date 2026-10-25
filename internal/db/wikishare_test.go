@@ -13,11 +13,11 @@ import (
 )
 
 func TestWikiShare(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	save := func(page wikiPage) string {
 		t.Helper()
-		id, _, err := saveWiki(context.Background(), s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
+		id, _, err := saveWiki(context.Background(), s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,12 +51,12 @@ func TestWikiShare(t *testing.T) {
 }
 
 func TestWikiShareHeader(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ctx := context.Background()
 	save := func(page wikiPage) string {
 		t.Helper()
-		id, _, err := saveWiki(ctx, s, queue, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
+		id, _, err := saveWiki(ctx, s, pics, access.Actor{Email: "test"}, Env{Viewer: parent, Now: testNow}, page)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -68,7 +68,7 @@ func TestWikiShareHeader(t *testing.T) {
 	if _, err := pics.bucket.Put(ctx, "content/"+hash, "image/png", picture, 0); err != nil {
 		t.Fatal(err)
 	}
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "picture", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(picture))}},
 		{Insert: "PHOTO", Row: map[string]any{"document": top, "original": "@picture", "reencode": "@picture", "ready": "Yes"}},
 	})

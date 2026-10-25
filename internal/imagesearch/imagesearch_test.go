@@ -21,7 +21,6 @@ import (
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
 func picture(t *testing.T) []byte {
@@ -34,20 +33,19 @@ func picture(t *testing.T) []byte {
 
 func sampleStock(t *testing.T) (*db.Stock, *db.Store) {
 	t.Helper()
-	stock, s, _ := sampleStockQueue(t)
+	stock, s := sampleStockQueue(t)
 	return stock, s
 }
 
-func sampleStockQueue(t *testing.T) (*db.Stock, *db.Store, *store.Queue) {
+func sampleStockQueue(t *testing.T) (*db.Stock, *db.Store) {
 	t.Helper()
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { <-queue.Drain() })
-	return db.NewStock(s, queue, blob.NewMemoryBucket()), s, queue
+	t.Cleanup(func() { <-s.Drain() })
+	return db.NewStock(s, blob.NewMemoryBucket()), s
 }
 
 func waitPreview(t *testing.T, stock *db.Stock, id string) {

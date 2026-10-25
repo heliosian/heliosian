@@ -66,9 +66,9 @@ func TestHidingFollowsEveryReferenceAsPassesDid(t *testing.T) {
 			t.Fatalf("%s: following references hid %d rows, passes over every row %d", when, len(got), len(want))
 		}
 	}
-	scale, _, _ := scaleStoreIn(t)
+	scale, _ := scaleStoreIn(t)
 	same(t, "the scale fixture", scale.Model())
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	same(t, "the sample", s.Model())
 	people, groups := []string{}, []string{}
 	for _, p := range s.Model().Table("PERSON").All() {
@@ -87,7 +87,7 @@ func TestHidingFollowsEveryReferenceAsPassesDid(t *testing.T) {
 		case 2:
 			edit = Edit{Set: pick(groups), Cells: map[string]any{"consent": pick([]string{"listed", "withheld"})}}
 		}
-		apply(t, s, queue, []Edit{edit})
+		apply(t, s, []Edit{edit})
 		t.Logf("edit %d: %s %v", i, edit.Set, edit.Cells)
 		same(t, "after a random edit", s.Model())
 	}

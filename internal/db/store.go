@@ -15,14 +15,14 @@ type Store = store.Store[Model]
 
 const refreshSystem = "refresh"
 
-func NewStore(source data.Source, writer data.Writer, queue *store.Queue, index *SearchIndex, origin func(app string) string) (*Store, error) {
+func NewStore(source data.Source, writer data.Writer, index *SearchIndex, origin func(app string) string) (*Store, error) {
 	var s *Store
 	refreshed := func(tab string, before, after store.Row) {
 		for _, in := range committedInboxes(s, tab) {
 			in.deliver(delivery{change: Change{Table: tab, Old: before, New: after}, env: Env{System: refreshSystem, Now: time.Now()}})
 		}
 	}
-	s, err := store.New(parts(index, newServices(index), origin, refreshed), consentStep, checkModel, source, writer, queue)
+	s, err := store.New(parts(index, newServices(index), origin, refreshed), consentStep, checkModel, source, writer)
 	return s, err
 }
 

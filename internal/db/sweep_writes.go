@@ -2,7 +2,7 @@ package db
 
 import "heliosian/internal/store"
 
-func stageContentSweep(s *Store, tx *store.Tx, gone []store.Row) error {
+func stageContentSweep(s *Store, tx *store.Tx[Model], gone []store.Row) error {
 	w := &pendingWrites{}
 	for _, row := range gone {
 		w.add(Edit{Delete: row["id"]})

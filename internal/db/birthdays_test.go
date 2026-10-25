@@ -32,8 +32,8 @@ func TestABirthdayIsAnnouncedInTheLastIssueBeforeIt(t *testing.T) {
 }
 
 func TestAGuestHasNoBirthday(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: guest, Cells: map[string]any{"birthday": "2000-09-15"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: guest, Cells: map[string]any{"birthday": "2000-09-15"}}})
 	if row, _ := s.Model().Table("PERSON").Get(guest); row["birthday"] == "" {
 		t.Fatal("the guest's birthday was not written")
 	}
@@ -52,15 +52,15 @@ func TestBirthdaysShowToTheBirthdaysTeam(t *testing.T) {
 }
 
 func TestABirthdayFollowsTheIssuesAndSettings(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	if b := birthdayOf(t, s, parent, "per00000020003", "2026"); b["newsletter"] != "grp00000000729" || b["ask_by"] != "2026-10-08" {
 		t.Fatalf("Nalini before: %v", b)
 	}
-	made := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"kind": "group", "parent": "grp00000000710", "name": "Helios Weekly Newsletter", "status": "open", "listed": false, "visible_to": "grp00000000004", "posting": "members", "replying": "members", "start": "2026-10-20", "all_day": true}}})
+	made := apply(t, s, []Edit{{Insert: "GROUP", Row: map[string]any{"kind": "group", "parent": "grp00000000710", "name": "Helios Weekly Newsletter", "status": "open", "listed": false, "visible_to": "grp00000000004", "posting": "members", "replying": "members", "start": "2026-10-20", "all_day": true}}})
 	if b := birthdayOf(t, s, parent, "per00000020003", "2026"); b["newsletter"] != made[0] || b["ask_by"] != "2026-10-12" {
 		t.Fatalf("Nalini after an issue on 2026-10-20: %v", b)
 	}
-	apply(t, s, queue, []Edit{{Set: "set00000000009", Cells: map[string]any{"value": "10"}}})
+	apply(t, s, []Edit{{Set: "set00000000009", Cells: map[string]any{"value": "10"}}})
 	if b := birthdayOf(t, s, parent, "per00000020003", "2026"); b["ask_by"] != "2026-10-10" {
 		t.Fatalf("Nalini after Request Lead Days went to 10: %v", b)
 	}

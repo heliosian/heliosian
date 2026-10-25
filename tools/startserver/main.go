@@ -37,7 +37,6 @@ import (
 	"heliosian/internal/mail"
 	"heliosian/internal/ops"
 	"heliosian/internal/spreadsheets"
-	"heliosian/internal/store"
 )
 
 const (
@@ -72,9 +71,9 @@ func main() {
 		}
 		slog.SetDefault(logging.File(serverLog()))
 		fmt.Printf("log: %s\n", logPath)
-		server, queue := chosen(*real, *snapshot, *email)
+		server, s := chosen(*real, *snapshot, *email)
 		status := 0
-		serving(server, queue, func() {
+		serving(server, s, func() {
 			cmd := exec.Command(flag.Arg(0), flag.Args()[1:]...)
 			cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 			err := cmd.Run()
@@ -102,7 +101,7 @@ func main() {
 	}
 }
 
-func chosen(real, snapshot bool, email string) (*http.Server, *store.Queue) {
+func chosen(real, snapshot bool, email string) (*http.Server, *db.Store) {
 	switch {
 	case snapshot:
 		if email == "" {
@@ -116,7 +115,7 @@ func chosen(real, snapshot bool, email string) (*http.Server, *store.Queue) {
 	return sampleServer(cmp.Or(email, sampleUser))
 }
 
-func sampleServer(user string) (*http.Server, *store.Queue) {
+func sampleServer(user string) (*http.Server, *db.Store) {
 	intercept.GoogleLogin("local/google")
 	bucket := blob.NewMemoryBucket()
 	fillSampleBucket(bucket)
@@ -125,7 +124,7 @@ func sampleServer(user string) (*http.Server, *store.Queue) {
 	return localServer(core, user)
 }
 
-func snapshotServer(email string) (*http.Server, *store.Queue) {
+func snapshotServer(email string) (*http.Server, *db.Store) {
 	devcache.Install()
 	base, err := blob.Open(blob.MediaBucket)
 	if err != nil {
@@ -177,7 +176,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		Ops:           app.OpsDeps(&feedback.GitHubApp{ID: "sample", PrivateKey: githubKey}, "sample"),
 		Hooks:         ops.Hooks{GitHubSecret: []byte("sample"), Audience: "https://admin." + app.DevDomain + ":" + app.Port() + ops.BuildHookPath, PushAccount: "sample@example.org"},
 	})
-	core.Queue.Refresh()
+	core.Data.Refresh()
 	core.Search.StartMaking("sample")
 	db.StartWarmer(core.Data)
 	db.StartIdleWorkers(core.Data)
@@ -189,7 +188,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	return core
 }
 
-func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
+func localServer(core *app.Core, user string) (*http.Server, *db.Store) {
 	signIn := auth.New(app.DevDomain, "", []byte("sample"), auth.Login{}, core.SignedIn, []string{app.OptInPath}, core.Sessions)
 	signIn.Spoof = core.Spoof
 	for _, m := range core.Muxes() {
@@ -198,7 +197,7 @@ func localServer(core *app.Core, user string) (*http.Server, *store.Queue) {
 	}
 	return localTLS(app.Server(app.DevDomain, core.Handlers(func(_ string, next http.Handler) http.Handler {
 		return signIn.Fixed(user, next)
-	}), core.Aliased()), core.Queue)
+	}), core.Aliased()), core.Data)
 }
 
 func fillSampleBucket(bucket *blob.Bucket) {
@@ -207,9 +206,9 @@ func fillSampleBucket(bucket *blob.Bucket) {
 	}
 }
 
-func localTLS(server *http.Server, queue *store.Queue) (*http.Server, *store.Queue) {
+func localTLS(server *http.Server, s *db.Store) (*http.Server, *db.Store) {
 	server.TLSConfig = &tls.Config{Certificates: []tls.Certificate{devtls.Certificate(app.DevDomain)}}
-	return server, queue
+	return server, s
 }
 
 func detachReal() {
@@ -247,8 +246,8 @@ func serverLog() *os.File {
 func captureOnce(opts capture.Options, out, user string) {
 	var png []byte
 	var captureErr error
-	server, queue := sampleServer(user)
-	serving(server, queue, func() {
+	server, s := sampleServer(user)
+	serving(server, s, func() {
 		png, captureErr = capture.PNG(opts)
 	})
 	if captureErr != nil {
@@ -263,7 +262,7 @@ func captureOnce(opts capture.Options, out, user string) {
 	slog.Info("captured", "url", opts.URL, "out", out)
 }
 
-func serving(server *http.Server, queue *store.Queue, work func()) {
+func serving(server *http.Server, s *db.Store, work func()) {
 	served := make(chan error, 1)
 	go func() {
 		served <- app.ListenAndServe(server)
@@ -294,5 +293,5 @@ func serving(server *http.Server, queue *store.Queue, work func()) {
 		slog.Error("shutdown", "error", err)
 	}
 	<-served
-	<-queue.Drain()
+	<-s.Drain()
 }

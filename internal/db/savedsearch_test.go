@@ -37,8 +37,8 @@ func TestASavedSearchsConditionAnswersItsWords(t *testing.T) {
 }
 
 func TestAWordIsForAnEventsAudience(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "parent": "grp00000000040", "name": "Fall Picnic Audience", "status": "open", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		{Set: "grp00000000040", Cells: map[string]any{"audience": "@audience"}},
 		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000000011", "replace_with": "household"}},
@@ -63,8 +63,8 @@ func TestAWordIsForAnEventsAudience(t *testing.T) {
 
 func TestWaitlistedIsAPartyTheHouseholdWaitsFor(t *testing.T) {
 	const tacoNight = "grp00000000521"
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{
+	s := sample(t)
+	apply(t, s, []Edit{
 		{Delete: "mem00000000025"},
 		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "visible_to": "grp00000000004", "posting": "none", "replying": "none"}},
 		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
@@ -113,8 +113,8 @@ func TestAPagesWordsRunAsDefinitionCalls(t *testing.T) {
 }
 
 func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}}})
 	mux := http.NewServeMux()
 	RegisterFeeds(mux, s, func() time.Time { return testNow })
 	fetch := func(token string) *httptest.ResponseRecorder {
@@ -141,9 +141,9 @@ func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 }
 
 func TestASavedSearchsWordsAreChecked(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	save := func(search string) error {
-		_, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "SAVED_SEARCH", Row: map[string]any{"person": parent, "name": "Test", "search": search}}}})
+		_, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "SAVED_SEARCH", Row: map[string]any{"person": parent, "name": "Test", "search": search}}}})
 		return err
 	}
 	if err := save(`[["hummingbirds"],["community","going","waitlisted"]]`); err != nil {

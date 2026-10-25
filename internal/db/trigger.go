@@ -323,7 +323,7 @@ func aliasesGone(m *Model, c Change) ([]Edit, error) {
 	return writes, nil
 }
 
-func beforeDelete(s *Store, tx *store.Tx, c Change, where string) ([]Change, error) {
+func beforeDelete(s *Store, tx *store.Tx[Model], c Change, where string) ([]Change, error) {
 	staged := []Change{}
 	for _, t := range deleteTriggers {
 		if t.table != "" && t.table != c.Table {
@@ -489,7 +489,7 @@ func unchecked(*Model, Change) error {
 	return nil
 }
 
-func fire(s *Store, tx *store.Tx, c Change, env Env, where string) error {
+func fire(s *Store, tx *store.Tx[Model], c Change, env Env, where string) error {
 	for pending := inOrder(c); len(pending) > 0; {
 		next := pending[0]
 		pending = pending[1:]

@@ -67,7 +67,7 @@ type wikiSide struct {
 	Body string `json:"body"`
 }
 
-func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+func registerWiki(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/wiki", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
@@ -77,7 +77,7 @@ func registerWiki(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictur
 		if !serve.Decode(w, r, &page) {
 			return
 		}
-		id, hash, err := saveWiki(r.Context(), s, queue, pics, actor, env, page)
+		id, hash, err := saveWiki(r.Context(), s, pics, actor, env, page)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -113,7 +113,7 @@ func wikiNamed(ctx context.Context, m *Model, bucket *blob.Bucket, page wikiPage
 	return out, nil
 }
 
-func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, page wikiPage) (string, string, error) {
+func saveWiki(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, page wikiPage) (string, string, error) {
 	name := strings.TrimSpace(page.Name)
 	if name == "" {
 		return "", "", access.Invalid("a wiki page needs a title")
@@ -151,7 +151,7 @@ func saveWiki(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 		return "", "", err
 	}
 	var id string
-	_, err = queue.Transact(ctx, actor, func(tx *store.Tx) error {
+	_, err = s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		m := s.In(tx)
 		if err := m.wikiParentFits(page.Document, page.Parent); err != nil {
 			return err

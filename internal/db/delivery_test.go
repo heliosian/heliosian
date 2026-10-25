@@ -42,7 +42,7 @@ func copiesSent(t *testing.T, sender *mailtest.Recorder) []string {
 
 func TestEveryCopyIsSentAloneAndItsDeliveryRecorded(t *testing.T) {
 	h := newListMailHarness(t)
-	NewDeliveries(h.s, h.queue, loopSigningKey).Register(h.mux)
+	NewDeliveries(h.s, loopSigningKey).Register(h.mux)
 	h.addMember(parentsList, staff, "yes")
 	h.inbound(loopNotice(loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "events@example.org", "Events", ""), hummingbirdsTo))
 	h.settled(parentsList)

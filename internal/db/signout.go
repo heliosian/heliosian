@@ -13,12 +13,11 @@ import (
 const signOutActor = "signout"
 
 type Sessions struct {
-	s     *Store
-	queue *store.Queue
+	s *Store
 }
 
-func NewSessions(s *Store, queue *store.Queue) *Sessions {
-	return &Sessions{s: s, queue: queue}
+func NewSessions(s *Store) *Sessions {
+	return &Sessions{s: s}
 }
 
 func (ss *Sessions) person(email string) (store.Row, bool) {
@@ -48,6 +47,6 @@ func (ss *Sessions) SignOut(ctx context.Context, email string) error {
 		return nil
 	}
 	now := time.Now().In(School)
-	_, err := Write(ctx, ss.s, ss.queue, access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}, Env{System: signOutActor, Now: now}, Batch{Batch: []Edit{{Set: p["id"], Cells: map[string]any{"signed_out": now.Format(cells.StampFormat)}}}})
+	_, err := Write(ctx, ss.s, access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}, Env{System: signOutActor, Now: now}, Batch{Batch: []Edit{{Set: p["id"], Cells: map[string]any{"signed_out": now.Format(cells.StampFormat)}}}})
 	return err
 }

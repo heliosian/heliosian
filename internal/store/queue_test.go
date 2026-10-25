@@ -6,17 +6,17 @@ import (
 )
 
 func TestDrainWaitsForHeldWork(t *testing.T) {
-	q := NewQueue()
-	q.Hold()
-	done := q.Drain()
+	s := newFixture(t).store
+	s.Hold()
+	done := s.Drain()
 	select {
 	case <-done:
 		t.Fatal("the drain finished with work still held")
 	case <-time.After(50 * time.Millisecond):
 	}
 	ran := false
-	q.Add(func() { ran = true })
-	q.Release()
+	s.Add(func() { ran = true })
+	s.Release()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):

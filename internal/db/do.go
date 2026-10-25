@@ -35,9 +35,9 @@ type stored struct {
 	Hash   string   `json:"hash"`
 }
 
-func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
-	registerWiki(mux, s, queue, pics, tokens, now)
-	registerSubscription(mux, s, queue, tokens, now)
+func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens, now func() time.Time) {
+	registerWiki(mux, s, pics, tokens, now)
+	registerSubscription(mux, s, tokens, now)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens, now())
 		if !ok {
@@ -87,7 +87,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		if of["document"] == "" {
 			cells["order"] = m.firstOrder(of["person"], of["group"])
 		}
-		ids, hash, err := writeUpload(r.Context(), s, queue, pics, actor, env, img, func(content string) Edit {
+		ids, hash, err := writeUpload(r.Context(), s, pics, actor, env, img, func(content string) Edit {
 			cells["original"] = content
 			return Edit{Insert: "PHOTO", Row: cells}
 		})
@@ -109,7 +109,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			return
 		}
 		id := r.FormValue("group")
-		ids, hash, err := setUpload(r, s, queue, pics, actor, env, "GROUP", id, "flyer_original", func(m *Model) (upload, error) {
+		ids, hash, err := setUpload(r, s, pics, actor, env, "GROUP", id, "flyer_original", func(m *Model) (upload, error) {
 			return pictureOf(r, m, "flyer")
 		})
 		if err != nil {
@@ -138,7 +138,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 		if group != "" {
 			id, table = group, "GROUP"
 		}
-		ids, hash, err := setUpload(r, s, queue, pics, actor, env, table, id, "pronunciation_original", func(*Model) (upload, error) {
+		ids, hash, err := setUpload(r, s, pics, actor, env, table, id, "pronunciation_original", func(*Model) (upload, error) {
 			return readRecording(r)
 		})
 		if err != nil {
@@ -184,7 +184,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		document, hash, err := storeRoot(r.Context(), s, queue, pics, actor, env, content, mimeType, root, sentTo)
+		document, hash, err := storeRoot(r.Context(), s, pics, actor, env, content, mimeType, root, sentTo)
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -221,7 +221,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("%q is not an image or a link still to fetch", id))
 			return
 		}
-		answer, err := storeFetched(r, s, queue, pics, actor, env, id, doc["relation"])
+		answer, err := storeFetched(r, s, pics, actor, env, id, doc["relation"])
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -265,7 +265,7 @@ func registerDo(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures
 			serve.Error(w, r, access.Invalid("the picture: %v", err))
 			return
 		}
-		if err := saveThumbnail(r.Context(), s, queue, pics.bucket, actor, env, doc, thumb, s.Model().whole(env)); err != nil {
+		if err := saveThumbnail(r.Context(), s, pics.bucket, actor, env, doc, thumb, s.Model().whole(env)); err != nil {
 			serve.Error(w, r, err)
 			return
 		}
@@ -281,9 +281,9 @@ type fetchedAnswer struct {
 	Why    string   `json:"why,omitempty"`
 }
 
-func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, id, relation string) (fetchedAnswer, error) {
+func storeFetched(r *http.Request, s *Store, pics *Pictures, actor access.Actor, env Env, id, relation string) (fetchedAnswer, error) {
 	stop := func(why, reason string) (fetchedAnswer, error) {
-		if _, err := Write(r.Context(), s, queue, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
+		if _, err := Write(r.Context(), s, actor, env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"fetch": why}}}}); err != nil {
 			return fetchedAnswer{}, err
 		}
 		return fetchedAnswer{Result: []string{id}, Fetch: why, Why: reason}, nil
@@ -319,7 +319,7 @@ func storeFetched(r *http.Request, s *Store, queue *store.Queue, pics *Pictures,
 		return fetchedAnswer{}, err
 	}
 	whole := m.whole(env)
-	_, err = queue.Transact(r.Context(), actor, func(tx *store.Tx) error {
+	_, err = s.Transact(r.Context(), actor, func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
 		held, err := stageContent(s.In(tx), w, map[string]string{}, kept)
 		if err != nil {
@@ -361,7 +361,7 @@ func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
 	return root, nil
 }
 
-func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
+func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
 	sum := sha256.Sum256(content)
 	hash := hex.EncodeToString(sum[:])
 	m := s.Model()
@@ -374,7 +374,7 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 			if row["parent"] != "" || row["kind"] != root["kind"] {
 				continue
 			}
-			return row["id"], hash, addSentTo(ctx, s, queue, actor, env, row["id"], sentTo)
+			return row["id"], hash, addSentTo(ctx, s, actor, env, row["id"], sentTo)
 		}
 	}
 	edits := []Edit{}
@@ -395,14 +395,14 @@ func storeRoot(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures
 	for _, group := range sentTo {
 		edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@document", "group": group, "relation": "sent_to"}})
 	}
-	ids, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits})
+	ids, err := Write(ctx, s, actor, env, Batch{Batch: edits})
 	if err != nil {
 		return "", "", err
 	}
 	return ids[at], hash, nil
 }
 
-func addSentTo(ctx context.Context, s *Store, queue *store.Queue, actor access.Actor, env Env, document string, sentTo []string) error {
+func addSentTo(ctx context.Context, s *Store, actor access.Actor, env Env, document string, sentTo []string) error {
 	held := map[string]bool{}
 	for _, group := range s.Model().sentTo(document) {
 		held[group] = true
@@ -416,11 +416,11 @@ func addSentTo(ctx context.Context, s *Store, queue *store.Queue, actor access.A
 	if len(edits) == 0 {
 		return nil
 	}
-	_, err := Write(ctx, s, queue, actor, env, Batch{Batch: edits})
+	_, err := Write(ctx, s, actor, env, Batch{Batch: edits})
 	return err
 }
 
-func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, raw []byte) (string, error) {
+func FileMail(ctx context.Context, s *Store, pics *Pictures, raw []byte) (string, error) {
 	m := s.Model()
 	root, sentTo, err := m.mailRoot(raw)
 	if errors.Is(err, errLoopMail) {
@@ -440,9 +440,9 @@ func FileMail(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures,
 	}
 	if copied != "" {
 		slog.InfoContext(ctx, "filed mail: a copy of mail already filed", "document", copied, "groups", len(sentTo))
-		return copied, addSentTo(ctx, s, queue, access.System(env.System), env, copied, sentTo)
+		return copied, addSentTo(ctx, s, access.System(env.System), env, copied, sentTo)
 	}
-	document, hash, err := storeRoot(ctx, s, queue, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo)
+	document, hash, err := storeRoot(ctx, s, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo)
 	if err != nil {
 		return "", err
 	}
@@ -521,10 +521,10 @@ func (m *Model) pagePhoto(document string, up upload) (string, string, bool) {
 	return photo["id"], content["hash"], ok
 }
 
-func writeUpload(ctx context.Context, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, up upload, edit func(content string) Edit) ([]string, string, error) {
+func writeUpload(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, up upload, edit func(content string) Edit) ([]string, string, error) {
 	if up.held != "" {
 		row, _ := s.Model().Table("CONTENT").Get(up.held)
-		ids, err := Write(ctx, s, queue, actor, env, Batch{Batch: []Edit{edit(up.held)}})
+		ids, err := Write(ctx, s, actor, env, Batch{Batch: []Edit{edit(up.held)}})
 		return ids, row["hash"], err
 	}
 	kept, err := keepBytes(ctx, s.Model(), pics.bucket, up.mimeType, up.content)
@@ -533,7 +533,7 @@ func writeUpload(ctx context.Context, s *Store, queue *store.Queue, pics *Pictur
 	}
 	whole := s.Model().whole(env)
 	var ids []string
-	_, err = queue.Transact(ctx, actor, func(tx *store.Tx) error {
+	_, err = s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
 		content, err := stageContent(s.In(tx), w, map[string]string{}, kept)
 		if err != nil {
@@ -550,7 +550,7 @@ func writeUpload(ctx context.Context, s *Store, queue *store.Queue, pics *Pictur
 	return ids, kept.hash, nil
 }
 
-func setUpload(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, actor access.Actor, env Env, table, id, column string, read func(*Model) (upload, error)) ([]string, string, error) {
+func setUpload(r *http.Request, s *Store, pics *Pictures, actor access.Actor, env Env, table, id, column string, read func(*Model) (upload, error)) ([]string, string, error) {
 	m := s.Model()
 	old, found := m.Shown(table).Get(id)
 	if !found {
@@ -565,7 +565,7 @@ func setUpload(r *http.Request, s *Store, queue *store.Queue, pics *Pictures, ac
 	if err != nil {
 		return nil, "", err
 	}
-	ids, hash, err := writeUpload(r.Context(), s, queue, pics, actor, env, up, func(content string) Edit {
+	ids, hash, err := writeUpload(r.Context(), s, pics, actor, env, up, func(content string) Edit {
 		return Edit{Set: id, Cells: map[string]any{column: content}}
 	})
 	if err != nil {

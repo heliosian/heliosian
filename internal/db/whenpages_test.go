@@ -11,8 +11,8 @@ import (
 )
 
 func TestEveryEventIsShared(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"visible_to": "", "status": "pending"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"visible_to": "", "status": "pending"}}})
 	pages := NewWhenPages(s, blob.NewMemoryBucket(), WhenCardStyle(func() string { return "Helios When" }, func() string { return "The school year, day by day" }))
 	mux := http.NewServeMux()
 	pages.Register(mux)

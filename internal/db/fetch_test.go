@@ -47,14 +47,14 @@ func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
 		w.Write(logo)
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
-	ids := apply(t, s, queue, []Edit{
+	s := sample(t)
+	ids := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", As: "this", Row: map[string]any{"kind": "mail", "name": "Clubs this week"}},
 		{Insert: "DOCUMENT", As: "next", Row: map[string]any{"kind": "mail", "name": "Clubs next week"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@this", "url": site.URL + "/logo.png"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@next", "url": site.URL + "/logo.png"}},
 	})
-	StartFetcher(s, queue, blob.NewMemoryBucket())
+	StartFetcher(s, blob.NewMemoryBucket())
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		a, _ := s.Model().Table("DOCUMENT").Get(ids[2])
@@ -80,12 +80,12 @@ func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
 		w.Write([]byte(`<html><body><div>Could not load network resources</div><button>Retry</button></body></html>`))
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
-	linked := apply(t, s, queue, []Edit{
+	s := sample(t)
+	linked := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Fund a need"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": site.URL + "/dl/b33482"}},
 	})[1]
-	StartFetcher(s, queue, blob.NewMemoryBucket())
+	StartFetcher(s, blob.NewMemoryBucket())
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["fetch"] == "refused" && row["content"] == "" {
@@ -102,12 +102,12 @@ func TestALinkedPageSayingItsSignUpIsGoneIsRefused(t *testing.T) {
 		w.Write([]byte(`<html><body><nav>Create a Sign Up Find a Sign Up Plans Pricing Resources Help Sign In Register</nav><h1>The Sign Up Was Not Found</h1><p>The web address you entered is not a valid sign up. It may have been wrapped by your email program, or the sign up may have been deleted by its creator.</p><footer>About Us Careers Press Contact Blog Terms Privacy</footer></body></html>`))
 	}))
 	defer site.Close()
-	s, queue := sampleWithQueue(t)
-	linked := apply(t, s, queue, []Edit{
+	s := sample(t)
+	linked := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Summer camps"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": site.URL + "/go/camps"}},
 	})[1]
-	StartFetcher(s, queue, blob.NewMemoryBucket())
+	StartFetcher(s, blob.NewMemoryBucket())
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["fetch"] == "refused" && row["content"] == "" {
@@ -131,13 +131,13 @@ func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {
 		}
 		w.Write([]byte(`<html><body>This browser version is no longer supported. Slideshow Share Sign in</body></html>`))
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	linked := apply(t, s, queue, []Edit{
+	linked := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", As: "mail", Row: map[string]any{"kind": "mail", "name": "Weekly Update"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "linked", "parent": "@mail", "url": "https://drive.google.com/open?id=deck1"}},
 	})[1]
-	StartFetcher(s, queue, bucket)
+	StartFetcher(s, bucket)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		row, _ := s.Model().Table("DOCUMENT").Get(linked)
 		if row["content"] != "" {
@@ -153,10 +153,10 @@ func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {
 }
 
 func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pics := NewPictures(s, queue, bucket)
-	ids := apply(t, s, queue, []Edit{
+	pics := NewPictures(s, bucket)
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
 		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs this week"}},
@@ -173,7 +173,7 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 		if body != nil {
 			file = "body"
 		}
-		rec := postFile(t, s, queue, pics, as, "fetched", fields, file, body)
+		rec := postFile(t, s, pics, as, "fetched", fields, file, body)
 		var answer fetchedAnswer
 		if rec.Code == http.StatusOK {
 			if err := json.Unmarshal(rec.Body.Bytes(), &answer); err != nil {
@@ -221,8 +221,8 @@ func TestASignedInFetchFillsALinkedDocument(t *testing.T) {
 }
 
 func TestSignedInFetchesOfTheSameBytesShareContent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := NewPictures(s, queue, blob.NewMemoryBucket())
+	s := sample(t)
+	pics := NewPictures(s, blob.NewMemoryBucket())
 	inserts := []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "DOCUMENT", As: "clubs", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Clubs this week"}},
@@ -230,13 +230,13 @@ func TestSignedInFetchesOfTheSameBytesShareContent(t *testing.T) {
 	for _, name := range []string{"one", "two", "three", "four"} {
 		inserts = append(inserts, Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@clubs", "url": "https://lh6.example.org/" + name, "fetch": "sign_in"}})
 	}
-	ids := apply(t, s, queue, inserts)[2:]
+	ids := apply(t, s, inserts)[2:]
 	picture := pngOf(t, 5)
 	codes := make([]int, len(ids))
 	wg := sync.WaitGroup{}
 	for i, id := range ids {
 		wg.Go(func() {
-			codes[i] = postFile(t, s, queue, pics, importing, "fetched", map[string]string{"document": id}, "body", picture).Code
+			codes[i] = postFile(t, s, pics, importing, "fetched", map[string]string{"document": id}, "body", picture).Code
 		})
 	}
 	wg.Wait()

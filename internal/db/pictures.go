@@ -46,7 +46,6 @@ var (
 
 type Pictures struct {
 	s       *Store
-	queue   *store.Queue
 	bucket  *blob.Bucket
 	mu      sync.Mutex
 	pending []string
@@ -54,8 +53,8 @@ type Pictures struct {
 	wake    chan struct{}
 }
 
-func NewPictures(s *Store, queue *store.Queue, bucket *blob.Bucket) *Pictures {
-	p := &Pictures{s: s, queue: queue, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+func NewPictures(s *Store, bucket *blob.Bucket) *Pictures {
+	p := &Pictures{s: s, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
 	in := s.Model().services.inbox(picturesInbox)
 	go func() {
 		for range in.wake {
@@ -246,7 +245,7 @@ func (p *Pictures) makeMade(made madeColumn, id string, row store.Row) error {
 	if err != nil {
 		return err
 	}
-	_, err = p.queue.Transact(ctx, access.System("pictures"), func(tx *store.Tx) error {
+	_, err = p.s.Transact(ctx, access.System("pictures"), func(tx *store.Tx[Model]) error {
 		m := p.s.In(tx)
 		now, ok := m.Table(made.table).Get(id)
 		if !ok || now[made.original] != row[made.original] {
@@ -302,7 +301,7 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 	if want["thumbnail"], err = keepBytes(ctx, m, p.bucket, "image/jpeg", thumb); err != nil {
 		return err
 	}
-	_, err = p.queue.Transact(ctx, access.System("pictures"), func(tx *store.Tx) error {
+	_, err = p.s.Transact(ctx, access.System("pictures"), func(tx *store.Tx[Model]) error {
 		m := p.s.In(tx)
 		now, ok := m.Table("PHOTO").Get(id)
 		if !ok || slices.ContainsFunc(photoInputs, func(col string) bool { return now[col] != row[col] }) {

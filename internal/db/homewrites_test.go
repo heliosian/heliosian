@@ -16,10 +16,10 @@ func TestHeliosianAdminsKeepTheFrontPage(t *testing.T) {
 		whoApp     = "app00000000001"
 		layout     = "set00000000015"
 	)
-	s, queue := sampleWithQueue(t)
-	apply(t, s, queue, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": homeAdmins, "person": student, "member": "yes"}}})
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": homeAdmins, "person": student, "member": "yes"}}})
 	write := func(viewer string, edits ...Edit) ([]string, error) {
-		return Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		return Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 	}
 	section := []Edit{
 		{Insert: "GROUP", As: "section", Row: map[string]any{"kind": "group", "name": "Clubs", "status": "open", "listed": false, "posting": "none", "replying": "none", "visible_to": everyone, "added_by": student}},

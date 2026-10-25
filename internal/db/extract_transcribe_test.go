@@ -32,13 +32,13 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 		asked++
 		return "# Supply list\n\n- Pencils\n- Glue"
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	pdf := pdfOfPages(t, 2)
 	if _, err := bucket.Put(t.Context(), "content/p1", pdfType, pdf, 0); err != nil {
 		t.Fatal(err)
 	}
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "pdf", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": pdfType, "size": fmt.Sprint(len(pdf))}},
 		{Insert: "DOCUMENT", As: "supplies", Row: map[string]any{"kind": "mail", "content": "@mail", "name": "Supplies", "extracted": "2026-02-12 01:48:03"}},
@@ -46,7 +46,7 @@ func TestAnEmailsPDFsAreTranscribed(t *testing.T) {
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar", "content": "@pdf"}},
 	})
 	part := ids[3]
-	NewExtractor(s, queue, bucket, "test")
+	NewExtractor(s, bucket, "test")
 	made(t, s, "DOCUMENT", part, "extracted")
 	under := children(s, part)
 	if len(under) != 1 || under[0]["relation"] != "extract" || bytesOf(t, s, bucket, under[0]) != "# Supply list\n\n- Pencils\n- Glue" {
@@ -88,12 +88,12 @@ func jpegOf(t *testing.T, size int) []byte {
 
 func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 	intercept.Install(intercept.ClaudeHost, testkit.ClaudeReplying(func(string) string { return "# Slides" }))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	if _, err := bucket.Put(t.Context(), "content/p0", pdfType, pdfOfPages(t, 25), 0); err != nil {
 		t.Fatal(err)
 	}
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "whole", Row: map[string]any{"hash": "p0", "blob": "content/p0", "mime": pdfType, "size": "100"}},
 		{Insert: "CONTENT", As: "first", Row: map[string]any{"hash": "p1", "blob": "content/p1", "mime": pdfType, "size": "60"}},
 		{Insert: "CONTENT", As: "second", Row: map[string]any{"hash": "p2", "blob": "content/p2", "mime": pdfType, "size": "40"}},
@@ -103,7 +103,7 @@ func TestACopyOfASplitPDFIsSplitToo(t *testing.T) {
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@whole", "name": "Updates again"}},
 	})
 	copied := ids[6]
-	NewExtractor(s, queue, bucket, "test")
+	NewExtractor(s, bucket, "test")
 	made(t, s, "DOCUMENT", copied, "extracted")
 	names := []string{}
 	for _, child := range children(s, copied) {
@@ -130,12 +130,12 @@ func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 		fmt.Fprintf(w, "event: message_start\ndata: %s\n\n", `{"type":"message_start","message":{"id":"msg_test","type":"message","role":"assistant","model":"test","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":0,"output_tokens":0}}}`)
 		fmt.Fprintf(w, "event: error\ndata: %s\n\n", `{"type":"error","error":{"type":"invalid_request_error","message":"Output blocked by content filtering policy"}}`)
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	if _, err := bucket.Put(t.Context(), "content/b1", "image/jpeg", photo, 0); err != nil {
 		t.Fatal(err)
 	}
-	ids := apply(t, s, queue, []Edit{
+	ids := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
 		{Insert: "CONTENT", As: "html", Row: map[string]any{"hash": "b2", "blob": "content/b2", "mime": "text/html; charset=utf-8", "size": "200"}},
 		{Insert: "CONTENT", As: "photo", Row: map[string]any{"hash": "b1", "blob": "content/b1", "mime": "image/jpeg", "size": "1"}},
@@ -144,7 +144,7 @@ func TestABlockedAnswerLeavesTheImageUnread(t *testing.T) {
 		{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/photo.jpg", "content": "@photo"}},
 	})
 	pictured := ids[5]
-	NewExtractor(s, queue, bucket, "test")
+	NewExtractor(s, bucket, "test")
 	made(t, s, "DOCUMENT", pictured, "extracted")
 	if under := children(s, pictured); len(under) != 0 {
 		t.Fatalf("a blocked answer was written: %v", under)
@@ -212,7 +212,7 @@ func TestImagesAreTranscribed(t *testing.T) {
 		asked["other"]++
 		return "(decoration)"
 	}))
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	edits := []Edit{
 		{Insert: "CONTENT", As: "mail", Row: map[string]any{"hash": "a1", "blob": "content/a1", "mime": "message/rfc822", "size": "100"}},
@@ -233,10 +233,10 @@ func TestImagesAreTranscribed(t *testing.T) {
 	for i, file := range files {
 		edits = append(edits, Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": "@part", "url": "https://example.org/" + file, "content": "@" + blobs[i]}})
 	}
-	ids := apply(t, s, queue, edits)
+	ids := apply(t, s, edits)
 	images := ids[len(ids)-len(files):]
 	scheduleDoc, logoDoc, iconDoc, flyerDoc, posterDoc, chartDoc, signDoc := images[0], images[1], images[2], images[3], images[4], images[5], images[6]
-	NewExtractor(s, queue, bucket, "test")
+	NewExtractor(s, bucket, "test")
 	for _, id := range images {
 		made(t, s, "DOCUMENT", id, "extracted")
 	}
@@ -262,7 +262,7 @@ func TestImagesAreTranscribed(t *testing.T) {
 	if under := children(s, iconDoc); len(under) != 0 {
 		t.Fatalf("the icon was transcribed: %v", under)
 	}
-	againDoc := apply(t, s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": ids[3], "url": "https://example.org/again.gif", "content": ids[4]}}})[0]
+	againDoc := apply(t, s, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"relation": "image", "parent": ids[3], "url": "https://example.org/again.gif", "content": ids[4]}}})[0]
 	made(t, s, "DOCUMENT", againDoc, "extracted")
 	again := children(s, againDoc)
 	if len(again) != 1 || again[0]["content"] != under[0]["content"] {

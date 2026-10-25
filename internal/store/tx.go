@@ -8,46 +8,42 @@ import (
 	"heliosian/internal/trace"
 )
 
-type Tx struct {
+type Tx[M any] struct {
 	ctx     context.Context
 	actor   access.Actor
-	staged  []*stage
+	stage   *stage[M]
 	swapped []func()
 	after   []func()
 	values  map[any]any
 }
 
-type stage struct {
-	owner  any
-	start  any
+type stage[M any] struct {
+	start  *M
 	tables map[string]Tables
-	model  any
+	model  *M
 	dirty  map[string]bool
 	err    error
 	plans  map[string]Plan
 	order  []string
-	settle func() error
-	swap   func()
-	write  func() <-chan struct{}
 }
 
-func (tx *Tx) Actor() access.Actor {
+func (tx *Tx[M]) Actor() access.Actor {
 	return tx.actor
 }
 
-func (tx *Tx) Context() context.Context {
+func (tx *Tx[M]) Context() context.Context {
 	return tx.ctx
 }
 
-func (tx *Tx) After(run func()) {
+func (tx *Tx[M]) After(run func()) {
 	tx.after = append(tx.after, run)
 }
 
-func (tx *Tx) Swapped(run func()) {
+func (tx *Tx[M]) Swapped(run func()) {
 	tx.swapped = append(tx.swapped, run)
 }
 
-func (tx *Tx) Value(key any, make func() any) any {
+func (tx *Tx[M]) Value(key any, make func() any) any {
 	if v, ok := tx.values[key]; ok {
 		return v
 	}
@@ -59,17 +55,8 @@ func (tx *Tx) Value(key any, make func() any) any {
 	return v
 }
 
-func (tx *Tx) stageOf(owner any) *stage {
-	for _, st := range tx.staged {
-		if st.owner == owner {
-			return st
-		}
-	}
-	return nil
-}
-
-func (q *Queue) Transact(ctx context.Context, actor access.Actor, run func(tx *Tx) error) (<-chan struct{}, error) {
-	done, after, err := q.transact(ctx, actor, run)
+func (s *Store[M]) Transact(ctx context.Context, actor access.Actor, run func(tx *Tx[M]) error) (<-chan struct{}, error) {
+	done, after, err := s.transact(ctx, actor, run)
 	if err != nil {
 		return nil, err
 	}
@@ -79,35 +66,38 @@ func (q *Queue) Transact(ctx context.Context, actor access.Actor, run func(tx *T
 	return done, nil
 }
 
-func (q *Queue) transact(ctx context.Context, actor access.Actor, run func(tx *Tx) error) (<-chan struct{}, []func(), error) {
-	q.commits.Lock()
-	defer q.commits.Unlock()
-	tx := &Tx{ctx: ctx, actor: actor}
+func (s *Store[M]) transact(ctx context.Context, actor access.Actor, run func(tx *Tx[M]) error) (<-chan struct{}, []func(), error) {
+	s.commits.Lock()
+	defer s.commits.Unlock()
+	tx := &Tx[M]{ctx: ctx, actor: actor}
 	if err := run(tx); err != nil {
 		return nil, nil, err
 	}
-	if len(tx.staged) == 0 {
+	st := tx.stage
+	if st == nil {
 		return nil, tx.after, nil
 	}
-	for _, st := range tx.staged {
-		if err := st.settle(); err != nil {
-			return nil, nil, err
-		}
+	final, err := s.Built(tx)
+	if err != nil {
+		return nil, nil, err
 	}
-	for _, st := range tx.staged {
-		st.swap()
+	if err := s.check(ctx, st.start, final); err != nil {
+		return nil, nil, err
 	}
+	s.mu.Lock()
+	s.tables, s.model = st.tables, st.model
+	s.mu.Unlock()
 	delivering := time.Now()
 	for _, f := range tx.swapped {
 		f()
 	}
 	trace.From(ctx).Tally("swapped").Add(time.Since(delivering))
 	start := time.Now()
-	q.afterSwap()
+	s.afterSwap()
 	trace.From(ctx).Tally("swap hooks").Add(time.Since(start))
 	var done <-chan struct{}
-	for _, st := range tx.staged {
-		done = st.write()
+	for _, app := range st.order {
+		done = s.write(s.books[app], st.plans[app])
 	}
 	return done, tx.after, nil
 }

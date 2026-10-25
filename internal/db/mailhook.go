@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 const schoolMailDomain = "heliosschool.org"
@@ -59,7 +58,7 @@ func vouch(lines []mail.HeaderLine, channel string, newsletter bool) string {
 	return "the forwarding mailbox's sealed results do not show the list sending it"
 }
 
-func RegisterMailHook(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pictures, signingKey string) {
+func RegisterMailHook(mux *http.ServeMux, s *Store, pics *Pictures, signingKey string) {
 	mux.HandleFunc("POST /hooks/mail/mime", func(w http.ResponseWriter, r *http.Request) {
 		fields, err := mail.Notification(w, r)
 		if err != nil {
@@ -99,9 +98,9 @@ func RegisterMailHook(mux *http.ServeMux, s *Store, queue *store.Queue, pics *Pi
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		queue.Hold()
-		defer queue.Release()
-		if _, err := FileMail(r.Context(), s, queue, pics, raw); err != nil {
+		s.Hold()
+		defer s.Release()
+		if _, err := FileMail(r.Context(), s, pics, raw); err != nil {
 			slog.ErrorContext(r.Context(), "mail hook: mail not filed", "id", id, "subject", subject, "error", err)
 			http.Error(w, "not filed", http.StatusInternalServerError)
 			return

@@ -8,10 +8,9 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
-func registerSubscription(mux *http.ServeMux, s *Store, queue *store.Queue, tokens auth.Tokens, now func() time.Time) {
+func registerSubscription(mux *http.ServeMux, s *Store, tokens auth.Tokens, now func() time.Time) {
 	mux.HandleFunc("POST /api/do/subscription", func(w http.ResponseWriter, r *http.Request) {
 		m := s.Model()
 		env, _, ok := caller(w, r, m, tokens, now())
@@ -39,7 +38,7 @@ func registerSubscription(mux *http.ServeMux, s *Store, queue *store.Queue, toke
 			edits = m.resubscribeEdits(g, env.Viewer)
 		}
 		if len(edits) > 0 {
-			if _, err := Write(r.Context(), s, queue, access.System(mailerSystem), Env{System: mailerSystem, Now: now()}, Batch{Batch: edits}); err != nil {
+			if _, err := Write(r.Context(), s, access.System(mailerSystem), Env{System: mailerSystem, Now: now()}, Batch{Batch: edits}); err != nil {
 				serve.Error(w, r, err)
 				return
 			}

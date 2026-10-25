@@ -10,7 +10,6 @@ import (
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/spreadsheets"
-	"heliosian/internal/store"
 )
 
 func main() {
@@ -26,7 +25,7 @@ func main() {
 		}
 		source = live
 	}
-	dataStore, err := db.NewStore(source, nil, store.NewQueue(), db.NewSearchIndex(), hosts.Origin(app.Domain))
+	dataStore, err := db.NewStore(source, nil, db.NewSearchIndex(), hosts.Origin(app.Domain))
 	if err != nil {
 		log.Fatalf("load the data sheets: %v", err)
 	}

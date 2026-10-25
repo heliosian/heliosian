@@ -27,7 +27,6 @@ const (
 type listMailHarness struct {
 	t      *testing.T
 	s      *Store
-	queue  *store.Queue
 	mux    *http.ServeMux
 	sender *mailtest.Recorder
 	mailer *ListMailer
@@ -35,9 +34,9 @@ type listMailHarness struct {
 
 func newListMailHarness(t *testing.T) *listMailHarness {
 	t.Helper()
-	s, queue := sampleWithQueue(t)
-	h := &listMailHarness{t: t, s: s, queue: queue, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
-	h.mailer = RegisterListMail(h.mux, s, queue, newPictures(s, queue), ListMailConfig{Sender: h.sender.Mailgun, SigningKey: loopSigningKey, Key: []byte("key"), Base: "https://loop.test"})
+	s := sample(t)
+	h := &listMailHarness{t: t, s: s, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
+	h.mailer = RegisterListMail(h.mux, s, newPictures(s), ListMailConfig{Sender: h.sender.Mailgun, SigningKey: loopSigningKey, Key: []byte("key"), Base: "https://loop.test"})
 	return h
 }
 
@@ -108,7 +107,7 @@ func (h *listMailHarness) settled(group string) store.Row {
 
 func (h *listMailHarness) addMember(group, person, member string) {
 	h.t.Helper()
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": member}}}}); err != nil {
 		h.t.Fatal(err)
 	}
 }
@@ -225,7 +224,7 @@ func TestPostsTheListDoesNotTakeAreDropped(t *testing.T) {
 
 func TestRepliesFollowTheListsReplying(t *testing.T) {
 	h := newListMailHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"posting": "managers", "replying": "members"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	first := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "first@example.org", "Plan", "")
@@ -233,7 +232,7 @@ func TestRepliesFollowTheListsReplying(t *testing.T) {
 	if post := h.settled(parentsList); post["state"] != postDropped {
 		t.Fatalf("a member's new post to a managers-only list reads %v", post)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: h.posts(parentsList, "in")[0]["id"], Cells: map[string]any{"state": postSent}}}}); err != nil {
 		t.Fatal(err)
 	}
 	reply := loopPost("Rowan Ashdown <rowan.ashdown@example.org>", "reply@example.org", "Re: Plan", "<first@example.org>")
@@ -308,7 +307,7 @@ func TestARestartResumesAPostNotYetSentOn(t *testing.T) {
 	if _, err := h.mailer.pics.bucket.Put(context.Background(), content, mailType, []byte(raw), 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{
+	if _, err := Write(context.Background(), h.s, access.System(mailerSystem), Env{System: mailerSystem, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "CONTENT", As: "content", Row: map[string]any{"hash": "resume", "blob": content, "mime": mailType, "size": "10"}},
 		{Insert: "MESSAGE", Row: map[string]any{"direction": "in", "kind": "post", "group": parentsList, "content": "@content", "created": "2026-10-09 09:00", "state": postReceived}},
 	}}); err != nil {
@@ -335,7 +334,7 @@ func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
 		t.Fatal("a post was recorded")
 	}
 	bare := http.NewServeMux()
-	RegisterListMail(bare, h.s, h.queue, h.mailer.pics, ListMailConfig{})
+	RegisterListMail(bare, h.s, h.mailer.pics, ListMailConfig{})
 	rec := httptest.NewRecorder()
 	bare.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/hooks/mail/mime", strings.NewReader("{}")))
 	if rec.Code != http.StatusNotFound {
@@ -345,7 +344,7 @@ func TestMailForNoListAndUnsignedCallsAreRefused(t *testing.T) {
 
 func TestAnAliasWithAnUppercaseLetterReachesNoList(t *testing.T) {
 	h := newListMailHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "0dLdEoHQT2eB-V2dRFe5TA", "target": parentsList}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "0dLdEoHQT2eB-V2dRFe5TA", "target": parentsList}}}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, to := range []string{"0dLdEoHQT2eB-V2dRFe5TA", "0dldeohqt2eb-v2drfe5ta"} {
@@ -360,7 +359,7 @@ func TestAnAliasWithAnUppercaseLetterReachesNoList(t *testing.T) {
 
 func TestAnAliasOfAListWithNoAddressReachesNoList(t *testing.T) {
 	h := newListMailHarness(t)
-	if _, err := Write(context.Background(), h.s, h.queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"slug": ""}}}}); err != nil {
+	if _, err := Write(context.Background(), h.s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: parentsList, Cells: map[string]any{"slug": ""}}}}); err != nil {
 		t.Fatal(err)
 	}
 	if g := h.s.Model().mailList("k7m2q9x4v1bnc"); g != nil {

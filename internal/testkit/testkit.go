@@ -12,9 +12,9 @@ import (
 	"heliosian/internal/store"
 )
 
-func Rows(t *testing.T, dir *data.Dir, queue *store.Queue, app, tab string) []store.Row {
+func Rows(t *testing.T, dir *data.Dir, s interface{ Flush() }, app, tab string) []store.Row {
 	t.Helper()
-	queue.Flush()
+	s.Flush()
 	_, rows, err := dir.Table(app, tab)
 	if err != nil {
 		t.Fatal(err)

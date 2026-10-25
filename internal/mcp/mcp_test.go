@@ -22,7 +22,6 @@ import (
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
 	"heliosian/internal/intercept"
-	"heliosian/internal/store"
 	"heliosian/internal/testkit"
 	"heliosian/internal/tools"
 )
@@ -71,8 +70,7 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	dir := &data.Dir{Root: "../../sampledata"}
-	queue := store.NewQueue()
-	s, err := db.NewStore(dir, dir, queue, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), hosts.Origin("heliosian.com"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +79,7 @@ func setup(t *testing.T) fixture {
 		t.Fatal(err)
 	}
 	signed := &sessions{out: map[string]time.Time{}}
-	search := db.NewSearcher(s, queue, bucket, vertex)
+	search := db.NewSearcher(s, bucket, vertex)
 	mux := http.NewServeMux()
 	Register(mux, mux, Deps{
 		Data:     s,

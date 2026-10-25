@@ -25,7 +25,7 @@ func schoolGroupsHeld(s *Store, person string) []string {
 }
 
 func TestSchoolGroupsFollowThePerson(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	var written []string
 	write := func(raw string) error {
 		t.Helper()
@@ -33,7 +33,7 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		written, err = Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b)
+		written, err = Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b)
 		return err
 	}
 	if got := schoolGroupsHeld(s, student); !slices.Equal(got, []string{"grp00000000010", "grp00000000011", "grp00000000501"}) {
@@ -80,14 +80,14 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 }
 
 func TestFamilyNameFollowsItsMembers(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(raw string) []string {
 		t.Helper()
 		b, err := ParseBatch([]byte(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		written, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b)
+		written, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,12 +135,12 @@ func TestFamilyNameTriggersSkipUnrelatedEdits(t *testing.T) {
 }
 
 func TestFamilyNameTriggersKeepRelevantChanges(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	b, err := ParseBatch([]byte(`{"batch": [{"set": "grp00000000020", "cells": {"name": "Stale Family"}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+	if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b); err != nil {
 		t.Fatal(err)
 	}
 	p, _ := s.Model().Table("PERSON").Get(student)
@@ -178,12 +178,12 @@ func TestFamilyNameTriggersKeepRelevantChanges(t *testing.T) {
 }
 
 func TestACommittedTriggerSeesWhatAStagedTriggerWrote(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	b, err := ParseBatch([]byte(`{"batch": [{"set": "per00000000001", "cells": {"name_long_override": "Juni Chang-Ashdown"}}]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+	if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b); err != nil {
 		t.Fatal(err)
 	}
 	seen := []string{}
@@ -196,14 +196,14 @@ func TestACommittedTriggerSeesWhatAStagedTriggerWrote(t *testing.T) {
 }
 
 func TestASentPostIsFiledAsMail(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(raw string) []string {
 		t.Helper()
 		b, err := ParseBatch([]byte(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		written, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b)
+		written, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -266,7 +266,7 @@ func TestASentPostIsFiledAsMail(t *testing.T) {
 }
 
 func TestAnswerGroupsAreSharedAsTheirEvent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	seen := func() int {
 		t.Helper()
 		return len(as(t, s, student, `(from GROUP (where (in id "grp00000000040" "grp00000000042" "grp00000000043")))`))
@@ -274,7 +274,7 @@ func TestAnswerGroupsAreSharedAsTheirEvent(t *testing.T) {
 	if n := seen(); n != 3 {
 		t.Fatalf("before the picnic is made invite-only, the student sees %d of it and its answer groups, not 3", n)
 	}
-	apply(t, s, queue, []Edit{{Set: "grp00000000040", Cells: map[string]any{"listed": false, "visible_to": "grp00000000040", "members_visible_to": ""}}})
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"listed": false, "visible_to": "grp00000000040", "members_visible_to": ""}}})
 	for _, id := range []string{"grp00000000042", "grp00000000043"} {
 		if g, _ := s.Model().Table("GROUP").Get(id); g["visible_to"] != "grp00000000040" || g["members_visible_to"] != "" {
 			t.Errorf("once the picnic is invite-only, %s is shown to %q and its members to %q", id, g["visible_to"], g["members_visible_to"])
@@ -286,14 +286,14 @@ func TestAnswerGroupsAreSharedAsTheirEvent(t *testing.T) {
 }
 
 func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	write := func(raw string) {
 		t.Helper()
 		b, err := ParseBatch([]byte(raw))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := Write(context.Background(), s, queue, access.System(setupEnv.System), setupEnv, b); err != nil {
+		if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, b); err != nil {
 			t.Fatal(err)
 		}
 	}

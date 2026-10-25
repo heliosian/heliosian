@@ -53,15 +53,14 @@ type audience struct {
 
 type Classifier struct {
 	s       *Store
-	queue   *store.Queue
 	bucket  *blob.Bucket
 	client  anthropic.Client
 	skipped map[string]bool
 	in      *inbox
 }
 
-func StartClassifier(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Classifier {
-	c := &Classifier{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, in: s.Model().services.inbox(classifyInbox)}
+func StartClassifier(s *Store, bucket *blob.Bucket, anthropicKey string) *Classifier {
+	c := &Classifier{s: s, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), skipped: map[string]bool{}, in: s.Model().services.inbox(classifyInbox)}
 	go c.run()
 	c.in.wake.poke()
 	return c
@@ -215,7 +214,7 @@ func (c *Classifier) classify(id string) (string, error) {
 
 // A nil sentTo is mail that came through a list: its groups are the list's, so only its revision is written.
 func (c *Classifier) file(id string, sentTo []string) error {
-	_, err := c.queue.Transact(context.Background(), access.System(classifyActor), func(tx *store.Tx) error {
+	_, err := c.s.Transact(context.Background(), access.System(classifyActor), func(tx *store.Tx[Model]) error {
 		m := c.s.In(tx)
 		row, ok := m.Table("DOCUMENT").Get(id)
 		if !ok || !classifiable(row) {
@@ -247,7 +246,7 @@ func (c *Classifier) file(id string, sentTo []string) error {
 }
 
 func (c *Classifier) discard(id string) error {
-	_, err := c.queue.Transact(context.Background(), access.System(classifyActor), func(tx *store.Tx) error {
+	_, err := c.s.Transact(context.Background(), access.System(classifyActor), func(tx *store.Tx[Model]) error {
 		docs := c.s.In(tx).Table("DOCUMENT")
 		order := []string{}
 		var walk func(string)

@@ -10,17 +10,17 @@ import (
 
 const hummingbirds = "grp00000000010"
 
-func calendarSample(t *testing.T) (s *Store, queue *store.Queue, ospreys, conference string) {
+func calendarSample(t *testing.T) (s *Store, ospreys, conference string) {
 	t.Helper()
-	s, queue = sampleWithQueue(t)
+	s = sample(t)
 	edits := []Edit{
 		{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": "Conference", "description": "Family and teacher conferences.", "status": "open", "visible_to": "grp00000000004"}},
 	}
 	for name := range DayTemplates {
 		edits = append(edits, Edit{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "category", "name": name, "status": "open", "visible_to": "grp00000000004"}})
 	}
-	ids := apply(t, s, queue, edits)
-	return s, queue, "grp00000020026", ids[0]
+	ids := apply(t, s, edits)
+	return s, "grp00000020026", ids[0]
 }
 
 func groupsOf(m *Model, kind string) []store.Row {
@@ -54,7 +54,7 @@ func sourcesKeyed(m *Model, key string) []store.Row {
 }
 
 func TestGooglePlan(t *testing.T) {
-	s, queue, ospreys, conference := calendarSample(t)
+	s, ospreys, conference := calendarSample(t)
 	from, to := feedWindow(testNow)
 	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
 	early := GoogleEvent{CalendarItem: CalendarItem{Key: "b@google", Title: "Kindergarten early dismissal", Start: "2026-10-09", End: "2026-10-09", AllDay: true}}
@@ -77,7 +77,7 @@ func TestGooglePlan(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, feed) {
 			classified[it.Key] = answers[it.Key]
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, nil))
+		apply(t, s, GooglePlan(rows, v, feed, from, to, classified, nil))
 	}
 
 	before := len(eventsOf(s.Model(), false))
@@ -159,7 +159,7 @@ func TestGooglePlan(t *testing.T) {
 
 func TestAGoogleEventMergesIntoTheActivityItIs(t *testing.T) {
 	const night = "grp00000000512"
-	s, queue, _, _ := calendarSample(t)
+	s, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)
 	google := GoogleEvent{CalendarItem: CalendarItem{Key: "inight@google", Title: "International Night!", Start: "2027-02-05 17:00", End: "2027-02-05 21:00"}}
 	sync := func(feed []GoogleEvent, matched map[string]string) {
@@ -173,7 +173,7 @@ func TestAGoogleEventMergesIntoTheActivityItIs(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, feed) {
 			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "families"}
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, matched))
+		apply(t, s, GooglePlan(rows, v, feed, from, to, classified, matched))
 	}
 	toMatch := func(feed []GoogleEvent) []string {
 		t.Helper()
@@ -194,13 +194,13 @@ func TestAGoogleEventMergesIntoTheActivityItIs(t *testing.T) {
 	if keys := toMatch([]GoogleEvent{google}); len(keys) != 0 {
 		t.Fatalf("an event asked about already is asked again: %v", keys)
 	}
-	moved := apply(t, s, queue, []Edit{
+	moved := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "going", Row: map[string]any{"posting": "none", "replying": "none", "kind": "group", "parent": event, "name": "International Night! Going", "status": "open"}},
 		{Set: event, Cells: map[string]any{"rsvp_yes": "@going"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@going", "person": parent, "member": "yes"}},
 		{Insert: "ALIAS", Row: map[string]any{"alias": "oldinight", "target": event, "hidden": true}},
 	})
-	apply(t, s, queue, []Edit{{Set: night, Cells: map[string]any{"name": "International Night of Food"}}})
+	apply(t, s, []Edit{{Set: night, Cells: map[string]any{"name": "International Night of Food"}}})
 	if keys := toMatch([]GoogleEvent{google}); len(keys) != 1 {
 		t.Fatalf("a changed activity on the event's date asks nothing again: %v", keys)
 	}
@@ -239,13 +239,13 @@ func TestAGoogleEventMergesIntoTheActivityItIs(t *testing.T) {
 
 func TestANewGoogleEventJoinsItsActivity(t *testing.T) {
 	const night = "grp00000000512"
-	s, queue, _, _ := calendarSample(t)
+	s, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)
 	google := GoogleEvent{CalendarItem: CalendarItem{Key: "inight@google", Title: "International Night", Start: "2027-02-05 17:00", End: "2027-02-05 21:00"}}
 	rows := s.Model().calendarRows()
 	v, _ := NewVocabulary(rows)
 	before := len(eventsOf(s.Model(), false))
-	apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{google}, from, to, map[string]Classification{google.Key: {Classrooms: []string{hummingbirds}, Who: "families"}}, map[string]string{google.Key: night}))
+	apply(t, s, GooglePlan(rows, v, []GoogleEvent{google}, from, to, map[string]Classification{google.Key: {Classrooms: []string{hummingbirds}, Who: "families"}}, map[string]string{google.Key: night}))
 	if n := len(eventsOf(s.Model(), false)) - before; n != 0 {
 		t.Fatalf("a matched event made %d events", n)
 	}
@@ -255,7 +255,7 @@ func TestANewGoogleEventJoinsItsActivity(t *testing.T) {
 }
 
 func TestAnImportedCellKeepsAHandCorrection(t *testing.T) {
-	s, queue, _, _ := calendarSample(t)
+	s, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)
 	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
 	sync := func() {
@@ -266,11 +266,11 @@ func TestAnImportedCellKeepsAHandCorrection(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, []GoogleEvent{cafe}) {
 			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "parents"}
 		}
-		apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{cafe}, from, to, classified, nil))
+		apply(t, s, GooglePlan(rows, v, []GoogleEvent{cafe}, from, to, classified, nil))
 	}
 	sync()
 	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
-	apply(t, s, queue, []Edit{{Set: event, Cells: map[string]any{"name": "Hummingbirds CAFE in the Library"}}})
+	apply(t, s, []Edit{{Set: event, Cells: map[string]any{"name": "Hummingbirds CAFE in the Library"}}})
 	cafe.Title, cafe.Location = "Hummingbirds Parent CAFE", "Room 4"
 	sync()
 	g, _ := s.Model().Table("GROUP").Get(event)
@@ -280,7 +280,7 @@ func TestAnImportedCellKeepsAHandCorrection(t *testing.T) {
 }
 
 func TestCelebrateIsNoCategoryToClassifyInto(t *testing.T) {
-	s, _, _, _ := calendarSample(t)
+	s, _, _ := calendarSample(t)
 	v, err := NewVocabulary(s.Model().calendarRows())
 	if err != nil {
 		t.Fatal(err)
@@ -296,7 +296,7 @@ func TestCelebrateIsNoCategoryToClassifyInto(t *testing.T) {
 }
 
 func TestARemovedEventTakesItsAnswers(t *testing.T) {
-	s, queue, _, _ := calendarSample(t)
+	s, _, _ := calendarSample(t)
 	from, to := feedWindow(testNow)
 	cafe := GoogleEvent{CalendarItem: CalendarItem{Key: "a@google", Title: "Hummingbirds CAFE", Start: "2026-10-02 08:30", End: "2026-10-02 09:30"}}
 	sync := func(feed []GoogleEvent) {
@@ -310,11 +310,11 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 		for _, it := range GoogleToClassify(rows, v, feed) {
 			classified[it.Key] = Classification{Classrooms: []string{hummingbirds}, Who: "parents"}
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, classified, nil))
+		apply(t, s, GooglePlan(rows, v, feed, from, to, classified, nil))
 	}
 	sync([]GoogleEvent{cafe})
 	event := sourcesKeyed(s.Model(), cafe.Key)[0]["group"]
-	answers := apply(t, s, queue, []Edit{
+	answers := apply(t, s, []Edit{
 		{Insert: "GROUP", As: "going", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Going", "status": "open"}},
 		{Insert: "GROUP", As: "notGoing", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "parent": event, "name": "Hummingbirds CAFE Not Going", "status": "open"}},
 		{Set: event, Cells: map[string]any{"rsvp_yes": "@going", "rsvp_no": "@notGoing"}},
@@ -330,8 +330,8 @@ func TestARemovedEventTakesItsAnswers(t *testing.T) {
 }
 
 func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
-	s, queue, ospreys, _ := calendarSample(t)
-	calendar := apply(t, s, queue, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}}})[0]
+	s, ospreys, _ := calendarSample(t)
+	calendar := apply(t, s, []Edit{{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}}})[0]
 	from, to := feedWindow(testNow)
 	both := []string{hummingbirds, ospreys}
 	every := []string{}
@@ -346,7 +346,7 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		apply(t, s, queue, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: every, Who: "families", DayType: "Early Dismissal"}}, nil))
+		apply(t, s, GooglePlan(rows, v, feed, from, to, map[string]Classification{early.Key: {Classrooms: every, Who: "families", DayType: "Early Dismissal"}}, nil))
 	}
 	pdf := func() {
 		t.Helper()
@@ -364,7 +364,7 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		apply(t, s, queue, edits)
+		apply(t, s, edits)
 	}
 	onTheDay := func() []store.Row {
 		out := []store.Row{}
@@ -405,8 +405,8 @@ func TestOneDayPerDateTypeAndClassrooms(t *testing.T) {
 }
 
 func TestPDFPlan(t *testing.T) {
-	s, queue, ospreys, _ := calendarSample(t)
-	versions := apply(t, s, queue, []Edit{
+	s, ospreys, _ := calendarSample(t)
+	versions := apply(t, s, []Edit{
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
 		{Insert: "DOCUMENT", Row: map[string]any{"kind": "calendar"}},
@@ -419,7 +419,7 @@ func TestPDFPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	apply(t, s, queue, GooglePlan(rows, v, []GoogleEvent{btsnGoogle}, from, to, map[string]Classification{btsnGoogle.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents"}}, nil))
+	apply(t, s, GooglePlan(rows, v, []GoogleEvent{btsnGoogle}, from, to, map[string]Classification{btsnGoogle.Key: {Classrooms: []string{hummingbirds, ospreys}, Who: "parents"}}, nil))
 
 	both := []string{hummingbirds, ospreys}
 	year := func(doc string, entries ...YearEntry) YearCalendar {
@@ -454,7 +454,7 @@ func TestPDFPlan(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		apply(t, s, queue, edits)
+		apply(t, s, edits)
 	}
 
 	run(year(first, btsn, picnic), false)
@@ -509,7 +509,7 @@ func TestPDFPlan(t *testing.T) {
 			picnicGroup = g["id"]
 		}
 	}
-	oldID := apply(t, s, queue, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldpicnicid", "target": picnicGroup}}})[0]
+	oldID := apply(t, s, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldpicnicid", "target": picnicGroup}}})[0]
 	dayIDs := func() map[string]string {
 		out := map[string]string{}
 		for _, d := range groupsOf(s.Model(), "day") {

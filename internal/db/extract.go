@@ -35,7 +35,6 @@ const (
 
 type Extractor struct {
 	s      *Store
-	queue  *store.Queue
 	bucket *blob.Bucket
 	client anthropic.Client
 	failed map[string]bool
@@ -76,8 +75,8 @@ func extractable(kind string) bool {
 	return ok
 }
 
-func NewExtractor(s *Store, queue *store.Queue, bucket *blob.Bucket, anthropicKey string) *Extractor {
-	x := &Extractor{s: s, queue: queue, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, asked: map[string]int{}, in: s.Model().services.inbox(extractInbox)}
+func NewExtractor(s *Store, bucket *blob.Bucket, anthropicKey string) *Extractor {
+	x := &Extractor{s: s, bucket: bucket, client: anthropic.NewClient(option.WithAPIKey(anthropicKey), option.WithRequestTimeout(extractTimeout)), failed: map[string]bool{}, asked: map[string]int{}, in: s.Model().services.inbox(extractInbox)}
 	go x.run()
 	x.in.wake.poke()
 	return x
@@ -280,7 +279,7 @@ func (x *Extractor) extract(id string) (int, error) {
 		}
 	}
 	orders := store.Order(make([]string, len(children)))
-	_, err := x.queue.Transact(ctx, access.System(extractActor), func(tx *store.Tx) error {
+	_, err := x.s.Transact(ctx, access.System(extractActor), func(tx *store.Tx[Model]) error {
 		m := x.s.In(tx)
 		now, ok := m.Table("DOCUMENT").Get(id)
 		if !ok || now["extracted"] != "" {

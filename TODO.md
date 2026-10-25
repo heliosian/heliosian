@@ -12,9 +12,6 @@ Last verified: bff8f634
 
 # Data model
 
-- Merge the store's write queue into the store
-  `store.Queue` and `store.Tx` are built for several stores sharing one queue: `Queue.loads` is a list of loads, and a transaction keeps a list of stages whose `owner`, `start` and `model` are `any`, found by `stageOf`. Production builds one `db.Store` per queue (`internal/app/wiring.go`, `tools/loadcheck`, `tools/searchplan`). Merge `Queue` into `Store[M]`, so a transaction holds one typed stage and a refresh runs the one load, and delete the multi-store machinery. Several `internal/store` tests build a second store on their fixture's queue and change with it.
-
 # Issues
 
 - Wiki: comments on specific passages of a page

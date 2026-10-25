@@ -135,7 +135,7 @@ Work the server does on its own runs outside the policies: `Model.Authorize` all
 - `feedback`, saving a report someone sent with Report a problem or idea as a `REPORT` row (`docs/feedback.md`): the view.
 - `signout`, recording when someone signed out everywhere as their `PERSON.signed_out` (`db.Sessions` in `internal/db/signout.go`), which every app's sign-in and every access token compare a session's issue time against (`auth.Sessions`), refusing what was issued before it: the view, the change named as made by the person who signed out.
 - `search`, working out which rows the index leaves out: the view, so a row comes into the index when it comes into the view.
-- `pictures`, `extract`, `classify`, `digest`, `fetch`, `thumbnail` and `sweep` write through `queue.Transact` directly.
+- `pictures`, `extract`, `classify`, `digest`, `fetch`, `thumbnail` and `sweep` write through `Store.Transact` directly.
 
 ## Changes
 

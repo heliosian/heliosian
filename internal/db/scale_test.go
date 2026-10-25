@@ -55,11 +55,11 @@ func appendRows(tb testing.TB, path string, rows []map[string]string) {
 
 func scaleStore(tb testing.TB) *Store {
 	tb.Helper()
-	s, _, _ := scaleStoreIn(tb)
+	s, _ := scaleStoreIn(tb)
 	return s
 }
 
-func scaleStoreIn(tb testing.TB) (*Store, *store.Queue, *data.Dir) {
+func scaleStoreIn(tb testing.TB) (*Store, *data.Dir) {
 	tb.Helper()
 	root := tb.TempDir()
 	if err := os.CopyFS(root, os.DirFS("../../sampledata")); err != nil {
@@ -121,12 +121,11 @@ func scaleStoreIn(tb testing.TB) (*Store, *store.Queue, *data.Dir) {
 	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT.csv"), documents)
 	appendRows(tb, filepath.Join(root, "datadocuments", "DOCUMENT_GROUP.csv"), sentTo)
 	dir := &data.Dir{Root: root}
-	queue := store.NewQueue()
-	s, err := NewStore(dir, dir, queue, NewSearchIndex(), testOrigin)
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
 	if err != nil {
 		tb.Fatal(err)
 	}
-	return s, queue, dir
+	return s, dir
 }
 
 func benchQuery(b *testing.B, src string) {
@@ -196,9 +195,9 @@ func BenchmarkRebuildDocuments(b *testing.B) {
 }
 
 func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
-	s, queue, dir := scaleStoreIn(t)
-	apply(t, s, queue, []Edit{{Set: "per00000000150", Cells: map[string]any{"facts": "committed before the refresh"}}})
-	queue.Flush()
+	s, dir := scaleStoreIn(t)
+	apply(t, s, []Edit{{Set: "per00000000150", Cells: map[string]any{"facts": "committed before the refresh"}}})
+	s.Flush()
 	if err := dir.Insert(DocumentsSheet, "DOCUMENT", []map[string]string{{"id": "doc00000900001", "kind": "mail", "name": "Added by hand", "published": "2026-09-02 09:00:00"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -209,8 +208,8 @@ func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := s.Model()
-	queue.Refresh()
-	queue.Flush()
+	s.Refresh()
+	s.Flush()
 	after := s.Model()
 	if after.People["PERSON"] != before.People["PERSON"] {
 		t.Error("the refresh built the People sheet again, though nothing in it was edited by hand")
@@ -218,7 +217,7 @@ func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
 	if after.Groups["GROUP"] == before.Groups["GROUP"] {
 		t.Error("the refresh kept the Groups sheet a hand edit changed")
 	}
-	fresh, err := NewStore(dir, dir, store.NewQueue(), NewSearchIndex(), testOrigin)
+	fresh, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,11 +241,11 @@ func TestAnIncrementalRefreshMatchesAFullLoad(t *testing.T) {
 }
 
 func benchWrite(b *testing.B, edits func(i int) []Edit) {
-	s, queue, _ := scaleStoreIn(b)
+	s, _ := scaleStoreIn(b)
 	i := 0
 	for b.Loop() {
 		i++
-		if _, err := Write(b.Context(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: edits(i)}); err != nil {
+		if _, err := Write(b.Context(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: edits(i)}); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -296,13 +295,13 @@ func BenchmarkSearchEventRenamed(b *testing.B) {
 }
 
 func BenchmarkEffectiveAfterAnswer(b *testing.B) {
-	s, queue, _ := scaleStoreIn(b)
+	s, _ := scaleStoreIn(b)
 	effective, _ := Lookup("EFFECTIVE_MEMBER")
 	s.Model().generated(effective)
 	i := 0
 	for b.Loop() {
 		i++
-		if _, err := Write(b.Context(), s, queue, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: "mem00000003301", Cells: map[string]any{"member": []string{"yes", "cancelled"}[i%2]}}}}); err != nil {
+		if _, err := Write(b.Context(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: "mem00000003301", Cells: map[string]any{"member": []string{"yes", "cancelled"}[i%2]}}}}); err != nil {
 			b.Fatal(err)
 		}
 		s.Model().generated(effective)
@@ -310,10 +309,10 @@ func BenchmarkEffectiveAfterAnswer(b *testing.B) {
 }
 
 func BenchmarkRefreshUnchanged(b *testing.B) {
-	_, queue, _ := scaleStoreIn(b)
+	s, _ := scaleStoreIn(b)
 	for b.Loop() {
-		queue.Refresh()
-		queue.Flush()
+		s.Refresh()
+		s.Flush()
 	}
 }
 

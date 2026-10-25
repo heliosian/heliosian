@@ -34,10 +34,10 @@ func familyConsent(s *Store) string {
 }
 
 func TestConsent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	run := func(form *data.Dir) {
 		t.Helper()
-		c := &Consent{s: s, queue: queue, source: form}
+		c := &Consent{s: s, source: form}
 		c.read()
 		c.apply()
 		writes, err := s.Model().consentWrites(c.rows)

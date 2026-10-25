@@ -33,18 +33,18 @@ func pngOf(t *testing.T, size int) []byte {
 	return buf.Bytes()
 }
 
-func newPictures(s *Store, queue *store.Queue) *Pictures {
-	p := NewPictures(s, queue, blob.NewMemoryBucket())
+func newPictures(s *Store) *Pictures {
+	p := NewPictures(s, blob.NewMemoryBucket())
 	go p.run()
 	return p
 }
 
-func addPhoto(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, person string, photo []byte) *httptest.ResponseRecorder {
+func addPhoto(t *testing.T, s *Store, pics *Pictures, as, person string, photo []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	return postFile(t, s, queue, pics, as, "photo", map[string]string{"person": person}, "photo", photo)
+	return postFile(t, s, pics, as, "photo", map[string]string{"person": person}, "photo", photo)
 }
 
-func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, verb string, fields map[string]string, file string, content []byte) *httptest.ResponseRecorder {
+func postFile(t *testing.T, s *Store, pics *Pictures, as, verb string, fields map[string]string, file string, content []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
@@ -62,7 +62,7 @@ func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, ve
 	}
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/"+verb, body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
@@ -70,7 +70,7 @@ func postFile(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as, ve
 	return rec
 }
 
-func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as string, fields map[string]string, mimeType string, content []byte) *httptest.ResponseRecorder {
+func postUpload(t *testing.T, s *Store, pics *Pictures, as string, fields map[string]string, mimeType string, content []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	body := &bytes.Buffer{}
 	form := multipart.NewWriter(body)
@@ -90,7 +90,7 @@ func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as s
 	part.Write(content)
 	form.Close()
 	mux := http.NewServeMux()
-	Register(mux, s, queue, pics, testTokens, func() time.Time { return testNow })
+	Register(mux, s, pics, testTokens, func() time.Time { return testNow })
 	r := httptest.NewRequest(http.MethodPost, "/api/do/file", body)
 	r.Header.Set("Content-Type", form.FormDataContentType())
 	rec := httptest.NewRecorder()
@@ -98,9 +98,9 @@ func postUpload(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as s
 	return rec
 }
 
-func postMail(t *testing.T, s *Store, queue *store.Queue, pics *Pictures, as string, eml []byte) *httptest.ResponseRecorder {
+func postMail(t *testing.T, s *Store, pics *Pictures, as string, eml []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	return postUpload(t, s, queue, pics, as, nil, "message/rfc822", eml)
+	return postUpload(t, s, pics, as, nil, "message/rfc822", eml)
 }
 
 func made(t *testing.T, s *Store, table, id, column string) store.Row {
@@ -143,11 +143,11 @@ func thumbOf(t *testing.T, s *Store, pics *Pictures, content string) string {
 }
 
 func TestPersonPhotoAddsFirst(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	var orders []string
 	for i, size := range []int{2, 3} {
-		rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, size))
+		rec := addPhoto(t, s, pics, importing, staff, pngOf(t, size))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("photo %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -179,21 +179,21 @@ func TestPersonPhotoAddsFirst(t *testing.T) {
 	}
 
 	photo := pngOf(t, 4)
-	rec := addPhoto(t, s, queue, pics, "rowan.ashdown@example.org", staff, photo)
+	rec := addPhoto(t, s, pics, "rowan.ashdown@example.org", staff, photo)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("a photo of someone outside one's family: %d %s", rec.Code, rec.Body.String())
 	}
 	if found, _ := pics.bucket.Exists(context.Background(), "content/"+blob.Hash(photo)); found {
 		t.Fatal("a refused photo was stored")
 	}
-	if rec := addPhoto(t, s, queue, pics, importing, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
+	if rec := addPhoto(t, s, pics, importing, staff, []byte("not a picture")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not an image: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestTheSamePictureUploadedAtOnceIsOneContent(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	picture := pngOf(t, 6)
 	people := []string{staff, student, parent, "per00000020001", "per00000020002", "per00000020003"}
 	codes := make([]int, len(people))
@@ -202,7 +202,7 @@ func TestTheSamePictureUploadedAtOnceIsOneContent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			codes[i] = addPhoto(t, s, queue, pics, importing, person, picture).Code
+			codes[i] = addPhoto(t, s, pics, importing, person, picture).Code
 		}()
 	}
 	wg.Wait()
@@ -218,9 +218,9 @@ func TestTheSamePictureUploadedAtOnceIsOneContent(t *testing.T) {
 }
 
 func TestAStaleMakesBytesAreSweptOnceOld(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
-	rec := addPhoto(t, s, queue, pics, importing, staff, pngOf(t, 8))
+	s := sample(t)
+	pics := newPictures(s)
+	rec := addPhoto(t, s, pics, importing, staff, pngOf(t, 8))
 	var out stored
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatal(err)
@@ -235,7 +235,7 @@ func TestAStaleMakesBytesAreSweptOnceOld(t *testing.T) {
 	if err := pics.makePhoto(row["id"], stale); err != nil {
 		t.Fatal(err)
 	}
-	x := &sweeper{s: s, queue: queue, bucket: pics.bucket}
+	x := &sweeper{s: s, bucket: pics.bucket}
 	if removed, err := x.sweepObjects(context.Background(), time.Now().Add(-orphanAge)); err != nil || removed != 0 {
 		t.Fatalf("the sweep removed %d objects written just now: %v", removed, err)
 	}
@@ -255,10 +255,10 @@ func TestAStaleMakesBytesAreSweptOnceOld(t *testing.T) {
 }
 
 func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	fields := map[string]string{"person": staff, "crop_left": "1", "crop_top": "2", "crop_width": "4", "crop_height": "3"}
-	rec := postFile(t, s, queue, pics, importing, "photo", fields, "photo", pngOf(t, 8))
+	rec := postFile(t, s, pics, importing, "photo", fields, "photo", pngOf(t, 8))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("upload with a box: %d %s", rec.Code, rec.Body.String())
 	}
@@ -278,7 +278,7 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 
 	first := row["crop"]
 	env := setupEnv
-	if _, err := Write(context.Background(), s, queue, access.System(env.System), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
+	if _, err := Write(context.Background(), s, access.System(env.System), env, Batch{Batch: []Edit{{Set: id, Cells: map[string]any{"crop_width": "2"}}}}); err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(2 * time.Second)
@@ -290,18 +290,18 @@ func TestACropBoxMakesTheCropAndThumbnail(t *testing.T) {
 	}
 
 	bad := map[string]string{"person": staff, "crop_left": "1", "crop_top": "2", "crop_width": "0", "crop_height": "3"}
-	if rec := postFile(t, s, queue, pics, importing, "photo", bad, "photo", pngOf(t, 9)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, pics, importing, "photo", bad, "photo", pngOf(t, 9)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a box with no width: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestGroupPhotos(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	ids := []string{}
 	for i, size := range []int{8, 9} {
 		fields := map[string]string{"group": "grp00000000020", "crop_left": "0", "crop_top": "0", "crop_width": "5", "crop_height": "5"}
-		rec := postFile(t, s, queue, pics, importing, "photo", fields, "photo", pngOf(t, size))
+		rec := postFile(t, s, pics, importing, "photo", fields, "photo", pngOf(t, size))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("family photo %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -323,25 +323,25 @@ func TestGroupPhotos(t *testing.T) {
 	if visible := as(t, s, parent, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 3 {
 		t.Fatalf("a family member sees %d of the family's photos", len(visible))
 	}
-	apply(t, s, queue, []Edit{{Set: "grp00000000020", Cells: map[string]any{"visible_to": ""}}})
+	apply(t, s, []Edit{{Set: "grp00000000020", Cells: map[string]any{"visible_to": ""}}})
 	if visible := as(t, s, guest, `(from PHOTO (where (= group "grp00000000020")))`); len(visible) != 0 {
 		t.Fatalf("someone who may not see the family sees %d of its photos", len(visible))
 	}
 	both := map[string]string{"group": "grp00000000020", "person": staff}
-	if rec := postFile(t, s, queue, pics, importing, "photo", both, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, pics, importing, "photo", both, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a photo of a person and a group: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, importing, "photo", nil, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
+	if rec := postFile(t, s, pics, importing, "photo", nil, "photo", pngOf(t, 7)); rec.Code != http.StatusBadRequest {
 		t.Fatalf("a photo of nobody: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000503"}, "photo", pngOf(t, 6)); rec.Code != http.StatusForbidden {
+	if rec := postFile(t, s, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000503"}, "photo", pngOf(t, 6)); rec.Code != http.StatusForbidden {
 		t.Fatalf("a photo of a family one doesn't manage: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postFile(t, s, queue, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000020"}, "photo", pngOf(t, 6)); rec.Code != http.StatusOK {
+	if rec := postFile(t, s, pics, "rowan.ashdown@example.org", "photo", map[string]string{"group": "grp00000000020"}, "photo", pngOf(t, 6)); rec.Code != http.StatusOK {
 		t.Fatalf("a photo of one's own family: %d %s", rec.Code, rec.Body.String())
 	}
 	moved := Edit{Set: ids[0], Cells: map[string]any{"order": "zz", "crop_width": "4"}}
-	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{moved}}); err != nil {
+	if _, err := Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{moved}}); err != nil {
 		t.Fatalf("a family member moves and re-crops the family's photo: %v", err)
 	}
 	if row, _ := s.Model().Table("PHOTO").Get(ids[0]); row["order"] != "zz" || row["original"] != first["original"] {
@@ -350,18 +350,18 @@ func TestGroupPhotos(t *testing.T) {
 }
 
 func TestStartupMakesPhotosNotReady(t *testing.T) {
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	bucket := blob.NewMemoryBucket()
 	original := pngOf(t, 7)
 	hash := blob.Hash(original)
 	if _, err := bucket.Put(context.Background(), "content/"+hash, "image/png", original, 0); err != nil {
 		t.Fatal(err)
 	}
-	photo := apply(t, s, queue, []Edit{
+	photo := apply(t, s, []Edit{
 		{Insert: "CONTENT", As: "original", Row: map[string]any{"hash": hash, "blob": "content/" + hash, "mime": "image/png", "size": strconv.Itoa(len(original))}},
 		{Insert: "PHOTO", Row: map[string]any{"person": staff, "original": "@original", "order": "m"}},
 	})[1]
-	NewPictures(s, queue, bucket).Start()
+	NewPictures(s, bucket).Start()
 	if row := made(t, s, "PHOTO", photo, "ready"); row["ready"] != "Yes" || row["thumbnail"] == "" || row["reencode"] == "" {
 		t.Fatalf("a photo left unmade before a restart reads %v", row)
 	}
@@ -404,13 +404,13 @@ func TestChangingAnOriginalBlanksWhatWasMade(t *testing.T) {
 }
 
 func TestCalendarPDFIsStoredOnce(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	pdf := []byte("%PDF-1.4\n% a year calendar\n")
 	fields := map[string]string{"kind": "calendar", "url": "https://www.heliosschool.org/calendar.pdf", "published": "2026-09-14 10:22:05"}
 	ids := []string{}
 	for i := range 2 {
-		rec := postUpload(t, s, queue, pics, importing, fields, "", pdf)
+		rec := postUpload(t, s, pics, importing, fields, "", pdf)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -437,22 +437,22 @@ func TestCalendarPDFIsStoredOnce(t *testing.T) {
 	if n := len(as(t, s, staff, `(from CONTENT (where (= mime "application/pdf")))`)); n != 1 {
 		t.Fatalf("the same pdf stored %d times", n)
 	}
-	if rec := postUpload(t, s, queue, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+	if rec := postUpload(t, s, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postUpload(t, s, queue, pics, importing, fields, "", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
+	if rec := postUpload(t, s, pics, importing, fields, "", []byte("not a pdf")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("not a pdf: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	pdf := []byte("%PDF-1.4\n% a slide deck\n")
 	fields := map[string]string{"name": "Camping - HELP - Condors", "url": "https://docs.google.com/presentation/d/1BvW", "published": "2026-09-14 10:22:05"}
 	ids := []string{}
 	for i := range 2 {
-		rec := postUpload(t, s, queue, pics, importing, fields, "", pdf)
+		rec := postUpload(t, s, pics, importing, fields, "", pdf)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -472,20 +472,20 @@ func TestAPDFIsStoredOnceAsAFileWithItsNameAndDate(t *testing.T) {
 	for field, value := range map[string]string{"published": "last tuesday", "url": "", "kind": "deck"} {
 		bad := maps.Clone(fields)
 		bad[field] = value
-		if rec := postUpload(t, s, queue, pics, importing, bad, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusBadRequest {
+		if rec := postUpload(t, s, pics, importing, bad, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusBadRequest {
 			t.Fatalf("%s %q: %d %s", field, value, rec.Code, rec.Body.String())
 		}
 	}
-	if rec := postUpload(t, s, queue, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
+	if rec := postUpload(t, s, pics, "rowan.ashdown@example.org", fields, "", []byte("%PDF-1.4\n% another\n")); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person with no grant: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestAPageIsStoredAsAFile(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	fields := map[string]string{"name": "Aftercare", "url": "https://portals.example.org/parent/pages/Aftercare", "published": "2026-10-06 13:19:38"}
-	rec := postUpload(t, s, queue, pics, importing, fields, "text/html", []byte("<!doctype html><html><body><p>Aftercare runs until six.</p></body></html>"))
+	rec := postUpload(t, s, pics, importing, fields, "text/html", []byte("<!doctype html><html><body><p>Aftercare runs until six.</p></body></html>"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("a page: %d %s", rec.Code, rec.Body.String())
 	}
@@ -501,8 +501,8 @@ func TestAPageIsStoredAsAFile(t *testing.T) {
 }
 
 func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	eml := []byte("From: Maya Lindqvist <Maya.Lindqvist@example.org>\r\n" +
 		"Date: Thu, 12 Feb 2026 01:48:03 +0000\r\n" +
 		"Subject: =?UTF-8?Q?Spring_Camping_Trip_=E2=80=94_Follow_Up?=\r\n" +
@@ -512,7 +512,7 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 		"Bring a sleeping bag.\r\n")
 	ids := []string{}
 	for i := range 2 {
-		rec := postMail(t, s, queue, pics, importing, eml)
+		rec := postMail(t, s, pics, importing, eml)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("post %d: %d %s", i, rec.Code, rec.Body.String())
 		}
@@ -540,28 +540,28 @@ func TestMailIsStoredOnceWithItsHeaders(t *testing.T) {
 	if len(links) != 1 || links[0]["group"] != "grp00000000030" || links[0]["relation"] != "sent_to" {
 		t.Fatalf("the message's groups: %v", links)
 	}
-	if rec := postMail(t, s, queue, pics, importing, []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
+	if rec := postMail(t, s, pics, importing, []byte("Subject: no date\r\n\r\nhello\r\n")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("no date: %d %s", rec.Code, rec.Body.String())
 	}
-	if rec := postMail(t, s, queue, pics, "rowan.ashdown@example.org", eml); rec.Code != http.StatusForbidden {
+	if rec := postMail(t, s, pics, "rowan.ashdown@example.org", eml); rec.Code != http.StatusForbidden {
 		t.Fatalf("a person: %d %s", rec.Code, rec.Body.String())
 	}
 }
 
 func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	eml := []byte("From: Maya Lindqvist <maya.lindqvist@example.org>\r\n" +
 		"Date: Thu, 12 Feb 2026 01:48:03 +0000\r\n" +
 		"Subject: Field trip\r\n" +
 		"List-Id: <hummingbirds.parents.heliosschool.org>\r\n" +
 		"\r\n" +
 		"Bring a lunch.\r\n")
-	first, err := FileMail(context.Background(), s, queue, pics, eml)
+	first, err := FileMail(context.Background(), s, pics, eml)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := FileMail(context.Background(), s, queue, pics, eml)
+	again, err := FileMail(context.Background(), s, pics, eml)
 	if err != nil || again != first {
 		t.Fatalf("filed again as %q, first %q: %v", again, first, err)
 	}
@@ -571,14 +571,14 @@ func TestTheMailHookFilesMailOnceAndLeavesLoopsOwn(t *testing.T) {
 		t.Fatalf("filed %v sent to %v", row, links)
 	}
 	loop := []byte("Date: Thu, 12 Feb 2026 01:48:03 +0000\r\nList-Id: <team.loop.heliosian.com>\r\nSubject: Ours\r\n\r\nhello\r\n")
-	if id, err := FileMail(context.Background(), s, queue, pics, loop); err != nil || id != "" {
+	if id, err := FileMail(context.Background(), s, pics, loop); err != nil || id != "" {
 		t.Fatalf("loop's own mail was filed as %q: %v", id, err)
 	}
 }
 
 func TestEachFamilysCopyOfOneEmailIsFiledOnce(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	pics := newPictures(s, queue)
+	s := sample(t)
+	pics := newPictures(s)
 	mail := func(from, to, id, date, list, subject string) []byte {
 		header := "From: " + from + "\r\nTo: " + to + "\r\nDate: " + date + "\r\nSubject: " + subject + "\r\nMessage-Id: <" + id + ">\r\n"
 		if list != "" {
@@ -593,7 +593,7 @@ func TestEachFamilysCopyOfOneEmailIsFiledOnce(t *testing.T) {
 	school := "Helios School <m@mail3.veracross.com>"
 	file := func(eml []byte) string {
 		t.Helper()
-		id, err := FileMail(context.Background(), s, queue, pics, eml)
+		id, err := FileMail(context.Background(), s, pics, eml)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -640,8 +640,8 @@ func sentToSorted(s *Store, document string) []string {
 }
 
 func TestMailIsSentToItsListsGroups(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	jayvens := apply(t, s, queue, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"}}})[0]
+	s := sample(t)
+	jayvens := apply(t, s, []Edit{{Insert: "GROUP", Row: map[string]any{"posting": "members", "replying": "members", "kind": "group", "status": "open", "slug": "jayvens-parents", "name": "Jayvens Parents", "visible_to": "grp00000000004"}}})[0]
 	m := s.Model()
 	for listID, want := range map[string]string{
 		"":                                   "mail",

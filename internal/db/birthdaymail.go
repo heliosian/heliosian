@@ -40,22 +40,21 @@ type BirthdayMailConfig struct {
 
 type BirthdayMailer struct {
 	s       *Store
-	queue   *store.Queue
 	config  BirthdayMailConfig
 	in      *inbox
 	kick    wake
 	started atomic.Bool
 }
 
-func NewBirthdayMailer(s *Store, queue *store.Queue, config BirthdayMailConfig) *BirthdayMailer {
-	bm := &BirthdayMailer{s: s, queue: queue, config: config, in: s.Model().services.inbox(birthdayInbox), kick: newWake()}
+func NewBirthdayMailer(s *Store, config BirthdayMailConfig) *BirthdayMailer {
+	bm := &BirthdayMailer{s: s, config: config, in: s.Model().services.inbox(birthdayInbox), kick: newWake()}
 	go bm.run()
 	return bm
 }
 
 func (bm *BirthdayMailer) Start() {
 	bm.started.Store(true)
-	bm.queue.OnTick(bm.kick.poke)
+	bm.s.OnTick(bm.kick.poke)
 	bm.kick.poke()
 }
 
@@ -163,7 +162,7 @@ func (bm *BirthdayMailer) write(ctx context.Context, edits []Edit) error {
 	if len(edits) == 0 {
 		return nil
 	}
-	_, err := Write(ctx, bm.s, bm.queue, access.System(birthdayJob), Env{System: birthdayJob, Now: time.Now()}, Batch{Batch: edits})
+	_, err := Write(ctx, bm.s, access.System(birthdayJob), Env{System: birthdayJob, Now: time.Now()}, Batch{Batch: edits})
 	return err
 }
 

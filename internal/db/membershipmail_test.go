@@ -13,16 +13,16 @@ import (
 
 func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
-	s, queue := sampleWithQueue(t)
-	decor := apply(t, s, queue, []Edit{
+	s := sample(t)
+	decor := apply(t, s, []Edit{
 		{Set: year, Cells: map[string]any{"notify": superAdmins}},
 		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
 	})[1]
 	sender := mailtest.NewRecorder(mailtest.From)
-	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	NewMembershipMailer(s, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
 	write := func(env Env, edits ...Edit) []string {
 		t.Helper()
-		ids, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, env, Batch{Batch: edits})
+		ids, err := Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, env, Batch{Batch: edits})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,15 +97,15 @@ func TestASignUpMailsTheVolunteerTheirChairsAndWhoeverIsNotified(t *testing.T) {
 
 func TestHidingAnActivityMailsNobody(t *testing.T) {
 	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
-	s, queue := sampleWithQueue(t)
-	decor := apply(t, s, queue, []Edit{
+	s := sample(t)
+	decor := apply(t, s, []Edit{
 		{Set: year, Cells: map[string]any{"notify": superAdmins}},
 		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
 	})[1]
 	hidden, _ := s.Model().Table("GROUP").Get(decor)
 	sender := mailtest.NewRecorder(mailtest.From)
-	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
-	if _, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: student, Now: testNow}, Batch{Batch: []Edit{
+	NewMembershipMailer(s, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	if _, err := Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: student, Now: testNow}, Batch{Batch: []Edit{
 		{Insert: "MEMBER", Row: map[string]any{"group": hidden["hidden_for"], "person": student, "member": "yes", "added_by": student}},
 	}}); err != nil {
 		t.Fatal(err)
@@ -118,17 +118,17 @@ func TestHidingAnActivityMailsNobody(t *testing.T) {
 
 func TestAnOfferToCoChairNotifiesAndThanksNobody(t *testing.T) {
 	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
-	s, queue := sampleWithQueue(t)
-	decor := apply(t, s, queue, []Edit{
+	s := sample(t)
+	decor := apply(t, s, []Edit{
 		{Set: year, Cells: map[string]any{"notify": superAdmins}},
 		{Insert: "GROUP", As: "decor", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@decor", "person": student, "member": "yes"}},
 	})[1]
 	sender := mailtest.NewRecorder(mailtest.From)
-	NewMembershipMailer(s, queue, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
+	NewMembershipMailer(s, MembershipMailConfig{Sender: sender.Mailgun, Origin: func(app string) string { return "https://" + app + ".test" }})
 	write := func(viewer string, edits ...Edit) []string {
 		t.Helper()
-		ids, err := Write(context.Background(), s, queue, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+		ids, err := Write(context.Background(), s, access.Actor{Email: "juni.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
 		if err != nil {
 			t.Fatal(err)
 		}

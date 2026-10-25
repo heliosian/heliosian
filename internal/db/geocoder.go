@@ -11,7 +11,6 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/geocode"
-	"heliosian/internal/store"
 )
 
 const geocodeLookups = 8
@@ -24,14 +23,13 @@ func Placeable(address string) bool {
 
 type geocoder struct {
 	s      *Store
-	queue  *store.Queue
 	client *geocode.Client
 	failed map[string]bool
 	in     *inbox
 }
 
-func StartGeocoder(s *Store, queue *store.Queue, client *geocode.Client) {
-	g := &geocoder{s: s, queue: queue, client: client, failed: map[string]bool{}, in: s.Model().services.inbox(geocodeInbox)}
+func StartGeocoder(s *Store, client *geocode.Client) {
+	g := &geocoder{s: s, client: client, failed: map[string]bool{}, in: s.Model().services.inbox(geocodeInbox)}
 	go g.run()
 	g.in.wake.poke()
 }
@@ -104,7 +102,7 @@ func (g *geocoder) run() {
 			continue
 		}
 		env := Env{System: "geocoder", Now: time.Now()}
-		if _, err := Write(context.Background(), g.s, g.queue, access.System(env.System), env, Batch{Batch: edits}); err != nil {
+		if _, err := Write(context.Background(), g.s, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 			slog.Error("geocode: record", "placed", placed, "removed", len(gone), "error", err)
 			for _, key := range slices.Concat(addresses, gone) {
 				g.failed[key] = true

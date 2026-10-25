@@ -23,9 +23,9 @@ func doCall(t *testing.T, mux http.Handler, as, path, body string) *httptest.Res
 
 func TestSubscriptionTurnsAListsMailOffAndOn(t *testing.T) {
 	const hummingbirdsParents = "grp00000000030"
-	s, queue := sampleWithQueue(t)
+	s := sample(t)
 	mux := http.NewServeMux()
-	Register(mux, s, queue, newPictures(s, queue), testTokens, func() time.Time { return testNow })
+	Register(mux, s, newPictures(s), testTokens, func() time.Time { return testNow })
 	rowan := "rowan.ashdown@example.org"
 	if rec := doCall(t, mux, rowan, "/api/do/subscription", `{"group": "`+hummingbirdsParents+`", "subscribed": false}`); rec.Code != http.StatusOK {
 		t.Fatalf("unsubscribing answered %d %s", rec.Code, rec.Body)
@@ -49,14 +49,14 @@ func TestSubscriptionTurnsAListsMailOffAndOn(t *testing.T) {
 }
 
 func TestFetchedTakesOnlyALinkStillToFetch(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	if rec := postFile(t, s, queue, newPictures(s, queue), superAdmin, "fetched", map[string]string{"document": "doc00000000000"}, "body", []byte("<html></html>")); rec.Code != http.StatusBadRequest {
+	s := sample(t)
+	if rec := postFile(t, s, newPictures(s), superAdmin, "fetched", map[string]string{"document": "doc00000000000"}, "body", []byte("<html></html>")); rec.Code != http.StatusBadRequest {
 		t.Fatalf("filling a document that is not a link to fetch answered %d %s", rec.Code, rec.Body)
 	}
 }
 
 func TestClaudeCallsCheckBeforeAskingClaude(t *testing.T) {
-	s, _ := sampleWithQueue(t)
+	s := sample(t)
 	mux := http.NewServeMux()
 	now := func() time.Time { return testNow }
 	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens, now)
@@ -91,10 +91,10 @@ func TestClaudeCallsCheckBeforeAskingClaude(t *testing.T) {
 }
 
 func TestReportTriageIsForSuperAdmins(t *testing.T) {
-	s, queue := sampleWithQueue(t)
-	report := apply(t, s, queue, []Edit{{Insert: "REPORT", Row: map[string]any{"app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"}}})[0]
+	s := sample(t)
+	report := apply(t, s, []Edit{{Insert: "REPORT", Row: map[string]any{"app": "who", "kind": "bug", "summary": "Broken", "status": "new", "added_by": parent, "added": "2026-09-01 10:00:00"}}})[0]
 	mux := http.NewServeMux()
-	NewFeedback(s, queue, blob.NewMemoryBucket(), testTokens, func() time.Time { return testNow }, FeedbackConfig{}).RegisterTriage(mux, func(string) string { return "Helios Who?" })
+	NewFeedback(s, blob.NewMemoryBucket(), testTokens, func() time.Time { return testNow }, FeedbackConfig{}).RegisterTriage(mux, func(string) string { return "Helios Who?" })
 	ask := `{"report": "` + report + `", "title": "Broken", "body": "It broke.", "type": "Bug"}`
 	if rec := doCall(t, mux, "rowan.ashdown@example.org", "/api/do/report-draft", ask); rec.Code != http.StatusForbidden {
 		t.Errorf("a parent drafting an issue answered %d", rec.Code)
@@ -113,7 +113,7 @@ func TestReportTriageIsForSuperAdmins(t *testing.T) {
 	if rec := doCall(t, mux, superAdmin, "/api/do/file-report", ask); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("filing with no GitHub set up answered %d %s", rec.Code, rec.Body)
 	}
-	apply(t, s, queue, []Edit{{Set: report, Cells: map[string]any{"status": "filed"}}})
+	apply(t, s, []Edit{{Set: report, Cells: map[string]any{"status": "filed"}}})
 	if rec := doCall(t, mux, superAdmin, "/api/do/file-report", ask); rec.Code != http.StatusConflict {
 		t.Errorf("filing a report filed already answered %d", rec.Code)
 	}

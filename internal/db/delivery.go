@@ -12,20 +12,18 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/mail"
-	"heliosian/internal/store"
 )
 
 type Deliveries struct {
 	s          *Store
-	queue      *store.Queue
 	signingKey string
 	mu         sync.Mutex
 	pending    []Edit
 	flushing   bool
 }
 
-func NewDeliveries(s *Store, queue *store.Queue, signingKey string) *Deliveries {
-	return &Deliveries{s: s, queue: queue, signingKey: signingKey}
+func NewDeliveries(s *Store, signingKey string) *Deliveries {
+	return &Deliveries{s: s, signingKey: signingKey}
 }
 
 func (d *Deliveries) Register(mux *http.ServeMux) {
@@ -164,7 +162,7 @@ func (d *Deliveries) flush() {
 			return
 		}
 		d.mu.Unlock()
-		if _, err := Write(context.Background(), d.s, d.queue, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits}); err != nil {
+		if _, err := Write(context.Background(), d.s, access.System(mailerSystem), Env{System: mailerSystem, Now: time.Now()}, Batch{Batch: edits}); err != nil {
 			slog.Error("deliveries: not recorded", "edits", len(edits), "error", err)
 		}
 	}
