@@ -1,0 +1,25 @@
+# Prevent writes from publishing unreadable stored content
+
+byre task tsks32PLhoxvOf, "Private content references", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsks32PLhoxvOf in byre (GET /api/events?task_id=tsks32PLhoxvOf).
+
+## Summary
+
+Audited main at 4185a16446f88ee5d1da3f2cec026b337965467d against the documented trust model and prior security findings. Fixed one verified authorization bypass at the shared data-model write boundary.
+
+Before: a signed-in member who knew a private CONTENT row ID could insert a PHOTO they owned with that ID in reencode, crop or thumbnail, making the private bytes readable through the new photo. Unreadable originals could also enter privileged background media processing.
+Now: Model.Authorize checks every newly assigned CONTENT reference against the caller's read permissions before the write. Upload handlers carry an internal, unexported attestation for the exact content supplied, preserving uploads and deduplication even when the same private bytes already exist. Clients cannot supply this attestation through JSON. Destination write permissions remain enforced, and system jobs and super admins retain their documented access.
+
+The fix covers all writable content references centrally rather than adding individual endpoint checks. Upload and wiki handlers provide the narrow internal attestation. Added regression tests for inserts, updates, forged attestations, readable reuse and duplicate private-byte uploads; updated two ownership-test fixtures to use readable content; documented the rule in docs/datamodel.md. Non-super-admin API callers attempting to attach unreadable content by ID must instead upload bytes they possess or select readable content.
+
+Deliberately retained documented public previews, tokens in trusted project logs (prior finding #61 invalid), and short-lived PKCE-bound OAuth code reuse. Knowledge of a private content ID is required for the demonstrated exploit; content-ID enumeration was not established. No production deployment, data migration or GitHub issue creation.
+
+Review finished before the merge request. Ran the requested git merge --no-ff --no-commit main; Git reported Already up to date, with no conflicts or additional changes. Reverified the full internal/db suite (18.888s), internal/app, internal/auth, internal/mcp, internal/store, internal/ask and internal/tools tests under timeout 30; go vet ./... and git diff --check passed. Left the clean worktree for byre to conclude the authorized merge.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok medium", grok grok-4.7: done
+
+A write that points a column at a CONTENT row now has to be able to read that row first, unless the server attests that this request supplied those exact bytes. The attestation is an unexported field on the edit, set by photo, flyer, pronunciation, and wiki saves (including when deduplication reuses a private row), and a query batch cannot send it. System jobs and super admins skip the check. Tests cover publishing someone else's original, re-encode, crop, or thumbnail, reusing bytes the caller actually uploaded, and rejecting a client-supplied attestation.
+
+No significant findings.
