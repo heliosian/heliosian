@@ -1,0 +1,23 @@
+# Clarify the built-in calendar lock tooltips
+
+byre task tskijoqLXbB3rF, "Calendar lock wording", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskijoqLXbB3rF in byre (GET /api/events?task_id=tskijoqLXbB3rF).
+
+## Summary
+
+Audited main at e6f7bfde821bcfa88aff41f9235d6093ab17d0e6 for consistency with AGENTS.md, project docs and prevailing UI conventions. Worked without delegation and limited changes to wording with a concrete misleading effect.
+
+Before: the built-in calendar’s lock tooltips in web/when/chrome.js and web/when/pages/home.js said “You can’t modify this calendar, but you can create a new one based off of it,” despite the available name and emoji editor.
+Now: both say “This calendar keeps its own filters. Save a new calendar to keep different filters.” The explanation describes the actual filter restriction and preserves runtime behavior.
+
+Deliberately left accurate documentation, cancellation spelling, descriptive comments and tool logging alone where mechanical cleanup did not meet the audit’s threshold. No new tests for the two static string edits.
+
+Validation: go vet ./...; focused saved-search ownership and feed tests under timeout 30; sample calendar page capture under timeout 20; git diff --check. Latest work reviewed. At merge time, ran git merge --no-ff --no-commit main: already up to date, with no conflicts or resolution changes. Repeated vet and focused tests successfully. No manual commit or push; byre concludes the merge.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Updates the calendar lock tooltip in the navigation and calendar heading to explain that the calendar retains its filters and that different filters can be saved as a new calendar. This replaces wording that incorrectly implied the calendar could not be modified at all, although its name and emoji remain editable. No behavior changes.
+
+No significant findings.
