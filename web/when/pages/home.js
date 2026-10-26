@@ -437,7 +437,7 @@ export function homePage(date) {
     headline.append(mark, pick);
     if (shown.locked) {
       const lock = el('span', 'calendar-lock');
-      lock.title = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
+      lock.title = 'This calendar keeps its own filters. Save a new calendar to keep different filters.';
       lock.append(svg('lock'));
       headline.append(lock);
     }

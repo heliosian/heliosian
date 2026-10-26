@@ -173,7 +173,7 @@ export function calendarMenu(onPick) {
 
 let editingNav = false;
 
-const lockedWords = 'You can\u2019t modify this calendar, but you can create a new one based off of it.';
+const lockedWords = 'This calendar keeps its own filters. Save a new calendar to keep different filters.';
 
 function fillNav(nav) {
   for (const item of primary) {
