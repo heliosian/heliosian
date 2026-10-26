@@ -54,17 +54,17 @@ const (
 	ChangePrefix          = "chg"
 )
 
-var prefixes = map[string]bool{
-	PersonPrefix: true, PersonEmailPrefix: true, PhotoPrefix: true, PersonSettingPrefix: true,
-	BirthdayYearPrefix: true, BirthdayPrefix: true, FeedTokenPrefix: true, SavedSearchPrefix: true,
-	GroupPrefix: true, GroupSourcePrefix: true, MemberPrefix: true, PaymentPrefix: true, EffectiveMemberPrefix: true,
-	RulePrefix: true, DocumentPrefix: true, DocumentGroupPrefix: true, ContentPrefix: true, StockPrefix: true, ToDoPrefix: true, ToDoMarkPrefix: true, SearchPrefix: true,
-	ReportPrefix: true, MessagePrefix: true, RecipientPrefix: true, MailTokenPrefix: true,
-	SettingPrefix: true, CharityPrefix: true, AppPrefix: true,
-	WidgetPrefix: true, GeocodePrefix: true, AliasPrefix: true, RedirectPrefix: true,
-	InviteServicePrefix: true, InviteTemplatePrefix: true, GreetingPrefix: true,
-	ChangePrefix: true,
-}
+var prefixes = func() map[string]bool {
+	out := map[string]bool{ChangePrefix: true}
+	for _, t := range Tables {
+		for _, c := range t.Columns {
+			if c.Kind == ID {
+				out[c.Prefix] = true
+			}
+		}
+	}
+	return out
+}()
 
 func Mint(prefix string, taken func(string) bool) string {
 	if !prefixes[prefix] {
