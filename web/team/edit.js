@@ -1139,7 +1139,7 @@ export function openSettings() {
   const settings = state.model.settings;
   const expense = text(settings.expenseFormUrl, {type: 'url', required: true});
   const intro = textarea(settings.intro, 4);
-  openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Shown under the Sign Up heading')], {
+  openModal('Settings', [field('Expense form URL', expense), field('Intro', intro, 'Background for answers about volunteering in Helios Ask and connected assistants.')], {
     submit: async () => {
       await writes.saveSetting('Expense Form URL', expense.value);
       await writes.saveSetting('Intro', intro.value);

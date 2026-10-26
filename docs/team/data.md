@@ -44,7 +44,7 @@ An activity's list reaches its own members. Its settings' "Email list reaches ev
 
 ## Everything else
 
-- `SETTING` rows of app `team`: `Intro` (shown under the Sign Up heading) and `Expense Form URL`.
+- `SETTING` rows of app `team`: `Intro` and `Expense Form URL`, included in `helios_activities` answers for Helios Ask and Helios MCP (`internal/tools/apps.go`). The Opportunities page displays neither setting.
 - `REDIRECT` rows of app `team`: `old` a path here (a whole link is read as its path, a bare word as `/g/<word>`), `new` a path here or a whole `https://` address, `added` the day it was made (Redirects in `team.md`).
 - `ALIAS` rows: the ids activities and headings had in the `Events` sheet, and old short names, each naming its group.
 - `APP` row `team`: its `admins` group is `team-admins`.

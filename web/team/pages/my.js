@@ -15,7 +15,7 @@ function list(rows, who) {
   const events = sortByStart([...new Set(shown.map(r => rootOf(r.act)))]);
   if (!events.length) {
     const panel = el('div', 'panel');
-    const nobody = who ? `${who.name} isn't signed up for anything this year.` : "You haven't signed up for anything this year. Head to Sign Up!";
+    const nobody = who ? `${who.name} isn't signed up for anything this year.` : "You haven't signed up for anything this year. Head to Opportunities!";
     panel.append(el('div', 'panel-empty', query ? 'Nothing matches.' : nobody));
     return panel;
   }

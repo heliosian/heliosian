@@ -15,7 +15,7 @@ function categoriesCard() {
 function settingsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Settings'));
-  card.append(el('div', 'hint', 'The expense form the Sign Up page links to, and the intro under its heading.'));
+  card.append(el('div', 'hint', 'The introduction and expense form shared with Helios Ask and connected assistants.'));
   const expense = el('div', 'admin-row');
   const expenseBody = el('div', 'grow');
   expenseBody.append(el('div', '', 'Expense form'), el('div', 'sub', state.model.settings.expenseFormUrl));
