@@ -1,0 +1,21 @@
+# Clarify plans and GitHub issue references
+
+byre task tsk8bOLFnl05v6, "Issue filing preference", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk8bOLFnl05v6 in byre (GET /api/events?task_id=tsk8bOLFnl05v6).
+
+## Summary
+
+Updated only two AGENTS.md instructions to reflect Ian's issue-filing preference and GitHub closing syntax.
+
+Before: Plans belonged in GitHub issues, and fixing work used a bare issue reference in its commit message.
+Now: Plans and follow-up work belong in TODO.md; agents file GitHub issues only when Ian asks. Commit/merge titles use a closing keyword such as `fixes #123` for fixes and bare `(#123)` only for related work that does not fix the issue.
+
+Kept the existing style and left all other instructions untouched. No GitHub issues were filed. The documentation diff passed whitespace checks and review. Merged main without conflicts or manual resolutions; no generated files required regeneration.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Updates AGENTS.md so plans and follow-up work belong in TODO.md and agents file GitHub issues only when Ian asks. It also requires closing keywords in commit/merge titles for issue fixes, reserving bare issue references for related work. The diff contains exactly the two requested wording changes.
+
+No significant findings.
