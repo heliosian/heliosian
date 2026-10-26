@@ -1,0 +1,23 @@
+# Share the worker wakeup mechanism
+
+byre task tskSDhcvikVNhU, "Worker wakeups", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskSDhcvikVNhU in byre (GET /api/events?task_id=tskSDhcvikVNhU).
+
+## Summary
+
+Audited main at 4a08ce22d7366a59b05aa22ee14498fa2907c10e for structural simplifications, reading project rules and architecture docs and surveying shared infrastructure, model derivation, workers, app pages, redirects, and browser state.
+
+Before: internal/db/pictures.go, search.go, and calendargoogle.go repeated five nonblocking worker notification blocks and constructed four capacity-one channels independently; SearchIndex.signal and CalendarWatcher.Kick wrapped that same mechanism.
+Now: those workers use the existing wake type, newWake constructor, and poke method in services.go directly. The two forwarding methods are deleted, removing 23 net lines while preserving notification points, buffering, locks, queue ordering, and user-visible behavior.
+
+Reused the existing primitive rather than adding a queue abstraction. Left picture and search queues separate because their lock ownership and scheduling differ. Left Team and Celebrate redirects alone because their matching and chaining differences are intentional and documented. No production data or UI changes, new flags, compatibility paths, validation, comments, or tests.
+
+Focused existing db tests for calendar hooks/feeds, photo startup/cropping, and search readiness/making/rebuilding passed under timeout 30. go vet ./... and git diff --check passed. After review, requested git merge --no-ff --no-commit main reported Already up to date; no conflicts or resolution changes. Verification was repeated before landing.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The change consolidates calendar, picture, and search worker notifications on the existing `wake` channel type and its `poke` method. It removes duplicate nonblocking-send code and two redundant signaling methods while preserving channel capacity, locking, and worker behavior. Review was by code inspection; no builds or tests were run, as requested.
+
+No significant findings.
