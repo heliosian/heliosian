@@ -1,0 +1,23 @@
+# Unify share card date formatting
+
+byre task tskwDoSxXLyt65, "Share date formatting", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskwDoSxXLyt65 in byre (GET /api/events?task_id=tskwDoSxXLyt65).
+
+## Summary
+
+Audited main at 9363e8ca786ad42773b107a74a0f3e384e4c46d8 for structural simplicity, reading project guidance and inspecting store/transaction workers, app wiring, shared browser/calendar code, mail delivery, calendar planning, model links and share-card paths. Selected one focused simplification.
+
+Before: internal/db/activitypages.go formatted multi-day events through spanLines with cells.When, then independently parsed single-day events using narrower time.Parse layouts; valid timestamps containing seconds could lose their date or end time in previews.
+Now: whenLines parses each endpoint once with cells.When and formats both shapes from those values; spanLines is deleted. The shared When, Celebrate and HCA-Team preview formatter accepts the model's date formats consistently. Existing date-only and minute-resolution formatting is preserved.
+
+Extended the existing formatting test table for seconds-bearing timestamps. Focused activity/calendar preview tests passed under timeout 30, go vet ./... passed, and git diff --check was clean. At merge preparation, git merge --no-ff --no-commit main reported already up to date; no conflicts or substantive merge resolutions were required, and verification passed again.
+
+Deliberately left smaller mail recipient helper consolidation and duplicated birthday year-setting parsing alone: the former differs in deduplication and would widen mail behavior scope; the latter offered less value. No migrations, dependencies or deployment were needed. No departures from the audit scope.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Consolidates share-preview date formatting into `whenLines`, using `cells.When` for both single-day and multi-day dates and removing `spanLines`. This fixes single-day timestamps containing seconds; three test cases cover that format and a date-only start with a timed end. Reviewed the code and callers without running builds or tests, as requested.
+
+No significant findings.
