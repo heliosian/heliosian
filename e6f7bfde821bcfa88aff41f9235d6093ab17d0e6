@@ -1,0 +1,23 @@
+# Use theme colors for attendance status labels
+
+byre task tskSH5QpYrf94B, "Attendance contrast", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskSH5QpYrf94B in byre (GET /api/events?task_id=tskSH5QpYrf94B).
+
+## Summary
+
+Consistency audit of main at 08476139ec1a61db6043f4cfe501ad790966b816, surveying project rules, docs, routes, user-facing wording, logging, comments, and shared styling. One actionable inconsistency cleared the audit's bar: attendance indicators bypassed the existing dark-theme palette.
+
+Before: shared day-row attendance badges and RSVP links in web/common/dayrows.css, and My Events status notes in web/when/style.css, used fixed daytime colors. Signed up measured 2.8:1 contrast in dark mode.
+Now: all five CSS rules use the existing --yes-text, --maybe-text, --yes-line and --maybe-line variables with their original daytime colors preserved. Signed up measures 9.7:1 contrast in dark mode.
+
+Used existing theme variables rather than new colors or selector overrides, following docs/who/design.md. Verified with go vet ./..., timeout 30 go test ./internal/app, git diff --check, inspected sample-data headless Chrome capture, and darkcheck --compare on When's calendar, My Events, and Heliosian home; those pages reported no dark-only contrast findings after the fix. Verification used sample data rather than production browsing.
+
+Deliberately left daytime contrast warnings on toolbar counts, today's calendar date and a My Events month stamp for design judgment; spelling variants and font-weight inconsistencies did not meet the requested confusion threshold. No behavior or docs changes. No delegation. The requested git merge --no-ff --no-commit main reported Already up to date; no conflicts or resolution changes. Vet and app tests passed again before landing.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Attendance badges in the shared day rows and status notes on Helios When’s My Events cards now use the existing dark mode RSVP color variables. This improves their contrast in dark mode while preserving their current light and Quan colors. Reviewed the CSS, theme definitions, affected markup, and documented palette rules; no builds were run, as requested.
+
+No significant findings.
