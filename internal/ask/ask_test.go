@@ -63,7 +63,7 @@ func sampleSources(t *testing.T) sample {
 	}
 	now := func() time.Time { return sampleNow }
 	search := db.NewSearcher(s, bucket, vertex)
-	set := tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: now})
+	set := tools.New(tools.Deps{Search: search, Bucket: bucket, Now: now})
 	return sample{sources: Sources{Data: s, Tools: set, Now: now}, data: s, pics: db.NewPictures(s, bucket)}
 }
 

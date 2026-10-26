@@ -28,7 +28,6 @@ const (
 )
 
 type Deps struct {
-	Data   *db.Store
 	Search *db.Searcher
 	Bucket *blob.Bucket
 	Now    func() time.Time

@@ -202,7 +202,7 @@ func NewCore(cfg Config) *Core {
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
 	birthdays := db.NewBirthdayMailer(dataStore, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
-	shared := tools.New(tools.Deps{Data: dataStore, Search: search, Bucket: cfg.Bucket, Now: schoolNow})
+	shared := tools.New(tools.Deps{Search: search, Bucket: cfg.Bucket, Now: schoolNow})
 	mcpMux := http.NewServeMux()
 	mcp.Register(mcpMux, api, mcp.Deps{Data: dataStore, Tools: shared, Tokens: tokens})
 	apps := []appSpec{

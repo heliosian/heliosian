@@ -84,7 +84,7 @@ func setup(t *testing.T) fixture {
 	mux := http.NewServeMux()
 	Register(mux, mux, Deps{
 		Data:  s,
-		Tools: tools.New(tools.Deps{Data: s, Search: search, Bucket: bucket, Now: time.Now}),
+		Tools: tools.New(tools.Deps{Search: search, Bucket: bucket, Now: time.Now}),
 		Tokens: auth.Tokens{
 			Key:      []byte("test"),
 			Sessions: signed,

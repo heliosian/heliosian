@@ -64,7 +64,7 @@ func sample(t *testing.T) (*Set, *db.Store) {
 		t.Fatal(err)
 	}
 	search := db.NewSearcher(s, bucket, vertex)
-	return New(Deps{Data: s, Search: search, Bucket: bucket, Now: func() time.Time { return sampleNow }}), s
+	return New(Deps{Search: search, Bucket: bucket, Now: func() time.Time { return sampleNow }}), s
 }
 
 func run(t *testing.T, set *Set, s *db.Store, name string, input string) (Answer, error) {

@@ -58,7 +58,7 @@ func (sv *services) collect(tx *store.Tx[Model], in *inbox, d delivery) {
 		h := &heldWrite{write: sv.writes.Add(1), by: map[*inbox][]delivery{}}
 		tx.Swapped(func() {
 			for _, in := range h.order {
-				in.deliverAll(h.by[in])
+				in.deliver(h.by[in]...)
 			}
 		})
 		return h
@@ -82,14 +82,7 @@ type inbox struct {
 	wake    wake
 }
 
-func (in *inbox) deliver(d delivery) {
-	in.mu.Lock()
-	in.pending = append(in.pending, d)
-	in.mu.Unlock()
-	in.wake.poke()
-}
-
-func (in *inbox) deliverAll(ds []delivery) {
+func (in *inbox) deliver(ds ...delivery) {
 	in.mu.Lock()
 	in.pending = append(in.pending, ds...)
 	in.mu.Unlock()
