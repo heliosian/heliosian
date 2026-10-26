@@ -1,0 +1,26 @@
+# Clarify Loop membership labels and current app artwork
+
+byre task tski3s6Jh5IiXY, "Loop wording audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tski3s6Jh5IiXY in byre (GET /api/events?task_id=tski3s6Jh5IiXY).
+
+## Summary
+
+Consistency audit of main at 1f34e9f5bdb2ced913d0adf89c84ffab430c4fbf, performed without delegation. Selected two concrete sources of confusion and left cosmetic cleanup alone.
+
+Before: Loop's list cards and manager tiles called effective membership “Subscribed,” including after mail was turned off; the visibility hint suggested unsubscribing removed membership.
+Now: the same checks say “Member” or “Not a member.” The hint and manager tooltip distinguish membership from receiving mail, and CSS names and Loop documentation match. Chose truthful membership labels over adding subscription queries; delivery, membership, and permissions are unchanged.
+
+Before: Ask's and Loop's brand docs claimed temporary Heliosian artwork, and Loop claimed Who?'s sidebar outline.
+Now: the docs identify each app's existing designer exports and served marks, including Loop's own outline and Ask's conversation faces.
+
+Verification: go vet ./... and three targeted existing unsubscribe/mail tests passed, tests under timeout 30. A local Chrome probe unsubscribed the sample International Night manager, checked the separate no-mail notice and retained Member labels on manager and list pages, and captured an inspected screenshot. Used repository Chrome tooling on iso because byre-hands Chrome was unavailable. Actual per-manager subscription reporting was deliberately left out because it needs additional data reads and a UI behavior decision.
+
+The requested git merge --no-ff --no-commit main reported already up to date; there were no conflicts or resolution changes. Vet and targeted tests were rerun for the merge turn. No manual commit or push.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Loop’s list and manager badges now say “Member” or “Not a member” instead of implying that membership guarantees mail delivery. The visibility help explains that unsubscribing preserves membership, the matching CSS classes are renamed, and Ask and Loop’s brand documentation describes their current assets.
+
+No significant findings.
