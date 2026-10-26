@@ -438,3 +438,20 @@ func TestEmailsAreLowerCase(t *testing.T) {
 		t.Fatalf("a placeholder address: %v", err)
 	}
 }
+
+func TestCancelledQueriesDoNotAnswerInvalidInput(t *testing.T) {
+	s := sample(t)
+	mux := http.NewServeMux()
+	Register(mux, s, newPictures(s), testTokens)
+	for _, body := range []string{`["from", "PERSON"]`, `{"queries":{"people":"(from PERSON)"}}`} {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		r := httptest.NewRequest("QUERY", "/api/q", strings.NewReader(body)).WithContext(ctx)
+		r.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		serveAs(mux, rec, r, superAdmin)
+		if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+			t.Errorf("cancelled %s: %d %s", body, rec.Code, rec.Body)
+		}
+	}
+}

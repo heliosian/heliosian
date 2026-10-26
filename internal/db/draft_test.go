@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -183,5 +184,19 @@ func TestATextRuleCannotListAnOutsideGuest(t *testing.T) {
 	}
 	if !slices.ContainsFunc(out.Members, func(m draftPerson) bool { return m.Person == parent }) {
 		t.Fatalf("the draft dropped a directory name: %+v", out)
+	}
+}
+
+func TestCancelledCharityCheckDoesNotDenyTeamMembership(t *testing.T) {
+	s := sample(t)
+	mux := http.NewServeMux()
+	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	r := httptest.NewRequest(http.MethodPost, "/api/do/describe-charity", strings.NewReader(`{"name":"School supplies"}`)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	serveAs(mux, rec, r, superAdmin)
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 {
+		t.Fatalf("cancelled charity check: %d %s", rec.Code, rec.Body)
 	}
 }

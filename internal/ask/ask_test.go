@@ -598,3 +598,14 @@ func TestChatRefusesEmptyAndOverlongMessages(t *testing.T) {
 		t.Errorf("overlong: %d", rec.Code)
 	}
 }
+
+func TestChatCancelledDuringPromptSetupDoesNotAnswerFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := httptest.NewRequest(http.MethodPost, "/api/ask/chat", strings.NewReader(`{"message":"What kind of day is today?"}`)).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	serveApp(t).ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.Len() != 0 || rec.Flushed {
+		t.Fatalf("cancelled prompt setup: %d %s", rec.Code, rec.Body)
+	}
+}

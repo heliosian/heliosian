@@ -2,6 +2,7 @@ package serve
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -86,6 +87,9 @@ func Write(w http.ResponseWriter, r *http.Request, status int, v any) {
 }
 
 func Error(w http.ResponseWriter, r *http.Request, err error) {
+	if r.Context().Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+		return
+	}
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) {
 		slog.ErrorContext(r.Context(), "request failed", "path", r.URL.Path, "error", err)

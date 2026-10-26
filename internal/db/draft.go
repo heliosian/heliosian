@@ -64,7 +64,11 @@ func (m *Model) visibleIDs(ctx context.Context, env Env, table, condition string
 	if err != nil {
 		return nil, err
 	}
-	for _, id := range m.Run(ctx, q, env).IDs {
+	result := m.Run(ctx, q, env)
+	if result.Err != nil {
+		return nil, result.Err
+	}
+	for _, id := range result.IDs {
 		out[id] = true
 	}
 	return out, nil
@@ -318,7 +322,12 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 			serve.Error(w, r, err)
 			return
 		}
-		if len(m.Run(r.Context(), team, env).IDs) == 0 {
+		result := m.Run(r.Context(), team, env)
+		if result.Err != nil {
+			serve.Error(w, r, result.Err)
+			return
+		}
+		if len(result.IDs) == 0 {
 			serve.Error(w, r, access.Forbidden("only the Birthdays team looks charities up"))
 			return
 		}

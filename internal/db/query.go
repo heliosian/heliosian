@@ -66,6 +66,8 @@ type frame struct {
 }
 
 type run struct {
+	ctx     context.Context
+	cancel  context.CancelCauseFunc
 	m       *Model
 	whole   bool
 	viewer  store.Row
@@ -87,13 +89,18 @@ type run struct {
 
 const queryVisits = 10_000_000
 
-type overspent struct{}
-
-func (r *run) spend(n int) {
+func (r *run) spend(n int) bool {
+	select {
+	case <-r.ctx.Done():
+		return false
+	default:
+	}
 	r.visited += n
 	if r.limited && r.visited > queryVisits {
-		panic(overspent{})
+		r.cancel(fmt.Errorf("the query visits more than %d rows; narrow it with a where that names the rows it needs", queryVisits))
+		return false
 	}
+	return true
 }
 
 type cellKey struct {
@@ -424,6 +431,9 @@ func (s *scan) candidates(f *frame) []store.Row {
 	if s.probeSet != nil {
 		out := []store.Row{}
 		for id := range s.probeSet(f).keys {
+			if !f.run.spend(0) {
+				return nil
+			}
 			out = append(out, s.lookup(f, s.probeCol, id)...)
 		}
 		if !s.table.Generated {
@@ -444,8 +454,14 @@ func (s *scan) candidates(f *frame) []store.Row {
 			}
 		}
 		for _, b := range s.union {
+			if !f.run.spend(0) {
+				return nil
+			}
 			if b.set != nil {
 				for id := range b.set(f).keys {
+					if !f.run.spend(0) {
+						return nil
+					}
 					add(s.lookup(f, b.col, id))
 				}
 				continue
@@ -468,6 +484,9 @@ func (s *scan) candidates(f *frame) []store.Row {
 	}
 	var fewest []store.Row
 	for i, p := range s.probes {
+		if !f.run.spend(0) {
+			return nil
+		}
 		v := p.value.eval(f)
 		if v.blank {
 			return nil
@@ -481,7 +500,9 @@ func (s *scan) candidates(f *frame) []store.Row {
 
 func (s *scan) lookup(f *frame, col, v string) []store.Row {
 	rows := s.indexed(f, col, v)
-	f.run.spend(1 + len(rows))
+	if !f.run.spend(1 + len(rows)) {
+		return nil
+	}
 	return rows
 }
 
@@ -506,9 +527,13 @@ func (s *scan) indexed(f *frame, col, v string) []store.Row {
 }
 
 func (s *scan) each(f *frame, fn func(inner *frame) bool) {
-	f.run.spend(1)
+	if !f.run.spend(1) {
+		return
+	}
 	for _, row := range s.candidates(f) {
-		f.run.spend(1)
+		if !f.run.spend(1) {
+			return
+		}
 		inner := &frame{table: s.table, row: row, name: s.name, outer: f, run: f.run}
 		if !s.matches(inner, true) {
 			continue
@@ -989,10 +1014,14 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 				if out.keys[id] != 0 {
 					continue
 				}
-				f.run.spend(1)
+				if !f.run.spend(1) {
+					return out
+				}
 				out.add(value{kind: ID, s: id})
 				children := rows.Referencing("parent", id)
-				f.run.spend(1 + len(children))
+				if !f.run.spend(1 + len(children)) {
+					return out
+				}
 				for _, child := range children {
 					pending = append(pending, child["id"])
 				}
@@ -1116,7 +1145,9 @@ func (r *run) fuse(f *frame, spec *selectSpec) bool {
 	for _, row := range rows {
 		checked, readable := false, false
 		for i, s := range pending {
-			r.spend(1)
+			if !r.spend(1) {
+				return false
+			}
 			inner := &frame{table: t, row: row, name: s.inner.name, outer: f, run: r}
 			if !s.inner.matches(inner, true) {
 				continue
@@ -1443,7 +1474,7 @@ func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
 }
 
 func (m *Model) bareRun(whole bool, now time.Time) *run {
-	return &run{m: m, whole: whole, now: wallClock(now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, every: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
+	return &run{ctx: context.Background(), m: m, whole: whole, now: wallClock(now), rows: map[cellKey]bool{}, columns: map[cellKey]bool{}, every: map[cellKey]bool{}, memo: map[string]any{}, fusable: map[string][]*selectSpec{}, filling: map[*selectSpec]bool{}, queries: map[string]Result{}}
 }
 
 func (m *Model) newRun(env Env) *run {
@@ -1476,6 +1507,8 @@ func (m *Model) Run(ctx context.Context, q *Query, env Env) Result {
 
 func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 	r := m.newRun(env)
+	r.ctx, r.cancel = context.WithCancelCause(ctx)
+	defer r.cancel(nil)
 	r.limited = r.system == ""
 	for _, q := range qs {
 		for _, s := range q.selects {
@@ -1485,30 +1518,24 @@ func (m *Model) RunAll(ctx context.Context, qs []*Query, env Env) []Result {
 	out := []Result{}
 	for _, q := range qs {
 		key := guardKey(q.scan.guarded) + q.String()
-		if held, ok := r.queries[key]; ok {
+		if held, ok := r.queries[key]; ok && r.ctx.Err() == nil {
 			out = append(out, held)
 			continue
 		}
-		result := m.runGuarded(ctx, r, q)
+		result := m.runIn(ctx, r, q)
+		if err := context.Cause(r.ctx); err != nil {
+			result = Result{Table: q.scan.table.Name, IDs: []string{}, Resources: map[string]map[string]store.Row{}, Err: err}
+		}
 		r.queries[key] = result
 		out = append(out, result)
 	}
 	return out
 }
 
-func (m *Model) runGuarded(ctx context.Context, r *run, q *Query) (result Result) {
-	defer func() {
-		if p := recover(); p != nil {
-			if _, spent := p.(overspent); !spent {
-				panic(p)
-			}
-			result = Result{Table: q.scan.table.Name, IDs: []string{}, Resources: map[string]map[string]store.Row{}, Err: fmt.Errorf("the query visits more than %d rows; narrow it with a where that names the rows it needs", queryVisits)}
-		}
-	}()
-	return m.runIn(ctx, r, q)
-}
-
 func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
+	if !r.spend(0) {
+		return Result{}
+	}
 	_, span := trace.Start(ctx, "run")
 	defer span.End()
 	r.policy, r.span = span.Tally("policy"), span
@@ -1541,6 +1568,9 @@ func (m *Model) runIn(ctx context.Context, r *run, q *Query) Result {
 	redacting, including := span.Tally("redact"), span.Tally("include")
 	whole := map[cellKey]bool{}
 	for _, row := range rows {
+		if !r.spend(0) {
+			return Result{}
+		}
 		start := time.Now()
 		answered := row
 		switch {
@@ -1600,12 +1630,18 @@ func (q *Query) sorted(rows []store.Row, top *frame) []store.Row {
 	}
 	all := []keyed{}
 	for _, row := range rows {
+		if !top.run.spend(0) {
+			return nil
+		}
 		f := &frame{table: q.scan.table, row: row, name: q.scan.name, outer: top, run: top.run}
 		k := keyed{row: row}
 		for _, o := range q.order {
 			k.keys = append(k.keys, o.path.eval(f))
 		}
 		all = append(all, k)
+	}
+	if top.run.ctx.Err() != nil {
+		return nil
 	}
 	slices.SortStableFunc(all, func(a, b keyed) int {
 		for i, o := range q.order {
@@ -1630,6 +1666,9 @@ func (q *Query) sorted(rows []store.Row, top *frame) []store.Row {
 	})
 	out := []store.Row{}
 	for _, k := range all {
+		if top.run.ctx.Err() != nil {
+			return nil
+		}
 		out = append(out, k.row)
 	}
 	return out

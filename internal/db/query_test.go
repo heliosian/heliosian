@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -801,5 +803,87 @@ func TestRuleSelectors(t *testing.T) {
 	}
 	if _, err := applyErr(s, []Edit{{Insert: "RULE", Row: map[string]any{"group": tag, "order": "d", "property": "colour", "value": "red"}}}); err == nil || !strings.Contains(err.Error(), "no PERSON column") {
 		t.Fatalf("a rule on no column: %v", err)
+	}
+}
+
+func TestQueriesStopWhenTheirContextEnds(t *testing.T) {
+	m := sample(t).Model()
+	q := unfiltered(t, `(from PERSON @p (where (exists MEMBER @a (exists MEMBER @b (exists MEMBER @c (and (= @c.note @b.note) (!= @c.note @a.note) (= @c.note @p.name_sort)))))))`)
+	for _, env := range []Env{{Viewer: parent, Now: testNow}, {System: "test", Now: testNow}} {
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Millisecond)
+		started := time.Now()
+		results := m.RunAll(ctx, []*Query{q, unfiltered(t, `(from GROUP)`)}, env)
+		cancel()
+		t.Logf("query as %+v with a 5ms deadline returned after %v", env, time.Since(started))
+		for i, result := range results {
+			if !errors.Is(result.Err, context.DeadlineExceeded) || len(result.IDs) != 0 || len(result.Resources) != 0 {
+				t.Errorf("query %d after deadline: %v, %d ids, %d resource tables", i, result.Err, len(result.IDs), len(result.Resources))
+			}
+		}
+	}
+	ctx, stop := context.WithCancel(t.Context())
+	stop()
+	for _, env := range []Env{{Viewer: parent, Now: testNow}, {System: "test", Now: testNow}} {
+		result := m.Run(ctx, unfiltered(t, `(from PERSON)`), env)
+		if !errors.Is(result.Err, context.Canceled) || len(result.IDs) != 0 || len(result.Resources) != 0 {
+			t.Errorf("cancelled as %+v: %v, %d ids, %d resource tables", env, result.Err, len(result.IDs), len(result.Resources))
+		}
+	}
+}
+
+func TestCancellationDuringSortingAndOutput(t *testing.T) {
+	m := sample(t).Model()
+	for _, stage := range []string{"sort keys", "before sort", "output and includes"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			q := unfiltered(t, `(from MEMBER (include person group))`)
+			seen := 0
+			if stage == "output and includes" {
+				q.scan.conds = append(q.scan.conds, cond{eval: func(*frame) bool {
+					seen++
+					if seen == m.Table("MEMBER").Len() {
+						cancel()
+					}
+					return true
+				}})
+			} else {
+				q = unfiltered(t, `(from MEMBER (order note asc))`)
+				key := q.order[0].path.eval
+				q.order[0].path.eval = func(f *frame) value {
+					seen++
+					if stage == "sort keys" || seen == m.Table("MEMBER").Len() {
+						cancel()
+					}
+					return key(f)
+				}
+			}
+			result := m.Run(ctx, q, Env{System: "test", Whole: true, Now: testNow})
+			if stage == "sort keys" && seen != 1 {
+				t.Errorf("evaluated %d keys after cancelling on the first", seen)
+			}
+			if seen == 0 || !errors.Is(result.Err, context.Canceled) || len(result.IDs) != 0 || len(result.Resources) != 0 {
+				t.Fatalf("cancelled during %s: %v, %d ids, %d resource tables, %d visits", stage, result.Err, len(result.IDs), len(result.Resources), seen)
+			}
+		})
+	}
+}
+
+func TestCancelledVisibilityChecksReturnTheirError(t *testing.T) {
+	m := sample(t).Model()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	env := Env{Viewer: parent, Now: testNow}
+	if _, err := m.visibleIDs(ctx, env, "PERSON", "", []string{parent}); !errors.Is(err, context.Canceled) {
+		t.Errorf("visible ids: %v", err)
+	}
+	if err := m.checkDraft(ctx, env, groupDraft{List: "grp00000000040"}); !errors.Is(err, context.Canceled) {
+		t.Errorf("draft check: %v", err)
+	}
+	if _, err := m.passes(ctx, env, "GROUP", "grp00000000040", "(visible @row)"); !errors.Is(err, context.Canceled) {
+		t.Errorf("invitation permission: %v", err)
+	}
+	if _, err := m.guestList(ctx, env, "grp00000000040"); !errors.Is(err, context.Canceled) {
+		t.Errorf("guest list: %v", err)
 	}
 }

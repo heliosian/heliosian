@@ -199,6 +199,9 @@ func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) 
 			for i, result := range m.RunAll(ctx, qs, env) {
 				slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "name", names[i], "query", qs[i].tree.flat())
 				if result.Err != nil {
+					if ctx.Err() != nil {
+						return
+					}
 					serve.Error(w, r, access.Invalid("%s: %v", names[i], result.Err))
 					return
 				}
@@ -227,6 +230,9 @@ func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) 
 		slog.InfoContext(r.Context(), "query", "viewer", env.Viewer, "system", env.System, "query", q.tree.flat())
 		result := m.Run(ctx, q, env)
 		if result.Err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			serve.Error(w, r, access.Invalid("%v", result.Err))
 			return
 		}

@@ -96,19 +96,25 @@ func guestMembership(g store.Row, viewer string, edit Edit) Edit {
 	return edit
 }
 
-func (m *Model) passes(ctx context.Context, env Env, table, id, cond string) bool {
+func (m *Model) passes(ctx context.Context, env Env, table, id, cond string) (bool, error) {
 	q, err := Parse(fmt.Sprintf("(from %s @row (where (= id %q) %s))", table, id, cond))
 	if err != nil {
-		slog.ErrorContext(ctx, "invitations: a check does not parse", "table", table, "condition", cond, "error", err)
-		return false
+		return false, err
 	}
 	result := m.Run(ctx, q, env)
-	return result.Err == nil && len(result.IDs) == 1
+	return len(result.IDs) == 1, result.Err
 }
 
 func (m *Model) guestList(ctx context.Context, env Env, id string) (store.Row, error) {
 	g, ok := m.Table("GROUP").Get(id)
-	if !ok || !slices.Contains(guestListKinds, g["kind"]) || !m.passes(ctx, env, "GROUP", id, "(visible @row)") {
+	if !ok || !slices.Contains(guestListKinds, g["kind"]) {
+		return nil, access.Missing("no event, party or activity %s", id)
+	}
+	visible, err := m.passes(ctx, env, "GROUP", id, "(visible @row)")
+	if err != nil {
+		return nil, err
+	}
+	if !visible {
 		return nil, access.Missing("no event, party or activity %s", id)
 	}
 	return g, nil
@@ -260,7 +266,10 @@ func (iv *Invitations) invite(ctx context.Context, m *Model, env Env, actor acce
 	if err != nil {
 		return sentAnswer{}, err
 	}
-	runs := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	if err != nil {
+		return sentAnswer{}, err
+	}
 	pending := m.pendingOf(g["id"])
 	people := ask.People
 	if len(people) == 0 {
@@ -330,7 +339,11 @@ func (iv *Invitations) guestMail(ctx context.Context, m *Model, env Env, actor a
 	if err != nil {
 		return sentAnswer{}, err
 	}
-	if !m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)") {
+	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	if err != nil {
+		return sentAnswer{}, err
+	}
+	if !runs {
 		return sentAnswer{}, access.Forbidden("only the hosts mail the guest list")
 	}
 	kind, ok := guestMailKinds[ask.Kind]
@@ -416,12 +429,27 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	if err != nil {
 		return sentAnswer{}, err
 	}
-	runs := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
-	if !runs && !m.passes(ctx, env, "GROUP", g["id"], othersJoin) {
-		return sentAnswer{}, access.Forbidden("only the hosts add people to this guest list")
+	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	if err != nil {
+		return sentAnswer{}, err
 	}
-	if ask.GuestOf != "" && !runs && !m.passes(ctx, env, "PERSON", ask.GuestOf, "(self_or_household @row)") {
-		return sentAnswer{}, access.Forbidden("a guest is brought by you or someone in your family")
+	if !runs {
+		others, err := m.passes(ctx, env, "GROUP", g["id"], othersJoin)
+		if err != nil {
+			return sentAnswer{}, err
+		}
+		if !others {
+			return sentAnswer{}, access.Forbidden("only the hosts add people to this guest list")
+		}
+		if ask.GuestOf != "" {
+			family, err := m.passes(ctx, env, "PERSON", ask.GuestOf, "(self_or_household @row)")
+			if err != nil {
+				return sentAnswer{}, err
+			}
+			if !family {
+				return sentAnswer{}, access.Forbidden("a guest is brought by you or someone in your family")
+			}
+		}
 	}
 	if ask.Answer != "" && ask.Answer != "yes" {
 		return sentAnswer{}, access.Invalid("a guest is answered for as yes or not at all, not %q", ask.Answer)
@@ -435,7 +463,11 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	addressed := map[string]bool{}
 	for i, guest := range ask.People {
 		if guest.Person != "" {
-			if !m.passes(ctx, env, "PERSON", guest.Person, "(person_visible @row)") {
+			visible, err := m.passes(ctx, env, "PERSON", guest.Person, "(person_visible @row)")
+			if err != nil {
+				return sentAnswer{}, err
+			}
+			if !visible {
 				return sentAnswer{}, access.Missing("no person %s", guest.Person)
 			}
 			people = append(people, guest.Person)

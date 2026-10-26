@@ -1,7 +1,11 @@
 package serve
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -90,5 +94,34 @@ func TestFileMatchesOnlyIdenticalBytes(t *testing.T) {
 	File(rec, other, shell)
 	if rec.Code != http.StatusOK || rec.Body.String() != "<p>welcome</p>" {
 		t.Errorf("different bytes: got %d %q, want 200 with the new body", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCancellationErrorsDependOnWhetherTheRequestEnded(t *testing.T) {
+	var logs bytes.Buffer
+	logger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(logger) })
+	for _, ended := range []bool{true, false} {
+		for _, err := range []error{context.Canceled, context.DeadlineExceeded} {
+			logs.Reset()
+			ctx, cancel := context.WithCancel(t.Context())
+			if ended {
+				cancel()
+			}
+			rec := httptest.NewRecorder()
+			r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
+			Error(rec, r, fmt.Errorf("query: %w", err))
+			cancel()
+			if ended {
+				if rec.Flushed || rec.Body.Len() != 0 || len(rec.Header()) != 0 || logs.Len() != 0 {
+					t.Errorf("%v wrote a response or log for an ended request: %v %q %q", err, rec.Header(), rec.Body, logs.String())
+				}
+				continue
+			}
+			if rec.Code != http.StatusInternalServerError || rec.Body.String() != "internal error\n" || !strings.Contains(logs.String(), "request failed") {
+				t.Errorf("%v on a live request: %d %q %q", err, rec.Code, rec.Body.String(), logs.String())
+			}
+		}
 	}
 }

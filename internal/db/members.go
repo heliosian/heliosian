@@ -142,7 +142,9 @@ func (r *run) covers(group string, people *valueSet) bool {
 	rows := r.m.effectiveRows(group)
 	found := []store.Row{}
 	for person := range people.keys {
-		r.spend(1)
+		if !r.spend(1) {
+			return false
+		}
 		i, ok := slices.BinarySearchFunc(rows, person, func(row store.Row, p string) int { return strings.Compare(row["person"], p) })
 		if !ok {
 			return false

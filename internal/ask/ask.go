@@ -147,6 +147,9 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 	t := a.turn(r)
 	recent, err := t.recentDocuments()
 	if err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -174,6 +177,9 @@ func (a app) chat(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if p, err = a.buildPrompt(t, known, fresh); err != nil {
+			if r.Context().Err() != nil {
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
