@@ -1,0 +1,20 @@
+# Cancel obsolete address suggestion requests
+
+byre task tskvT5kxpFo9Kk, "Cancel stale autocomplete", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskvT5kxpFo9Kk in byre (GET /api/events?task_id=tskvT5kxpFo9Kk).
+
+## Summary
+
+Audited main at 7df5dffe7b94a906f4f2a3f6ce690828b1e51f8e for user-visible performance and unnecessary work across request/store/query paths, media, search, chat, dashboard and client loading. Fixed address autocomplete's outbound Google Places request ignoring browser cancellation by propagating the incoming request context to the existing HTTP client. Expected cancellation no longer logs a Places warning. Successful results, caching and rate limiting are unchanged; no new cache, queue or configuration was needed.
+
+The regression test stalls the real Places client through the existing HTTPS intercept: before the fix the canceled handler still waited after 1.002 seconds; afterward it returned in 43 microseconds. This measures controlled local cancellation, not production Places latency. Package tests and race checks passed, along with vet checks of geocode, shared app wiring and the development server. Review completed. Merged main without conflicts or manual edits, then reran race tests, vet and focused database authentication/query/signout tests successfully. Merge left uncommitted for byre.
+
+Deliberately left Loop's unbounded message/delivery history for a follow-up with production-volume measurements and a pagination design preserving full access. Wiki batching lacked a measured user-visible gain. No production deployment or production latency claim.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok high", grok grok-4.7: done
+
+Address suggestions already abort the previous lookup in the browser when the field changes, but the server kept calling Google Places until that call finished or the 5s client timeout fired. `Client.Suggest` now takes the incoming request context, so a disconnected browser cancels the outbound Places call and the handler returns. Those cancellations are not logged as suggestion failures. A test blocks the Places handler and checks that canceling the request context unblocks the suggestion handler within a second.
+
+No significant findings.
