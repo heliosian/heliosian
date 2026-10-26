@@ -49,7 +49,7 @@ func spans(t *testing.T, raw []byte) []string {
 		if child.relation != "pages" || child.mime != pdfType {
 			t.Fatalf("child %+v", child)
 		}
-		out = append(out, child.title+" has "+spanName(1, pages.total, pages.total))
+		out = append(out, child.title+" has "+spanName(1, pages.ctx.PageCount, pages.ctx.PageCount))
 	}
 	return out
 }

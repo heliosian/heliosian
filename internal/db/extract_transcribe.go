@@ -141,8 +141,8 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 	if err != nil {
 		return nil, err
 	}
-	if len(raw) > pdfRangeBytes || pages.total > pdfRangePages {
-		if pages.total == 1 {
+	if len(raw) > pdfRangeBytes || pages.ctx.PageCount > pdfRangePages {
+		if pages.ctx.PageCount == 1 {
 			return nil, fmt.Errorf("a one-page pdf of %d bytes is larger than claude reads, %d", len(raw), pdfRangeBytes)
 		}
 		ranges, err := pages.ranges(ctx)

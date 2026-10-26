@@ -20,6 +20,10 @@ type StockHit struct {
 	Source, SourceID, PreviewURL, URL, Download, Context string
 }
 
+func (h StockHit) row(id string) store.Row {
+	return store.Row{"id": id, "source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL, "download": h.Download, "context": h.Context}
+}
+
 type Stock struct {
 	s           *Store
 	bucket      *blob.Bucket
@@ -112,10 +116,9 @@ func (st *Stock) remember(ctx context.Context, writes []*stockWrite) error {
 		_, err := st.s.Transact(ctx, access.System(stockActor), func(tx *store.Tx[Model]) error {
 			edits := []Edit{}
 			for _, w := range chunk {
-				h := w.hit
-				row := map[string]any{"source": h.Source, "source_id": h.SourceID, "preview_url": h.PreviewURL, "url": h.URL}
-				for col, v := range map[string]string{"download": h.Download, "context": h.Context} {
-					if v != "" {
+				row := map[string]any{}
+				for col, v := range w.hit.row(w.id) {
+					if col != "id" {
 						row[col] = v
 					}
 				}
@@ -141,7 +144,7 @@ func (st *Stock) row(id string) (store.Row, bool) {
 		return row, true
 	}
 	if w := st.reserved[id]; w != nil {
-		return store.Row{"id": id, "source": w.hit.Source, "source_id": w.hit.SourceID, "preview_url": w.hit.PreviewURL, "url": w.hit.URL, "download": w.hit.Download, "context": w.hit.Context}, true
+		return w.hit.row(id), true
 	}
 	return nil, false
 }

@@ -21,8 +21,7 @@ type pageRange struct {
 }
 
 type pdfPages struct {
-	ctx   *model.Context
-	total int
+	ctx *model.Context
 }
 
 func readPDFPages(c context.Context, raw []byte) (pdfPages, error) {
@@ -38,7 +37,7 @@ func readPDFPages(c context.Context, raw []byte) (pdfPages, error) {
 	if err := api.OptimizeContext(c, ctx); err != nil {
 		return pdfPages{}, fmt.Errorf("read the pdf's pages: %w", err)
 	}
-	return pdfPages{ctx: ctx, total: ctx.PageCount}, nil
+	return pdfPages{ctx: ctx}, nil
 }
 
 func (p pdfPages) write(c context.Context, first, last int) ([]byte, error) {
@@ -59,8 +58,8 @@ func (p pdfPages) write(c context.Context, first, last int) ([]byte, error) {
 
 func (p pdfPages) ranges(c context.Context) ([]pageRange, error) {
 	out := []pageRange{}
-	for first := 1; first <= p.total; {
-		n := min(pdfRangePages, p.total-first+1)
+	for first := 1; first <= p.ctx.PageCount; {
+		n := min(pdfRangePages, p.ctx.PageCount-first+1)
 		for {
 			body, err := p.write(c, first, first+n-1)
 			if err != nil {
@@ -87,7 +86,7 @@ func spanName(first, last, total int) string {
 func pageChildren(p pdfPages, ranges []pageRange) []extracted {
 	out := []extracted{}
 	for _, r := range ranges {
-		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(r.first, r.last, p.total), firstPage: r.first, lastPage: r.last})
+		out = append(out, extracted{relation: "pages", body: r.body, mime: pdfType, title: spanName(r.first, r.last, p.ctx.PageCount), firstPage: r.first, lastPage: r.last})
 	}
 	return out
 }
