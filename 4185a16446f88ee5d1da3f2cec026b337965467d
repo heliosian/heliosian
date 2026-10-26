@@ -1,0 +1,56 @@
+# Add explicit document supersession (fixes #178)
+
+byre task tskujqC4mIJS1K, "Document supersession", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Add DOCUMENT.superseded_by, with a trigger that keeps it one hop".
+Full transcripts: the events of task tskujqC4mIJS1K in byre (GET /api/events?task_id=tskujqC4mIJS1K).
+
+## Summary
+
+Before: documents had no explicit whole-document replacement relationship, and Ask treated newer documents as superseding older ones generally.
+Now: DOCUMENT.superseded_by declares replacement. Uploads accept supersedes, staged writes flatten chains, and loads and writes reject cycles. This supports cumulative weekly gradeband decks without guessing replacement from titles, dates or URLs. The completed TODO for issue #178 is removed.
+
+Before: search and document reading could present older versions without replacement guidance.
+Now: search favors current matches and scans past superseded-only results. A shared resolver follows sheet-loaded chains to the latest replacement. Reading retains historical text and annotates affected descendants, including attachments inside an email. Notices require access to the latest replacement; consent hiding suppresses the link while retaining historical documents, extracts and reminders.
+
+Before: uploading bytes X, then Y, then X failed cycle validation.
+Now: following the lead's narrower direction, one transaction makes the original X document current again and points Y to it. Its original metadata remains; no separate revision records the reversion. Retries reuse the document and content. Other cycles are refused; referenced replacements cannot be deleted until incoming links are cleared or repointed.
+
+Deliberately excluded: an automatic gradeband importer, inferred replacement, and automatic reminder completion or migration. Existing permissions govern reads and super-admin writes. Production createtabs succeeded, checking six spreadsheets and installing DOCUMENT.superseded_by.
+
+Main's PDF-page functionality was preserved by combining schema, permission, fixture and TODO changes, without substantive redesign. The latest requested merge reported already up to date; no new conflicts or merge commit were needed. Database, tools, Ask and PDF-thumbnail suites and repository-wide vet passed in prior merge verification; the latest verification reruns are recorded in the turn.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds explicit document replacement links, flattens replacement chains in staged writes, and rejects replacement cycles. File uploads can name a previous version; search and Ask expose readable replacements while retaining historical text. Documentation and tests cover the new behavior.
+
+- Whole-document reads omit replacement notices on superseded descendants.
+- Semantic search can stop before scanning current matches because superseded results fill its limit.
+- Consent hiding propagates through replacement links and removes otherwise readable historical documents.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds explicit document supersession, including atomic replacement links on file uploads and a trigger that redirects earlier versions to the latest document. Search and document-reading tools identify readable replacements while retaining historical text, and the consent view preserves older documents when a replacement is hidden.
+
+- Sheet-loaded replacement chains can direct search and document readers to an obsolete intermediate version.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds explicit document supersession, an upload parameter for replacing an earlier file, and transactional flattening of replacement chains with cycle rejection. Search prefers current documents, and document-reading tools annotate historical text with readable replacements while preserving consent and access checks.
+
+- Re-importing an earlier revision's bytes fails with a replacement cycle instead of recording the reverted version as current.
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds explicit document supersession, with cycle validation and triggers that redirect older versions to the latest replacement. File uploads can name the document they replace, while search and document-reading tools identify readable replacements and preserve historical text. Includes coverage for upload retries and reversions, replacement chains, consent, ranking, and reading superseded attachments.
+
+No significant findings.
+
+### Snapshot #6, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds explicit document replacement links, cycle validation, and triggers that flatten replacement chains. File uploads can supersede a previous version atomically; search and document-reading tools identify readable replacements while preserving historical content and respecting access and consent rules. Reviewed the code and tests without running builds or tests.
+
+No significant findings.
