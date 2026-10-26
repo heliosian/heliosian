@@ -249,7 +249,9 @@ const PolicySource = `
 
 ; @g is a plain group with no slug that something on the front page shows to: an app, a widget, or a link
 (define (home_audience @g)
-  (and (= @g.kind "group") (blank @g.slug)
+  (and (= @g.kind "group") (blank @g.slug) (blank @g.parent) (blank @g.managed_by)
+       (not (exists GROUP (or (= managed_by @g) (= hidden_for @g))))
+       (not (exists APP (= admins @g)))
        (or (exists WIDGET (= visible_to @g))
            (exists APP (= visible_to @g))
            (exists GROUP @l (= visible_to @g) (home_section @l.parent)))))
