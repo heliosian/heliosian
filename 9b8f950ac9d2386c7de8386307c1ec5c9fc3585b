@@ -1,0 +1,23 @@
+# Sync GitHub issues into TODO.md
+
+byre task tskzoBz4DcYuIv, "Sync issues", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskzoBz4DcYuIv in byre (GET /api/events?task_id=tskzoBz4DcYuIv).
+
+## Summary
+
+One-way sync from the heliosian/heliosian GitHub issues into TODO.md, run as the "Sync" stage of byre's "Sync issues" workflow. It only read the tracker and changed nothing on GitHub.
+
+- Added 12 `# Issues` items, one for each open issue that had no item: #199–#210, mostly security-audit and code-health findings (privilege escalation, header injection, OAuth code reuse, slice-offset pairing). Each uses the issue's exact title, a one- or two-sentence summary, and `Issue: <url>` as its last line.
+  Before: TODO.md had items for 7 of the 19 open issues.
+  Now: every open issue has an item.
+- Removed nothing: the 7 existing tied items (#185, #184, #179, #178, #176, #168, #25) all point to issues that are still open, and their titles match upstream.
+- New items go first in the section to keep its existing newest-first order.
+- Upstream changes were compared by title only, since each item holds only a summary.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds TODO.md entries for the 12 open GitHub issues #199–#210, with exact titles, short summaries, and issue URLs. Existing entries remain unchanged. Checked all 197 tracker issues across three API pages: all 19 open issues have entries, and no closed issues remain in TODO.md.
+
+No significant findings.
