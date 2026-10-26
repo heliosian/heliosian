@@ -536,22 +536,7 @@ func checkGroupCycles(groups Sheet) error {
 			done[id] = true
 		}
 	}
-	var below func(id string, out []string) []string
-	below = func(id string, out []string) []string {
-		i, ok := rows.byID[id]
-		if !ok {
-			return out
-		}
-		g := rows.rows[i]
-		for _, j := range rows.by["parent"][id] {
-			child := rows.rows[j]["id"]
-			if slices.ContainsFunc(servingColumns, func(c string) bool { return g[c] == child }) {
-				continue
-			}
-			out = below(child, append(out, child))
-		}
-		return out
-	}
+	view := wholeView(rows)
 	edges := map[string][]string{}
 	for _, r := range groups["RULE"].rows {
 		if r["target"] != "" && r["target"] != r["group"] {
@@ -561,7 +546,7 @@ func checkGroupCycles(groups Sheet) error {
 			edges[r["group"]] = append(edges[r["group"]], r["within"])
 		}
 		if under, _ := cells.YesNo(r["under"], false); under && r["target"] != "" {
-			edges[r["group"]] = append(edges[r["group"]], below(r["target"], nil)...)
+			edges[r["group"]] = append(edges[r["group"]], view.groupsUnder(r["target"])...)
 		}
 	}
 	index, low, on := map[string]int{}, map[string]int{}, map[string]bool{}

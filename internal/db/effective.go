@@ -365,7 +365,7 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 		}
 		if under, _ := cells.YesNo(rule["under"], false); under {
 			r[readKey{readGroup, target}] = true
-			for _, g := range m.groupsUnder(target) {
+			for _, g := range m.Shown("GROUP").groupsUnder(target) {
 				r[readKey{readGroup, g}] = true
 				for person := range m.resolve(g, r) {
 					s[person] = true
@@ -437,8 +437,7 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 
 var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "unsubscribed", "chair_offers", "leads", "audience", "hidden_for"}
 
-func (m *Model) groupsUnder(group string) []string {
-	groups := m.Shown("GROUP")
+func (groups *View) groupsUnder(group string) []string {
 	out := []string{}
 	queue := []string{group}
 	for len(queue) > 0 {
