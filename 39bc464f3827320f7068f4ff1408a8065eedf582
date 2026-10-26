@@ -1,0 +1,36 @@
+# Probe alerts query and batch wiki, directory, and invites requests
+
+byre task tskoDZUGJvTFoM, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskoDZUGJvTFoM in byre (GET /api/events?task_id=tskoDZUGJvTFoM).
+
+## Summary
+
+Performance audit of request-path latency, query candidate scans, and unbatched network requests:
+
+### Changes in behavior
+- RSVP event alerts query probing:
+  Before: checking RSVP waiting alerts scanned all event candidates and performed nested exists checks for every event, requiring 1,209 GROUP policy read checks in scaleStore.
+  Now: it probes GROUP.id directly using a memoized subquery on the viewer's invitation messages, reducing GROUP policy read checks to 4 (a 300x reduction).
+- Wiki initial data loading:
+  Before: opening the Wiki fired 6 separate concurrent HTTP requests to /api/q with raw AST JSON trees and uncolumned DOCUMENT fetches.
+  Now: it sends a single queries: {...} request with query strings and explicit column selection, cutting 5 HTTP round-trips and policy redaction work.
+- Directory initial loading:
+  Before: loading the directory sent 6 separate concurrent HTTP requests to /api/q.
+  Now: it executes in a single batched query request, sharing execution state, policy check caching, and memoization.
+- Who Invites systems query:
+  Before: loading invite systems performed 3 separate HTTP requests with q().
+  Now: it runs as 1 batched query request.
+
+### Key decisions
+- Probed RSVP invitations from the viewer side with `(in id (select MESSAGE.group (= kind "invitation") (in id (select RECIPIENT.message (or (= person @viewer) (in person (household @viewer)))))))`. The engine memoizes this subquery once per request since it only references `@viewer`, and `pickProbe` selects primary key `id` rather than scanning all rows where `kind = "event"`.
+- Batched Wiki's initial queries using standard string query language with explicit `(columns ...)` clauses, eliminating AST tree allocations and broad redaction passes across 10,000+ DOCUMENT rows.
+- Used `rowsOf(groups, 'GROUP')` in Directory loader so `out.groups` receives only the requested `grade`, `classroom`, and `department` groups without pollution from included role groups.
+- Kept the Directory photos query as `(from PHOTO (where ready) ...)` rather than probing family groups, because `PHOTO` columns for `person` and `group` are unconditionally granted (`true`) to all viewers with 0 read checks, whereas adding a family group subquery would have introduced 429 unnecessary read checks on family groups.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok medium", grok grok-4.7: done
+
+The bell’s waiting-invitation query no longer walks every event. It probes group ids from the viewer’s household invitation messages, and a new test checks that this read-checks far fewer groups than the old exists form. Wiki’s first load, the shared directory, and the Who invites page each send their reads as one batched query instead of several parallel ones. Wiki and the directory also name the columns those pages use.
+
+No significant findings.
