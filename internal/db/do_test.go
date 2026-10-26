@@ -674,3 +674,104 @@ func TestMailIsSentToItsListsGroups(t *testing.T) {
 		}
 	}
 }
+
+func TestImportedDeckSupersedesItsPreviousVersion(t *testing.T) {
+	s := sample(t)
+	pics := newPictures(s)
+	fields := map[string]string{"name": "Gradeband updates", "url": "https://example.org/updates.pdf", "published": "2026-10-01 10:00:00"}
+	upload := func(body string) string {
+		t.Helper()
+		rec := postUpload(t, s, pics, importing, fields, "application/pdf", []byte("%PDF-1.4\n"+body))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+		}
+		var out stored
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Result[0]
+	}
+	first := upload("week one")
+	fields["supersedes"] = first
+	second := upload("week one and week two")
+	if second == first {
+		t.Fatal("new bytes reused the old document")
+	}
+	if again := upload("week one and week two"); again != second {
+		t.Fatal("retry made a new document")
+	}
+	fields["supersedes"] = second
+	if again := upload("week one and week two"); again != second {
+		t.Fatal("unchanged deck made a new document")
+	}
+	third := upload("week one and week two and week three")
+	for _, id := range []string{first, second} {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		if row["superseded_by"] != third {
+			t.Fatalf("%s: %v", id, row)
+		}
+	}
+	fields["supersedes"] = "doc99999999999"
+	rec := postUpload(t, s, pics, importing, fields, "application/pdf", []byte("%PDF-1.4\nweek four"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing previous deck: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestImportedDeckCanRestorePreviousBytes(t *testing.T) {
+	s := sample(t)
+	pics := newPictures(s)
+	fields := map[string]string{"name": "Gradeband updates", "url": "https://example.org/updates.pdf", "published": "2026-10-01 10:00:00"}
+	upload := func(body string) string {
+		t.Helper()
+		rec := postUpload(t, s, pics, importing, fields, "application/pdf", []byte("%PDF-1.4\n"+body))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+		}
+		var out stored
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out.Result[0]
+	}
+	first := upload("original slides")
+	original, _ := s.Model().Table("DOCUMENT").Get(first)
+	fields["supersedes"] = first
+	second := upload("revised slides")
+	fields["supersedes"] = second
+	fields["published"] = "2026-10-15 10:00:00"
+	contents := len(s.Model().Table("CONTENT").All())
+	documents := len(s.Model().Table("DOCUMENT").All())
+	t.Logf("restoring original bytes after %s replaced %s", second, first)
+	third := upload("original slides")
+	if third != first {
+		t.Fatalf("restored bytes did not make the original document current: %s", third)
+	}
+	restored, _ := s.Model().Table("DOCUMENT").Get(third)
+	if original["content"] != restored["content"] {
+		t.Fatalf("restored bytes were stored again: %v and %v", original, restored)
+	}
+	if restored["superseded_by"] != "" {
+		t.Fatalf("restored document is not current: %v", restored)
+	}
+	row, _ := s.Model().Table("DOCUMENT").Get(second)
+	if row["superseded_by"] != third {
+		t.Fatalf("%s does not point to the restored version: %v", second, row)
+	}
+	if restored["published"] != original["published"] {
+		t.Fatalf("restoring the original document changed its metadata: %v", restored)
+	}
+	if len(s.Model().Table("CONTENT").All()) != contents || len(s.Model().Table("DOCUMENT").All()) != documents {
+		t.Fatal("restoring bytes added content or document rows")
+	}
+	if again := upload("original slides"); again != third {
+		t.Fatalf("retry made another restored version: %s", again)
+	}
+	fields["supersedes"] = third
+	if again := upload("original slides"); again != third {
+		t.Fatalf("unchanged upload made another restored version: %s", again)
+	}
+	if got := len(s.Model().Table("DOCUMENT").Referencing("content", restored["content"])); got != 1 {
+		t.Fatalf("original bytes appear in %d documents, want only the original", got)
+	}
+}

@@ -1,20 +1,20 @@
-id,parent,kind,relation,order,name,published,author,url,fetch,link,filename,content_id,content,message,key_points,extracted,slug,hidden,summary,repeats,digest,classified,first_page,last_page,thumbnail,thumbnailed,page_count,rendered
-doc00000000001,,mail,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,,,,,,,,,
-doc00000000101,,wiki,,a,Welcome,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000101,,,,,,,,,,,
-doc00000000102,,wiki,,b,Getting Started,2026-09-01 09:00:00,per00000000002,,,,,,,,,,getting-started,,,,,,,
-doc00000000103,doc00000000102,wiki,,a,First Week,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000102,,,,,,,,,,,
-doc00000000104,doc00000000102,wiki,,b,Drop-off and Pickup,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000103,,,,,,,,,,,
-doc00000000105,,wiki,,c,Activities,2026-09-01 09:00:00,per00000000002,,,,,,,,,,,Yes,,,,,,
-doc00000000106,doc00000000105,wiki,,a,Camping Trips,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000104,,,,,,,,,,,
-doc00000000107,doc00000000105,wiki,,b,Clubs,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000105,,,,,,,,,,,
-doc00000000109,doc00000000106,,side,a,What to Bring,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000107,,,,,,,,,,,
+id,parent,kind,relation,order,name,published,author,url,fetch,link,filename,content_id,content,message,key_points,extracted,slug,hidden,summary,repeats,digest,classified,first_page,last_page,thumbnail,thumbnailed,page_count,rendered,superseded_by
+doc00000000001,,mail,,,Hummingbirds Weekly,2026-09-25 07:30:00,per00000000003,,,,,,,,,,,,,,,,,,,,,,
+doc00000000101,,wiki,,a,Welcome,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000101,,,,,,,,,,,,,,,,
+doc00000000102,,wiki,,b,Getting Started,2026-09-01 09:00:00,per00000000002,,,,,,,,,,getting-started,,,,,,,,,,,,
+doc00000000103,doc00000000102,wiki,,a,First Week,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000102,,,,,,,,,,,,,,,,
+doc00000000104,doc00000000102,wiki,,b,Drop-off and Pickup,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000103,,,,,,,,,,,,,,,,
+doc00000000105,,wiki,,c,Activities,2026-09-01 09:00:00,per00000000002,,,,,,,,,,,Yes,,,,,,,,,,,
+doc00000000106,doc00000000105,wiki,,a,Camping Trips,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000104,,,,,,,,,,,,,,,,
+doc00000000107,doc00000000105,wiki,,b,Clubs,2026-09-01 09:00:00,per00000000002,,,,,,cnt00000000105,,,,,,,,,,,,,,,,
+doc00000000109,doc00000000106,,side,a,What to Bring,2026-09-01 09:00:00,per00000000003,,,,,,cnt00000000107,,,,,,,,,,,,,,,,
 doc00000000201,,mail,,,Science Fair registration and poster boards,2026-10-13 09:00:00,per00000000003,,,,,,,,"Register for the Science Fair by Wed, Oct 28.
 Send in a tri-fold poster board by Wed, Nov 4.
-The Science Fair is Thu, Nov 12, in the multipurpose room.",2026-10-13 09:00:30,,,"The Science Fair is Nov 12; register by Oct 28 and send a poster board by Nov 4.",,2026-10-17.1,,,
+The Science Fair is Thu, Nov 12, in the multipurpose room.",2026-10-13 09:00:30,,,The Science Fair is Nov 12; register by Oct 28 and send a poster board by Nov 4.,,2026-10-17.1,,,,,,,,
 doc00000000202,,mail,,,Hummingbirds pumpkin patch trip,2026-10-14 15:30:00,per00000000003,,,,,,,,"Pay the $8 pumpkin patch trip fee by Fri, Oct 23.
 Send your child in boots that can get muddy.
-The Hummingbirds visit Arata's Pumpkin Farm on Fri, Oct 30.",2026-10-14 15:30:30,,,"The Hummingbirds visit a pumpkin farm Oct 30; pay the $8 fee by Oct 23 and send muddy boots.",,2026-10-17.1,,,
+The Hummingbirds visit Arata's Pumpkin Farm on Fri, Oct 30.",2026-10-14 15:30:30,,,The Hummingbirds visit a pumpkin farm Oct 30; pay the $8 fee by Oct 23 and send muddy boots.,,2026-10-17.1,,,,,,,,
 doc00000000203,,mail,,,Reminder: Science Fair registration,2026-10-16 10:30:00,per00000000003,,,,,,,,"Science Fair registration closes Wed, Oct 28.
 Thirty students have signed up so far.
-Judges are still welcome.",2026-10-16 10:30:30,,,"A reminder that Science Fair registration closes Oct 28, and judges are welcome.",1: tdo00000000201,2026-10-17.1,,,
-doc00000000204,,mail,,,[Chat] Lost water bottle,2026-10-15 08:00:00,per00000000002,,,,,,,,"A blue water bottle was left at pickup.",2026-10-15 08:00:30,,,"Someone left a blue water bottle at pickup.",,2026-10-17.1,,,
+Judges are still welcome.",2026-10-16 10:30:30,,,"A reminder that Science Fair registration closes Oct 28, and judges are welcome.",1: tdo00000000201,2026-10-17.1,,,,,,,,
+doc00000000204,,mail,,,[Chat] Lost water bottle,2026-10-15 08:00:00,per00000000002,,,,,,,,A blue water bottle was left at pickup.,2026-10-15 08:00:30,,,Someone left a blue water bottle at pickup.,,2026-10-17.1,,,,,,,,

@@ -582,7 +582,7 @@ const PolicySource = `
 (read DOCUMENT (document_visible @row))
 ; every column of a document
 (read DOCUMENT
-  (id parent kind relation order name first_page last_page published author url fetch link filename content_id content thumbnail thumbnailed page_count rendered message
+  (id parent superseded_by kind relation order name first_page last_page published author url fetch link filename content_id content thumbnail thumbnailed page_count rendered message
    summary key_points repeats digest classified extracted slug hidden source terminal path href)
   true)
 ; what the mail the viewer may read asks of its readers

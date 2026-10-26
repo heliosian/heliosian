@@ -39,6 +39,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
 	{table: "DOCUMENT", fire: thumbnailStale},
+	{table: "DOCUMENT", fire: documentSuperseded},
 	{table: "SAVED_SEARCH", fire: savedSearchSlugs},
 }
 
@@ -572,4 +573,32 @@ func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	}
 	out[groups.All()[i]["id"]] = true
 	return out, nil
+}
+
+func documentSuperseded(m *Model, c Change) ([]Edit, error) {
+	if c.New == nil || c.New["superseded_by"] == "" || c.Old["superseded_by"] == c.New["superseded_by"] {
+		return nil, nil
+	}
+	docs := m.Table("DOCUMENT")
+	latest := c.New["superseded_by"]
+	seen := map[string]bool{c.New["id"]: true}
+	for {
+		if seen[latest] {
+			return nil, fmt.Errorf("document replacements lead back round to %s", latest)
+		}
+		seen[latest] = true
+		row, ok := docs.Get(latest)
+		if !ok || row["superseded_by"] == "" {
+			break
+		}
+		latest = row["superseded_by"]
+	}
+	edits := []Edit{}
+	if latest != c.New["superseded_by"] {
+		edits = append(edits, Edit{Set: c.New["id"], Cells: map[string]any{"superseded_by": latest}})
+	}
+	for _, row := range docs.Referencing("superseded_by", c.New["id"]) {
+		edits = append(edits, Edit{Set: row["id"], Cells: map[string]any{"superseded_by": latest}})
+	}
+	return edits, nil
 }

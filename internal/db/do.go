@@ -183,7 +183,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 			serve.Error(w, r, access.Invalid("%v", err))
 			return
 		}
-		document, hash, err := storeRoot(r.Context(), s, pics, actor, env, content, mimeType, root, sentTo)
+		document, hash, err := storeRoot(r.Context(), s, pics, actor, env, content, mimeType, root, sentTo, strings.TrimSpace(r.FormValue("supersedes")))
 		if err != nil {
 			serve.Error(w, r, err)
 			return
@@ -357,12 +357,21 @@ func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
 	return root, nil
 }
 
-func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string) (string, string, error) {
+func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, content []byte, mimeType string, root map[string]any, sentTo []string, supersedes string) (string, string, error) {
 	made := madeOf(content, mimeType)
 	hash := made.hash
 	m := s.Model()
 	if err := m.Authorize(env, Change{Table: "DOCUMENT", New: store.Row{"kind": root["kind"].(string)}}); err != nil {
 		return "", "", err
+	}
+	if supersedes != "" {
+		old, ok := m.Table("DOCUMENT").Get(supersedes)
+		if !ok {
+			return "", "", access.Invalid("no document %s to supersede", supersedes)
+		}
+		if old["kind"] != root["kind"] || old["parent"] != "" || mimeType == "message/rfc822" {
+			return "", "", access.Invalid("supersedes must name a root of the same kind as the imported file")
+		}
 	}
 	existing, found := m.Table("CONTENT").Find(hash, mimeType)
 	if found {
@@ -370,7 +379,7 @@ func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor
 			if row["parent"] != "" || row["kind"] != root["kind"] {
 				continue
 			}
-			return row["id"], hash, addSentTo(ctx, s, actor, env, row["id"], sentTo)
+			return row["id"], hash, addSentTo(ctx, s, actor, env, row["id"], sentTo, supersedes)
 		}
 	}
 	edits := []Edit{}
@@ -390,6 +399,9 @@ func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor
 	for _, group := range sentTo {
 		edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@document", "group": group, "relation": "sent_to"}})
 	}
+	if supersedes != "" {
+		edits = append(edits, Edit{Set: supersedes, Cells: map[string]any{"superseded_by": "@document"}})
+	}
 	ids, err := Write(ctx, s, actor, env, Batch{Batch: edits})
 	if err != nil {
 		return "", "", err
@@ -397,7 +409,7 @@ func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor
 	return ids[at], hash, nil
 }
 
-func addSentTo(ctx context.Context, s *Store, actor access.Actor, env Env, document string, sentTo []string) error {
+func addSentTo(ctx context.Context, s *Store, actor access.Actor, env Env, document string, sentTo []string, supersedes string) error {
 	held := map[string]bool{}
 	for _, group := range s.Model().sentTo(document) {
 		held[group] = true
@@ -407,6 +419,13 @@ func addSentTo(ctx context.Context, s *Store, actor access.Actor, env Env, docum
 		if !held[group] {
 			edits = append(edits, Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": document, "group": group, "relation": "sent_to"}})
 		}
+	}
+	if supersedes != "" && supersedes != document {
+		previous, _ := s.Model().Table("DOCUMENT").Get(document)
+		if previous["superseded_by"] == supersedes {
+			edits = append(edits, Edit{Set: document, Cells: map[string]any{"superseded_by": ""}})
+		}
+		edits = append(edits, Edit{Set: supersedes, Cells: map[string]any{"superseded_by": document}})
 	}
 	if len(edits) == 0 {
 		return nil
@@ -435,9 +454,9 @@ func FileMail(ctx context.Context, s *Store, pics *Pictures, raw []byte) (string
 	}
 	if copied != "" {
 		slog.InfoContext(ctx, "filed mail: a copy of mail already filed", "document", copied, "groups", len(sentTo))
-		return copied, addSentTo(ctx, s, access.System(env.System), env, copied, sentTo)
+		return copied, addSentTo(ctx, s, access.System(env.System), env, copied, sentTo, "")
 	}
-	document, hash, err := storeRoot(ctx, s, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo)
+	document, hash, err := storeRoot(ctx, s, pics, access.System(env.System), env, raw, "message/rfc822", root, sentTo, "")
 	if err != nil {
 		return "", err
 	}

@@ -33,7 +33,7 @@ type searchIn struct {
 	Limits map[string]int `json:"limits,omitempty" jsonschema:"how many results to answer for each of GROUP, PERSON and DOCUMENT, by table, 0 to leave a table out; 10 for any table not named"`
 }
 
-var search = define("helios_search", "Searching", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters, school mail, wiki pages and shared files - by name and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a list for each table - GROUP, PERSON and DOCUMENT - best first: the rows whose name holds every word, then the rows whose text lies close in meaning, each with the score it ranked by; an empty list means nothing close enough. A group or person result is its ID, name, summary and href. A document result is a bundle of at most five refs, best first: the matching extracts of one email or file, with near-identical copies from other emails or files that had no result of their own; each ref gives the extract, the document it was read from, how that stands to its email or file (attached file, email body, image, linked page), its href, for a long PDF read in runs of pages the first_page and last_page of it the extract was read from, that email's or file's ID and name, and the extract's summary; cite a ref with pages by them, such as \"pages 21–40\". helios_read_document opens any document, helios_get any other result, and helios_similar every copy. A newer document supersedes an older one. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", func(c *call, in searchIn) (any, error) {
+var search = define("helios_search", "Searching", "Search Helios School's community data - people, families, classrooms, events, volunteer activities, parties, email lists, and the newsletters, school mail, wiki pages and shared files - by name and by meaning. Use it first for any question about Helios, the school, a family, child, teacher or classroom there, or what the school has sent out, such as \"who teaches the Jays\", \"when is picture day\" or \"what did the newsletter say about the auction\". Answers a list for each table - GROUP, PERSON and DOCUMENT - best first: the rows whose name holds every word, then the rows whose text lies close in meaning, each with the score it ranked by; an empty list means nothing close enough. A group or person result is its ID, name, summary and href. A document result is a bundle of at most five refs, best first: the matching extracts of one email or file, with near-identical copies from other emails or files that had no result of their own; each ref gives the extract, the document it was read from, how that stands to its email or file (attached file, email body, image, linked page), its href, for a long PDF read in runs of pages the first_page and last_page of it the extract was read from, that email's or file's ID and name, and the extract's summary; cite a ref with pages by them, such as \"pages 21–40\". helios_read_document opens any document, helios_get any other result, and helios_similar every copy. A document explicitly marked superseded_by has been replaced in full; use its readable replacement for current information and retain the older text for historical questions. A later date alone does not establish replacement. Every tool gives a record with a page on the Helios apps its href: link to it whenever you name the record, and never make up an address.", func(c *call, in searchIn) (any, error) {
 	words := strings.TrimSpace(in.Words)
 	if words == "" {
 		return nil, errors.New("words is required")
@@ -251,11 +251,43 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 			mimes[r["id"]] = r["mime"]
 		}
 	}
+	documentIDs := []string{}
+	for _, n := range nodes {
+		documentIDs = append(documentIDs, n.row["id"])
+	}
+	replacements := c.m.DocumentReplacements(c.env, documentIDs)
+	notices := map[string]string{}
+	replacementNotice := func(row store.Row) (string, error) {
+		next := replacements[row["id"]]
+		if next == "" {
+			return "", nil
+		}
+		if notice, loaded := notices[next]; loaded {
+			return notice, nil
+		}
+		replacement, ok, err := c.row("DOCUMENT", next)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", fmt.Errorf("no replacement document %s that you can see", next)
+		}
+		notice := fmt.Sprintf("Replaced by %s (%s). Use that document for current information; this is the original historical text.", title(replacement), next)
+		if href := c.href("DOCUMENT", replacement); href != "" {
+			notice += " " + href
+		}
+		notices[next] = notice
+		return notice, nil
+	}
 	outline := &strings.Builder{}
 	texts := &strings.Builder{}
 	skipped := 0
 	for _, n := range nodes {
 		r := n.row
+		notice, err := replacementNotice(r)
+		if err != nil {
+			return nil, err
+		}
 		what := r["kind"]
 		if what == "" {
 			what = r["relation"]
@@ -273,6 +305,9 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 		if mime != "" {
 			fmt.Fprintf(outline, " | %s", mime)
 		}
+		if notice != "" {
+			fmt.Fprintf(outline, " | %s", notice)
+		}
 		outline.WriteString("\n")
 		if mime != "text/markdown" {
 			continue
@@ -289,11 +324,22 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 			skipped++
 			continue
 		}
-		fmt.Fprintf(texts, "\n## %s (%s)\n\n%s\n", what, r["id"], body)
+		fmt.Fprintf(texts, "\n## %s (%s)\n\n", what, r["id"])
+		if notice != "" {
+			fmt.Fprintf(texts, "%s\n\n", notice)
+		}
+		fmt.Fprintf(texts, "%s\n", body)
 	}
 	out := "# " + title(root) + "\n\n"
 	if href := c.href("DOCUMENT", root); href != "" {
 		out += href + "\n\n"
+	}
+	notice, err := replacementNotice(root)
+	if err != nil {
+		return nil, err
+	}
+	if notice != "" {
+		out += notice + "\n\n"
 	}
 	out += outline.String()
 	if len(nodes) >= documentNodes {

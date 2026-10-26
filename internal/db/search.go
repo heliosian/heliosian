@@ -111,16 +111,18 @@ type SearchChunk struct {
 }
 
 type SearchRef struct {
-	Extract   string  `json:"extract"`
-	Document  string  `json:"document"`
-	Source    string  `json:"source,omitempty"`
-	Href      string  `json:"href,omitempty"`
-	FirstPage int     `json:"first_page,omitempty"`
-	LastPage  int     `json:"last_page,omitempty"`
-	Terminal  string  `json:"terminal"`
-	Name      string  `json:"name"`
-	Summary   string  `json:"summary"`
-	Score     float64 `json:"score,omitempty"`
+	SupersededBy    string  `json:"superseded_by,omitempty"`
+	ReplacementHref string  `json:"replacement_href,omitempty"`
+	Extract         string  `json:"extract"`
+	Document        string  `json:"document"`
+	Source          string  `json:"source,omitempty"`
+	Href            string  `json:"href,omitempty"`
+	FirstPage       int     `json:"first_page,omitempty"`
+	LastPage        int     `json:"last_page,omitempty"`
+	Terminal        string  `json:"terminal"`
+	Name            string  `json:"name"`
+	Summary         string  `json:"summary"`
+	Score           float64 `json:"score,omitempty"`
 }
 
 type SearchResult struct {
@@ -1056,12 +1058,45 @@ func readable(r *run, table, id string) bool {
 	return ok && r.readable(t, got)
 }
 
+func (r *run) replacementRef(ref SearchRef) SearchRef {
+	if replacement := r.documentReplacement(ref.Extract); replacement != nil {
+		ref.SupersededBy = replacement["id"]
+		ref.ReplacementHref = replacement["href"]
+	}
+	return ref
+}
+
 func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bool, limits map[string]int) map[string][]SearchResult {
 	objects := slices.Collect(maps.Keys(scores))
 	when := func(o string) string {
 		return v.rows[v.objects[o][0]].When
 	}
+	replacements := map[string]store.Row{}
+	for _, object := range objects {
+		for _, id := range v.objects[object] {
+			if v.rows[id].Table == "DOCUMENT" {
+				replacements[id] = r.documentReplacement(id)
+			}
+		}
+	}
+	superseded := map[string]bool{}
+	for _, object := range objects {
+		for _, id := range v.objects[object] {
+			row := v.rows[id]
+			if row.Table != "DOCUMENT" || (readable(r, "DOCUMENT", id) && replacements[id] == nil) {
+				superseded[object] = false
+				break
+			}
+			superseded[object] = true
+		}
+	}
 	slices.SortFunc(objects, func(a, b string) int {
+		if superseded[a] != superseded[b] {
+			if superseded[a] {
+				return 1
+			}
+			return -1
+		}
 		if c := cmpDesc(scores[a], scores[b]); c != 0 {
 			return c
 		}
@@ -1090,7 +1125,17 @@ func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bo
 		cluster := v.group(o)
 		summary := v.entries[o].Summary
 		score := math.Round(scores[o]*1000) / 1000
-		for _, id := range v.objects[o] {
+		ids := slices.Clone(v.objects[o])
+		slices.SortStableFunc(ids, func(a, b string) int {
+			if (replacements[a] != nil) == (replacements[b] != nil) {
+				return 0
+			}
+			if replacements[a] != nil {
+				return 1
+			}
+			return -1
+		})
+		for _, id := range ids {
 			row := v.rows[id]
 			if row.Table != "DOCUMENT" {
 				if len(out[row.Table]) < limits[row.Table] && readable(r, row.Table, id) {
@@ -1115,7 +1160,7 @@ func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bo
 				at[row.Terminal] = i
 			}
 			if len(docs[i].Refs) < searchRefs {
-				ref := row.ref(id, summary)
+				ref := r.replacementRef(row.ref(id, summary))
 				ref.Score = score
 				docs[i].Refs = append(docs[i].Refs, ref)
 			}
@@ -1145,7 +1190,14 @@ func (v *searchView) byMeaning(r *run, query []float32, limits map[string]int) (
 			batch := order[scanned[t]:min(scanned[t]+searchProbe, len(order))]
 			index.scan(query, batch, own)
 			scanned[t] += len(batch)
-			if len(v.pick(r, own, nil, map[string]int{t: limits[t]})[t]) == limits[t] {
+			results := v.pick(r, own, nil, map[string]int{t: limits[t]})[t]
+			current := 0
+			for _, result := range results {
+				if t != "DOCUMENT" || slices.ContainsFunc(result.Refs, func(ref SearchRef) bool { return ref.SupersededBy == "" }) {
+					current++
+				}
+			}
+			if current == limits[t] {
 				break
 			}
 		}
@@ -1223,7 +1275,7 @@ func (x *Searcher) Similar(m *Model, env Env, id string) ([]SearchRef, error) {
 		}
 		for _, rid := range v.objects[o] {
 			if !asked[rid] && readable(r, "DOCUMENT", rid) {
-				out = append(out, v.rows[rid].ref(rid, v.entries[o].Summary))
+				out = append(out, r.replacementRef(v.rows[rid].ref(rid, v.entries[o].Summary)))
 			}
 		}
 	}

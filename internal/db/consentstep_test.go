@@ -32,7 +32,7 @@ func hiddenByPasses(m *Model) map[string]bool {
 				if hidden[row["id"]] {
 					continue
 				}
-				if slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Kind == Ref && hidden[row[c.Name]] }) {
+				if slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Kind == Ref && !c.RetainOnHide && hidden[row[c.Name]] }) {
 					hidden[row["id"]] = true
 					grew = true
 				}
@@ -90,5 +90,50 @@ func TestHidingFollowsEveryReferenceAsPassesDid(t *testing.T) {
 		apply(t, s, []Edit{edit})
 		t.Logf("edit %d: %s %v", i, edit.Set, edit.Cells)
 		same(t, "after a random edit", s.Model())
+	}
+}
+
+func TestHiddenReplacementRetainsHistoricalDocuments(t *testing.T) {
+	for _, privacy := range []string{"consent", "hidden"} {
+		t.Run(privacy, func(t *testing.T) {
+			s := sample(t)
+			ids := apply(t, s, []Edit{
+				{Insert: "DOCUMENT", As: "old", Row: map[string]any{"kind": "file", "name": "Previous deck", "author": parent}},
+				{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": "@old", "content": "cnt00000000101"}},
+				{Insert: "TODO", Row: map[string]any{"document": "@old", "title": "Bring supplies", "point": "1"}},
+				{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Current deck", "author": staff}},
+			})
+			apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"superseded_by": ids[3]}}})
+			check := func(hidden bool) {
+				t.Helper()
+				m := s.Model()
+				r := m.newRun(Env{Viewer: parent, Now: testNow})
+				for i, table := range []string{"DOCUMENT", "DOCUMENT", "TODO"} {
+					if !readable(r, table, ids[i]) {
+						t.Fatalf("lost historical %s %s", table, ids[i])
+					}
+				}
+				row, ok := m.Shown("DOCUMENT").Get(ids[0])
+				if !ok || (row["superseded_by"] == "") != hidden {
+					t.Fatalf("historical view: %v", row)
+				}
+				if readable(r, "DOCUMENT", ids[3]) == hidden || (r.documentReplacement(ids[1]) == nil) != hidden {
+					t.Fatal("replacement visibility disagrees with consent")
+				}
+				stored, _ := m.Table("DOCUMENT").Get(ids[0])
+				if stored["superseded_by"] != ids[3] {
+					t.Fatal("consent erased stored history")
+				}
+			}
+			check(false)
+			value, restore := "withheld", "listed"
+			if privacy == "hidden" {
+				value, restore = "Yes", ""
+			}
+			apply(t, s, []Edit{{Set: staff, Cells: map[string]any{privacy: value}}})
+			check(true)
+			apply(t, s, []Edit{{Set: staff, Cells: map[string]any{privacy: restore}}})
+			check(false)
+		})
 	}
 }

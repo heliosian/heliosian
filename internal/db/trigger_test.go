@@ -316,3 +316,48 @@ func TestServingGroupsAreRenamedWithTheirGroup(t *testing.T) {
 	write(`{"batch": [{"set": "grp00000000040", "cells": {"name": "Harvest Picnic"}}]}`)
 	name("Picnic Crew", "with a name chosen by hand")
 }
+
+func TestDocumentSupersessionStaysOneHop(t *testing.T) {
+	s := sample(t)
+	ids := apply(t, s, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Gradeband week one"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Gradeband week two"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Gradeband week three"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Another copy"}},
+	})
+	apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"superseded_by": ids[1]}}})
+	apply(t, s, []Edit{{Set: ids[1], Cells: map[string]any{"superseded_by": ids[2]}}})
+	apply(t, s, []Edit{{Set: ids[3], Cells: map[string]any{"superseded_by": ids[0]}}})
+	for _, id := range []string{ids[0], ids[1], ids[3]} {
+		row, _ := s.Model().Table("DOCUMENT").Get(id)
+		if row["superseded_by"] != ids[2] {
+			t.Fatalf("%s: %v", id, row)
+		}
+	}
+	for _, target := range []string{ids[0], ids[2]} {
+		if _, err := applyErr(s, []Edit{{Set: ids[2], Cells: map[string]any{"superseded_by": target}}}); err == nil {
+			t.Fatalf("accepted cycle through %s", target)
+		}
+	}
+	if _, err := applyErr(s, []Edit{{Delete: ids[2]}}); err == nil {
+		t.Fatal("deleted a referenced replacement")
+	}
+	apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"superseded_by": ""}}})
+	row, _ := s.Model().Table("DOCUMENT").Get(ids[0])
+	if row["superseded_by"] != "" {
+		t.Fatal("could not clear a mistaken replacement")
+	}
+}
+
+func TestDocumentSupersessionCyclesAreRefusedOnLoad(t *testing.T) {
+	for _, replacements := range []map[string]string{{"a": "a"}, {"a": "b", "b": "c", "c": "a"}} {
+		rows := []store.Row{}
+		for id, replacement := range replacements {
+			rows = append(rows, store.Row{"id": id, "kind": "file", "superseded_by": replacement})
+		}
+		err := checkDocuments(Sheet{"DOCUMENT": &Rows{rows: rows}})
+		if err == nil || !strings.Contains(err.Error(), "replacements lead back") {
+			t.Fatalf("cycle %v: %v", replacements, err)
+		}
+	}
+}

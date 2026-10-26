@@ -19,6 +19,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/artifacts"
 	"heliosian/internal/blob"
+	"heliosian/internal/data"
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
@@ -1064,4 +1065,125 @@ func TestEachTableHasItsOwnLimit(t *testing.T) {
 	if rec := ask(`{"words": "picnic", "limits": {"FAMILY": 1}}`); rec.Code != http.StatusBadRequest {
 		t.Errorf("an unknown table's limit answered %d", rec.Code)
 	}
+}
+
+func TestSearchPrefersCurrentDeckAndProtectsReplacement(t *testing.T) {
+	s := sample(t)
+	ids := apply(t, s, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Gradeband updates week one"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Gradeband updates week two", "url": "https://example.org/new.pdf"}},
+	})
+	extracts := apply(t, s, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": ids[0], "content": "cnt00000000101"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": ids[1], "content": "cnt00000000102"}},
+	})
+	apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"superseded_by": ids[1]}}})
+	rows := map[string]SearchRow{}
+	entries := map[string]*SearchEntry{}
+	scores := map[string]float64{}
+	for i, id := range extracts {
+		object := fmt.Sprintf("object%d", i)
+		rows[id] = SearchRow{Table: "DOCUMENT", Object: object, Source: id, Terminal: ids[i], Name: "Gradeband updates"}
+		entries[object] = &SearchEntry{Summary: "update"}
+		scores[object] = 1 - float64(i)*0.1
+	}
+	v := buildView(rows, entries, nil)
+	pick := func() []SearchResult {
+		return v.pick(s.Model().newRun(Env{Viewer: parent, Now: testNow}), scores, nil, testLimits)["DOCUMENT"]
+	}
+	got := pick()
+	if len(got) != 2 || got[0].Refs[0].Terminal != ids[1] || got[1].Refs[0].SupersededBy != ids[1] || got[1].Refs[0].ReplacementHref != "https://example.org/new.pdf" {
+		t.Fatalf("replacement ranking: %+v", got)
+	}
+	apply(t, s, []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": ids[1], "group": "grp00000000031", "relation": "sent_to"}}})
+	got = pick()
+	if len(got) != 1 || got[0].Refs[0].Terminal != ids[0] || got[0].Refs[0].SupersededBy != "" || got[0].Refs[0].ReplacementHref != "" {
+		t.Fatalf("unreadable replacement: %+v", got)
+	}
+}
+
+func TestMeaningScansPastSupersededMatches(t *testing.T) {
+	s := sample(t)
+	ids := apply(t, s, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Previous deck"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Current deck"}},
+	})
+	extracts := apply(t, s, []Edit{
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": ids[0], "content": "cnt00000000101"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": ids[1], "content": "cnt00000000102"}},
+	})
+	apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"superseded_by": ids[1]}}})
+	rows := map[string]SearchRow{}
+	entries := map[string]*SearchEntry{}
+	for i, id := range extracts {
+		object := fmt.Sprintf("deck%d", i)
+		rows[id] = SearchRow{Table: "DOCUMENT", Object: object, Source: id, Terminal: ids[i]}
+		entries[object] = &SearchEntry{Summary: "update"}
+	}
+	index := &vectorIndex{}
+	for i := range searchProbe + 1 {
+		vector := []float32{1, 0}
+		object := "deck0"
+		if i == searchProbe {
+			vector = []float32{0.9, float32(math.Sqrt(1 - 0.9*0.9))}
+			object = "deck1"
+		}
+		index.centroids = append(index.centroids, vector)
+		index.cells = append(index.cells, []chunkRef{{object: object, vector: vector}})
+	}
+	vectors := map[string]*vectorIndex{"GROUP": {}, "PERSON": {}, "DOCUMENT": index}
+	v := buildView(rows, entries, vectors)
+	limits := map[string]int{"DOCUMENT": 1}
+	pick := func() ([]SearchResult, int) {
+		r := s.Model().newRun(Env{Viewer: parent, Now: testNow})
+		scores, scanned, _ := v.byMeaning(r, []float32{1, 0}, limits)
+		return v.pick(r, scores, nil, limits)["DOCUMENT"], scanned["DOCUMENT"]
+	}
+	got, scanned := pick()
+	if scanned != searchProbe+1 || len(got) != 1 || got[0].Refs[0].Terminal != ids[1] {
+		t.Fatalf("scanned %d cells, results %+v", scanned, got)
+	}
+	apply(t, s, []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": ids[1], "group": "grp00000000031", "relation": "sent_to"}}})
+	got, scanned = pick()
+	if scanned != searchProbe || len(got) != 1 || got[0].Refs[0].Terminal != ids[0] || got[0].Refs[0].SupersededBy != "" {
+		t.Fatalf("unreadable replacement: scanned %d cells, results %+v", scanned, got)
+	}
+}
+
+func TestLoadedReplacementChainResolvesToLatest(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	if err := dir.Insert(DocumentsSheet, "DOCUMENT", testkit.DeckRevisions()); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string]SearchRow{"doc00000000904": {Table: "DOCUMENT", Object: "deck", Source: "doc00000000904", Terminal: "doc00000000901"}}
+	v := buildView(rows, map[string]*SearchEntry{"deck": {Summary: "previous update"}}, nil)
+	check := func(want string) {
+		t.Helper()
+		env := Env{Viewer: parent, Now: testNow}
+		resolved := s.Model().DocumentReplacements(env, []string{"doc00000000901", "doc00000000902", "doc00000000904"})
+		for _, id := range []string{"doc00000000901", "doc00000000902", "doc00000000904"} {
+			if resolved[id] != want {
+				t.Fatalf("%s resolves to %q, want %q", id, resolved[id], want)
+			}
+		}
+		got := v.pick(s.Model().newRun(env), map[string]float64{"deck": 1}, nil, testLimits)["DOCUMENT"]
+		if len(got) != 1 || got[0].Refs[0].SupersededBy != want {
+			t.Fatalf("search refs: %+v", got)
+		}
+	}
+	check("doc00000000903")
+	original, _ := s.Model().Table("DOCUMENT").Get("doc00000000901")
+	if original["superseded_by"] != "doc00000000902" {
+		t.Fatal("reader rewrote the sheet's relationship")
+	}
+	apply(t, s, []Edit{{Set: staff, Cells: map[string]any{"consent": "withheld"}}})
+	check("")
+	apply(t, s, []Edit{{Set: staff, Cells: map[string]any{"consent": "listed"}}})
+	check("doc00000000903")
+	apply(t, s, []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "doc00000000903", "group": "grp00000000031", "relation": "sent_to"}}})
+	check("")
 }

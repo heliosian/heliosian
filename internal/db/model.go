@@ -450,9 +450,11 @@ func checkPhotos(people Sheet) error {
 
 func checkDocuments(documents Sheet) error {
 	parents := map[string]string{}
+	replacements := map[string]string{}
 	kinds := map[string]string{}
 	for _, row := range documents["DOCUMENT"].rows {
 		parents[row["id"]], kinds[row["id"]] = row["parent"], row["kind"]
+		replacements[row["id"]] = row["superseded_by"]
 	}
 	slugs := map[[2]string]string{}
 	for _, row := range documents["DOCUMENT"].rows {
@@ -474,6 +476,13 @@ func checkDocuments(documents Sheet) error {
 		subpage := row["kind"] == "wiki" && row["relation"] == "" && kinds[row["parent"]] == "wiki"
 		if !root && !child && !subpage {
 			return fmt.Errorf("DOCUMENT %s: a document has a kind and no parent, a relation and a parent, or is a wiki page under another", row["id"])
+		}
+		seenReplacements := map[string]bool{}
+		for at := row["id"]; at != ""; at = replacements[at] {
+			if seenReplacements[at] {
+				return fmt.Errorf("DOCUMENT %s: its replacements lead back round to %s", row["id"], at)
+			}
+			seenReplacements[at] = true
 		}
 		seen := map[string]bool{}
 		for at := row["id"]; at != ""; at = parents[at] {

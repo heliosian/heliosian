@@ -218,3 +218,103 @@ func TestEveryToolHasWordsAndAnObjectSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestReadDocumentShowsReadableReplacementAndKeepsHistory(t *testing.T) {
+	set, s := sample(t)
+	ids := write(t, s,
+		db.Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Old gradeband deck"}},
+		db.Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "New gradeband deck", "url": "https://example.org/new.pdf"}},
+	)
+	extract := write(t, s, db.Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": ids[0], "content": "cnt00000000101"}})[0]
+	write(t, s, db.Edit{Set: ids[0], Cells: map[string]any{"superseded_by": ids[1]}})
+	for _, id := range []string{ids[0], extract} {
+		answer, err := run(t, set, s, "helios_read_document", `{"id":"`+id+`"}`)
+		if err != nil || !strings.Contains(answer.Text, "Replaced by New gradeband deck") || !strings.Contains(answer.Text, "https://example.org/new.pdf") || !strings.Contains(answer.Text, "## extract") {
+			t.Fatalf("read old deck: %s %v", answer.Text, err)
+		}
+	}
+	write(t, s, db.Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": ids[1], "group": "grp00000000031", "relation": "sent_to"}})
+	answer, err := run(t, set, s, "helios_read_document", `{"id":"`+ids[0]+`"}`)
+	if err != nil || strings.Contains(answer.Text, "New gradeband deck") || strings.Contains(answer.Text, ids[1]) {
+		t.Fatalf("unreadable replacement disclosed: %s %v", answer.Text, err)
+	}
+}
+
+func TestReadEmailMarksSupersededAttachmentText(t *testing.T) {
+	set, s := sample(t)
+	ids := write(t, s,
+		db.Edit{Insert: "DOCUMENT", As: "email", Row: map[string]any{"kind": "mail", "name": "Gradeband mail"}},
+		db.Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "@email", "group": "grp00000000030", "relation": "sent_to"}},
+		db.Edit{Insert: "DOCUMENT", As: "attachment", Row: map[string]any{"relation": "part", "parent": "@email", "filename": "updates.pdf"}},
+		db.Edit{Insert: "DOCUMENT", Row: map[string]any{"relation": "extract", "parent": "@attachment", "content": "cnt00000000101"}},
+		db.Edit{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Current gradeband deck", "url": "https://example.org/current.pdf"}},
+	)
+	write(t, s, db.Edit{Set: ids[2], Cells: map[string]any{"superseded_by": ids[4]}})
+	check := func(wantNotice bool) {
+		t.Helper()
+		answer, err := run(t, set, s, "helios_read_document", `{"id":"`+ids[0]+`"}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, marker := range []string{"- " + ids[2] + " part", "- " + ids[3] + " extract", "## extract (" + ids[3] + ")"} {
+			at := strings.Index(answer.Text, marker)
+			if at < 0 {
+				t.Fatalf("missing %q in %s", marker, answer.Text)
+			}
+			section := answer.Text[at:]
+			if strings.HasPrefix(marker, "- ") {
+				section, _, _ = strings.Cut(section, "\n")
+			}
+			if end := strings.Index(section, "\n\n## "); end >= 0 {
+				section = section[:end]
+			}
+			if strings.Contains(section, "Replaced by Current gradeband deck") != wantNotice {
+				t.Fatalf("notice in %q: %s", marker, section)
+			}
+		}
+		if !wantNotice && (strings.Contains(answer.Text, ids[4]) || strings.Contains(answer.Text, "https://example.org/current.pdf")) {
+			t.Fatalf("hidden replacement leaked: %s", answer.Text)
+		}
+	}
+	check(true)
+	write(t, s, db.Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": ids[4], "group": "grp00000000031", "relation": "sent_to"}})
+	check(false)
+}
+
+func TestReadLoadedReplacementChainNamesLatestDeck(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	if err := dir.Insert(db.DocumentsSheet, "DOCUMENT", testkit.DeckRevisions()); err != nil {
+		t.Fatal(err)
+	}
+	s, err := db.NewStore(dir, dir, db.NewSearchIndex(), func(app string) string { return "https://" + app + ".heliosian.com" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	bucket := blob.NewMemoryBucket()
+	if err := bucket.FillFrom("../../sampledata/bucket"); err != nil {
+		t.Fatal(err)
+	}
+	set := New(Deps{Bucket: bucket, Now: func() time.Time { return sampleNow }})
+	check := func(wantNotice bool) {
+		t.Helper()
+		for _, id := range []string{"doc00000000901", "doc00000000902", "doc00000000904"} {
+			answer, err := run(t, set, s, "helios_read_document", `{"id":"`+id+`"}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(answer.Text, "Replaced by Gradeband week three (doc00000000903)") != wantNotice || strings.Contains(answer.Text, "Replaced by Gradeband week two") {
+				t.Fatalf("read %s: %s", id, answer.Text)
+			}
+			if strings.Contains(answer.Text, "https://example.org/current-deck.pdf") != wantNotice {
+				t.Fatalf("replacement link in %s: %s", id, answer.Text)
+			}
+		}
+	}
+	check(true)
+	write(t, s, db.Edit{Set: maya, Cells: map[string]any{"consent": "withheld"}})
+	check(false)
+	write(t, s, db.Edit{Set: maya, Cells: map[string]any{"consent": "listed"}})
+	check(true)
+	write(t, s, db.Edit{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "doc00000000903", "group": "grp00000000031", "relation": "sent_to"}})
+	check(false)
+}

@@ -33,16 +33,17 @@ type Value struct {
 }
 
 type Column struct {
-	Name        string
-	Kind        Kind
-	Prefix      string
-	Target      string
-	Values      []Value
-	Required    bool
-	Default     string
-	Generated   bool
-	Private     bool
-	Description string
+	Name         string
+	Kind         Kind
+	Prefix       string
+	Target       string
+	Values       []Value
+	Required     bool
+	Default      string
+	Generated    bool
+	RetainOnHide bool
+	Private      bool
+	Description  string
 }
 
 type Table struct {
@@ -158,6 +159,11 @@ func (c Column) byDefault(value string) Column {
 
 func (c Column) private() Column {
 	c.Private = true
+	return c
+}
+
+func (c Column) retainOnHide() Column {
+	c.RetainOnHide = true
 	return c
 }
 
@@ -543,6 +549,7 @@ var Tables = []Table{
 		Columns: []Column{
 			ident(DocumentPrefix),
 			ref("parent", "DOCUMENT").about("The document it hangs under."),
+			ref("superseded_by", "DOCUMENT").retainOnHide().about("The document that replaces this whole document. Earlier versions point directly to the latest replacement; blank when none is declared."),
 			enum("kind",
 				v("mail", "an email the community received, its content the raw message; a Loop post's also names its MESSAGE"),
 				v("calendar", "a version of the school's year-calendar PDF, which the calendar import reads"),

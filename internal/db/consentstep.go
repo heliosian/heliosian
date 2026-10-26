@@ -31,6 +31,9 @@ func consentStep(ctx context.Context, m *Model) error {
 	for queue := slices.Collect(maps.Keys(hidden)); len(queue) > 0; queue = queue[1:] {
 		table, _ := TableOf(queue[0])
 		for _, ref := range slices.Concat(refs[table], refs[""]) {
+			if ref.retainOnHide {
+				continue
+			}
 			for _, row := range m.Table(ref.table).Referencing(ref.column, queue[0]) {
 				if !hidden[row["id"]] {
 					hidden[row["id"]] = true
@@ -53,6 +56,13 @@ func consentStep(ctx context.Context, m *Model) error {
 			}
 		}
 	}
+	for _, t := range Tables {
+		for _, c := range t.Columns {
+			if c.RetainOnHide && flipped[c.Target] {
+				flipped[t.Name] = true
+			}
+		}
+	}
 	consented := map[string]*View{}
 	for _, t := range Tables {
 		if t.Generated {
@@ -68,7 +78,7 @@ func consentStep(ctx context.Context, m *Model) error {
 			if hidden[row["id"]] {
 				continue
 			}
-			v.shown[i] = withoutPrivate(&t, row)
+			v.shown[i] = consentedRow(&t, row, hidden)
 			v.all = append(v.all, v.shown[i])
 		}
 		consented[t.Name] = v
@@ -80,6 +90,7 @@ func consentStep(ctx context.Context, m *Model) error {
 
 type reference struct {
 	table, column string
+	retainOnHide  bool
 }
 
 var referrers = sync.OnceValue(func() map[string][]reference {
@@ -90,20 +101,20 @@ var referrers = sync.OnceValue(func() map[string][]reference {
 		}
 		for _, c := range t.Columns {
 			if c.Kind == Ref {
-				out[c.Target] = append(out[c.Target], reference{table: t.Name, column: c.Name})
+				out[c.Target] = append(out[c.Target], reference{table: t.Name, column: c.Name, retainOnHide: c.RetainOnHide})
 			}
 		}
 	}
 	return out
 })
 
-func withoutPrivate(t *Table, row store.Row) store.Row {
-	if !slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Private }) {
+func consentedRow(t *Table, row store.Row, hidden map[string]bool) store.Row {
+	if !slices.ContainsFunc(t.Columns, func(c Column) bool { return c.Private || (c.RetainOnHide && hidden[row[c.Name]]) }) {
 		return row
 	}
 	out := maps.Clone(row)
 	for _, c := range t.Columns {
-		if c.Private {
+		if c.Private || (c.RetainOnHide && hidden[row[c.Name]]) {
 			delete(out, c.Name)
 		}
 	}

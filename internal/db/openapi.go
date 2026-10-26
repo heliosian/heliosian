@@ -247,16 +247,18 @@ func spec() schema {
 		"why":    schema{"type": "string", "description": "Why fetch was set."},
 	}}
 	schemas["SearchRef"] = schema{"type": "object", "required": []string{"extract", "document", "terminal", "name", "summary"}, "properties": schema{
-		"extract":    schema{"type": "string", "description": "The extract that matched."},
-		"document":   schema{"type": "string", "description": "The document its text was read from: an attachment, an image, a linked page, an email's body, or the email or file itself."},
-		"source":     schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the email or file itself."},
-		"href":       schema{"type": "string", "description": "That document's address, when it has one."},
-		"first_page": schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the first of its pages the extract was read from."},
-		"last_page":  schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the last of its pages the extract was read from."},
-		"terminal":   schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
-		"name":       schema{"type": "string", "description": "That email's or file's name."},
-		"summary":    schema{"type": "string", "description": "The extract's summary."},
-		"score":      schema{"type": "number", "description": "What it ranked by: 1 when its email's or file's name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
+		"extract":          schema{"type": "string", "description": "The extract that matched."},
+		"document":         schema{"type": "string", "description": "The document its text was read from: an attachment, an image, a linked page, an email's body, or the email or file itself."},
+		"source":           schema{"type": "string", "description": "How that document stands to its email or file, as the search input says it: attached file, email body, image shown in the email, linked from the email, with its type and any file name, link text and address. Blank when it is the email or file itself."},
+		"href":             schema{"type": "string", "description": "That document's address, when it has one."},
+		"first_page":       schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the first of its pages the extract was read from."},
+		"last_page":        schema{"type": "integer", "description": "When that document is a PDF read in runs of pages, the last of its pages the extract was read from."},
+		"terminal":         schema{"type": "string", "description": "The email, shared file, year calendar or wiki page it belongs to."},
+		"name":             schema{"type": "string", "description": "That email's or file's name."},
+		"summary":          schema{"type": "string", "description": "The extract's summary."},
+		"superseded_by":    schema{"type": "string", "description": "The readable document that replaces this extract or a document above it in full; absent when none is readable."},
+		"replacement_href": schema{"type": "string", "description": "The replacement document's href, when it has one."},
+		"score":            schema{"type": "number", "description": "What it ranked by: 1 when its email's or file's name holds every word; else its closest chunk's cosine similarity to the words, at least the floor."},
 	}}
 	schemas["SearchHit"] = schema{"type": "object", "required": []string{"id", "name", "summary"}, "properties": schema{
 		"id":      schema{"type": "string", "description": "The group or person."},
@@ -372,16 +374,17 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Add a file the community received or shared",
-				"description": "The file's type is its part's Content-Type, or read from its bytes when that is absent or application/octet-stream. Mail (message/rfc822) is read from its headers alone and takes no other field; anything else needs url and published and becomes a root of kind file, or calendar with kind=calendar.",
+				"description": "The file's type is its part's Content-Type, or read from its bytes when that is absent or application/octet-stream. Mail (message/rfc822) is read from its headers alone and takes no other field; anything else needs url and published and becomes a root of kind file, or calendar with kind=calendar. supersedes names the previous root of the same kind; its superseded_by is set to the imported document atomically. An unchanged upload reuses the existing document and never replaces itself.",
 				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
 					"type":     "object",
 					"required": []string{"file"},
 					"properties": schema{
-						"file":      schema{"type": "string", "contentMediaType": "application/octet-stream"},
-						"kind":      schema{"type": "string", "enum": []string{"calendar"}},
-						"name":      schema{"type": "string"},
-						"url":       schema{"type": "string", "format": "uri"},
-						"published": schema{"type": "string", "description": "When the file last changed, in school time, as " + cells.StampFormat},
+						"file":       schema{"type": "string", "contentMediaType": "application/octet-stream"},
+						"kind":       schema{"type": "string", "enum": []string{"calendar"}},
+						"name":       schema{"type": "string"},
+						"url":        schema{"type": "string", "format": "uri"},
+						"published":  schema{"type": "string", "description": "When the file last changed, in school time, as " + cells.StampFormat},
+						"supersedes": schema{"type": "string", "pattern": idPattern(DocumentPrefix), "description": "The previous document this file replaces in full. Requires permission to set that document's superseded_by."},
 					},
 				}}}},
 				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the file and its hash.", "Stored"), "400": failure("Mail that does not parse or has no readable Date, or another file with no url or published moment.")}),
@@ -461,7 +464,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Search groups, people and documents",
-				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first: first the rows whose name holds every word, then the rows an embedded chunk of which lies close enough in meaning to the words. A document result is a bundle of refs, best first: a hit joins the result its own email or file started, else the result holding a near-identical copy of it, else starts one. Equal scores come newest first.",
+				"description": "Answers, for each of GROUP, PERSON and DOCUMENT, the rows the caller may read best first: first the rows whose name holds every word, then the rows an embedded chunk of which lies close enough in meaning to the words. A document result is a bundle of refs, best first: a hit joins the result its own email or file started, else the result holding a near-identical copy of it, else starts one. Documents with a readable replacement rank after current documents; within each, equal scores come newest first.",
 				"requestBody": schema{"required": true, "content": schema{"application/json": schema{"schema": schema{
 					"type":     "object",
 					"required": []string{"words"},
