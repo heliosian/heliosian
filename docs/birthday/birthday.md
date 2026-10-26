@@ -72,7 +72,7 @@ On phones the shared toolbar is pinned on top with a hamburger for the drawer, a
 
 ## Brand
 
-The cake-on-a-sun mark and the Staff Birthdays lockups live under `web/public/birthday/brand/`, cut from the app's exports (`docs/brand.md`): `appicon.png` for the home-screen icons; the bare mark (`favicon.png` there) for the favicons, `logo-mark.png` (the drawer's head), the app switch row (`web/public/common/brand/apps/birthday.png`) and the maskables at 62% on the icon's dark teal `#0e4d54`; the teal vertical lockup for the rail (`logo-lockup-vertical.png`, 170px wide); the white one for the login page (`logo-lockup-light.png`); the white horizontal for the admin header (`logo-lockup-light-horizontal.png`); the teal horizontal (`logo-lockup.png`) on the share card. The iOS splash screens are under `brand/splash/`.
+The cake-on-a-sun mark and the Staff Birthdays lockups live under `web/public/birthday/brand/`, cut from the app's exports (`docs/brand.md`): `appicon.png` for the home-screen icons; the bare mark (`favicon.png` there) for the favicons, `logo-mark.png` (the drawer's head), the app switch row (`web/public/common/brand/apps/birthday.png`) and the maskables at 62% on the icon's dark teal `#0f4e54`; the teal vertical lockup for the rail (`logo-lockup-vertical.png`, 170px wide); the white one for the login page (`logo-lockup-light.png`); the white horizontal for the admin header (`logo-lockup-light-horizontal.png`); the teal horizontal (`logo-lockup.png`) on the share card. The iOS splash screens are under `brand/splash/`.
 
 ## Sign-in and install
 

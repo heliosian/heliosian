@@ -36,7 +36,7 @@ The people to think about:
 - How the Google credential is verified: signature and key rotation, audience, issuer, expiry, the hosted domain claim rather than the address's suffix, `email_verified`, the sign-in exchange's own double-submit token.
 - The session cookie: what it signs, how the signature is compared, its lifetime, and whether there is any way to end one - someone who leaves the directory, a lost phone, a rotated key as the only lever.
 - The member gate: who counts as a member, when that is re-checked, and what someone the directory no longer lists can still reach.
-- Identity resolution: `Email Aliases`, `Name to Email` and the actor resolution the directory and the portal do - whether an alias or a name match can make one person another, and who can write those tabs.
+- Identity resolution: how an address in `PERSON_EMAIL`, a `vc_name` match in the Veracross import, or `/api/do/person-at` attaches a name or address to one person, and who can write those cells.
 - Parents answering for students, hosts for parties, managers for groups: each delegated right, checked on the server and not by the page.
 - `auth.Public`: every path it lets through, and whether each does its own check. A new route under `/hooks/`, `/open/` or `/ext/` is public by its prefix alone.
 - Hook secrets: how each is compared, whether a signed request can be replayed (Mailgun's timestamp and token), what the calendar watch's channel token proves, and what a hook does before it has checked.

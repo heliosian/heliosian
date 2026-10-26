@@ -20,8 +20,8 @@ The app is light-on-white; dark teal is reserved for the sidebar, the family ban
 
 ## Logo and identity
 
-- The mark: a teal spiral-bound address book with a person on its cover, a green and a red book fanned behind it, and a yellow sun rising over them. The lockup sets "Helios" in white and "Who" in the brush lime with a yellow question mark, "A VISUAL DIRECTORY" letterspaced beneath; a dark-text variant exists for light grounds but the app only uses the white one, on the dark-teal sidebar and the admin header (`web/who/brand/logo-wordmark.png`).
-- The app icons (`web/public/who/brand/icon-*.png`, `apple-touch-icon.png`) are the mark on `#0e4d54`; the maskable icon keeps the mark at 58% for the safe circle; the favicons are the bare mark on a transparent ground; the splash screens are made as every app's are (`docs/brand.md`).
+- The mark: a teal spiral-bound address book with a person on its cover, a green and a red book fanned behind it, and a yellow sun rising over them. The lockup sets "Helios" in white and "Who" in the brush lime with a yellow question mark, "A VISUAL DIRECTORY" letterspaced beneath; a dark-text variant exists for light grounds. The sidebar uses the white lockup at `/brand/logo-lockup-light.png`; Admin Tools uses the app icon.
+- The app icons (`web/public/who/brand/icon-*.png`, `apple-touch-icon.png`) are the mark on `#0f4e54`, the palette's `--brand`; the maskable icon keeps the mark at 62% for the safe circle, as every app's does (`docs/brand.md`); the favicons are the bare mark on a transparent ground; the splash screens are made as every app's are (`docs/brand.md`).
 - The wordmark's geometric face appears only in the logo artwork; it is not the UI font.
 
 ## Classroom mascots
