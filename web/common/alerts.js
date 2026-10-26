@@ -267,7 +267,7 @@ export function initAlerts() {
   }
   Promise.all([queries({
     waiting: `(from GROUP @e (where (= kind "event") (not (in status "closed" "cancelled")) (or (>= start today) (>= end today)) (not (manages @e))
-      (exists MESSAGE @m (= kind "invitation") (= group @e) (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer)))))
+      (in id (select MESSAGE.group (= kind "invitation") (in id (select RECIPIENT.message (or (= person @viewer) (in person (household @viewer)))))))
       (not (exists MEMBER (= person @viewer) (or (= group @e.rsvp_yes) (= group @e.rsvp_no) (= group @e.hidden_for))))) (order start asc) (columns name start all_day when_href))`,
     events: '(from GROUP @g (where (= kind "event") (= status "pending") (admin_of "when")) (columns name start href))',
     activities: '(from GROUP @g (where (= kind "activity") (= status "pending") (runs_list @g)) (columns name start team_href))',

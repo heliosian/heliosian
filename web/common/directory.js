@@ -1,17 +1,17 @@
-import {q, rowsOf, all} from '/rail.js';
+import {queries, rowsOf, all} from '/rail.js';
 
 let asked = null;
 let index = null;
 
 async function load() {
-  const [people, emails, photos, members, roles, groups] = await Promise.all([
-    q('(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns name_show grade classroom department job_title pronouns phone who_href))'),
-    q('(from PERSON_EMAIL (where primary) (columns person address))'),
-    q('(from PHOTO (where ready) (order order asc) (columns person group))'),
-    q('(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns person group))'),
-    q('(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group) (columns person group))'),
-    q('(from GROUP (where (in kind "grade" "classroom" "department")) (columns kind name slug))'),
-  ]);
+  const {people, emails, photos, members, roles, groups} = await queries({
+    people: '(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns name_show grade classroom department job_title pronouns phone who_href))',
+    emails: '(from PERSON_EMAIL (where primary) (columns person address))',
+    photos: '(from PHOTO (where ready) (order order asc) (columns person group))',
+    members: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns person group))',
+    roles: '(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group) (columns person group))',
+    groups: '(from GROUP (where (in kind "grade" "classroom" "department")) (columns kind name slug))',
+  });
   const out = {
     people: rowsOf(people, 'PERSON'),
     byId: {},
@@ -47,7 +47,7 @@ async function load() {
   for (const e of all(roles, 'EFFECTIVE_MEMBER')) {
     out.roles[slugs[e.group]].add(e.person);
   }
-  for (const g of all(groups, 'GROUP')) {
+  for (const g of rowsOf(groups, 'GROUP')) {
     out.groups[g.id] = g;
   }
   out.grades = {};

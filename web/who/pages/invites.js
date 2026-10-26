@@ -1,5 +1,5 @@
 import {state, model, emailOf, isStudent, familyOf, kidsOf, adultsOf, viewerId} from '../state.js';
-import {q, rowsOf, write} from '/rail.js';
+import {queries, rowsOf, write} from '/rail.js';
 import {firstName, lastName, hue} from '../dom.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
@@ -304,11 +304,11 @@ async function loadInviteSystems() {
   inviteSystems = [];
   inviteGreetings = [];
   try {
-    const [services, templates, greetings] = await Promise.all([
-      q('(from INVITE_SERVICE (order name asc))'),
-      q('(from INVITE_TEMPLATE (order order asc))'),
-      q('(from GREETING (order name asc))'),
-    ]);
+    const {services, templates, greetings} = await queries({
+      services: '(from INVITE_SERVICE (order name asc))',
+      templates: '(from INVITE_TEMPLATE (order order asc))',
+      greetings: '(from GREETING (order name asc))',
+    });
     const columns = rowsOf(templates, 'INVITE_TEMPLATE');
     inviteSystems = rowsOf(services, 'INVITE_SERVICE').map(s => ({
       id: s.id,

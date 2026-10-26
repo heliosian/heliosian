@@ -137,6 +137,51 @@ func TestHomeAndCalendarQueriesProbe(t *testing.T) {
 	}
 }
 
+func TestAlertsQueriesProbe(t *testing.T) {
+	src := readSource(t, "../../web/common/alerts.js")
+	bind := map[string]string{}
+	qs := jsObject(t, bind, src, "queries({", "")
+	q, err := Parse(qs["waiting"])
+	if err != nil {
+		t.Fatalf("waiting: %v", err)
+	}
+	if q.scan.probeCol != "id" || q.scan.probeSet == nil {
+		t.Errorf("waiting does not probe id set, got col %q probeSet=%v", q.scan.probeCol, q.scan.probeSet != nil)
+	}
+	wide := scaleStore(t).Model()
+	walkWaiting := `(from GROUP @e (where (= kind "event") (not (in status "closed" "cancelled")) (or (>= start today) (>= end today)) (not (manages @e)) (exists MESSAGE @m (= kind "invitation") (= group @e) (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer))))) (not (exists MEMBER (= person @viewer) (or (= group @e.rsvp_yes) (= group @e.rsvp_no) (= group @e.hidden_for))))) (order start asc) (columns name start all_day when_href))`
+	walkChecks := groupReadChecks(t, wide, scaleViewer, walkWaiting)
+	probedChecks := groupReadChecks(t, wide, scaleViewer, qs["waiting"])
+	t.Logf("alerts waiting GROUP checks: walk %d, probed %d", walkChecks, probedChecks)
+	if walkChecks < 500 || probedChecks*10 > walkChecks {
+		t.Errorf("shipped waiting read-checked GROUP %d times, the walk %d", probedChecks, walkChecks)
+	}
+}
+
+func TestWikiAndDirectoryQueriesBatchAndProbe(t *testing.T) {
+	wikiSrc := readSource(t, "../../web/wiki/state.js")
+	bind := map[string]string{}
+	wikiQs := jsObject(t, bind, wikiSrc, "queries: {", "")
+	for _, name := range []string{"pages", "person", "photo", "admin", "cards", "redirects"} {
+		if wikiQs[name] == "" {
+			t.Fatalf("wiki missing query %s", name)
+		}
+		if _, err := Parse(wikiQs[name]); err != nil {
+			t.Fatalf("wiki query %s: %v", name, err)
+		}
+	}
+	dirSrc := readSource(t, "../../web/common/directory.js")
+	dirQs := jsObject(t, bind, dirSrc, "queries({", "")
+	for _, name := range []string{"people", "emails", "photos", "members", "roles", "groups"} {
+		if dirQs[name] == "" {
+			t.Fatalf("directory missing query %s", name)
+		}
+		if _, err := Parse(dirQs[name]); err != nil {
+			t.Fatalf("directory query %s: %v", name, err)
+		}
+	}
+}
+
 func photoReadChecks(t *testing.T, m *Model, viewer, src string) (int, int) {
 	t.Helper()
 	root := trace.New("request")

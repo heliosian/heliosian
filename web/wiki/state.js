@@ -10,46 +10,42 @@ export function sidesOf(p) {
 
 const bodies = new Map();
 
-function query(tree) {
-  return api('QUERY', '/api/q', tree);
-}
-
-const viewerIs = column => ['=', {n: column}, {n: '@viewer'}];
-
 export async function loadModel() {
-  const [viewer, pages, person, photo, admin, cards, redirects] = await Promise.all([
+  const [viewer, {results, resources}] = await Promise.all([
     whoAmI(),
-    query(['from', 'DOCUMENT', ['where', ['=', {n: 'kind'}, 'wiki']], ['order', 'name', 'asc']]),
-    query(['from', 'PERSON', ['where', viewerIs('id')]]),
-    query(['from', 'PHOTO', ['where', viewerIs('person'), {n: 'ready'}], ['order', 'order', 'asc'], ['limit', 1]]),
-    query(['from', 'PERSON', ['where', viewerIs('id'), ['admin_of', 'wiki']]]),
-    query(['from', 'DOCUMENT', ['where', ['=', {n: 'relation'}, 'side']], ['order', 'order', 'asc']]),
-    query(['from', 'REDIRECT', ['where', ['=', {n: 'app'}, 'wiki']]]),
+    api('QUERY', '/api/q', {queries: {
+      pages: '(from DOCUMENT (where (= kind "wiki")) (order name asc) (columns name content parent order author slug path hidden))',
+      person: '(from PERSON (where (= id @viewer)) (columns name_show))',
+      photo: '(from PHOTO (where (= person @viewer) ready) (order order asc) (limit 1))',
+      admin: '(from PERSON (where (= id @viewer) (admin_of "wiki")))',
+      cards: '(from DOCUMENT (where (= relation "side")) (order order asc) (columns name content parent))',
+      redirects: '(from REDIRECT (where (= app "wiki")) (columns old new))',
+    }}),
   ]);
-  state.moved = new Map(redirects.result.map(id => {
-    const row = redirects.resources.REDIRECT[id];
+  state.moved = new Map((results.redirects || []).map(id => {
+    const row = resources.REDIRECT[id];
     return [row.old.toLowerCase(), row.new];
   }));
   state.sides = new Map();
-  for (const id of cards.result) {
-    const row = cards.resources.DOCUMENT[id];
+  for (const id of results.cards || []) {
+    const row = resources.DOCUMENT[id];
     const list = state.sides.get(row.parent) || [];
     list.push({id, name: row.name, content: row.content || ''});
     state.sides.set(row.parent, list);
   }
-  state.admin = admin.result.length > 0;
-  state.pages = pages.result.map(id => {
-    const row = pages.resources.DOCUMENT[id];
+  state.admin = (results.admin || []).length > 0;
+  state.pages = (results.pages || []).map(id => {
+    const row = resources.DOCUMENT[id];
     return {id, name: row.name, content: row.content, parent: row.parent || '', order: row.order || '', author: row.author || '', slug: row.slug || '', path: row.path, hidden: row.hidden === 'Yes'};
   });
-  state.viewer = person.result[0] || '';
-  const self = state.viewer ? person.resources.PERSON[state.viewer] : null;
+  state.viewer = (results.person || [])[0] || '';
+  const self = state.viewer ? resources.PERSON[state.viewer] : null;
   const name = self ? self.name_show : viewer.email;
   state.user = {
     email: viewer.email,
     name,
     initial: name[0].toUpperCase(),
-    photoUrl: photo.result.length ? `/api/blob/${photo.result[0]}/thumbnail` : '',
+    photoUrl: (results.photo || []).length ? `/api/blob/${results.photo[0]}/thumbnail` : '',
   };
 }
 
