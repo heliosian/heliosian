@@ -1,0 +1,29 @@
+# Let Celebrate admins record Stripe invoice IDs on payments
+
+byre task tskxBsNBsDoEIW, "Celebrate invoice IDs", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskxBsNBsDoEIW in byre (GET /api/events?task_id=tskxBsNBsDoEIW).
+
+## Summary
+
+Celebrate admins had no way to record the Stripe invoice that bills a payment: no policy let anyone but a super admin set `PAYMENT.stripe_invoice`, and the Payments tab showed it only as text.
+
+- **Policy:** `(set PAYMENT.stripe_invoice (admin_of "celebrate"))` in `internal/db/policy.go`.
+  Before: only super admins could set `stripe_invoice`.
+  Now: Celebrate admins can too.
+- **Page:** on Celebrate's admin Payments tab (`web/celebrate/pages/admin.js`), each payer with owed (blank-status) rows in the filtered view has a Record invoice button. It opens a box with an `in_…` ID field and one toggle per owed row, all on, and writes `stripe_invoice` and `status=requested` to the picked rows in one batch.
+- **Decisions:**
+  - Recording an invoice also marks its rows Requested, since sending the invoice is asking for the money.
+  - One toggle per row, because an invoice can bill only some of a payer's rows.
+  - Only owed rows are offered, so an ID already recorded is never overwritten.
+- **Docs:** `docs/datamodel.md`, `docs/celebrate/data.md` and `docs/celebrate/celebrate.md`.
+- **Test:** `TestCelebrateAdminsRecordTheInvoiceThatBillsAPayment` in `internal/db/celebratewrites_test.go`.
+- **Checking:** the page was viewed on a local, read-only snapshot of production data as ian, then the snapshot was deleted. Saving from the box wasn't clicked through; the server side of that write is covered by the test.
+- **Left out:** a way to edit the invoice ID on a row already Requested. Setting the row back to Owed puts it back under Record invoice.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Celebrate admins can now set `PAYMENT.stripe_invoice`. The Payments tab provides a payer-level Record invoice dialog with selectable owed rows; saving writes the invoice ID and marks those rows Requested in one batch. Documentation describes the behavior, and a policy test checks that Celebrate admins can record invoices while payers and hosts cannot.
+
+No significant findings.
