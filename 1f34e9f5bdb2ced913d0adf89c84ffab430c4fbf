@@ -1,0 +1,65 @@
+# Add HS counseling calendar source (#176)
+
+byre task tskPKYNyooPsGJ, "HS counseling calendar", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Add Mike Orlando's high school counseling Google Calendar as a source in Helios When".
+Full transcripts: the events of task tskPKYNyooPsGJ in byre (GET /api/events?task_id=tskPKYNyooPsGJ).
+
+## Summary
+
+Implemented issue #176 using the High School Counseling calendar linked in Mike Orlando’s email. Confirmed that its public feed and the production service account can read it. Mike’s email identifies grades 5–8 as the audience.
+
+Before: Helios When imported the school Google Calendar and year-calendar PDF, without the counseling calendar.
+Now: The existing import pipeline also reads and watches the counseling calendar, imports community events into an initially enabled High School Counseling category, and assigns grades 5–8 audiences narrowed by each event. Parent coffees target parents; family presentations target families.
+
+Ian explicitly chose community events only after seeing actual examples. The classifier includes fireside chats, family presentations and admissions deadlines, and excludes individual appointments, ambiguous meetings and professional scheduling. Excluded entries are cached by classification-input hash for the running watcher. Counseling keys are namespaced by calendar ID to avoid collisions. Both feeds are read before planning removals, and failed counseling classification preserves existing events.
+
+Before: Ordinary parents could not read visible events’ audience rules, counseling pages skipped imported-event invitation controls, and renaming the category could halt sync.
+Now: Viewers can read the audience rules of events they can see, counseling pages load RSVP and host guest-list/invitation controls, and the category is identified by stable slug through display-name edits.
+
+Removed the TODO item. Verified real classifier examples, ordinary-parent and host page previews, category defaults, rename/resync, both watch channels, exclusions/caching and failure preservation. Data-model, app and import-tool tests and compilation checks passed. Merges from main preserve its shared wakeup mechanism. No deployment was performed; the importer runs after deployment.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds the High School Counseling Google Calendar to the existing calendar watcher, with separate event keys, a counseling category, classroom targeting, and classification that excludes individual appointments and other non-community entries. Updates audience-rule visibility, source labels, documentation, and tests, and removes the TODO item. Reviewed by reading code; no builds or tests were run.
+
+- Counseling events are excluded from the default calendar because their category starts off.
+- Counseling detail pages skip imported-event guest-list and host controls.
+- Renaming the counseling category causes both calendar imports to fail.
+
+### Snapshot #6, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds the High School Counseling Google Calendar to the existing importer, with separate source keys and watch channels. Counseling entries are classified for inclusion, tagged under a dedicated category, and targeted to classrooms in grades 5–8 without changing school-day schedules. Updates source labels, audience-rule visibility, documentation, and tests, and removes the completed TODO item.
+
+No significant findings.
+
+## Decisions
+
+### Do you have Mike’s calendar address and sharing confirmation, or should this task wait for him?
+
+Helios When currently imports one Google Calendar: the school calendar, using Google’s Calendar API as `directory@`. Adding Mike Orlando’s HS counseling calendar also needs a confirmed calendar address so I can verify access and import real events with the high school counseling tag and classroom audience.
+
+[Issue #176](https://github.com/heliosian/heliosian/issues/176) has no comments and explicitly says the calendar’s ID or public/iCal address and Mike’s sharing confirmation are still needed. Neither is supplied in the issue or TODO item. I haven’t changed code or removed the TODO item.
+
+- (*) Provide Mike’s confirmed calendar details
+  Supply the calendar ID, Google Calendar link, or iCal URL, plus Mike’s confirmation that it is public or shared with the service account. I’ll verify access and complete the integration using its actual events.
+- ( ) Wait for Mike
+  Leave the task and TODO item open until Mike supplies the address and confirms sharing.
+
+ian@fc.run answered: go search my email
+
+### Should the HS counseling source import community events only, or every entry including individual appointments and professional meetings?
+
+I found Mike’s HS Counseling Calendar in his October 15 email, “RSVP for Thursday, Oct 22 Kehillah School ‘Fireside Chat’.” His email links to calendar `c_cmoccvs0uksquupa6g68mf2cs0@group.calendar.google.com`, and its public iCal feed answers successfully without signing in. Mike describes the fireside chats as open to grades 5–8; Helios is K–8, so those are the middle school classrooms this source should target.
+
+The calendar mixes community events with individual appointments and Mike’s professional schedule. Helios When’s existing importer creates events visible to everyone; an event’s classroom audience controls filtering, rather than restricting access. I need to settle which entries this new source should bring in before implementing it.
+
+- (*) Import community events only
+  Include `Khan Lab School "Fireside Chat" at Helios` on November 4, 2026, aimed at grades 5–8, and `8th Grade Parent Coffee: HS Game Plan and Decisions` on January 22, 2027, aimed at parents of eighth graders. Exclude `Alexander meeting` on September 24, 2026 (whose description links to an individual meeting document), and `BASSC Fall Meeting (Zoom)` on October 8, 2026 (a secondary school counselors’ professional meeting). I recommend this because it keeps the family calendar focused on events families can attend or act on.
+- ( ) Import every calendar entry
+  Include all four examples: the fireside chat, parent coffee, Alexander’s meeting with its document link, and the counselors’ professional meeting. All would be readable by everyone with access to Helios When, tagged as high school counseling, with audiences assigned from each entry.
+
+ian@fc.run chose: Import community events only
