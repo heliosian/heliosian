@@ -46,7 +46,7 @@ export async function loadModel() {
     adults: '(from GROUP (where (= id (slug "adults"))) (columns slug))',
     runs: '(from GROUP @g (where (in kind "party" "celebration" "category") (runs_list @g)) (columns kind))',
     celebrations: '(from GROUP (where (= kind "celebration") (!= status "closed")) (order start desc))',
-    categories: '(from GROUP (where (= kind "category") (= parent.kind "celebration")) (order order asc))',
+    categories: '(from GROUP (where (= kind "category") (in parent (select GROUP.id (= kind "celebration")))) (order order asc))',
     parties: '(from GROUP (where (= kind "party") (!= status "closed")) (order start asc))',
     tickets: '(from MEMBER (where (or (in group (select GROUP.id (= kind "party"))) (in group (select GROUP.waitlist (= kind "party"))))) (include person))',
     hosts: '(from MEMBER (where (in group (select GROUP.managed_by (= kind "party")))) (columns group person member))',

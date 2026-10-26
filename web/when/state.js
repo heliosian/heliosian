@@ -25,9 +25,9 @@ const byId = new Map();
 const byDate = new Map();
 
 export async function loadModel() {
-  const [raw, mine] = await Promise.all([loadCalendar(), queries({photo: '(from PHOTO (where (= person @viewer) ready) (order order asc) (columns person))'})]);
+  const raw = await loadCalendar({photo: '(from PHOTO (where (= person @viewer) ready) (order order asc) (columns person))'});
   const cal = buildCalendar(raw);
-  const photo = rowsOf(mine.photo, 'PHOTO')[0];
+  const photo = rowsOf(raw.photo, 'PHOTO')[0];
   applyModel({
     user: {id: cal.me.id, email: cal.email, name: cal.me.name_show, initial: (cal.me.name_show || '?')[0].toUpperCase(), photoUrl: photo ? `/api/blob/${photo.id}/thumbnail` : '', classrooms: cal.mineRooms, saved: cal.home.id ? {classrooms: cal.home.classrooms, tags: cal.home.tags} : null, home: cal.home, staff: cal.staff},
     settingsId: '',

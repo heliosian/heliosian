@@ -1,5 +1,5 @@
 import {model} from '../state.js';
-import {q, rowsOf, write, all} from '/rail.js';
+import {queries, rowsOf, write, all} from '/rail.js';
 import {el} from '/elements.js';
 import {adminPage as buildAdminPage} from '/admin.js';
 import {api} from '/api.js';
@@ -20,15 +20,16 @@ function byId(rows) {
 }
 
 async function fetchState() {
-  const [people, emails, roles, groups, roomRows, photos, settings] = await Promise.all([
-    q('(from PERSON (where (!= source "guest") (in id (members (slug "everyone")))) (order name_sort asc))'),
-    q('(from PERSON_EMAIL (where primary))'),
-    q('(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group))'),
-    q('(from GROUP (where (or (in kind "classroom" "grade" "gradeband" "crew" "department") (and (= kind "group") (= parent.kind "gradeband")))) (order order asc name asc))'),
-    q('(from MEMBER (where (in group (select GROUP.id (= kind "group") (= parent.kind "gradeband")))))'),
-    q('(from PHOTO (where ready (or (= group.kind "classroom") (= group.kind "grade"))) (order order asc))'),
-    q('(from SETTING (where (= app "platform")))'),
-  ]);
+  const {people, emails, roles, groups, roomParents, roomRows, photos, settings} = await queries({
+    people: '(from PERSON (where (!= source "guest") (in id (members (slug "everyone")))) (order name_sort asc))',
+    emails: '(from PERSON_EMAIL (where primary))',
+    roles: '(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group))',
+    groups: '(from GROUP (where (in kind "classroom" "grade" "gradeband" "crew" "department")) (order order asc name asc))',
+    roomParents: '(from GROUP (where (= kind "group") (in parent (select GROUP.id (= kind "gradeband")))) (order order asc name asc))',
+    roomRows: '(from MEMBER (where (in group (select GROUP.id (= kind "group") (in parent (select GROUP.id (= kind "gradeband")))))))',
+    photos: '(from PHOTO (where ready (in group (select GROUP.id (in kind "classroom" "grade")))) (order order asc))',
+    settings: '(from SETTING (where (= app "platform")))',
+  });
   const emailOf = {};
   for (const e of all(emails, 'PERSON_EMAIL')) {
     emailOf[e.person] = e;
@@ -41,7 +42,7 @@ async function fetchState() {
   for (const e of all(roles, 'EFFECTIVE_MEMBER')) {
     inRole[slugs[e.group]].add(e.person);
   }
-  const groupRows = rowsOf(groups, 'GROUP');
+  const groupRows = [...rowsOf(groups, 'GROUP'), ...rowsOf(roomParents, 'GROUP')];
   const ofKind = kind => groupRows.filter(g => g.kind === kind);
   const tiles = {};
   for (const ph of rowsOf(photos, 'PHOTO')) {
@@ -61,7 +62,7 @@ async function fetchState() {
     gradebands: ofKind('gradeband'),
     crews: ofKind('crew'),
     departments: ofKind('department'),
-    roomParents: groupRows.filter(g => g.kind === 'group' && g.parent),
+    roomParents: rowsOf(roomParents, 'GROUP'),
     roomRows: all(roomRows, 'MEMBER'),
     tiles,
     settings: Object.fromEntries(all(settings, 'SETTING').map(s => [s.key, s])),

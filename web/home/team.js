@@ -2,7 +2,7 @@ import {rowsOf} from '/rail.js';
 
 export const teamQueries = {
   activities: '(from GROUP (where (= kind "activity") (!= status "closed")) (order order asc) (columns kind name slug parent status start end timing capacity join priority visible_to managed_by leads team_href))',
-  headings: '(from GROUP (where (= kind "category") (= parent.kind "activity")) (columns kind parent visible_to))',
+  headings: '(from GROUP (where (= kind "category") (in parent (select GROUP.id (= kind "activity")))) (columns kind parent visible_to))',
   everyone: '(from GROUP (where (= id (slug "everyone"))) (columns slug))',
   mine: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.id (= kind "activity")))) (columns group))',
   led: '(from MEMBER (where (= person @viewer) (= member "yes") (in group (select GROUP.leads (= kind "activity")))) (columns group))',

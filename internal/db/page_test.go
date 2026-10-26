@@ -67,6 +67,84 @@ func TestTheRailAndDirectoryQueriesAreTheShippedOnes(t *testing.T) {
 	if _, err := Parse(cal["places"]); err != nil {
 		t.Errorf("places: %v", err)
 	}
+	for _, name := range []string{"photos", "sources", "dayRules"} {
+		q, err := Parse(cal[name])
+		if err != nil {
+			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if q.scan.probeCol != "group" || q.scan.probeSet == nil {
+			t.Errorf("%s does not probe group", name)
+		}
+	}
+}
+
+func TestWhoAdminQueriesProbe(t *testing.T) {
+	src := readSource(t, "../../web/who/pages/admin.js")
+	bind := map[string]string{}
+	qs := jsObject(t, bind, src, "queries({", "")
+	for name, targetCol := range map[string]string{
+		"groups":      "kind",
+		"roomParents": "parent",
+		"roomRows":    "group",
+		"photos":      "group",
+	} {
+		q, err := Parse(qs[name])
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if q.scan.probeCol != targetCol || (q.scan.probeSet == nil && len(q.scan.probes) == 0) {
+			t.Errorf("%s does not probe %s", name, targetCol)
+		}
+	}
+	wide := scaleStore(t).Model()
+	walkGroup := `(from GROUP (where (or (in kind "classroom" "grade" "gradeband" "crew" "department") (and (= kind "group") (= parent.kind "gradeband")))) (order order asc name asc))`
+	walkChecks := groupReadChecks(t, wide, scaleViewer, walkGroup)
+	probedChecks := groupReadChecks(t, wide, scaleViewer, qs["groups"])
+	t.Logf("admin groups GROUP checks: walk %d, probed %d", walkChecks, probedChecks)
+	walkPhoto := `(from PHOTO (where (in group.kind "event" "party" "activity" "category")) (order order asc) (columns group ready))`
+	probedPhoto := qs["photos"]
+	walkP, walkG := photoReadChecks(t, wide, scaleViewer, walkPhoto)
+	probP, probG := photoReadChecks(t, wide, scaleViewer, probedPhoto)
+	t.Logf("photos walk checks: PHOTO %d, GROUP %d; probed: PHOTO %d, GROUP %d", walkP, walkG, probP, probG)
+}
+
+func TestHomeAndCalendarQueriesProbe(t *testing.T) {
+	homeSrc := readSource(t, "../../web/home/state.js")
+	bind := map[string]string{"since": "2026-09-01"}
+	qs := jsObject(t, bind, homeSrc, "const homeQueries = since => ({", "")
+	for name, col := range map[string]string{
+		"appsShown":    "visible_to",
+		"widgetsShown": "visible_to",
+		"linksShown":   "parent",
+	} {
+		q, err := Parse(qs[name])
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if q.scan.probeCol != col || q.scan.probeSet == nil {
+			t.Errorf("%s does not probe %s", name, col)
+		}
+	}
+	teamSrc := readSource(t, "../../web/home/team.js")
+	teamQs := jsObject(t, bind, teamSrc, "export const teamQueries = {", "")
+	q, err := Parse(teamQs["headings"])
+	if err != nil {
+		t.Fatalf("team headings: %v", err)
+	}
+	if q.scan.probeCol != "parent" || q.scan.probeSet == nil {
+		t.Errorf("team headings does not probe parent")
+	}
+}
+
+func photoReadChecks(t *testing.T, m *Model, viewer, src string) (int, int) {
+	t.Helper()
+	root := trace.New("request")
+	res := m.Run(trace.With(t.Context(), root), mustParse(t, src), Env{Viewer: viewer, Now: testNow})
+	if res.Err != nil {
+		t.Fatalf("%s: %v", src, res.Err)
+	}
+	return spanCount(root, "PHOTO"), spanCount(root, "GROUP")
 }
 
 func calendarQueries(t *testing.T) map[string]string {
