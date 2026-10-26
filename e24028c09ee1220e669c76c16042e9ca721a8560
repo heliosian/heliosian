@@ -1,0 +1,22 @@
+# Share notification mail delivery lifecycle (#209)
+
+byre task tskZghfnLqpOH9, "Share notification sends", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskZghfnLqpOH9 in byre (GET /api/events?task_id=tskZghfnLqpOH9).
+
+## Summary
+
+Audited main at d4640d050490b4cc5377208934d619fd27f81d41 for simplicity, reading project rules, architecture/storage/model/audit documentation and previous Cleanup/Bug findings before surveying store transactions, query/model internals, workers, app wiring, mail and shared client code.
+
+Fixed #209: MembershipMailer.send and Invitations.sendNow now use one Model.sendShared implementation in internal/db/delivery.go to record MESSAGE/RECIPIENT rows, compose and send shared MIME per recipient, and record results. Each committed RECIPIENT row supplies both its tracking ID and person, replacing positional coupling between edit and returned-ID slices. Removed outCopy and the copyEdits/outCopies/composeShared/sendCopies helper chain. Removed Invitations.sendNow's separate subject argument; storage and logging read mail.Message.Subject. Three production files changed, 26 net lines removed.
+
+Preserved composition, recipients, attachments, per-person deduplication and distinct system actors. Kept address helpers separate because their duplicate-address behavior differs, and kept personalized queued invitations separate because their content, student Cc and retry semantics differ. No new flags, fallbacks, tests, migrations or UI behavior changes.
+
+Full internal/db tests passed in 17.372s under timeout 30; focused mail tests, repository-wide go vet and git diff --check passed. Automatic review completed and task was marked ready for merge. On the authorized merge turn, git merge --no-ff --no-commit main reported Already up to date; there were no conflicts or merge-resolution changes. Vet and whitespace checks passed again; final package test result is reported in the merge turn. Production deployment and live verification were deliberately left outside this audit.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Consolidates invitation notices and membership notifications into one shared send function. It records the message and recipients, composes one message with a shared Message-ID, sends each recipient’s copy separately, and records each send’s result. Invitation subjects now come directly from the composed message.
+
+No significant findings.
