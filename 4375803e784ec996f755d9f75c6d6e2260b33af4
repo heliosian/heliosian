@@ -1,0 +1,22 @@
+# Share directory email resolution (#207)
+
+byre task tsktLNwLrfzUQZ, "Unify directory lookup", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsktLNwLrfzUQZ in byre (GET /api/events?task_id=tsktLNwLrfzUQZ).
+
+## Summary
+
+Simplicity audit of main at 7df5dffe7b94a906f4f2a3f6ce690828b1e51f8e. Surveyed project rules, architecture/storage/audit documentation, previous findings, model/query/action plumbing, queues, mail/content paths and client composition.
+
+Consolidated directory email resolution: Model.SignedIn in internal/db/http.go and Sessions.person in internal/db/signout.go call the existing Model.PersonOf resolver instead of repeating normalization and the non-guest PERSON_EMAIL lookup. This makes directory identity resolution one rule while preserving sign-in's consent, hidden-person and deactivation checks and session revocation's stored-person lookup. No intended user-visible change or data migration. Tracked by Cleanup #207.
+
+Existing targeted internal/db tests cover guest rejection, shared addresses, withheld people, spoofing, active membership, tokens, normalization and sign-out. Those tests, internal/auth and internal/access tests, go vet ./..., formatting and git diff --check pass. Review completed. The requested git merge --no-ff --no-commit main reported already up to date, with no conflicts or further code changes; vet and relevant tests passed again.
+
+Deliberately retained mail's guest-aware personAt lookup because it resolves consented guests, and distinct search/calendar fan-out because bounded storage loading differs from calendar concurrency. Broader client cleanup was not included. No compatibility layers, additional guards or test hooks.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Sign-in and session sign-out now use Model.PersonOf to resolve an email to its directory person, removing duplicate address normalization and lookup code. Sign-in retains its visibility, hidden and deactivated checks; sign-out still reads the full person table. Reviewed the code and existing tests without running builds, as requested.
+
+No significant findings.
