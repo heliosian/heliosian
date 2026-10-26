@@ -455,3 +455,40 @@ func TestCancelledQueriesDoNotAnswerInvalidInput(t *testing.T) {
 		}
 	}
 }
+
+func TestServeDeepQueries(t *testing.T) {
+	s := sample(t)
+	const depth = 2000
+	queries := map[string]string{
+		"text/plain":       `(from PERSON (where ` + strings.Repeat(`(not `, depth) + `true` + strings.Repeat(`)`, depth) + `) (limit 1) (columns id))`,
+		"application/json": `["from","PERSON",["where",` + strings.Repeat(`["not",`, depth) + `true` + strings.Repeat(`]`, depth) + `],["limit",1],["columns","id"]]`,
+	}
+	for kind, query := range queries {
+		t.Run(kind, func(t *testing.T) {
+			code, out, body := ask(t, s, kind, "Rowan.Ashdown@example.org", query)
+			if code != http.StatusOK || len(out.Result) != 1 {
+				t.Fatalf("deep query got %d: %s", code, body)
+			}
+			if len(out.Query) > 2*len(query) {
+				t.Fatalf("response query has %d bytes for %d bytes of input", len(out.Query), len(query))
+			}
+			mustParse(t, out.Query)
+		})
+	}
+}
+
+func TestServeDeepScanQueries(t *testing.T) {
+	s := sample(t)
+	const depth = 2000
+	for kind, query := range map[string]string{
+		"text/plain":       `(from PERSON (where ` + strings.Repeat(`(exists PERSON `, depth) + `true` + strings.Repeat(`)`, depth) + `) (limit 1) (columns id))`,
+		"application/json": `["from","PERSON",["where",` + strings.Repeat(`["exists","PERSON",`, depth) + `true` + strings.Repeat(`]`, depth) + `],["limit",1],["columns","id"]]`,
+	} {
+		t.Run(kind, func(t *testing.T) {
+			code, out, body := ask(t, s, kind, "Rowan.Ashdown@example.org", query)
+			if code != http.StatusOK || len(out.Result) != 1 {
+				t.Fatalf("deep scan got %d: %s", code, body)
+			}
+		})
+	}
+}

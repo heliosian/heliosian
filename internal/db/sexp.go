@@ -202,20 +202,36 @@ func (p *reader) read() (*sexp, error) {
 const renderWidth = 80
 
 func (s *sexp) flat() string {
-	if !s.isList {
+	var out strings.Builder
+	s.writeFlat(&out, nil)
+	return out.String()
+}
+
+func (s *sexp) writeFlat(out *strings.Builder, spans map[*sexp][2]int) {
+	start := out.Len()
+	if s.isList {
+		out.WriteByte('(')
+		for i, item := range s.list {
+			if i > 0 {
+				out.WriteByte(' ')
+			}
+			item.writeFlat(out, spans)
+		}
+		out.WriteByte(')')
+	} else {
 		switch s.kind {
 		case atomString:
-			return strconv.Quote(s.text)
+			out.WriteString(strconv.Quote(s.text))
 		case atomAt:
-			return "@" + s.text
+			out.WriteByte('@')
+			out.WriteString(s.text)
+		default:
+			out.WriteString(s.text)
 		}
-		return s.text
 	}
-	parts := []string{}
-	for _, item := range s.list {
-		parts = append(parts, item.flat())
+	if spans != nil {
+		spans[s] = [2]int{start, out.Len()}
 	}
-	return "(" + strings.Join(parts, " ") + ")"
 }
 
 func headCount(head string) int {
@@ -229,35 +245,48 @@ func headCount(head string) int {
 }
 
 func (s *sexp) render(column int) string {
-	flat := s.flat()
-	if !s.isList || column+len(flat) <= renderWidth {
-		return flat
+	spans := map[*sexp][2]int{}
+	var flat strings.Builder
+	s.writeFlat(&flat, spans)
+	var out strings.Builder
+	s.writeRendered(&out, column, flat.String(), spans)
+	return out.String()
+}
+
+func (s *sexp) writeRendered(out *strings.Builder, column int, flat string, spans map[*sexp][2]int) {
+	span := spans[s]
+	if !s.isList || column >= renderWidth || column+span[1]-span[0] <= renderWidth {
+		out.WriteString(flat[span[0]:span[1]])
+		return
 	}
 	n := min(headCount(s.head()), len(s.list))
 	if n < len(s.list) && s.list[n].kind == atomAt && !s.list[n].isList && (s.head() == "from" || s.head() == "exists" || s.head() == "count" || s.head() == "sum") {
 		n++
 	}
-	heads := []string{}
-	for _, item := range s.list[:n] {
-		heads = append(heads, item.flat())
-	}
-	line := "(" + strings.Join(heads, " ")
-	rest := s.list[n:]
-	if len(rest) == 0 {
-		return line + ")"
-	}
-	if s.head() == "from" {
-		indent := column + 2
-		out := line
-		for _, item := range rest {
-			out += "\n" + strings.Repeat(" ", indent) + item.render(indent)
+	width := 1
+	out.WriteByte('(')
+	for i, item := range s.list[:n] {
+		if i > 0 {
+			out.WriteByte(' ')
+			width++
 		}
-		return out + ")"
+		part := spans[item]
+		out.WriteString(flat[part[0]:part[1]])
+		width += part[1] - part[0]
 	}
-	indent := column + len(line) + 1
-	out := line + " " + rest[0].render(indent)
-	for _, item := range rest[1:] {
-		out += "\n" + strings.Repeat(" ", indent) + item.render(indent)
+	rest := s.list[n:]
+	indent := column + width + 1
+	if s.head() == "from" {
+		indent = column + 2
 	}
-	return out + ")"
+	for i, item := range rest {
+		if i > 0 || s.head() == "from" {
+			out.WriteByte('\n')
+			out.WriteString(strings.Repeat(" ", min(indent, renderWidth)))
+		} else {
+			out.WriteByte(' ')
+		}
+		item.writeRendered(out, indent, flat, spans)
+	}
+	out.WriteByte(')')
 }

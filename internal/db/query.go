@@ -175,6 +175,7 @@ type compiler struct {
 	policy  bool
 	rowOnly bool
 	defines map[string]*define
+	digests map[*sexp]string
 	hidden  int
 	touched []*scope
 	selects []*selectSpec
@@ -334,12 +335,29 @@ func (cx *compiler) scan(s *sexp, at int, outer *scope, also func(*scope) error)
 func (cx *compiler) keyed(out *scan, s *sexp, mark int, inner *scope) {
 	out.outer = cx.outside(mark, inner)
 	out.constant = len(out.outer) == 0
-	out.key = guardKey(out.guarded) + memoDigest(s.flat())
+	out.key = guardKey(out.guarded) + cx.digest(s)
 }
 
-func memoDigest(text string) string {
-	sum := sha256.Sum256([]byte(text))
-	return string(sum[:])
+func (cx *compiler) digest(s *sexp) string {
+	if cx.digests == nil {
+		cx.digests = map[*sexp]string{}
+	}
+	if key, ok := cx.digests[s]; ok {
+		return key
+	}
+	h := sha256.New()
+	if s.isList {
+		h.Write([]byte{0})
+		for _, item := range s.list {
+			h.Write([]byte(cx.digest(item)))
+		}
+	} else {
+		h.Write([]byte{byte(s.kind) + 1})
+		h.Write([]byte(s.text))
+	}
+	key := string(h.Sum(nil))
+	cx.digests[s] = key
+	return key
 }
 
 func guardKey(guarded bool) string {
@@ -686,7 +704,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			if err != nil || cx.policy || c.cheap {
 				return c, err
 			}
-			key, outer, work := guardKey(true)+memoDigest(expanded.flat()), cx.outside(mark, nil), c.eval
+			key, outer, work := guardKey(true)+cx.digest(expanded), cx.outside(mark, nil), c.eval
 			c.eval = func(f *frame) bool {
 				k := f.memoKey(key, outer)
 				if held, ok := f.run.memo[k]; ok {
@@ -996,7 +1014,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		if parent, ok := table.Column("parent"); !ok || parent.Kind != Ref || parent.Target != table.Name {
 			return nil, typ{}, false, s.errorf("%s has no parent to follow", table.Name)
 		}
-		key := "desc\x00" + memoDigest(s.flat())
+		key := "desc\x00" + cx.digest(s)
 		return func(f *frame) *valueSet {
 			memo := f.memoKey(key, depends)
 			if held, ok := f.run.memo[memo]; ok {
