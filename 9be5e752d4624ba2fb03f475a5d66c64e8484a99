@@ -1,0 +1,160 @@
+# Show When search answers as they arrive, never stepping back
+
+byre task tskAsRgg2MgxcG, "Search keystroke embeds", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "When search still embeds on every keystroke".
+Full transcripts: the events of task tskAsRgg2MgxcG in byre (GET /api/events?task_id=tskAsRgg2MgxcG).
+
+## Summary
+
+Started from the TODO item "When search still embeds on every keystroke" (Helios When). Its note said this was rare in the logs and that debouncing would change when results appear.
+
+**Investigation.** Production logs since 2026-10-19 show one burst from When's search: 25 searches in 10s, 105–185ms each, from `when.heliosian.com/mine`. Nothing on the path serializes the searches. The browser posts at once over HTTP/2. `Searcher.Search` holds the index lock only to snapshot it. `artifacts.Vertex.Embed` is a plain POST with no mutex or rate limiter. Three requests arriving within 1ms of each other each took about 150ms.
+
+**What ian decided.** The number of Vertex calls doesn't matter. What matters is that the newest result wins and nothing older replaces it. Answers should show as they arrive, but never go backward. When several have arrived, show only the newest instead of replaying each one.
+
+**Built** (`web/when/chrome.js`, `web/when/state.js`, `docs/when/calendar.md`):
+- Before: an answer showed only if the box still held the text it was asked for, so results waited for a pause in typing as long as one round trip.
+  Now: each keystroke's search is numbered. Once per `requestAnimationFrame`, the newest answer that has arrived is shown, unless an answer to later typing already shows. `findSearch` just returns the found set.
+- Before: pending answers were dropped whenever the page redrew.
+  Now: `clearSearch` drops them only when no text is carried into the new render. Filters, the classroom and category chips, and switching calendars carry the text. A reviewer caught this regression in an earlier snapshot.
+
+Verified with a local chromedp script (`local/searchorder`, gitignored) against the sample server. It slowed answers so they came back out of order and in bunches, and opened Filters mid-search.
+
+**Left out on purpose:** reducing the per-keystroke embedding calls. Options weighed: debouncing, one search in flight at a time, frame batching of requests, a server LRU of embeddings, and aborting superseded fetches. ian said volume doesn't matter, and the reviewer findings asking for it were dismissed on that basis.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+When’s search now displays the newest completed answer once per animation frame, allowing results for earlier typing to appear while later requests are pending. Search result ownership moves from state.js into chrome.js, and the TODO item is removed. This review was based on code reading; no builds were run.
+
+- Per-keystroke embedding remains unchanged, leaving the task’s stated problem unresolved.
+- Opening Filters during a pending search discards its answer while retaining the query.
+
+### Snapshot #6, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Search responses now update the calendar once per animation frame, accepting intermediate answers while preventing older answers from replacing newer ones. The change also adjusts search invalidation during filter refreshes, documents the behavior, and removes the TODO item.
+
+- Search still embeds every nonempty keystroke; the change only schedules how completed answers are displayed.
+
+## Decisions
+
+### Helios When's search box calls the server's search, which embeds the typed text through Vertex, on every keystroke. Should I change that, and how?
+
+**Background.** When's top-bar search box (`web/when/chrome.js`, its `input` listener) posts the typed text to `POST /api/do/search` on every input event. The server's `Searcher.Search` (`internal/db/search.go`) embeds the text through Vertex AI (one call, about 150ms) and ranks events by name and by meaning. The page shows only the answer whose text still matches the box; answers to earlier keystrokes are thrown away. The TODO item says this is rare in the logs, and that debouncing (waiting for a pause in typing) would change when results appear.
+
+**What the logs show.** I read every `/api/do/search` request since 2026-10-19 (the referer tells When's apart from Ask, MCP and Admin). When accounts for exactly one burst all week: one person on `when.heliosian.com/mine`, 2026-10-20 18:27:03–13, **26 searches in 10 seconds**, each 105–185ms. Several came in groups sent within a few milliseconds of each other, which no person types — a phone keyboard's correction or prediction firing several input events at once:
+
+<details><summary>The burst, request arrival time and latency</summary>
+
+```
+03.706 0.168   07.764 0.154   10.546 0.145   13.155 0.166
+05.274 0.137   08.686 0.184   10.733 0.164   13.374 0.163
+06.154 0.151   09.467 0.155   10.927 0.166   13.552 0.152
+06.329 0.154   09.737 0.172   10.927 0.167   13.736 0.121
+06.329 0.176   09.774 0.160   11.812 0.146   13.747 0.151
+06.330 0.137                  11.816 0.127   13.747 0.109
+06.924 0.158                  11.816 0.126
+```
+</details>
+
+Each option below is worked through on that same burst.
+
+- (*) Leave it and drop the TODO item
+  26 Vertex calls, results exactly as today. One burst a week costs about 26 × 150ms of Vertex time; nothing a person waits on gets slower or faster. Simplest outcome: no code, the item comes off TODO.md.
+- ( ) Send once per animation frame
+  The input listener records the text and asks for one search on the next frame (about 16ms later) with whatever the box holds then. Input events fired together collapse into one: the groups at 06.329, 10.927, 11.812–11.816 and 13.736–13.747 become one search each. **26 → about 19 calls**; each result appears at most one frame later than today. A few lines in `chrome.js`.
+- ( ) One search in flight at a time
+  While a search is out, new typing waits; when the answer returns, the latest text is sent if it changed. Simulated on the burst: **26 → 23 calls**, and the final result can arrive up to one round trip (about 150ms) later than today — the change in timing the TODO item warns about.
+- ( ) Cache embeddings on the server
+  An LRU of text → vector in `Searcher`, like `geocode.Suggestions`' cache of addresses. Saves a call only when the exact same text is searched again (backspacing, retyping); each prefix of a word is new text, so on a typed burst like this one the saving is probably near zero (the log doesn't record the words, so I can't count it). Results' timing unchanged; adds a cache to the server, which the server otherwise avoids.
+
+I recommend leaving it: the saving from any change is a handful of 150ms calls a week, and the two options that save the most still change behaviour (frame batching slightly, in-flight limiting noticeably).
+
+ian@fc.run answered: is there any serialization between the events, or can newer ones jump any queuing there is? i don’t care about the volume, i do care that it’s LIFO or cancels unstarted older ones
+
+### There is no queue anywhere on When's search path: every keystroke's search starts as soon as it's typed and runs alongside the older ones, and the page shows only the newest answer. Should I make no code change and just take the item off TODO.md?
+
+**What you asked.** Is there any serialization between When's per-keystroke searches, or can a newer one jump whatever queue there is? You don't mind the volume; you want the newest search to come first (LIFO) or older, unstarted ones to be cancelled.
+
+**What I found, hop by hop.** I followed one keystroke's request from the browser to Vertex and back:
+
+- **Browser.** `web/when/chrome.js`: the search box's `input` listener calls `search(typed())`, which calls `findSearch` in `web/when/state.js`. That function posts to `/api/do/search` right away. Nothing waits for an earlier request first: there's no queue and no in-flight check. The browser reaches Google's front end over HTTP/2 (the logged protocol between the front end and Cloud Run is `H2C`), so every request shares one connection, and HTTP/1.1's six-connection limit doesn't apply.
+- **Server.** Each request runs in its own goroutine. `Searcher.Search` (`internal/db/search.go`) holds the index's read lock only long enough to take a snapshot (`x.snapshot()`), not across the Vertex call. The background indexer also never holds the lock while it embeds.
+- **Vertex.** `artifacts.Vertex.Embed` (`internal/artifacts/embed.go`) is a plain HTTP POST on a shared `http.Client`, with no mutex and no rate limiter.
+- **Answers that arrive out of order.** `findSearch` numbers each request (`searchRun`) and stores the hits only if no newer request has started since. `search()` in `chrome.js` then shows results only if the box still holds that text. A late answer to an older keystroke is thrown away; it never replaces a newer one.
+
+**Evidence from production** (2026-10-20 18:27, one person on `when.heliosian.com/mine`): three requests arrived within 1ms of each other at 06.328–06.330. They took 154ms, 176ms and 137ms. Single requests in the same burst took 105–185ms. If the searches were serialized, the third would have taken about 450ms.
+
+<details><summary>That moment in the request log</summary>
+
+```
+18:27:06.154001  H2C  0.150826s
+18:27:06.328557  H2C  0.154114s
+18:27:06.328566  H2C  0.176466s
+18:27:06.329539  H2C  0.137349s
+18:27:06.924397  H2C  0.158270s
+```
+</details>
+
+**So:** the newest keystroke never waits behind an older one, and nothing older gets to show over it. Older requests aren't cancelled; they finish and are ignored. Since there's no queue, there's nothing unstarted to cancel. Aborting them with an `AbortController` would save only the volume, which you said you don't care about.
+
+- (*) No code change; remove the item from TODO.md
+  The work is just deleting the "When search still embeds on every keystroke" item under Helios When in TODO.md. Search behaves exactly as it does today.
+- ( ) Also abort superseded requests
+  `findSearch` keeps an `AbortController` and aborts the previous request when a new one starts. The server's request context is then cancelled, which cancels its Vertex call. What people see doesn't change. Each cancelled request shows up as a failed fetch in the browser, and `api()` has to treat an abort as silent rather than as an error. On the 10-20 burst, about 20 of the 26 Vertex calls would be cut off partway, but they would still have started.
+
+ian@fc.run answered: should we show results that come in along the way, and just never go backward?
+
+### Should When's search box show each search's answer as it arrives, even when the box has moved on, as long as it is newer than the answer already showing (so results never go backward)?
+
+**How it works today.** Every keystroke in When's search box posts a search right away (`findSearch` in `web/when/state.js`). They all run at once; there's no queue. When an answer comes back, `search()` in `web/when/chrome.js` shows it only if the box still holds the text it was asked for. That means updating the results dropdown and calling the page's handler, which on the home page sets `state.query` and repaints the day, the rail, the filters, Upcoming and the month. Any other answer is thrown away. So results update only when the person pauses longer than one round trip.
+
+**Your proposal, made concrete.** Each search gets a number in the order it was typed. When an answer arrives, it's shown if its number is higher than the answer currently showing, and thrown away otherwise. The dropdown and calendar then show results for the text that answer was asked for (say "fie" while the box already says "fiel"), and catch up as newer answers land. The last keystroke's answer always ends up showing, because nothing older can replace it. The input box itself is never touched.
+
+**Worked on the real burst** (2026-10-20 18:27, one person on `when.heliosian.com/mine`, 25 When searches; I said 26 earlier, which miscounted one of the server's own log lines). For each request I used its arrival time and its measured latency. "Shown" means the answer appeared on screen.
+
+| | Today (show only if the box still matches) | Proposal (show if newer than what's showing) |
+|---|---|---|
+| **As measured, 105–185ms each** | 17 answers shown | 19 shown: the same 17 plus two that appear 25ms and 1ms before the next one replaces them, invisible in practice |
+| **Same keystrokes, if each search took 1s** (e.g. a phone on a slow connection) | 3 answers shown in 10s: after the first keystroke, after the pause at 11.8, and at the end. The calendar sits on stale results while the person types. | about 22 shown, each about 1s behind the typing, so results follow along as the person types |
+
+<details><summary>Per-request detail, as measured</summary>
+
+Arrival → answer time. ✓ = shown, – = dropped.
+
+```
+       arrival    answer     today  proposal
+ 1     03.706     03.874     ✓      ✓
+ 2     05.274     05.411     ✓      ✓
+ 3     06.154     06.305     ✓      ✓
+ 4-6   06.329 ×3  06.467-.505  one ✓  same one ✓ (the others older)
+ 7     06.924     07.082     ✓      ✓
+ 8     07.764     07.918     ✓      ✓
+ 9     08.686     08.870     ✓      ✓
+10     09.467     09.622     ✓      ✓
+11     09.737     09.909     –      ✓ (replaced 25ms later)
+12     09.774     09.934     ✓      ✓
+13     10.546     10.691     ✓      ✓
+14     10.733     10.897     ✓      ✓
+15     10.9275    11.0935    –      ✓ (replaced 1ms later)
+16     10.9278    11.0948    ✓      ✓
+17-19  11.812-.816  11.942-.958  one ✓  same one ✓
+20     13.155     13.321     ✓      ✓
+21     13.374     13.537     ✓      ✓
+22     13.552     13.704     ✓      ✓
+23-25  13.736-.747  13.856-.898  one ✓  same one ✓
+```
+</details>
+
+**The change.** In `state.js`, `findSearch` keeps the number of the answer currently showing instead of the latest request sent, and hands back whether its answer should show. In `chrome.js`, `search()` shows that answer for its own text, instead of checking it against the box. That's about ten lines; no server change. When's search is the only search box that calls the server on every keystroke this way, so nothing else changes.
+
+- (*) Yes, show answers along the way, never going backward
+  On today's latencies people see no difference. On a slow connection the dropdown and calendar follow the typing about one round trip behind, instead of waiting for a pause. I'd make the change, test it on the sample server by typing with Vertex slowed down, and remove the TODO item.
+- ( ) No, keep showing only the answer that matches the box
+  Search behaves exactly as today: on a slow connection, nothing updates until the person stops typing for one round trip. I'd make no code change and just remove the TODO item.
+
+ian@fc.run chose: Yes, show answers along the way, never going backward
+ian@fc.run added: just make sure it’s drain the whole queue you’ve got, then show the latest. do’t show every one in order so it’s stupid slow
