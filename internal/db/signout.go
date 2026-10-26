@@ -22,11 +22,7 @@ func NewSessions(s *Store) *Sessions {
 
 func (ss *Sessions) person(email string) (store.Row, bool) {
 	m := ss.s.Model()
-	row, ok := m.Table("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)), "No")
-	if !ok {
-		return nil, false
-	}
-	return m.Table("PERSON").Get(row["person"])
+	return m.Table("PERSON").Get(m.PersonOf(email))
 }
 
 func (ss *Sessions) SignedOut(email string) (time.Time, bool) {

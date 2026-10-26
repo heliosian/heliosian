@@ -282,19 +282,15 @@ func (m *Model) PersonOf(email string) string {
 // pass through this, so looking up guest addresses ("Yes") here lets every guest into everything.
 // TestGuestsNeverSignIn holds this.
 func (m *Model) SignedIn(email string) string {
-	address := strings.ToLower(strings.TrimSpace(email))
-	row, ok := m.Table("PERSON_EMAIL").Find(address, "No")
-	if !ok {
-		return ""
-	}
-	p, ok := m.Shown("PERSON").Get(row["person"])
+	person := m.PersonOf(email)
+	p, ok := m.Shown("PERSON").Get(person)
 	if !ok || p["deactivated"] != "" {
 		return ""
 	}
 	if hidden, _ := cells.YesNo(p["hidden"], false); hidden {
 		return ""
 	}
-	return row["person"]
+	return person
 }
 
 func (m *Model) SignedInAs(email string) (string, string, bool) {
