@@ -1,0 +1,23 @@
+# Derive accepted ID prefixes from the schema
+
+byre task tskHxgAkecqdU4, "Derive ID prefixes", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskHxgAkecqdU4 in byre (GET /api/events?task_id=tskHxgAkecqdU4).
+
+## Summary
+
+Simplicity audit of main at 39bc464f3827320f7068f4ff1408a8065eedf582. Read project rules, architecture/storage/API and audit documentation, prior Cleanup/Bug issue lists, and surveyed shared model/store, workers, mail, page routing/share cards, and client code.
+
+Before: internal/db/id.go manually repeated the accepted ID prefixes declared by schema ID columns, plus the separate change-log prefix.
+Now: its registry derives from every ID column in Tables, with ChangePrefix explicit because CHANGES is outside the model. New table/token declarations no longer require a second registry edit. Accepted IDs and user-visible behavior remain unchanged; both sets contain exactly the same 36 prefixes.
+
+Chose the schema as the source of truth without adding validation, comments, flags, compatibility paths, or migrations. Left mail address helpers and Team/Celebrate redirect logic alone because their semantics differ. Open issues #211/#212 already have their structural fixes in the audited tree; no issues were changed.
+
+Verification: focused ID/schema tests, full internal/db tests under timeout 30, go vet ./..., formatting and diff checks passed. Review finished and the work was marked ready to merge. On the final requested integration, git merge --no-ff --no-commit main reported Already up to date; no conflicts, generated-file changes, or manual commit were needed. Repeated go vet ./... and timeout 30 go test ./internal/db --count=1 passed (18.868s); worktree is clean.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Replaces the manually maintained ID-prefix registry with a set derived from every ID column in the database schema. The change-log prefix remains explicitly registered because change-log rows are outside that schema. All 36 previously accepted prefixes are preserved.
+
+No significant findings.
