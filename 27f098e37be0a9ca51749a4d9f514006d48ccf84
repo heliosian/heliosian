@@ -1,0 +1,22 @@
+# Remove unused tool dependency and unify inbox delivery
+
+byre task tskD8LFnaQOmaO, "Simplify tools and inboxes", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskD8LFnaQOmaO in byre (GET /api/events?task_id=tskD8LFnaQOmaO).
+
+## Summary
+
+Audited main at b041b6f for structural simplicity after reading project rules, architecture and audit history, with inspection across shared store/model, worker services, mail, tools/Ask/MCP and browser helpers.
+
+Removed unused tools.Deps.Data and all four initializer arguments: tool execution already receives its model snapshot explicitly, so retaining a store added an unnecessary second apparent source of data. Combined inbox.deliver and inbox.deliverAll into one variadic deliver method so single refresh deliveries and committed batches use the same locking, append and wake implementation. No user-visible behavior changes.
+
+Deliberately left broader JSON-handler consolidation for a focused pass preserving each route's authentication and decoding order. No new tests, validation, flags or compatibility paths were introduced.
+
+Verification passed: go vet ./..., existing internal/db, internal/tools, internal/ask and internal/mcp tests under timeout 30, and git diff --check. On the requested main merge, git merge --no-ff --no-commit main reported Already up to date; no conflicts or substantive merge resolutions were needed. Vet and affected package tests passed again; worktree is clean.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Removes the unused data-store dependency from the shared tools and updates production and test constructors. Consolidates single-item and batch inbox delivery into one variadic method, preserving locking, ordering, and wake notifications. Reviewed the diff, callers, and existing tests by reading code; no builds or tests were run.
+
+No significant findings.
