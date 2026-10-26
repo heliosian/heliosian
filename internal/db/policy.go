@@ -1383,7 +1383,7 @@ func splitActor(c *sexp) (*sexp, *sexp) {
 	if len(rest) == 1 {
 		return c.list[1], rest[0]
 	}
-	return c.list[1], &sexp{isList: true, pos: -1, list: append([]*sexp{c.list[0]}, rest...)}
+	return c.list[1], &sexp{pos: -1, list: append([]*sexp{c.list[0]}, rest...)}
 }
 
 func (cx *compiler) parts(d *Clause, c *sexp, sc *scope) error {
@@ -1470,7 +1470,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			out.clauses = append(out.clauses, described)
 			continue
 		}
-		if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
+		if len(form.list) != 3 || form.list[1].isList() || form.list[1].kind != atomName {
 			return nil, nil, form.errorf("a policy is (%s TABLE[.column] condition)", head)
 		}
 		if form.list[1].text == "*" || form.list[1].text == "*.*" {
@@ -1509,7 +1509,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			return nil, nil, err
 		}
 		actor, _ := splitActor(form.list[2])
-		free := !form.list[2].isList && form.list[2].kind == atomName && form.list[2].text == "true"
+		free := !form.list[2].isList() && form.list[2].kind == atomName && form.list[2].text == "true"
 		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment, gated: head == "read" && actor != nil, free: free})
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
 		if err := cx.parts(&described, form.list[2], sc); err != nil {
@@ -1540,7 +1540,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 }
 
 func (cx *compiler) showClause(form *sexp, d *Clause, out *policySet) error {
-	if len(form.list) != 3 || form.list[1].isList || form.list[1].kind != atomName {
+	if len(form.list) != 3 || form.list[1].isList() || form.list[1].kind != atomName {
 		return form.errorf("a show clause is (show TABLE condition)")
 	}
 	t, err := tableNamed(form.list[1])
@@ -1613,11 +1613,11 @@ func (cx *compiler) wildcard(form *sexp, d *Clause, out *policySet) error {
 }
 
 func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (cond, error) {
-	if form.list[1].isList || form.list[1].kind != atomName || !form.list[2].isList || len(form.list[2].list) == 0 {
+	if form.list[1].isList() || form.list[1].kind != atomName || !form.list[2].isList() || len(form.list[2].list) == 0 {
 		return cond{}, form.errorf("a column grant is (read TABLE (column…) condition)")
 	}
 	if form.list[1].text == "*" {
-		if len(form.list[2].list) != 1 || form.list[2].list[0].isList || form.list[2].list[0].text != "*" {
+		if len(form.list[2].list) != 1 || form.list[2].list[0].isList() || form.list[2].list[0].text != "*" {
 			return cond{}, form.errorf("a column grant on every table is (read * (*) condition)")
 		}
 		c, err := cx.cond(form.list[3], nil)
@@ -1641,9 +1641,9 @@ func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (con
 	if err != nil {
 		return cond{}, err
 	}
-	open := !form.list[3].isList && form.list[3].kind == atomName && form.list[3].text == "true"
+	open := !form.list[3].isList() && form.list[3].kind == atomName && form.list[3].text == "true"
 	for _, item := range form.list[2].list {
-		if item.isList || item.kind != atomName {
+		if item.isList() || item.kind != atomName {
 			return cond{}, item.errorf("a column grant lists column names")
 		}
 		col, err := columnNamed(t, item.text, item)
@@ -1663,7 +1663,7 @@ func (cx *compiler) columnGrant(form *sexp, comment string, out *policySet) (con
 }
 
 func (cx *compiler) define(form *sexp) error {
-	if len(form.list) != 3 || !form.list[1].isList || len(form.list[1].list) == 0 || form.list[1].list[0].isList {
+	if len(form.list) != 3 || !form.list[1].isList() || len(form.list[1].list) == 0 || form.list[1].list[0].isList() {
 		return form.errorf("a definition is (define (name params…) body)")
 	}
 	name := form.list[1].list[0].text
@@ -1673,7 +1673,7 @@ func (cx *compiler) define(form *sexp) error {
 	d := &define{body: form.list[2]}
 	for _, p := range form.list[1].list[1:] {
 		switch {
-		case p.isList:
+		case p.isList():
 			return p.errorf("a parameter is @name or name")
 		case p.kind == atomAt:
 			d.params = append(d.params, "@"+p.text)

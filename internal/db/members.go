@@ -9,7 +9,7 @@ import (
 )
 
 func (cx *compiler) groupOperand(s *sexp, sc *scope, op string) (operand, error) {
-	if !s.isList && s.kind == atomString {
+	if !s.isList() && s.kind == atomString {
 		return coerce(s, typ{class: classRow, kind: ID, table: "GROUP"})
 	}
 	g, err := cx.operand(s, sc)
@@ -39,7 +39,7 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 		for _, v := range replace.Values {
 			names = append(names, v.Name)
 		}
-		if item.isList || item.kind != atomString || !slices.Contains(names, item.text) {
+		if item.isList() || item.kind != atomString || !slices.Contains(names, item.text) {
 			return nil, typ{}, false, item.errorf("members replaces with one of %s", strings.Join(names, ", "))
 		}
 		how = item.text
@@ -64,7 +64,7 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 }
 
 func (cx *compiler) groupsArg(s *sexp, sc *scope) (func(f *frame) []string, bool, error) {
-	if s.isList && (s.head() == "select" || s.head() == "slug") {
+	if s.isList() && (s.head() == "select" || s.head() == "slug") {
 		set, t, outer, err := cx.set(s, sc, typ{class: classRow, kind: ID, table: "GROUP"})
 		if err != nil {
 			return nil, false, err
@@ -87,7 +87,7 @@ func (cx *compiler) groupsArg(s *sexp, sc *scope) (func(f *frame) []string, bool
 }
 
 func (cx *compiler) covers(s *sexp, sc *scope) (cond, error) {
-	if len(s.list) != 3 || !s.list[2].isList {
+	if len(s.list) != 3 || !s.list[2].isList() {
 		return cond{}, s.errorf("covers takes a group and a set of people")
 	}
 	g, err := cx.groupOperand(s.list[1], sc, "covers")

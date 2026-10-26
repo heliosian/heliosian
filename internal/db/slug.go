@@ -12,7 +12,7 @@ var groupID = typ{class: classRow, kind: ID, table: "GROUP"}
 func (cx *compiler) slugNames(s *sexp, many bool) ([]string, error) {
 	names := []string{}
 	for _, a := range s.list[1:] {
-		if a.isList || a.kind != atomString {
+		if a.isList() || a.kind != atomString {
 			return nil, s.errorf("slug takes quoted slugs")
 		}
 		names = append(names, strings.ToLower(a.text))

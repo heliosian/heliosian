@@ -226,13 +226,13 @@ func (cx *compiler) query(tree *sexp) (*Query, error) {
 					return nil, err
 				}
 				dir := args[i+1]
-				if dir.isList || dir.kind != atomName || (dir.text != "asc" && dir.text != "desc") {
+				if dir.isList() || dir.kind != atomName || (dir.text != "asc" && dir.text != "desc") {
 					return nil, dir.errorf("order wants asc or desc after each path")
 				}
 				q.order = append(q.order, orderKey{path: &p, desc: dir.text == "desc"})
 			}
 		case "limit":
-			if len(part.list) != 2 || part.list[1].isList || part.list[1].kind != atomNumber {
+			if len(part.list) != 2 || part.list[1].isList() || part.list[1].kind != atomNumber {
 				return nil, part.errorf("limit takes one number")
 			}
 			n, ok := new(big.Int).SetString(part.list[1].text, 10)
@@ -253,7 +253,7 @@ func (cx *compiler) query(tree *sexp) (*Query, error) {
 				return nil, part.errorf("columns names at least one column")
 			}
 			for _, item := range part.list[1:] {
-				if item.isList || item.kind != atomName {
+				if item.isList() || item.kind != atomName {
 					return nil, item.errorf("columns takes column names")
 				}
 				c, err := columnNamed(s.table, item.text, item)
@@ -276,7 +276,7 @@ func (q *Query) String() string {
 }
 
 func (cx *compiler) scanHead(s *sexp, at int) (*scan, []*sexp, error) {
-	if len(s.list) <= at || s.list[at].isList || s.list[at].kind != atomName {
+	if len(s.list) <= at || s.list[at].isList() || s.list[at].kind != atomName {
 		return nil, nil, s.errorf("%s needs a table", s.head())
 	}
 	t, err := tableNamed(s.list[at])
@@ -285,7 +285,7 @@ func (cx *compiler) scanHead(s *sexp, at int) (*scan, []*sexp, error) {
 	}
 	out := &scan{table: t, guarded: !cx.policy}
 	rest := s.list[at+1:]
-	if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
+	if len(rest) > 0 && !rest[0].isList() && rest[0].kind == atomAt {
 		out.name = rest[0].text
 		if out.name == "viewer" {
 			return nil, nil, rest[0].errorf("@viewer is the viewer and can't name a row")
@@ -346,7 +346,7 @@ func (cx *compiler) digest(s *sexp) string {
 		return key
 	}
 	h := sha256.New()
-	if s.isList {
+	if s.isList() {
 		h.Write([]byte{0})
 		for _, item := range s.list {
 			h.Write([]byte(cx.digest(item)))
@@ -587,7 +587,7 @@ func (cx *compiler) conds(items []*sexp, sc *scope) ([]cond, error) {
 }
 
 func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
-	if !s.isList {
+	if !s.isList() {
 		if s.kind == atomName && (s.text == "true" || s.text == "false") {
 			holds := s.text == "true"
 			return cond{eval: func(*frame) bool { return holds }, cheap: true}, nil
@@ -655,7 +655,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		}
 		return cond{eval: func(f *frame) bool { return p.eval(f).blank }, cheap: p.cheap}, nil
 	case "contains":
-		if len(args) != 2 || args[1].isList || args[1].kind != atomString {
+		if len(args) != 2 || args[1].isList() || args[1].kind != atomString {
 			return cond{}, s.errorf("contains takes a path and a quoted string")
 		}
 		p, err := cx.path(args[0], sc)
@@ -683,7 +683,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 			})
 		}}, nil
 	case "mode":
-		if len(args) != 1 || args[0].isList || args[0].kind != atomString {
+		if len(args) != 1 || args[0].isList() || args[0].kind != atomString {
 			return cond{}, s.errorf("mode takes one quoted name")
 		}
 		if cx.rowOnly {
@@ -733,11 +733,11 @@ func (cx *compiler) expand(call *sexp, d *define, sc *scope) (*sexp, error) {
 }
 
 func anchor(arg *sexp, sc *scope) *sexp {
-	if arg.isList {
+	if arg.isList() {
 		if slices.Contains([]string{"exists", "count", "sum", "select"}, arg.head()) {
 			return arg
 		}
-		out := &sexp{isList: true, pos: arg.pos, list: []*sexp{arg.list[0]}}
+		out := &sexp{pos: arg.pos, list: []*sexp{arg.list[0]}}
 		for _, item := range arg.list[1:] {
 			out.list = append(out.list, anchor(item, sc))
 		}
@@ -750,10 +750,10 @@ func anchor(arg *sexp, sc *scope) *sexp {
 }
 
 func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
-	if body.isList {
-		out := &sexp{isList: true, pos: body.pos}
+	if body.isList() {
+		out := &sexp{list: []*sexp{}, pos: body.pos}
 		for i, item := range body.list {
-			if i == 0 && !item.isList {
+			if i == 0 && !item.isList() {
 				out.list = append(out.list, item)
 				continue
 			}
@@ -775,7 +775,7 @@ func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
 		if !dotted {
 			return arg, nil
 		}
-		if arg.isList || arg.kind != atomAt {
+		if arg.isList() || arg.kind != atomAt {
 			return nil, body.errorf("@%s is %s, which has no columns to follow", name, arg.flat())
 		}
 		return &sexp{kind: atomAt, text: arg.text + "." + rest, pos: body.pos}, nil
@@ -788,7 +788,7 @@ func substitute(body *sexp, bound map[string]*sexp) (*sexp, error) {
 		if !dotted || !ok {
 			return body, nil
 		}
-		if arg.isList || (arg.kind != atomName && arg.kind != atomAt) {
+		if arg.isList() || (arg.kind != atomName && arg.kind != atomAt) {
 			return nil, body.errorf("%s is %s, which has no columns to follow", name, arg.flat())
 		}
 		return &sexp{kind: arg.kind, text: arg.text + "." + rest, pos: body.pos}, nil
@@ -903,7 +903,7 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 	if x.lit != nil {
 		return cond{}, s.list[1].errorf("in tests a path, not a literal")
 	}
-	if len(s.list) == 3 && s.list[2].isList {
+	if len(s.list) == 3 && s.list[2].isList() {
 		set, t, outer, err := cx.set(s.list[2], sc, x.t)
 		if err != nil {
 			return cond{}, err
@@ -919,7 +919,7 @@ func (cx *compiler) in(s *sexp, sc *scope) (cond, error) {
 	}
 	keys := newValueSet(x.t.kind == Order)
 	for _, item := range s.list[2:] {
-		if item.isList {
+		if item.isList() {
 			return cond{}, item.errorf("in takes literals or one select")
 		}
 		o, err := coerce(item, x.t)
@@ -983,7 +983,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		var seeds func(*frame) *valueSet
 		var t typ
 		var outer bool
-		if s.list[1].isList {
+		if s.list[1].isList() {
 			var err error
 			seeds, t, outer, err = cx.set(s.list[1], sc, x)
 			if err != nil {
@@ -1060,7 +1060,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 }
 
 func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, typ, bool, error) {
-	if len(s.list) < 2 || s.list[1].isList || s.list[1].kind != atomName {
+	if len(s.list) < 2 || s.list[1].isList() || s.list[1].kind != atomName {
 		return nil, typ{}, false, s.errorf("select names TABLE.column")
 	}
 	tableName, columnName, ok := strings.Cut(s.list[1].text, ".")
@@ -1077,7 +1077,7 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 	}
 	inner := &scan{table: t, guarded: !cx.policy}
 	rest := s.list[2:]
-	if len(rest) > 0 && !rest[0].isList && rest[0].kind == atomAt {
+	if len(rest) > 0 && !rest[0].isList() && rest[0].kind == atomAt {
 		if rest[0].text == "viewer" {
 			return nil, typ{}, false, rest[0].errorf("@viewer is the viewer and can't name a row")
 		}
@@ -1185,7 +1185,7 @@ func (r *run) fuse(f *frame, spec *selectSpec) bool {
 }
 
 func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
-	if !s.isList {
+	if !s.isList() {
 		switch s.kind {
 		case atomString, atomNumber:
 			return operand{lit: s}, nil
@@ -1262,7 +1262,7 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 		}
 		sets := []func(*frame) *valueSet{}
 		for _, item := range s.list[2:] {
-			if !item.isList {
+			if !item.isList() {
 				return operand{}, item.errorf("tally counts in selects")
 			}
 			set, t, _, err := cx.set(item, sc, x.t)
@@ -1360,7 +1360,7 @@ func columnNamed(t *Table, name string, at *sexp) (Column, error) {
 }
 
 func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
-	if s.isList || (s.kind != atomName && s.kind != atomAt) {
+	if s.isList() || (s.kind != atomName && s.kind != atomAt) {
 		return operand{}, s.errorf("%s is not a path", s.flat())
 	}
 	text := s.text
@@ -1472,7 +1472,7 @@ func startRow(f *frame, at bool, name string) (store.Row, *Table) {
 }
 
 func compileInclude(s *sexp, start *Table) (*pathSpec, error) {
-	if s.isList || s.kind != atomName {
+	if s.isList() || s.kind != atomName {
 		return nil, s.errorf("include takes paths")
 	}
 	out := &pathSpec{}

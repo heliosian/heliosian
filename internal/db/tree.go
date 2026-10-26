@@ -21,7 +21,7 @@ func ParseJSON(raw []byte) (*Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.isList {
+	if !s.isList() {
 		return nil, fmt.Errorf("a query is a list")
 	}
 	return newCompiler(false).query(s)
@@ -74,7 +74,7 @@ func fromJSON(v any, at string, named bool) (*sexp, error) {
 		if !ok {
 			return nil, fmt.Errorf("%s does not start with an operator's name", at)
 		}
-		out := &sexp{isList: true, pos: -1, list: []*sexp{{kind: atomName, text: head, pos: -1}}}
+		out := &sexp{pos: -1, list: []*sexp{{kind: atomName, text: head, pos: -1}}}
 		for i := 1; i < len(x); i++ {
 			item, err := fromJSON(x[i], fmt.Sprintf("%s[%d]", at, i), namedAt(head, i))
 			if err != nil {

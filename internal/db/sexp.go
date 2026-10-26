@@ -17,15 +17,18 @@ const (
 )
 
 type sexp struct {
-	list   []*sexp
-	isList bool
-	kind   atomKind
-	text   string
-	pos    int
+	list []*sexp
+	kind atomKind
+	text string
+	pos  int
+}
+
+func (s *sexp) isList() bool {
+	return s.list != nil
 }
 
 func (s *sexp) head() string {
-	if !s.isList || len(s.list) == 0 || s.list[0].isList || s.list[0].kind != atomName {
+	if len(s.list) == 0 || s.list[0].isList() || s.list[0].kind != atomName {
 		return ""
 	}
 	return s.list[0].text
@@ -56,7 +59,7 @@ func readSexp(src string) (*sexp, error) {
 	if !p.done() {
 		return nil, fmt.Errorf("at %d: text after the closing bracket", p.at+1)
 	}
-	if !s.isList {
+	if !s.isList() {
 		return nil, s.errorf("a query is a bracket")
 	}
 	return s, nil
@@ -90,7 +93,7 @@ func readForms(src string) ([]*sexp, []note, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if !s.isList {
+		if !s.isList() {
 			return nil, nil, s.errorf("%s stands outside a bracket", s.flat())
 		}
 		out = append(out, s)
@@ -131,7 +134,7 @@ func (p *reader) read() (*sexp, error) {
 	switch {
 	case r == '(':
 		p.at++
-		out := &sexp{isList: true, pos: start}
+		out := &sexp{list: []*sexp{}, pos: start}
 		for {
 			p.space()
 			if p.done() {
@@ -209,7 +212,7 @@ func (s *sexp) flat() string {
 
 func (s *sexp) writeFlat(out *strings.Builder, spans map[*sexp][2]int) {
 	start := out.Len()
-	if s.isList {
+	if s.isList() {
 		out.WriteByte('(')
 		for i, item := range s.list {
 			if i > 0 {
@@ -255,12 +258,12 @@ func (s *sexp) render(column int) string {
 
 func (s *sexp) writeRendered(out *strings.Builder, column int, flat string, spans map[*sexp][2]int) {
 	span := spans[s]
-	if !s.isList || column >= renderWidth || column+span[1]-span[0] <= renderWidth {
+	if !s.isList() || column >= renderWidth || column+span[1]-span[0] <= renderWidth {
 		out.WriteString(flat[span[0]:span[1]])
 		return
 	}
 	n := min(headCount(s.head()), len(s.list))
-	if n < len(s.list) && s.list[n].kind == atomAt && !s.list[n].isList && (s.head() == "from" || s.head() == "exists" || s.head() == "count" || s.head() == "sum") {
+	if n < len(s.list) && s.list[n].kind == atomAt && !s.list[n].isList() && (s.head() == "from" || s.head() == "exists" || s.head() == "count" || s.head() == "sum") {
 		n++
 	}
 	width := 1
