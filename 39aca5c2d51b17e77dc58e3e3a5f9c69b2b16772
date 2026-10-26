@@ -1,0 +1,25 @@
+# Point Staff Birthdays splash links at the PNG files
+
+byre task tskOiSQpA1n6mK, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskOiSQpA1n6mK in byre (GET /api/events?task_id=tskOiSQpA1n6mK).
+
+## Summary
+
+Consistency audit of heliosian at b041b6f. The one user-visible fix is Staff Birthdays' iOS launch images.
+
+Before: Staff Birthdays' 32 iOS launch-image links named `.jpg` files that are not on disk, so a home-screen launch image did not load.
+Now: those links name the PNG files under `web/public/birthday/brand/splash/`, the same basenames the other apps use.
+
+Docs that would send a reader to missing files were corrected in the same change: sample mode does accept self-service edits; there is no `sampledata/directory/Website Staff Import.csv` and no Name to Email or Email Aliases tabs; Who's sidebar uses `/brand/logo-lockup-light.png` and Admin uses the app icon; icons sit on `#0f4e54` with the maskable mark at 62%; identity resolution is `PERSON_EMAIL`, a Veracross `vc_name` match, and `/api/do/person-at`.
+
+Left on purpose: birthday mail stays painted `#0e4d54` (changing `internal/db/birthdaymail.go` would recolor mail); button capitalization and the three Open Helios Who? labels stay as they are; comments, slog case, and flag dashes were already consistent.
+
+Review of snapshot 1 reported no findings. Main (`27f098e3`, unused tool dependency removed and inbox delivery unified) merged cleanly with no conflicts. `go vet` and tests for `internal/app`, `internal/ask`, `internal/db`, `internal/mcp`, and `internal/tools` passed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Updates all 32 Staff Birthdays iOS splash links to the existing PNG assets. Corrects stale documentation about sample-mode editing, identity resolution, and current branding assets and colors.
+
+No significant findings.
