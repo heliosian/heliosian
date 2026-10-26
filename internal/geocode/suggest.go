@@ -49,9 +49,11 @@ func (s *Suggestions) suggest(r *http.Request) []Suggestion {
 		slog.WarnContext(r.Context(), "address suggestions: over the limit", "email", email)
 		return []Suggestion{}
 	}
-	out, err := s.client.Suggest(q)
+	out, err := s.client.Suggest(r.Context(), q)
 	if err != nil {
-		slog.WarnContext(r.Context(), "address suggestions", "error", err)
+		if r.Context().Err() == nil {
+			slog.WarnContext(r.Context(), "address suggestions", "error", err)
+		}
 		return []Suggestion{}
 	}
 	if len(out) > 5 {

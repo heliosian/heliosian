@@ -1,12 +1,14 @@
 package geocode
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"sync"
 	"testing"
+	"time"
 
 	"heliosian/internal/intercept"
 	"heliosian/internal/testkit/authtest"
@@ -76,5 +78,44 @@ func TestSuggestCachesAndLimits(t *testing.T) {
 	}
 	if c.count() != suggestPerMinute {
 		t.Errorf("calls past the limit = %d", c.count())
+	}
+}
+
+func TestCanceledSuggestionReturns(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	defer close(release)
+	intercept.Install(intercept.PlacesHost, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+			return
+		}
+		close(started)
+		<-release
+		json.NewEncoder(w).Encode(map[string]any{"suggestions": []any{}})
+	}))
+	mux := http.NewServeMux()
+	NewSuggestions(New("test")).Register(mux)
+	h := authtest.Fixed("jordan@example.org", mux)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/address/suggest?q=waverley", nil).WithContext(ctx))
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("the Places request never started")
+	}
+	at := time.Now()
+	cancel()
+	select {
+	case <-done:
+		t.Logf("canceled suggestion returned in %s", time.Since(at))
+	case <-time.After(time.Second):
+		t.Fatalf("canceled suggestion still waiting on Places after %s", time.Since(at))
 	}
 }

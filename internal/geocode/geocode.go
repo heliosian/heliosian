@@ -2,6 +2,7 @@ package geocode
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -65,13 +66,13 @@ type Suggestion struct {
 	Text string `json:"text"`
 }
 
-func (c *Client) Suggest(input string) ([]Suggestion, error) {
+func (c *Client) Suggest(ctx context.Context, input string) ([]Suggestion, error) {
 	body, _ := json.Marshal(map[string]any{
 		"input":               input,
 		"includedRegionCodes": []string{"us"},
 		"locationBias":        map[string]any{"circle": map[string]any{"center": map[string]float64{"latitude": 37.44, "longitude": -122.14}, "radius": 80000}},
 	})
-	req, err := http.NewRequest("POST", "https://places.googleapis.com/v1/places:autocomplete", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://places.googleapis.com/v1/places:autocomplete", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
