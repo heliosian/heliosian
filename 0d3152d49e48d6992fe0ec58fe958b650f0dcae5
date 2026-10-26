@@ -1,0 +1,44 @@
+# Store client-rendered PDF page images (fixes #179)
+
+byre task tskGDGIbWUE3UR, "Client PDF pages", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Extract an image of each page of a PDF document".
+Full transcripts: the events of task tskGDGIbWUE3UR in byre (GET /api/events?task_id=tskGDGIbWUE3UR).
+
+## Summary
+
+Before: the PDF client tool stored only a first-page thumbnail, and no page images were stored as child documents.
+Now: the tool asynchronously renders every page using client-side Poppler, uploads each PNG as a child DOCUMENT backed by deduplicated CONTENT, and uploads a separately scaled first-page thumbnail. The completed TODO item for #179 is removed.
+
+Ian explicitly corrected the original pure-Go renderer requirement: rendering belongs on a client machine, with no renderer or native dependency in the server. An initial server renderer approach was fully removed. The server upload endpoint validates source identity and consecutive page numbering, supports idempotent retries, and records completion only after the final page. Source replacement clears stale page children and rendering metadata. Originals and transcription-range PDFs each retain their own page children.
+
+Production census found 1,199 PDF document appearances, yielding 13,369 page children and at most 22,650 new CONTENT rows before deduplication. Rendering 649 real pages across 33 PDFs took 226 seconds and produced 444 MB of PNGs; projected rendering is about 59 minutes, with 2.8–6.0 GB of stored PNGs depending on deduplication. Upload time is additional. Client/database tests and CGO-disabled vet passed, including the oversized-thumbnail regression. The requested merge from main was already up to date; checks passed again with no conflicts or edits.
+
+The authorized production schema migration completed: createtabs added DOCUMENT.page_count and DOCUMENT.rendered. Deployment and the client backfill were deliberately left for after merge; neither has run.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+PDF documents are rendered in the background with a pure-Go library, with one PNG child document per page and a JPEG thumbnail from the first page. The change adds rendering state, removes the laptop thumbnail upload workflow, and deletes rendered children when the parent’s content changes. Review was by code inspection; no builds or tests were run.
+
+- Raster decoding failures can permanently save blank PDF page images as successful renders.
+- Unbounded render allocations let an incoming PDF exhaust the single serving instance’s memory.
+- Rendered pages ignore CropBox and include content outside the PDF’s visible page.
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The snapshot only rewrites the PDF page extraction TODO to propose asynchronous rendering on a client machine instead of a pure-Go renderer. It contains no implementation or tests, and leaves the TODO item in place.
+
+- PDF page extraction remains unimplemented; the snapshot only rewrites its TODO description.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Extends the client PDF tool to render every page with Poppler and upload each PNG as a child document. Adds an import-only upload endpoint with ordered, idempotent writes, completion tracking, and removal of stale page images when the source PDF changes.
+
+- Full-resolution first-page images can exceed the thumbnail endpoint’s request limit and permanently block all page uploads for that PDF.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Extends the client PDF tool to render and upload every page as a PNG child document, alongside a first-page thumbnail. Adds an import-only upload endpoint, page counts and completion stamps, idempotent page writes, and removal of stale page images when the source changes. Reviewed by reading code; no builds or tests were run.
+
+- Page rendering uses native Poppler instead of the pure-Go renderer required by the supplied task brief.
