@@ -1,0 +1,23 @@
+# Share group traversal between membership and cycle checks
+
+byre task tskJMIWUWzbIUh, "Share group traversal", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskJMIWUWzbIUh in byre (GET /api/events?task_id=tskJMIWUWzbIUh).
+
+## Summary
+
+Audited main at c8757d9 for structural simplicity after reading project rules and architecture documentation and surveying shared server, data model, store, workers, storage, mail, tools and browser infrastructure. Selected one bounded cleanup.
+
+Before: internal/db/model.go checkGroupCycles and internal/db/effective.go membership resolution separately traversed child groups, excluding helper groups named by servingColumns.
+Now: both call View.groupsUnder in effective.go. Membership uses the consent-filtered group view; cycle detection uses wholeView over the stored groups. The duplicate recursive walker is removed (16 fewer lines overall), preventing traversal rules drifting between the two consumers. No intended user-visible behavior or schema change.
+
+Kept app-specific share-card rules and worker lifecycles separate because their picture, redirect, retry, scheduling and batching semantics differ. No framework, flags, validation, compatibility shims or new tests were introduced.
+
+Targeted and broader related db tests passed, along with repository-wide go vet and git diff --check. During merge preparation, main merged cleanly with --no-ff --no-commit; no conflict resolutions or substantive edits were needed. Verification was repeated on the merged tree, including Celebrate tests for the work main brought in.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Shares descendant group traversal between effective membership resolution and rule cycle detection by moving groupsUnder onto View. Membership resolution uses the consent-filtered view; cycle detection uses the full group view. Both retain the same exclusions for serving groups.
+
+No significant findings.
