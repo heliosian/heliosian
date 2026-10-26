@@ -1,0 +1,43 @@
+# Probe calendar, home, and admin queries and batch requests
+
+byre task tskoA8IRmvw7fy, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskoA8IRmvw7fy in byre (GET /api/events?task_id=tskoA8IRmvw7fy).
+
+## Summary
+
+### Purpose
+Performance audit of codebase queries and request hot paths to eliminate unprobed full-table scans, unbatched HTTP round-trips, and quadratic exists scans across application pages.
+
+### What Was Built
+1. **Who? Admin Page (`web/who/pages/admin.js`)**:
+   - Batched 7 separate HTTP requests into a single `queries({ ... })` request, sharing parser, run context, and policy verdict caches.
+   - Replaced unprobed `or` condition across parent paths by splitting into probed enum query `groups` and probed parent reference query `roomParents`, reducing `GROUP` read checks from 2,966 down to 48 (98.4% reduction).
+   - Probed `PHOTO.group` with `(in group (select GROUP.id (in kind "classroom" "grade")))`, cutting `PHOTO` read checks from 117 to 0 by skipping non-matching photos without policy evaluations.
+2. **Shared Calendar Queries (`web/common/calendar.js`)**:
+   - Converted `dayRules`, `sources`, and `photos` queries from path expressions (`group.kind`) to index-probed subqueries `(in group (select GROUP.id ...))`, eliminating table scans on `RULE`, `GROUP_SOURCE`, and `PHOTO` during calendar loads on When and Home.
+3. **Home Page Visibility and Todo Queries (`web/home/state.js`)**:
+   - Replaced `(exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer))` on apps, widgets, and links with `(in visible_to (select EFFECTIVE_MEMBER.group (= person @viewer)))`, turning quadratic scans into O(1) hash lookups against the memoized viewer group set.
+   - Replaced `(exists TODO_MARK)` scans with `(in id (select TODO_MARK.todo (= person @viewer)))`.
+4. **When Page Request Consolidation (`web/when/state.js`)**:
+   - Batched the user photo query directly into `loadCalendar({photo: ...})`, eliminating an unnecessary parallel HTTP request to `/api/q` on initial page load.
+5. **Home Team & Celebrate Category Probing (`web/home/team.js`, `web/celebrate/state.js`)**:
+   - Probed `parent` reference with `(in parent (select GROUP.id (= kind "...")))` instead of dereferencing `parent.kind`.
+6. **Regression Tests (`internal/db/page_test.go`)**:
+   - Added automated tests verifying that all calendar, admin, and home queries probe their indexed target columns.
+
+### Key Decisions
+- **Split Admin `groups` and `roomParents`**: Matched the pattern established in `web/who/state.js`, letting `groups` probe enum `kind` and `roomParents` probe `parent` reference to gradebands, rather than attempting a single query with an unprobed OR.
+- **Probe viewer group membership via `(in visible_to (select EFFECTIVE_MEMBER.group (= person @viewer)))`**: Reused the exact subquery text already compiled and memoized for the navigation rail, making each row's visibility check an O(1) set membership check.
+- **Leave merge uncommitted**: Merged `main` cleanly without conflicts and left uncommitted for byre to conclude upon turn end.
+
+### What Was Left Out
+- **Staleness badge queries (`web/common/staleness.js`)**: Already probes `person` and `group` across its OR branches; candidate volume is small.
+- **External consent spreadsheet polling ticker (`internal/db/consent.go`)**: Retained as-is because polling the external Google Sheet is intentional and documented.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Rewrites calendar, home, Celebrate and directory admin queries to use indexed references and shared membership sets instead of repeated per-row lookups. It also batches directory admin requests and the calendar avatar query, and adds tests for the intended query plans. Reviewed by code inspection; no builds were run.
+
+No significant findings.
