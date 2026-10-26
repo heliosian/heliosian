@@ -1,0 +1,50 @@
+# Consolidate group authority, person names, and address normalization
+
+byre task tskhRhvBckSkdJ, "Simplicity Audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskhRhvBckSkdJ in byre (GET /api/events?task_id=tskhRhvBckSkdJ).
+
+## Summary
+
+## Whole Task Summary: Simplicity Audit
+
+Conducted a whole-codebase simplicity audit against Heliosian standards, focusing on structural duplication, redundant lookups, scattered model-level authority, and inconsistent helper usage.
+
+### What Was Done
+- **Group authority and slug lookup**
+  - Moved `slugGroup(slug string) string` onto `Model` in `internal/db/slug.go`.
+  - Moved `effectivelyIn(group, person string) bool` and `runsGroup(group, person string) bool` from `internal/db/listmail.go` to `internal/db/effective.go`.
+  - Consolidated `superAdmin(viewer string) bool` and `superAdminAddresses() []string` in `internal/db/effective.go` using indexed slug lookup and `effectivelyIn`.
+  Before: `queues.go` and `feedback.go` each performed full O(N) linear scans over `GROUP` to find `super-admins` and re-implemented effective membership checks.
+  Now: `superAdmin` and `superAdminAddresses` share an indexed slug lookup and `effectivelyIn` check in `effective.go`.
+
+- **Person naming and ticket transfer notifications**
+  - Consolidated `shortName` on `Model` in `internal/db/membershipmail.go` alongside `nameOf`, `firstName`, and `greeting`, removing the duplicate in `internal/db/invitemail.go`.
+  - Updated `internal/db/partymail.go:passed` to use `m.shortName(change.person)` instead of raw `m.firstName(change.person)`.
+  Before: transferring a party ticket to a person without an explicit short name generated empty headings like `", you're going!"` and greetings like `"Hi  -"`.
+  Now: ticket notifications fall back to the first word of the recipient's display name.
+
+- **Canonical email address normalization**
+  - Replaced inline `strings.ToLower(strings.TrimSpace(email))` calls across `http.go`, `listmail.go`, `invitations.go`, `invitehooks.go`, and `signout.go` with `mail.Normalize`.
+  Before: email cleaning was re-implemented manually across multiple model and handler files.
+  Now: all email cleaning passes through `mail.Normalize`.
+
+- **Shared API query handling in web shell**
+  - Refactored `queries(named)` in `web/common/rail.js` to dispatch through `api('QUERY', '/api/q', {queries: named})`.
+  Before: `queries` hand-rolled raw `fetch`, header injection, and response error status checking.
+  Now: `queries` uses the unified `api` client.
+
+### Key Decisions
+- Placed `superAdmin` and `superAdminAddresses` in `effective.go` rather than keeping per-caller logic or shims, ensuring group governance and membership evaluation stay co-located with effective membership logic.
+- Used `shortName` in `partymail.go` to guarantee valid non-empty greetings structurally rather than adding ad-hoc defensive nil/empty checks to templates.
+- Left specialized admin diagnostic page error handling (`admin/search` and `admin/query`) intact rather than forcing them into generic API response parsing, preserving their explicit UI status code reporting.
+
+### Deliberately Left Out
+- Static non-API client fetches (such as `/emoji.json` and raw markdown blobs) remain direct `fetch` calls.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+A small dedup pass over `internal/db` and one web helper. The two copies of the super-admins lookup (`superAdmin` in queues.go and `superAdminAddresses` in feedback.go) now go through the existing `slugGroup` helper. All the group-membership helpers (`effectivelyIn`, `runsGroup`, `superAdmin`, `superAdminAddresses`) now sit together in effective.go, and `slugGroup` moved to slug.go. Hand-written `strings.ToLower(strings.TrimSpace(...))` calls were replaced with `mail.Normalize`. `shortName` moved next to `greeting` and is now used for the party "passed ticket" heading, where `firstName` could be blank. `queries()` in rail.js now calls the shared `api()` helper instead of its own fetch/error code.
+
+No significant findings.
