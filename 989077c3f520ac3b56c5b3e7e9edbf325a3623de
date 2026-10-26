@@ -1,0 +1,24 @@
+# Construct complete search rows and derive name-only status
+
+byre task tskx7zakEv2Dfc, "Simplify search rows", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskx7zakEv2Dfc in byre (GET /api/events?task_id=tskx7zakEv2Dfc).
+
+## Summary
+
+Audited main at da6c2dae68a9f1deed09b72042479ae22dc5778e for structural simplicity, surveying storage, model/query, worker/search, mail, image search, wiring and client routes. Simplified search-row construction in internal/db/search.go and adapted an existing test assertion.
+
+Before: SearchRow retained named/source row maps and required a later linking pass in rowsFor.
+Now: constructors populate Href and SourceHref directly, eliminating the retained maps and incomplete construction stage.
+
+Before: SearchRow stored NameOnly separately from Table and Input.
+Now: nameOnly() derives the indexing decision from the table and text, eliminating redundant mutable state.
+
+No intended user-visible behavior change. Left membership/search traversal helpers and bounded/unbounded concurrency paths separate because they implement different rules. No migration, compatibility machinery, new tests or production checks. Focused existing search tests under timeout 30, go vet ./..., and git diff --check passed. Latest review finished before readiness was reported. Ran the requested git merge --no-ff --no-commit main: already up to date, with no conflicts or merge edits; repeated vet and the relevant search tests successfully. No plan departures.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Simplifies search rows by deriving whether a person is searchable by name alone from the row’s table and input, instead of storing a separate flag. Copies result links when rows are constructed, removing retained model rows and the later link-population step. Existing search behavior and its name-only test are preserved.
+
+No significant findings.
