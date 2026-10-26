@@ -28,6 +28,12 @@ type geocoder struct {
 	in     *inbox
 }
 
+type geocodeLookup struct {
+	address string
+	point   geocode.Point
+	err     error
+}
+
 func StartGeocoder(s *Store, client *geocode.Client) {
 	g := &geocoder{s: s, client: client, failed: map[string]bool{}, in: s.Model().services.inbox(geocodeInbox)}
 	go g.run()
@@ -63,36 +69,39 @@ func (g *geocoder) run() {
 	for range g.in.wake {
 		g.in.take()
 		m := g.s.Model()
-		addresses := slices.DeleteFunc(m.unplaced(), func(a string) bool { return g.failed[a] })
+		lookups := []geocodeLookup{}
+		for _, address := range m.unplaced() {
+			if !g.failed[address] {
+				lookups = append(lookups, geocodeLookup{address: address})
+			}
+		}
 		gone := slices.DeleteFunc(m.unplaceable(), func(id string) bool { return g.failed[id] })
-		if len(addresses) == 0 && len(gone) == 0 {
+		if len(lookups) == 0 && len(gone) == 0 {
 			continue
 		}
 		start := time.Now()
-		found := make([]geocode.Point, len(addresses))
-		errs := make([]error, len(addresses))
-		next := make(chan int)
+		next := make(chan *geocodeLookup)
 		wg := sync.WaitGroup{}
 		for range geocodeLookups {
 			wg.Go(func() {
-				for i := range next {
-					found[i], errs[i] = g.client.Lookup(addresses[i])
+				for lookup := range next {
+					lookup.point, lookup.err = g.client.Lookup(lookup.address)
 				}
 			})
 		}
-		for i := range addresses {
-			next <- i
+		for i := range lookups {
+			next <- &lookups[i]
 		}
 		close(next)
 		wg.Wait()
 		edits := []Edit{}
-		for i, address := range addresses {
-			if errs[i] != nil {
-				slog.Error("geocode: look up, left until a restart", "address", address, "error", errs[i])
-				g.failed[address] = true
+		for _, lookup := range lookups {
+			if lookup.err != nil {
+				slog.Error("geocode: look up, left until a restart", "address", lookup.address, "error", lookup.err)
+				g.failed[lookup.address] = true
 				continue
 			}
-			edits = append(edits, Edit{Insert: "GEOCODE", Row: map[string]any{"address": address, "lat": strconv.FormatFloat(found[i].Lat, 'f', -1, 64), "lng": strconv.FormatFloat(found[i].Lng, 'f', -1, 64)}})
+			edits = append(edits, Edit{Insert: "GEOCODE", Row: map[string]any{"address": lookup.address, "lat": strconv.FormatFloat(lookup.point.Lat, 'f', -1, 64), "lng": strconv.FormatFloat(lookup.point.Lng, 'f', -1, 64)}})
 		}
 		placed := len(edits)
 		for _, id := range gone {
@@ -104,11 +113,14 @@ func (g *geocoder) run() {
 		env := Env{System: "geocoder", Now: time.Now()}
 		if _, err := Write(context.Background(), g.s, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 			slog.Error("geocode: record", "placed", placed, "removed", len(gone), "error", err)
-			for _, key := range slices.Concat(addresses, gone) {
-				g.failed[key] = true
+			for _, lookup := range lookups {
+				g.failed[lookup.address] = true
+			}
+			for _, id := range gone {
+				g.failed[id] = true
 			}
 			continue
 		}
-		slog.Info("geocode: placed family addresses", "looked_up", len(addresses), "placed", placed, "removed", len(gone), "took", time.Since(start).Round(time.Millisecond))
+		slog.Info("geocode: placed family addresses", "looked_up", len(lookups), "placed", placed, "removed", len(gone), "took", time.Since(start).Round(time.Millisecond))
 	}
 }
