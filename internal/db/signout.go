@@ -2,11 +2,11 @@ package db
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/cells"
+	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
 
@@ -43,6 +43,6 @@ func (ss *Sessions) SignOut(ctx context.Context, email string) error {
 		return nil
 	}
 	now := time.Now().In(School)
-	_, err := Write(ctx, ss.s, access.Actor{Email: strings.ToLower(strings.TrimSpace(email))}, Env{System: signOutActor, Now: now}, Batch{Batch: []Edit{{Set: p["id"], Cells: map[string]any{"signed_out": now.Format(cells.StampFormat)}}}})
+	_, err := Write(ctx, ss.s, access.Actor{Email: mail.Normalize(email)}, Env{System: signOutActor, Now: now}, Batch{Batch: []Edit{{Set: p["id"], Cells: map[string]any{"signed_out": now.Format(cells.StampFormat)}}}})
 	return err
 }

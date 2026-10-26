@@ -190,7 +190,7 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 	}
 	m := iv.s.Model()
 	name := strings.Join(strings.Fields(body.Name), " ")
-	address := strings.ToLower(strings.TrimSpace(body.Email))
+	address := mail.Normalize(body.Email)
 	if name == "" {
 		serve.Error(w, r, access.Invalid("a guest needs a name"))
 		return

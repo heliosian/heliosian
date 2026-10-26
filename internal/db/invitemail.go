@@ -133,13 +133,6 @@ func joinNames(names []string) string {
 	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
 }
 
-func (m *Model) shortName(person string) string {
-	if first := m.firstName(person); first != "" {
-		return first
-	}
-	return strings.Fields(m.nameOf(person) + " ")[0]
-}
-
 func (m *Model) householdOnList(g store.Row, person string) []string {
 	out := []string{person}
 	for _, p := range m.householdOf(person)[1:] {

@@ -276,7 +276,7 @@ func (mm *MembershipMailer) passed(ctx context.Context, m *Model, g store.Row, c
 		cc = append(cc, change.actor)
 	}
 	l := mm.partyLetter(m, g)
-	first := m.firstName(change.person)
+	first := m.shortName(change.person)
 	l.Heading = first + ", you're going!"
 	l.Intro = fmt.Sprintf("Hi %s - %s has passed you a ticket to %s. The hosts are copied here, so just reply if you have a question.", first, m.nameOf(change.actor), g["name"])
 	l.Rows = [][2]string{{"Ticket", m.nameOf(change.person)}}

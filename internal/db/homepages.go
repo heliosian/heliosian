@@ -63,11 +63,6 @@ func (m *Model) sharedApps() []store.Row {
 	return out
 }
 
-func (m *Model) slugGroup(slug string) string {
-	g, _ := m.Table("GROUP").Distinct("slug", slug)
-	return g["id"]
-}
-
 func tierOf(pageHost string) string {
 	host, port, _ := strings.Cut(strings.ToLower(pageHost), ":")
 	labels := strings.Split(host, ".")

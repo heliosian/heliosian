@@ -71,3 +71,8 @@ func (r *run) slugged(slug string, policy bool) string {
 	r.memo[key] = found
 	return found
 }
+
+func (m *Model) slugGroup(slug string) string {
+	g, _ := m.Table("GROUP").Distinct("slug", slug)
+	return g["id"]
+}

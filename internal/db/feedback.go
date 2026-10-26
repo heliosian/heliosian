@@ -210,21 +210,6 @@ func (f *Feedback) finish(id, appName, email string, shot screenshot) {
 	}
 }
 
-func (m *Model) superAdminAddresses() []string {
-	out := []string{}
-	for _, g := range m.Table("GROUP").All() {
-		if g["slug"] != "super-admins" {
-			continue
-		}
-		for _, row := range m.effectiveRows(g["id"]) {
-			if address := m.addressOf(row["person"]); address != "" {
-				out = append(out, address)
-			}
-		}
-	}
-	return out
-}
-
 func (f *Feedback) notice(to []string, r store.Row, appName, email string) mail.Message {
 	what := "An idea"
 	if r["kind"] == "bug" {

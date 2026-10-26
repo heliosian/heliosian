@@ -10,7 +10,6 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
-	"heliosian/internal/store"
 )
 
 type queueCount struct {
@@ -44,19 +43,6 @@ func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens) {
 		report.Queues = append(report.Queues, queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 		serve.Write(w, r, http.StatusOK, report)
 	})
-}
-
-func (m *Model) superAdmin(viewer string) bool {
-	if viewer == "" {
-		return false
-	}
-	for _, g := range m.Table("GROUP").All() {
-		if g["slug"] != "super-admins" {
-			continue
-		}
-		return slices.ContainsFunc(m.effectiveRows(g["id"]), func(row store.Row) bool { return row["person"] == viewer })
-	}
-	return false
 }
 
 func quoted(values []string) string {

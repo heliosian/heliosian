@@ -13,11 +13,11 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
-	"strings"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/cells"
+	"heliosian/internal/mail"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/trace"
@@ -276,7 +276,7 @@ func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) 
 }
 
 func (m *Model) PersonOf(email string) string {
-	row, ok := m.Table("PERSON_EMAIL").Find(strings.ToLower(strings.TrimSpace(email)), "No")
+	row, ok := m.Table("PERSON_EMAIL").Find(mail.Normalize(email), "No")
 	if !ok {
 		return ""
 	}

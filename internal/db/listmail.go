@@ -124,7 +124,7 @@ func (m *Model) mailList(local string) store.Row {
 }
 
 func (m *Model) personAt(address string) string {
-	address = strings.ToLower(strings.TrimSpace(address))
+	address = mail.Normalize(address)
 	emails := m.Shown("PERSON_EMAIL")
 	for _, guest := range []string{"No", "Yes"} {
 		if row, ok := emails.Find(address, guest); ok {
@@ -141,25 +141,6 @@ func (m *Model) addressOf(person string) string {
 		}
 	}
 	return ""
-}
-
-func (m *Model) effectivelyIn(group, person string) bool {
-	return slices.ContainsFunc(m.effectiveRows(group), func(row store.Row) bool { return row["person"] == person })
-}
-
-func (m *Model) runsGroup(group, person string) bool {
-	for seen := map[string]bool{}; group != "" && !seen[group]; {
-		seen[group] = true
-		g, ok := m.Table("GROUP").Get(group)
-		if !ok {
-			return false
-		}
-		if g["managed_by"] != "" && m.effectivelyIn(g["managed_by"], person) {
-			return true
-		}
-		group = g["parent"]
-	}
-	return false
 }
 
 func (m *Model) mayPost(g store.Row, sender string, reply bool) bool {

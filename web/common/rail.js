@@ -15,11 +15,7 @@ export async function q(text) {
 }
 
 export async function queries(named) {
-  const res = await signedIn(await fetch('/api/q', {method: 'QUERY', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({queries: named})}));
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-  const answer = await res.json();
+  const answer = await api('QUERY', '/api/q', {queries: named});
   const out = {};
   for (const name of Object.keys(named)) {
     out[name] = {result: answer.results[name], resources: answer.resources};

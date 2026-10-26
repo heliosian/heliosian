@@ -190,6 +190,47 @@ func (m *Model) effectiveRows(group string) []store.Row {
 	return rows
 }
 
+func (m *Model) effectivelyIn(group, person string) bool {
+	return slices.ContainsFunc(m.effectiveRows(group), func(row store.Row) bool { return row["person"] == person })
+}
+
+func (m *Model) runsGroup(group, person string) bool {
+	for seen := map[string]bool{}; group != "" && !seen[group]; {
+		seen[group] = true
+		g, ok := m.Table("GROUP").Get(group)
+		if !ok {
+			return false
+		}
+		if g["managed_by"] != "" && m.effectivelyIn(g["managed_by"], person) {
+			return true
+		}
+		group = g["parent"]
+	}
+	return false
+}
+
+func (m *Model) superAdmin(viewer string) bool {
+	if viewer == "" {
+		return false
+	}
+	superAdminID := m.slugGroup("super-admins")
+	return superAdminID != "" && m.effectivelyIn(superAdminID, viewer)
+}
+
+func (m *Model) superAdminAddresses() []string {
+	superAdminID := m.slugGroup("super-admins")
+	if superAdminID == "" {
+		return nil
+	}
+	out := []string{}
+	for _, row := range m.effectiveRows(superAdminID) {
+		if address := m.addressOf(row["person"]); address != "" {
+			out = append(out, address)
+		}
+	}
+	return out
+}
+
 func (m *Model) generated(t *Table) *generatedSet {
 	version := m.index.current()
 	m.derived.mu.Lock()

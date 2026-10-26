@@ -195,6 +195,13 @@ func (m *Model) greeting(person string) string {
 	return "Hi"
 }
 
+func (m *Model) shortName(person string) string {
+	if first := m.firstName(person); first != "" {
+		return first
+	}
+	return strings.Fields(m.nameOf(person) + " ")[0]
+}
+
 func (m *Model) signUpRows(change placeChange) [][2]string {
 	rows := [][2]string{{"Who", m.nameOf(change.person)}}
 	if change.note != "" {

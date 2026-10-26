@@ -474,7 +474,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 			addressed[guest.Person] = m.addressOf(guest.Person) != ""
 			continue
 		}
-		address := strings.ToLower(strings.TrimSpace(guest.Email))
+		address := mail.Normalize(guest.Email)
 		name := strings.Join(strings.Fields(guest.Name), " ")
 		if address != "" && (mail.AddressOf(address) != address || !strings.Contains(address, "@")) {
 			return sentAnswer{}, access.Invalid("%q is not an address", guest.Email)
