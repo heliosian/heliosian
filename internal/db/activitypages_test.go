@@ -137,6 +137,9 @@ func TestActivityWhenLines(t *testing.T) {
 		start, end, line string
 	}{
 		{"2026-09-24", "", "Thursday, September 24"},
+		{"2026-09-24 16:00:00", "", "Thursday, September 24 · 4:00 PM"},
+		{"2026-09-24 16:00:00", "2026-09-24 18:00:00", "Thursday, September 24 · 4:00 – 6:00 PM"},
+		{"2026-09-24", "2026-09-24 18:00:00", "Thursday, September 24"},
 		{"2026-09-24 16:00", "2026-09-24 18:00", "Thursday, September 24 · 4:00 – 6:00 PM"},
 		{"2026-09-24 11:00", "2026-09-24 13:00", "Thursday, September 24 · 11:00 AM – 1:00 PM"},
 		{"2026-10-02", "2026-10-04", "Friday, October 2 – Sunday, October 4"},

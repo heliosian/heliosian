@@ -214,39 +214,29 @@ func whenLines(g store.Row) (string, string) {
 	if g["timing"] != "" {
 		return g["timing"], ""
 	}
-	if days, hours := spanLines(g); days != "" {
-		return days, hours
-	}
-	start, err := time.Parse(MomentLayout, g["start"])
-	if err != nil {
-		if day, err := time.Parse(DateLayout, g["start"]); err == nil {
-			return day.Format("Monday, January 2"), ""
-		}
-		return "", ""
-	}
-	day := start.Format("Monday, January 2")
-	end, err := time.Parse(MomentLayout, g["end"])
-	if err != nil {
-		return day, start.Format("3:04 PM")
-	}
-	return day, sharecard.Hours(start, end)
-}
-
-func spanLines(g store.Row) (string, string) {
 	start, err := cells.When(g["start"])
 	if err != nil {
 		return "", ""
 	}
-	end, err := cells.When(g["end"])
-	if err != nil || (end.Year() == start.Year() && end.YearDay() == start.YearDay()) {
-		return "", ""
+	end, endErr := cells.When(g["end"])
+	startTimed := len(g["start"]) > len(DateLayout)
+	endTimed := endErr == nil && len(g["end"]) > len(DateLayout)
+	day := start.Format("Monday, January 2")
+	if endErr == nil && (end.Year() != start.Year() || end.YearDay() != start.YearDay()) {
+		days := day + " – " + end.Format("Monday, January 2")
+		if startTimed && endTimed {
+			return days, start.Format("Mon 3:04 PM") + " – " + end.Format("Mon 3:04 PM")
+		}
+		if startTimed {
+			return days, start.Format("Mon 3:04 PM")
+		}
+		return days, ""
 	}
-	days := start.Format("Monday, January 2") + " – " + end.Format("Monday, January 2")
-	if len(g["start"]) > len(DateLayout) && len(g["end"]) > len(DateLayout) {
-		return days, start.Format("Mon 3:04 PM") + " – " + end.Format("Mon 3:04 PM")
+	if !startTimed {
+		return day, ""
 	}
-	if len(g["start"]) > len(DateLayout) {
-		return days, start.Format("Mon 3:04 PM")
+	if !endTimed {
+		return day, start.Format("3:04 PM")
 	}
-	return days, ""
+	return day, sharecard.Hours(start, end)
 }
