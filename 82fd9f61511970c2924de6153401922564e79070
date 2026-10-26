@@ -1,0 +1,55 @@
+# Honor query cancellation through ordinary context checks
+
+byre task tskQAaxWLd98wf, "Query cancellation", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskQAaxWLd98wf in byre (GET /api/events?task_id=tskQAaxWLd98wf).
+
+## Summary
+
+Audited main at b041b6f for user-visible latency, wasted work, growth, and work outliving its caller. Surveyed query execution, page batches, request serving, media handling, workers, monitoring, and Ask/MCP paths. The worthwhile fix was query cancellation.
+
+Before: queries ignored caller cancellation and continued until completion or the 10-million-visit limit.
+Now: query loops check context cancellation and return normally. Exceeding the visit budget cancels that same run context with its error cause. RunAll reports the cause and discards partial results; subsequent batch queries stop too. There is no panic/recover cancellation or budget path, following ian's explicit rejection of that initial approach.
+
+Before: draft, invitation, and charity checks could hide query errors as permission denials; HTTP boundaries could report disconnects as failures or hide operation-local timeouts.
+Now: permission helpers propagate query errors. Ended requests quietly exit; operation-local timeouts on live requests retain logged failure responses.
+
+Measured locally: a query with a 5ms deadline returned after 881ms before and about 6.3ms with the final context-based implementation. Final isolated sidebar benchmark median was 13.83ms over five 20-iteration rounds, versus the audit's initial 15.37ms baseline over three five-iteration rounds; no apparent material overhead, not a controlled normal-query speedup claim.
+
+Tests cover cancellation, budget exhaustion, nested scans, missing index probes, descendant walks, fused selects, sort-key evaluation, output, subsequent batch queries, permission checks, query HTTP routes, Ask setup, and live-request operation timeouts. Full db, Ask, tools, MCP, serve, and app tests and go vet ./... pass; tests used timeout 30. Main merged cleanly without conflicts or manual resolutions, and checks passed on the merged tree. Merge left uncommitted for byre.
+
+Deliberately left standard sorting intact: cancellation is checked before and after sorting precomputed keys, rather than replacing Go's sort implementation. Shared generated-table construction remains uninterrupted because other callers reuse its result. No other optimization had enough evidence of a worthwhile small fix. No production measurement, deployment, new cache, queue, pool, worker, or configuration.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Query evaluation now stops when the caller's context ends. `run` carries the context given to `RunAll`, and `spend` (called on every scanned row, index lookup and member check) panics with a `queryStopped` error once the context is done. This replaces the old `overspent` panic and also carries the row-budget error. `runGuarded` turns the panic into an empty `Result` with that error. Extra `spend(0)` checkpoints cover the per-row output loop, the sort key pass and the sort comparator. A query that was already answered earlier in the batch is rerun, and so fails, if the context has since ended. A new test runs a heavy nested-exists query with a 5 ms deadline, as a viewer and as a system caller, and checks that a cancelled context returns `context.Canceled`. I ran the test three times and it passes; the queries return in about 5–6 ms. Per the commit message, a 5 ms deadline previously returned after 881 ms.
+
+- Callers that discard `result.Err` now silently get an empty set when the context ends (`draft.go:67`).
+- A deadline or cancellation is reported as an invalid-query 400 by the HTTP handler (`http.go:201`, `http.go:229`).
+- The new test covers only one query shape, and the added check on the hot path is unmeasured (`query_test.go:809`).
+
+### Snapshot #2, reviewer "Review · Grok high", grok grok-4.7: done
+
+Queries stop when their context is cancelled or hits a deadline, instead of running to the end. The interpreter checks the context on each visited row, and also while sorting and writing output, and returns an empty result with that context error. Draft visibility and invitation checks used to treat a failed query as not visible or not allowed; they now pass the error through.
+
+- Cancelled queries are logged as internal failures and answered as 500s, or as 400 bad requests on `/api/q`.
+- describe-charity treats a cancelled team query as not being on the Birthdays team.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Makes data-model queries stop when their caller's context is canceled or expires, including during scans, sorting, and result assembly. Propagates query errors through draft and invitation permission checks and suppresses cancellation responses in HTTP and chat handlers, with tests covering these paths.
+
+- The shared HTTP error helper turns operation-local timeouts into empty successful responses.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Queries now stop when their caller's context is cancelled or expires, including during scans, sorting and result assembly. Permission helpers propagate those errors, and HTTP handlers avoid reporting cancelled requests as invalid input or server failures. Tests cover cancellation in the engine and its callers. Reviewed by code inspection only; no builds or tests were run.
+
+No significant findings.
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Queries now observe caller cancellation and deadlines during execution, discard interrupted results, and use the same stopping mechanism for the row-visit limit. Cancellation errors propagate through visibility and invitation checks, while request handlers avoid reporting ended requests as invalid input or server failures. Tests cover cancellation during execution and output preparation, error propagation, and HTTP handling.
+
+No significant findings.
