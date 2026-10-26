@@ -574,6 +574,9 @@ function fillTabbar(bar) {
 
 let onSearch = null;
 let carriedQuery = '';
+let searchRun = 0;
+let shownRun = 0;
+let arrived = null;
 
 const defaultPlaceholder = 'Search the year…';
 
@@ -606,6 +609,10 @@ export function setSearch(placeholder, handler) {
 
 export function clearSearch() {
   onSearch = null;
+  if (!carriedQuery) {
+    shownRun = searchRun;
+    arrived = null;
+  }
   state.query = '';
   sync('');
   closeResults();
@@ -615,15 +622,30 @@ export function clearSearch() {
 function search(value) {
   sync(value);
   const query = value.trim();
-  findSearch(query).then(() => {
-    if (typed().trim() !== query) {
+  const run = ++searchRun;
+  findSearch(query).then(found => {
+    if (run <= shownRun || (arrived && run <= arrived.run)) {
       return;
     }
-    showResults(query);
-    if (onSearch) {
-      onSearch(query);
+    if (!arrived) {
+      requestAnimationFrame(showArrived);
     }
+    arrived = {run, query, found};
   });
+}
+
+function showArrived() {
+  if (!arrived) {
+    return;
+  }
+  const {run, query, found} = arrived;
+  arrived = null;
+  shownRun = run;
+  state.found = found;
+  showResults(query);
+  if (onSearch) {
+    onSearch(query);
+  }
 }
 
 const resultLimit = 12;

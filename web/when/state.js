@@ -79,18 +79,12 @@ function rematch() {
   refreshMatches().then(render);
 }
 
-let searchRun = 0;
-
 export async function findSearch(query) {
-  const run = ++searchRun;
   if (!words(query).length) {
-    state.found = new Set();
-    return;
+    return new Set();
   }
   const answer = await api('POST', '/api/do/search', {words: query, limits: {GROUP: 200, PERSON: 0, DOCUMENT: 0}});
-  if (run === searchRun) {
-    state.found = new Set((answer.GROUP || []).map(h => h.id));
-  }
+  return new Set((answer.GROUP || []).map(h => h.id));
 }
 
 function applyModel(model) {
