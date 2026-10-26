@@ -30,4 +30,4 @@ Sample mode reads the sample data model (`sampledata/data*/`): Rowan Ashdown, wh
 
 ## Brand
 
-The app wears Heliosian's marks as stand-ins under `web/public/ask/brand/` and as its mark in the app switch (`web/public/common/brand/apps/ask.png`), until it has art of its own.
+The app's robot-and-chat-bubble mark and lockups live under `web/public/ask/brand/`, cut from `asset-sources/ask/exports/` by the recipe in `docs/brand.md`; its own bare mark is the app switch's `web/public/common/brand/apps/ask.png`. The conversation's two robot faces, `bot-face-1.png` and `bot-face-2.png`, come from the exports' `symbol_nochat_face1.png` and `symbol_nochat_face2.png`.

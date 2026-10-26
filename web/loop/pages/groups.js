@@ -29,9 +29,9 @@ function groupCard(g) {
   const count = g.count;
   meta.append(el('span', 'chip', `${count} ${count === 1 ? 'member' : 'members'}`));
   if (g.member) {
-    const subscribed = el('span', 'manager-state is-subscribed');
-    subscribed.append(svg('check'), el('span', '', 'Subscribed'));
-    meta.append(subscribed);
+    const membership = el('span', 'manager-state is-member');
+    membership.append(svg('check'), el('span', '', 'Member'));
+    meta.append(membership);
   }
   if (g.run) {
     const star = el('span', 'group-manage');

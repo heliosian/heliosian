@@ -243,8 +243,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .manager-name { font-weight: 700; font-size: 15px; }
 .manager-state { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--brand); }
 .manager-state svg { width: 16px; height: 16px; padding: 3px; border-radius: 50%; background: var(--brand-fill); color: #fff; stroke-width: 3; }
-.manager-state.is-subscribed { color: var(--green-tint-ink, #24763c); }
-.manager-state.is-subscribed svg { background: #2f9e4a; }
+.manager-state.is-member { color: var(--green-tint-ink, #24763c); }
+.manager-state.is-member svg { background: #2f9e4a; }
 .manager-remove { position: absolute; right: -8px; top: -8px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--alert); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
 .manager-remove svg { width: 14px; height: 14px; }
 .manager-remove:disabled { opacity: 0.35; cursor: default; }

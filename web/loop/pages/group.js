@@ -20,7 +20,7 @@ import {keyBetween} from '/order.js';
 
 const visibilityNotes = {
   hidden: 'Only the email list\'s managers and the super admins see it.',
-  members: 'The people on the email list see it and can take themselves off it or put themselves back; only managers can change it.',
+  members: 'The people on the email list see it and can unsubscribe from its mail or resubscribe; they stay members either way. Only managers can change it.',
   everyone: 'Anyone in Loop can see it, and only managers can change it.',
 };
 
@@ -1020,11 +1020,11 @@ function managersCard(g, canEdit) {
     }
     const words = el('div', 'manager-words');
     words.append(el('div', 'manager-name', m.name));
-    const subscribed = g.members.some(x => x.person === m.person);
-    const reach = el('div', 'manager-state' + (subscribed ? ' is-subscribed' : ''));
-    reach.append(svg(subscribed ? 'check' : 'close'), el('span', '', subscribed ? 'Subscribed' : 'Not subscribed'));
-    reach.title = subscribed ? 'They are on the email list, so its mail reaches them.' : 'They are not on the email list, so its mail does not reach them.';
-    words.append(reach);
+    const member = g.members.some(x => x.person === m.person);
+    const membership = el('div', 'manager-state' + (member ? ' is-member' : ''));
+    membership.append(svg(member ? 'check' : 'close'), el('span', '', member ? 'Member' : 'Not a member'));
+    membership.title = member ? 'They are on the email list. Members get its mail unless they unsubscribe.' : 'They are not on the email list, so its mail does not reach them.';
+    words.append(membership);
     tile.append(face, words);
     if (editing) {
       const rowOf = g.managerRows.find(x => x.person === m.person);
