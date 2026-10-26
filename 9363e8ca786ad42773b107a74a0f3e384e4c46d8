@@ -1,0 +1,26 @@
+# Unify stock row conversion and derive PDF page counts
+
+byre task tskZhwO5ti2WUf, "Unify row sources", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskZhwO5ti2WUf in byre (GET /api/events?task_id=tskZhwO5ti2WUf).
+
+## Summary
+
+Audited main at 9be5e752d4624ba2fb03f475a5d66c64e8484a99 for structural simplicity after reading project rules, architecture docs, and code across the store, services, mail, routing, search, images, and extraction.
+
+Before: internal/db/stock.go separately mapped StockHit fields for provisional reads and persisted writes.
+Now: both paths use StockHit.row(id), preventing their field mappings from drifting while retaining typed hits and separate row maps.
+
+Before: pdfPages.total duplicated the parsed PDF context’s PageCount.
+Now: PDF splitting, extraction, labels, and the existing test read ctx.PageCount directly, eliminating redundant state.
+
+Intended user-visible behavior remains unchanged. Left activity and party redirects separate because their path matching and chain-following semantics differ; combining them would require policy machinery. No compatibility paths, migrations, new validation, comments, or tests introduced.
+
+Main merged without conflicts and was already up to date on the final merge turn. Repository-wide go vet and diff checks passed. The full internal/db suite passed under timeout 30. The final verification initially hit an intermittent TestWikiShareHeader mismatch: its test helper runs a background photo worker that can replace the fixture’s expected PNG content with JPEG content. The test then passed all ten isolated runs, and the complete package passed on rerun (18.170s). That unrelated fixture was left unchanged. No substantive merge resolutions were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Stock search hits now use one row constructor for both pending reads and persisted inserts. PDF splitting and page titles read the page count directly from the PDF context instead of maintaining a duplicate field. Reviewed the changed code, callers, validation, and existing tests; no builds or tests were run, as requested.
+
+No significant findings.
