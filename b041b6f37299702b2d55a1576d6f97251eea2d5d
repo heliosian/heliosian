@@ -1,0 +1,24 @@
+# Keep text rules from listing outside guests
+
+byre task tskeK7csb8U4Z8, "Security audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskeK7csb8U4Z8 in byre (GET /api/events?task_id=tskeK7csb8U4Z8).
+
+## Summary
+
+Security audit of heliosian at d4640d0. The real hole was that a signed-in member could list outside guests: a search or property rule walked every shown person, and guests are shown, so a group they run (or draft-members, without saving) returned those guest ids and, with a substring search, their emails.
+
+selectRule now lets a guest match free text or a column only when target, person, or within already names them. Directory people still match as before. A guest already in a group the author may see still matches. Schema blurbs, docs/datamodel.md, and TestATextRuleCannotListAnOutsideGuest record that. go vet and the internal/db tests passed, including after merging main.
+
+The check lives in selectRule rather than on the rule insert or on person-at. person-at plus a hand membership is how an editor adds the one guest an address already belongs to, including in the same batch that creates the guest.
+
+Left alone on purpose: person-at still returns an unseen guest's id; inserting a membership of an unseen id still succeeds; replace_with of a household could include a guest who is a shown family member; Compose still interpolates To, Cc, and Reply-To (addresses are Email-kind and header values cannot hold a raw newline); Mailgun accepts a replay of the same body for fifteen minutes; request logs still include the full URI (closed issue 61, log readers are project super-admins). Open issues 199, 200, 204, 205, 206, and 208 were already fixed on the audited commit.
+
+What changes for people: a list manager whose search or property rule used to pull in guests they had not already named gets no match for those guests. They name the person, name a group that already contains them, or add them by hand after person-at.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Closes a leak in group rules. A `RULE` with `search` or `property` and no `target`, `person` or `within` scanned every row of `PERSON` as the model sees it, outside guests included. A signed-in member could save such a rule on a mail list they run, or send it to the draft-members preview, and get back guests they have no right to see. `selectRule` in `internal/db/effective.go` now lets a guest match a text rule only when `target`, `person` or `within` already names them. Those are the selectors the insert policy already limits to people the rule's author can see. The schema descriptions and `docs/datamodel.md` say so, and a new test in `internal/db/draft_test.go` covers both saved rules and draft previews.
+
+No significant findings.
