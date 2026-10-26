@@ -192,19 +192,19 @@ type CalendarWatcher struct {
 	calendar *gcal.Service
 	client   anthropic.Client
 	token    string
-	kick     chan struct{}
+	kick     wake
 	mu       sync.Mutex
 	channel  *gcal.Channel
 }
 
 func NewCalendarWatcher(s *Store, calendar *gcal.Service, anthropicKey, token string) *CalendarWatcher {
-	return &CalendarWatcher{s: s, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, kick: make(chan struct{}, 1)}
+	return &CalendarWatcher{s: s, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, kick: newWake()}
 }
 
 func (w *CalendarWatcher) Start() {
 	go w.work()
 	w.renew()
-	w.Kick()
+	w.kick.poke()
 	go w.sweep()
 }
 
@@ -216,13 +216,6 @@ func (w *CalendarWatcher) Stop() {
 	}
 	w.stop(w.channel)
 	w.channel = nil
-}
-
-func (w *CalendarWatcher) Kick() {
-	select {
-	case w.kick <- struct{}{}:
-	default:
-	}
 }
 
 func (w *CalendarWatcher) work() {
@@ -270,7 +263,7 @@ func (w *CalendarWatcher) sync(ctx context.Context) error {
 func (w *CalendarWatcher) sweep() {
 	for range time.Tick(sweepInterval) {
 		w.renew()
-		w.Kick()
+		w.kick.poke()
 	}
 }
 
@@ -318,7 +311,7 @@ func (w *CalendarWatcher) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	state := r.Header.Get("X-Goog-Resource-State")
 	slog.InfoContext(r.Context(), "calendar changed", "channel", r.Header.Get("X-Goog-Channel-ID"), "state", state, "number", r.Header.Get("X-Goog-Message-Number"))
 	if state != "sync" {
-		w.Kick()
+		w.kick.poke()
 	}
 	rw.WriteHeader(http.StatusOK)
 }

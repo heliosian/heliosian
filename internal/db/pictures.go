@@ -50,11 +50,11 @@ type Pictures struct {
 	mu      sync.Mutex
 	pending []string
 	waiting map[string]bool
-	wake    chan struct{}
+	wake    wake
 }
 
 func NewPictures(s *Store, bucket *blob.Bucket) *Pictures {
-	p := &Pictures{s: s, bucket: bucket, waiting: map[string]bool{}, wake: make(chan struct{}, 1)}
+	p := &Pictures{s: s, bucket: bucket, waiting: map[string]bool{}, wake: newWake()}
 	in := s.Model().services.inbox(picturesInbox)
 	go func() {
 		for range in.wake {
@@ -112,10 +112,7 @@ func (p *Pictures) enqueue(id string) {
 		p.pending = append(p.pending, id)
 	}
 	p.mu.Unlock()
-	select {
-	case p.wake <- struct{}{}:
-	default:
-	}
+	p.wake.poke()
 }
 
 func (p *Pictures) next() (string, bool) {

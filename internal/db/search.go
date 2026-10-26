@@ -166,11 +166,11 @@ type SearchIndex struct {
 	view    *searchView
 	version int
 	poke    wake
-	reindex chan struct{}
+	reindex wake
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]int64{}, view: emptyView(), poke: newWake(), reindex: make(chan struct{}, 1)}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]int64{}, view: emptyView(), poke: newWake(), reindex: newWake()}
 }
 
 func (x *SearchIndex) drop(object string) {
@@ -254,13 +254,6 @@ func (m *Model) documentsUnder(id string) []string {
 	return out
 }
 
-func (x *SearchIndex) signal() {
-	select {
-	case x.reindex <- struct{}{}:
-	default:
-	}
-}
-
 func (x *SearchIndex) current() int {
 	x.mu.RLock()
 	defer x.mu.RUnlock()
@@ -292,12 +285,12 @@ type Searcher struct {
 	pending []string
 	waiting map[string]bool
 	swept   bool
-	wake    chan struct{}
+	wake    wake
 	ready   chan struct{}
 }
 
 func NewSearcher(s *Store, bucket *blob.Bucket, vertex *artifacts.Vertex) *Searcher {
-	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: make(chan struct{}, 1), ready: make(chan struct{})}
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, vertex: vertex, texts: map[string]string{}, waiting: map[string]bool{}, wake: newWake(), ready: make(chan struct{})}
 	go x.follow()
 	go x.index()
 	s.OnTick(x.rebuild)
@@ -670,7 +663,7 @@ func (x *Searcher) follow() {
 		if len(unknown) > 0 {
 			slog.Info("search: read the index", "rows", len(rows), "loaded", len(unknown), "missing", missing, "took", time.Since(start).Round(time.Millisecond))
 		}
-		x.signal()
+		x.reindex.poke()
 	}
 }
 
@@ -850,10 +843,7 @@ func (x *Searcher) enqueue(hash string) {
 	}
 	x.waiting[hash] = true
 	x.pending = append(x.pending, hash)
-	select {
-	case x.wake <- struct{}{}:
-	default:
-	}
+	x.wake.poke()
 }
 
 func (x *Searcher) next() (SearchRow, bool) {
@@ -871,10 +861,7 @@ func (x *Searcher) next() (SearchRow, bool) {
 				continue
 			}
 			if len(x.pending) > 0 {
-				select {
-				case x.wake <- struct{}{}:
-				default:
-				}
+				x.wake.poke()
 			}
 			return r, true
 		}
@@ -929,7 +916,7 @@ func (x *Searcher) make() {
 			x.enqueue(hash)
 		}
 		x.mu.Unlock()
-		x.signal()
+		x.reindex.poke()
 		slog.Info("search: made", "object", hash, "failures", entry.Failures, "took", time.Since(start).Round(time.Millisecond))
 	}
 }
@@ -958,7 +945,7 @@ func (x *Searcher) reload(hash string) {
 		x.enqueue(hash)
 	}
 	x.mu.Unlock()
-	x.signal()
+	x.reindex.poke()
 }
 
 func (e *SearchEntry) unfinished() bool {
