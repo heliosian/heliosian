@@ -48,7 +48,7 @@ How code is written in this repository, for coding agents and the people driving
 
 ## Docs
 
-- Docs describe how things are today, and cover what is hard to derive from the code. No history unless it matters to the present, no dates, and no changelog framing ("added", "changed", "corrected"); the change story lives in git history. Plans belong in GitHub issues, not docs.
+- Docs describe how things are today, and cover what is hard to derive from the code. No history unless it matters to the present, no dates, and no changelog framing ("added", "changed", "corrected"); the change story lives in git history. Plans and follow-up work belong in TODO.md, not docs. Agents file GitHub issues only when Ian asks for one.
 - Point at where a value lives and how to read it - the command that prints it, the console page that holds it - never the value itself, which is stale the day it is copied.
 
 ## Verifying
@@ -62,5 +62,5 @@ How code is written in this repository, for coding agents and the people driving
 ## Git
 
 - Commit messages are one short line summarizing the change, not every detail of it crammed into a single line. The diff carries the detail.
-- Work that belongs to a GitHub issue references it in the commit message (`Fix login redirect (#123)`).
+- Commit/merge titles for work that fixes a GitHub issue use a closing keyword (`Fix login redirect (fixes #123)`). A bare `(#123)` is only for work related to an issue that doesn't fix it.
 - Several agents work in this tree at once. A file another session has dirty is still open to you: edit it whenever your task needs it, alongside their changes, and leave their edits as they are.
