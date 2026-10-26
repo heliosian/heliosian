@@ -336,16 +336,41 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 	if person := rule["person"]; person != "" {
 		narrow(map[string]bool{person: true})
 	}
+	// A guest matches a name, address or column only when target, person or within already
+	// names them. Otherwise a text rule lists outside people its author was not allowed to see.
+	textGuest := map[string]bool{}
+	if strings.TrimSpace(rule["search"]) != "" || strings.TrimSpace(rule["property"]) != "" {
+		if rule["target"] != "" || rule["person"] != "" {
+			for person := range picked {
+				textGuest[person] = true
+			}
+		}
+		if within := rule["within"]; within != "" {
+			for person := range m.resolve(within, r) {
+				textGuest[person] = true
+			}
+		}
+	}
+	listed := func(row store.Row) bool {
+		return row["source"] != "guest" || textGuest[row["id"]]
+	}
 	if search := strings.ToLower(strings.TrimSpace(rule["search"])); search != "" {
 		r[readKey{kind: readPeople}] = true
-		narrow(m.search(search))
+		found := m.search(search)
+		for person := range found {
+			row, ok := m.Shown("PERSON").Get(person)
+			if !ok || !listed(row) {
+				delete(found, person)
+			}
+		}
+		narrow(found)
 	}
 	if property := strings.TrimSpace(rule["property"]); property != "" {
 		r[readKey{kind: readPeople}] = true
 		want := strings.TrimSpace(rule["value"])
 		s := map[string]bool{}
 		for _, row := range m.Shown("PERSON").All() {
-			if strings.EqualFold(strings.TrimSpace(row[property]), want) {
+			if listed(row) && strings.EqualFold(strings.TrimSpace(row[property]), want) {
 				s[row["id"]] = true
 			}
 		}

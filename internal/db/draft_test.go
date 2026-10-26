@@ -120,3 +120,68 @@ func TestADraftsMembersAreWorkedOutWithoutSaving(t *testing.T) {
 		t.Fatalf("a Loop admin's draft of any list answered %d: %s", rec.Code, rec.Body)
 	}
 }
+
+func TestATextRuleCannotListAnOutsideGuest(t *testing.T) {
+	s := sample(t)
+	guest := apply(t, s, []Edit{
+		{Insert: "PERSON", As: "g", Row: map[string]any{"source": "guest", "name_long_override": "Secret Coach"}},
+		{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@g", "address": "secret-coach@example.net", "primary": "Yes", "source": "guest"}},
+	})[0]
+	held := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "held", Row: map[string]any{"kind": "group", "status": "open", "name": "Holds the guest"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@held", "person": guest, "member": "yes"}},
+	})[0]
+	byName := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "named", Row: map[string]any{"kind": "group", "status": "open", "name": "Directory names"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@named", "order": "a", "search": "ashdown"}},
+	})[0]
+	if got := effective(t, s, byName); !slices.Contains(got, parent) {
+		t.Fatalf("a search for a directory name holds %v", got)
+	}
+	for _, rule := range []map[string]any{
+		{"target": held, "search": "secret-coach"},
+		{"within": held, "search": "secret-coach@example.net"},
+		{"target": held, "property": "source", "value": "guest"},
+	} {
+		rule["group"], rule["order"] = "@by", "a"
+		got := effective(t, s, apply(t, s, []Edit{
+			{Insert: "GROUP", As: "by", Row: map[string]any{"kind": "group", "status": "open", "name": "Narrowed"}},
+			{Insert: "RULE", Row: rule},
+		})[0])
+		if len(got) != 1 || got[0] != guest {
+			t.Fatalf("a text rule inside a group that already holds the guest holds %v, want %s", got, guest)
+		}
+	}
+	rec := send(t, s, http.MethodPost, "application/json", "rowan.ashdown@example.org", `{"batch": [
+		{"insert": "GROUP", "as": "tag", "row": {"kind": "group", "name": "Probe", "status": "open", "added_by": "`+parent+`"}},
+		{"set": "@tag", "cells": {"managed_by": "@tag"}},
+		{"insert": "MEMBER", "row": {"group": "@tag", "person": "`+parent+`", "member": "yes"}},
+		{"insert": "RULE", "row": {"group": "@tag", "order": "a", "search": "secret-coach"}},
+		{"insert": "RULE", "row": {"group": "@tag", "order": "b", "property": "source", "value": "guest"}}
+	]}`)
+	var written struct {
+		Result []string `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &written); rec.Code != http.StatusOK || err != nil || len(written.Result) != 5 {
+		t.Fatalf("the member's rules answered %d %s", rec.Code, rec.Body)
+	}
+	if got := effective(t, s, written.Result[0]); slices.Contains(got, guest) || slices.Contains(got, "per00000000004") {
+		t.Fatalf("a member's text rules list outside guests: %v", got)
+	}
+	mux := http.NewServeMux()
+	RegisterDrafts(mux, s, describe.New("test", claude.NewLimiter()), testTokens)
+	body := `{"rules": [{"search": "secret-coach@example.net"}, {"search": "ashdown"}]}`
+	r := httptest.NewRequest(http.MethodPost, "/api/do/draft-members", strings.NewReader(body))
+	drafted := httptest.NewRecorder()
+	authtest.Fixed("rowan.ashdown@example.org", mux).ServeHTTP(drafted, r)
+	var out draftAnswer
+	if err := json.Unmarshal(drafted.Body.Bytes(), &out); drafted.Code != http.StatusOK || err != nil {
+		t.Fatalf("the draft answered %d %s", drafted.Code, drafted.Body)
+	}
+	if out.RuleCounts[0] != 0 || slices.ContainsFunc(out.Members, func(m draftPerson) bool { return m.Person == guest || m.Person == "per00000000004" }) {
+		t.Fatalf("the draft lists an outside guest: %+v", out)
+	}
+	if !slices.ContainsFunc(out.Members, func(m draftPerson) bool { return m.Person == parent }) {
+		t.Fatalf("the draft dropped a directory name: %+v", out)
+	}
+}
