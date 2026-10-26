@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/access"
 	"heliosian/internal/mail"
 	"heliosian/internal/store"
 )
@@ -461,16 +460,8 @@ func (mm *MembershipMailer) send(ctx context.Context, sender *mail.Mailgun, m *M
 	}
 	msg.Attachments = attachments
 	log := slog.With("group", g["id"], "kind", kind, "subject", subject)
-	edits := m.copyEdits(g["id"], kind, subject, append(slices.Clone(to), cc...))
-	env := Env{System: mailerSystem, Now: time.Now()}
-	ids, err := Write(ctx, mm.s, access.System(mailerSystem), env, Batch{Batch: edits})
-	if err != nil {
-		log.Error("membership mail: not recorded", "error", err)
-		return
-	}
-	sent := sendCopies(ctx, sender, composeShared(msg, sender.From(), ids[0]), m.outCopies(edits, ids))
-	if _, err := Write(ctx, mm.s, access.System(mailerSystem), env, Batch{Batch: sent}); err != nil {
-		log.Error("membership mail: sends not recorded", "error", err)
+	if err := m.sendShared(ctx, mm.s, sender, mailerSystem, g["id"], kind, append(slices.Clone(to), cc...), msg); err != nil {
+		log.Error("membership mail: not sent", "error", err)
 		return
 	}
 	log.Info("membership mail: sent", "to", len(msg.To), "cc", len(msg.CC))

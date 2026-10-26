@@ -408,21 +408,14 @@ func (m *Model) invitedWithCalendar(g store.Row, person string) bool {
 	return ok && r["sent"] != "" && len(m.studentCC(person)) == 0
 }
 
-func (iv *Invitations) sendNow(ctx context.Context, m *Model, g store.Row, kind, subject string, to []string, msg mail.Message) {
+func (iv *Invitations) sendNow(ctx context.Context, m *Model, g store.Row, kind string, to []string, msg mail.Message) {
 	msg.To = m.addresses(to)
 	if len(msg.To) == 0 {
 		return
 	}
-	log := slog.With("group", g["id"], "kind", kind, "subject", subject)
-	edits := m.copyEdits(g["id"], kind, subject, to)
-	ids, err := iv.write(ctx, access.System(invitationsJob), edits)
-	if err != nil {
-		log.Error("invitations: mail not recorded", "error", err)
-		return
-	}
-	sent := sendCopies(ctx, iv.config.Sender, composeShared(msg, iv.config.Sender.From(), ids[0]), m.outCopies(edits, ids))
-	if _, err := iv.write(ctx, access.System(invitationsJob), sent); err != nil {
-		log.Error("invitations: sends not recorded", "error", err)
+	log := slog.With("group", g["id"], "kind", kind, "subject", msg.Subject)
+	if err := m.sendShared(ctx, iv.s, iv.config.Sender, invitationsJob, g["id"], kind, to, msg); err != nil {
+		log.Error("invitations: mail not sent", "error", err)
 		return
 	}
 	log.Info("invitations: mailed now", "to", len(msg.To))
@@ -456,7 +449,7 @@ func (iv *Invitations) tellHosts(ctx context.Context, m *Model, g store.Row, per
 	l.Rows = [][2]string{{"Coming so far", fmt.Sprint(yes)}}
 	l.Button = "See the guest list"
 	subject := fmt.Sprintf("[%s] %s: %s", g["name"], m.nameOf(person), strings.ToUpper(answer[:1])+answer[1:])
-	iv.sendNow(ctx, m, g, "notice", subject, to, l.Message(subject, nil, nil, nil))
+	iv.sendNow(ctx, m, g, "notice", to, l.Message(subject, nil, nil, nil))
 }
 
 func (iv *Invitations) calendarInvite(ctx context.Context, m *Model, g store.Row, person string) {
@@ -475,7 +468,7 @@ func (iv *Invitations) calendarInvite(ctx context.Context, m *Model, g store.Row
 	subject := "Calendar invite: " + g["name"]
 	msg := l.Message(subject, nil, nil, nil)
 	msg.Attachments = []mail.Attachment{mail.Calendar{Product: whenBrand.Name, Method: mail.MethodRequest, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()}
-	iv.sendNow(ctx, m, g, "calendar", subject, []string{person}, msg)
+	iv.sendNow(ctx, m, g, "calendar", []string{person}, msg)
 }
 
 func (iv *Invitations) cohost(ctx context.Context, m *Model, g store.Row, person, by string) {
@@ -485,7 +478,7 @@ func (iv *Invitations) cohost(ctx context.Context, m *Model, g store.Row, person
 	l.Button = "Open the event"
 	subject := "[" + g["name"] + "] You're a co-host"
 	msg := l.Message(subject, nil, nil, m.addresses([]string{by}))
-	iv.sendNow(ctx, m, g, "notice", subject, []string{person}, msg)
+	iv.sendNow(ctx, m, g, "notice", []string{person}, msg)
 }
 
 func (iv *Invitations) tellAdmins(ctx context.Context, m *Model, g store.Row, by string) {
@@ -509,5 +502,5 @@ func (iv *Invitations) tellAdmins(ctx context.Context, m *Model, g store.Row, by
 		l.Intro = fmt.Sprintf("%s shared %s, and it waits for an admin's approval before it goes on the calendar.", m.nameOf(by), g["name"])
 		l.Button = "Review the event"
 	}
-	iv.sendNow(ctx, m, g, "notice", subject, admins, l.Message(subject, nil, nil, nil))
+	iv.sendNow(ctx, m, g, "notice", admins, l.Message(subject, nil, nil, nil))
 }

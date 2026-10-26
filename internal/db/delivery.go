@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"maps"
@@ -30,14 +31,9 @@ func (d *Deliveries) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /hooks/events", d.events)
 }
 
-type outCopy struct {
-	id       string
-	envelope []string
-}
-
-func (m *Model) copyEdits(group, kind, subject string, people []string) []Edit {
+func (m *Model) sendShared(ctx context.Context, s *Store, sender *mail.Mailgun, system, group, kind string, people []string, msg mail.Message) error {
 	created := stamp(time.Now())
-	edits := []Edit{{Insert: "MESSAGE", As: "m", Row: map[string]any{"direction": "out", "kind": kind, "group": group, "subject": subject, "created": created}}}
+	edits := []Edit{{Insert: "MESSAGE", As: "m", Row: map[string]any{"direction": "out", "kind": kind, "group": group, "subject": msg.Subject, "created": created}}}
 	seen := map[string]bool{}
 	for _, p := range people {
 		if seen[p] || m.addressOf(p) == "" {
@@ -46,35 +42,29 @@ func (m *Model) copyEdits(group, kind, subject string, people []string) []Edit {
 		seen[p] = true
 		edits = append(edits, Edit{Insert: "RECIPIENT", Row: map[string]any{"message": "@m", "person": p, "created": created}})
 	}
-	return edits
-}
-
-func (m *Model) outCopies(edits []Edit, ids []string) []outCopy {
-	out := []outCopy{}
-	for i, e := range edits[1:] {
-		out = append(out, outCopy{id: ids[i+1], envelope: []string{m.addressOf(e.Row["person"].(string))}})
+	env := Env{System: system, Now: time.Now()}
+	ids, err := Write(ctx, s, access.System(system), env, Batch{Batch: edits})
+	if err != nil {
+		return fmt.Errorf("record mail: %w", err)
 	}
-	return out
-}
-
-func composeShared(msg mail.Message, from, message string) []byte {
-	headers := map[string]string{"Message-Id": mail.MessageID(message, from)}
+	headers := map[string]string{"Message-Id": mail.MessageID(ids[0], sender.From())}
 	maps.Copy(headers, msg.Headers)
 	msg.Headers = headers
-	return []byte(mail.Compose(from, msg))
-}
-
-func sendCopies(ctx context.Context, sender *mail.Mailgun, raw []byte, copies []outCopy) []Edit {
-	edits := []Edit{}
-	for _, c := range copies {
-		if err := sender.SendCopy(ctx, sender.From(), c.envelope, raw, c.id); err != nil {
-			slog.ErrorContext(ctx, "mail: copy not sent", "recipient", c.id, "error", err)
-			edits = append(edits, Edit{Set: c.id, Cells: map[string]any{"failed": stamp(time.Now()), "detail": err.Error()}})
+	raw := []byte(mail.Compose(sender.From(), msg))
+	sent := []Edit{}
+	for _, c := range s.Model().Table("RECIPIENT").Referencing("message", ids[0]) {
+		id := c["id"]
+		if err := sender.SendCopy(ctx, sender.From(), []string{m.addressOf(c["person"])}, raw, id); err != nil {
+			slog.ErrorContext(ctx, "mail: copy not sent", "recipient", id, "error", err)
+			sent = append(sent, Edit{Set: id, Cells: map[string]any{"failed": stamp(time.Now()), "detail": err.Error()}})
 			continue
 		}
-		edits = append(edits, Edit{Set: c.id, Cells: map[string]any{"sent": stamp(time.Now())}})
+		sent = append(sent, Edit{Set: id, Cells: map[string]any{"sent": stamp(time.Now())}})
 	}
-	return edits
+	if _, err := Write(ctx, s, access.System(system), env, Batch{Batch: sent}); err != nil {
+		return fmt.Errorf("record sends: %w", err)
+	}
+	return nil
 }
 
 func (d *Deliveries) events(w http.ResponseWriter, r *http.Request) {
