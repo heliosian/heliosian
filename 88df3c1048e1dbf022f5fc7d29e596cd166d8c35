@@ -1,0 +1,23 @@
+# Derive query expression shape from its children (#211)
+
+byre task tskHU9jqsadod2, "Derive query shape", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskHU9jqsadod2 in byre (GET /api/events?task_id=tskHU9jqsadod2).
+
+## Summary
+
+Audited main at 947b212 for structural simplicity, following AGENTS.md and the architecture, storage, data-model and audit documentation. Inspected shared parsing/compiler, store transactions, mail, workers, search, server wiring and client helpers. Completed one cleanup, tracked by #211.
+
+Before: query expressions in internal/db/sexp.go stored both their children and a separate isList boolean that constructors had to keep consistent.
+Now: isList() derives expression shape from the child slice. Text and JSON parsers, policy expansion, compiler, renderer and existing test consumers all use this representation, with explicit empty slices preserving empty lists. This removes redundant state without changing query syntax or user-visible behavior.
+
+Chose a focused structural cleanup; deliberately left search-index consolidation alone because it would require a broader performance-sensitive refactor. Retained search and calendar concurrency helpers because they impose deliberately different concurrency limits. No new checks, tests, comments, flags, compatibility machinery or data migrations.
+
+Review completed and the task was marked ready to merge. On the requested main integration, git merge --no-ff --no-commit main reported already up to date; there were no conflicts or further edits. Final verification passed: timeout 30 go vet ./..., timeout 30 go test ./internal/db --count=1 (18.608s), and git diff --check. No manual commit or push; byre handles completion.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Removes the query syntax tree's redundant `isList` field and derives list shape from its child slice. Updates parsing, query compilation, policy handling, formatting, and test comparisons, preserving non-nil slices for empty lists. Reviewed by code inspection; no builds or tests were run.
+
+No significant findings.
