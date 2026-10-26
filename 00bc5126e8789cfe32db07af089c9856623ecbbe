@@ -1,0 +1,23 @@
+# Keep geocoder inputs and results together (#212)
+
+byre task tskd8TFunP39Rf, "Geocoder lookup records", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskd8TFunP39Rf in byre (GET /api/events?task_id=tskd8TFunP39Rf).
+
+## Summary
+
+Audited main at 25a997e177e5f87a2130d33fd198fdc3ce39ad6c for structural simplicity, reading project rules, architecture and prior cleanup findings and inspecting shared model/query code, workers, mail, storage, search, server wiring and common browser code. Implemented one bounded cleanup, tracked in https://github.com/heliosian/heliosian/issues/212.
+
+Before: internal/db/geocoder.go paired addresses, coordinates and errors using offsets across three parallel slices.
+Now: geocodeLookup holds the address, point and error together. Workers receive pointers to these records, and the write/error pass consumes the same records, eliminating the cross-slice ordering invariant.
+
+Preserved visible behavior, eight-worker concurrency, sorted writes and failure handling. Kept distinct worker scheduling and search caches because they serve concrete needs; no generic worker framework, compatibility paths, new tests or comments, migrations or deployment.
+
+The existing geocoder test passed normally and under the race detector, both under timeout 30; repository-wide go vet ./..., gofmt and git diff --check passed. After completed review, marked the task ready to merge. At the human's merge instruction, ran git merge --no-ff --no-commit main: already up to date, with no conflicts or generated files to reconcile. Re-ran repository-wide vet and the geocoder test successfully. No manual commits or pushes; byre concludes the authorized merge. No plan departures.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The geocoder now keeps each address, its coordinates and its lookup error in one record instead of three parallel slices. Workers receive pointers to those records; lookup concurrency, result ordering, writes and failure handling remain unchanged. Reviewed the diff, surrounding code and existing test by inspection, without running builds or tests.
+
+No significant findings.
