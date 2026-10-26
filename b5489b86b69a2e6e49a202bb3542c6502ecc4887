@@ -1,0 +1,31 @@
+# Bound query work and compact deeply nested layouts (#210)
+
+byre task tskfUVl2z89KlG, "Query work security", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskfUVl2z89KlG in byre (GET /api/events?task_id=tskfUVl2z89KlG).
+
+## Summary
+
+Security audit of main at c8757d9, following AGENTS.md, the documented trust model, and prior Security findings. Reviewed authentication/API boundaries, group policies, public links, media, mail, query processing, and MCP. Found and fixed #210: members could submit small valid nested queries that caused excessive compilation and formatting work outside the evaluator’s budget.
+
+Before: formatting a valid 12 KB query allocated about 17 GB; parsing and formatting an 80 KB nested-scan query allocated about 1.11 GB. Deep layout expanded indentation indefinitely.
+Now: the formatter serializes once, reuses subtree byte spans, and writes into one builder; compiler memo keys reuse cached structural SHA-256 digests per syntax node. The reproductions allocate about 1 MB and 8.5 MB respectively. Deep expressions deliberately remain flat at the existing 80-column boundary, while ordinary formatting, query acceptance, and results stay the same.
+
+Chose to remove repeated work at the shared expression boundary rather than add query restrictions or caller-specific checks. Both snapshot #1 review findings were addressed: measured and fixed nested-scan hashing, and pinned the compact layout with exact boundary tests. Regressions reproduced the allocation problems before fixes and cover ordinary formatting, semantic round trips, and 2,000-level text and JSON API requests as an ordinary member. Full data-model coverage passed in bounded batches under timeout 30; app/auth/MCP/tools/Ask/storage tests, go vet ./..., and diff checks passed. Latest main merged cleanly with no manual resolution or generated-file edits; the merge remains uncommitted for byre to conclude.
+
+Verification caveat: the final data-model batch initially exposed an existing TestWikiShareHeader timing race, where the photo worker replaces the handcrafted PNG reencode with a JPEG before an assertion expecting the original CONTENT ID. The involved test/helper/worker files are identical to main. The isolated test and complete affected batch passed on rerun. No unrelated test or production edits were made for that race.
+
+Deliberately left share cards/previews public as required; request-log token access stays within trusted project-owner/super-admin access, consistent with prior #61. No additional reachable finding was established. No new authorization policy, query limit, infrastructure setting, or production attack test was introduced. No separate deployment was performed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+The task found that the query pretty-printer (`render`/`flat` in `internal/db/sexp.go`) was quadratic on deeply nested queries. `flat()` rebuilt every subtree's text at each level using string concatenation. `render` also kept indenting each nested level further, so the output grew quadratically. The change rewrites both to write into one `strings.Builder` and record each node's span in that single flat string, so the render pass slices the string instead of rebuilding it. Indentation is capped at the 80-column line width, and a list that starts at or past column 80 is printed flat. Tests were added for deep queries through the HTTP handler (text and JSON bodies, depth 2000), for allocation count, for output-size bounds, and for layout of ordinary queries.
+
+- Same quadratic cost is still in the query compiler's memo-key digests (`flat()` per nested scan).
+
+### Snapshot #2, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Reduces resource use from deeply nested queries by rendering through shared buffers, limiting indentation, and caching structural digests instead of repeatedly formatting subtrees for memo keys. Adds regression tests for deep text and JSON queries, formatting stability, and compilation allocations. Reviewed by reading code; builds and tests were not run.
+
+No significant findings.
