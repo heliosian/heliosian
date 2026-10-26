@@ -1,0 +1,26 @@
+# Correct HCA-Team navigation and settings guidance
+
+byre task tsk5pwhjqELgmq, "Team guidance", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tsk5pwhjqELgmq in byre (GET /api/events?task_id=tsk5pwhjqELgmq).
+
+## Summary
+
+Audited main at 82fd9f61511970c2924de6153401922564e79070 for consequential inconsistencies in wording, documentation, and project conventions. Kept the resulting change to four text lines in HCA-Team.
+
+Before: the empty My Sign Ups page directed users to “Sign Up,” although navigation called the destination Opportunities.
+Now: web/team/pages/my.js directs users to “Opportunities.”
+
+Before: the settings card, Intro field hint, and docs/team/data.md claimed the introduction and expense form appeared on the sign-up page.
+Now: web/team/pages/admin.js, web/team/edit.js, and the data documentation describe their actual use by Helios Ask and connected assistants through helios_activities in internal/tools/apps.go.
+
+Chose to describe the existing consumers accurately rather than restore the settings to Opportunities, which would change behavior. Left low-value capitalization, comment, and enum-spelling churn alone. No runtime behavior, permissions, schema, or saved values changed; no production deployment performed.
+
+Validated with go vet ./..., existing internal/tools tests under timeout 30, git diff --check, and Chrome sample-data captures of the settings card, its editor, and the empty sign-up page as a sample super admin. Latest review completed before readiness. At merge preparation, git merge --no-ff --no-commit main reported already up to date, so no conflicts or generated-file regeneration were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Updates HCA-Team’s empty-state guidance to use the current “Opportunities” navigation label. Corrects the settings help text and data documentation to explain that the introduction and expense form are supplied to Helios Ask and connected assistants, rather than displayed on the Opportunities page. No behavior changes.
+
+No significant findings.
