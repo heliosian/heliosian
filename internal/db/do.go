@@ -34,6 +34,7 @@ type stored struct {
 }
 
 func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
+	registerPDFPages(mux, s, pics, tokens)
 	registerWiki(mux, s, pics, tokens)
 	registerSubscription(mux, s, tokens)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {

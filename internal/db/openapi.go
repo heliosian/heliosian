@@ -420,6 +420,25 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The DOCUMENT and the thumbnail's hash.", "Stored"), "400": failure("Not a document still to thumbnail, or no picture that decodes.")}),
 			},
 		},
+		"/api/do/pdf-page": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Store a client-rendered PDF page",
+				"description": "Import mode only. Stores one PNG page as a child document of the unchanged PDF. Pages upload in order; identical retries are idempotent. Sets rendered when all declared pages are present. Rendering runs on the client.",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"document", "content", "page", "pages", "picture"},
+					"properties": schema{
+						"document": schema{"type": "string", "pattern": idPattern(DocumentPrefix)},
+						"content":  schema{"type": "string", "pattern": idPattern(ContentPrefix), "description": "The CONTENT the picture was drawn from, which must still be the document's."},
+						"page":     schema{"type": "integer", "minimum": 1, "description": "The one-based page number."},
+						"pages":    schema{"type": "integer", "minimum": 1, "description": "The total number of pages in the PDF."},
+						"picture":  schema{"type": "string", "contentMediaType": "image/png"},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The parent DOCUMENT and the page image's hash.", "Stored"), "400": failure("A stale source PDF, inconsistent page numbers, or an invalid PNG.")}),
+			},
+		},
 		"/api/do/person-at": schema{
 			"post": schema{
 				"tags":        []string{"do"},

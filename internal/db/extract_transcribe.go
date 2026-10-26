@@ -57,7 +57,7 @@ If the image is only a logo, wordmark, banner or decoration, answer with exactly
 func (x *Extractor) readBefore(ctx context.Context, m *Model, id string, content store.Row) ([]extracted, bool, error) {
 	docs := m.Table("DOCUMENT")
 	for _, other := range docs.Referencing("content", content["id"]) {
-		if other["id"] == id || other["extracted"] == "" {
+		if other["id"] == id || other["extracted"] == "" || other["relation"] == "page" {
 			continue
 		}
 		children := docs.Referencing("parent", other["id"])

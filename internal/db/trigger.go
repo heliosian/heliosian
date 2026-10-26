@@ -440,11 +440,20 @@ func photoNotReady(_ *Model, c Change) ([]Edit, error) {
 	return []Edit{{Set: c.New["id"], Cells: map[string]any{"ready": ""}}}, nil
 }
 
-func thumbnailStale(_ *Model, c Change) ([]Edit, error) {
-	if c.Old == nil || c.New == nil || c.Old["content"] == c.New["content"] || c.New["thumbnailed"] == "" && c.New["thumbnail"] == "" {
+func thumbnailStale(m *Model, c Change) ([]Edit, error) {
+	if c.Old == nil || c.New == nil || c.Old["content"] == c.New["content"] {
 		return nil, nil
 	}
-	return []Edit{{Set: c.New["id"], Cells: map[string]any{"thumbnail": "", "thumbnailed": ""}}}, nil
+	edits := []Edit{}
+	if c.New["thumbnail"] != "" || c.New["thumbnailed"] != "" || c.New["rendered"] != "" || c.New["page_count"] != "" {
+		edits = append(edits, Edit{Set: c.New["id"], Cells: map[string]any{"thumbnail": "", "thumbnailed": "", "page_count": "", "rendered": ""}})
+	}
+	for _, child := range m.Table("DOCUMENT").Referencing("parent", c.New["id"]) {
+		if child["relation"] == "page" {
+			edits = append(edits, Edit{Delete: child["id"]})
+		}
+	}
+	return edits, nil
 }
 
 func madeNotMade(_ *Model, c Change) ([]Edit, error) {

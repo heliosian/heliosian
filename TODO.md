@@ -20,9 +20,6 @@ Last verified: bff8f634
 - Wiki: keep each page's edit history
   Wiki saves overwrite the page's content and the old version is swept away. Record every save as a revision, with a History view, diffs between revisions, and restore.
   Issue: https://github.com/heliosian/heliosian/issues/184
-- Extract an image of each page of a PDF document
-  No picture of any PDF page is kept. Render each page to an image, stored as a child document, using a pure-Go renderer.
-  Issue: https://github.com/heliosian/heliosian/issues/179
 - Add DOCUMENT.superseded_by, with a trigger that keeps it one hop
   Nothing marks a document as replaced by a newer one. Add a `superseded_by` reference, with a trigger that keeps chains flat, and refuse cycles on load.
   Issue: https://github.com/heliosian/heliosian/issues/178

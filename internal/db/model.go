@@ -334,7 +334,7 @@ func documentGenerated(rows []store.Row, origin func(app string) string) {
 		if row["kind"] == "" {
 			row["terminal"] = nearest(row["parent"], 0)
 		}
-		if row["relation"] != "extract" && row["relation"] != "pages" {
+		if row["relation"] != "extract" && row["relation"] != "pages" && row["relation"] != "page" {
 			continue
 		}
 		source := row["parent"]
