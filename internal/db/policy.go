@@ -1001,6 +1001,8 @@ const PolicySource = `
 (set PAYMENT.status (admin_of "celebrate"))
 ; say who pays
 (set PAYMENT.person (admin_of "celebrate"))
+; say which Stripe invoice bills a payment
+(set PAYMENT.stripe_invoice (admin_of "celebrate"))
 ; Celebrate's introduction, ticket note, current celebration and banner
 (set SETTING.value (and (admin_of "celebrate") (= @old.app "celebrate")))
 ; a Celebrate setting not yet written

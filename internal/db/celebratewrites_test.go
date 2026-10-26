@@ -458,3 +458,27 @@ func TestPaymentsAreTheirPayersHoldersHostsAndAdmins(t *testing.T) {
 		t.Errorf("a Celebrate admin can't say where a payment stands and who pays: %v", err)
 	}
 }
+
+func TestCelebrateAdminsRecordTheInvoiceThatBillsAPayment(t *testing.T) {
+	s, write := celebrateSample(t)
+	made := apply(t, s, []Edit{
+		{Insert: "PAYMENT", Row: map[string]any{"person": parent, "group": tacoNight, "amount": "40", "added": "2026-10-11 18:13"}},
+		{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": guest, "group": tacoNight, "amount": "40", "added": "2026-10-11 18:13"}},
+	})
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": guest, "member": "yes"}}})
+	invoice := map[string]any{"stripe_invoice": "in_1UPW1SEdXpaCNGo9yXCCTItm", "status": "requested"}
+	for _, viewer := range []string{parent, guest} {
+		if _, err := write(viewer, Edit{Set: made[0], Cells: map[string]any{"stripe_invoice": "in_1UPW1SEdXpaCNGo9yXCCTItm"}}); err == nil {
+			t.Errorf("%s, not a Celebrate admin, said which invoice bills a payment", viewer)
+		}
+	}
+	if _, err := write(student, Edit{Set: made[0], Cells: invoice}, Edit{Set: made[1], Cells: invoice}); err != nil {
+		t.Fatalf("a Celebrate admin can't record the invoice that bills a payer's rows: %v", err)
+	}
+	for _, id := range made {
+		row, _ := s.Model().Table("PAYMENT").Get(id)
+		if row["stripe_invoice"] != "in_1UPW1SEdXpaCNGo9yXCCTItm" || row["status"] != "requested" {
+			t.Errorf("payment %s is %q, %q after invoicing", id, row["stripe_invoice"], row["status"])
+		}
+	}
+}

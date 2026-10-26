@@ -7,7 +7,7 @@ import {keyBetween} from '/order.js';
 import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard, groupMembers} from '/admin.js';
 import {openModal} from '/modal.js';
-import {field} from '/form.js';
+import {field, text, checkbox} from '/form.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, isStudent} from '/directory.js';
 
@@ -157,10 +157,29 @@ function openPayer(x) {
   });
 }
 
+function openInvoice(payer, owed, label) {
+  const id = text('', {placeholder: 'in_…', required: true});
+  const picks = owed.map(x => ({x, box: checkbox(`${label(x)}${x.forName ? ` · ${x.forName}` : ''} · ${money(Number(x.amount) || 0)}`, true)}));
+  openModal(`Invoice ${payer}`, [field('Stripe invoice ID', id, 'Marks the rows it bills Requested.', true), ...picks.map(p => p.box.wrap)], {
+    saveLabel: 'Record invoice',
+    submit: () => {
+      const invoice = id.value.trim();
+      if (!/^in_[A-Za-z0-9]+$/.test(invoice)) {
+        throw new Error('A Stripe invoice ID starts with in_.');
+      }
+      const billed = picks.filter(p => p.box.input.checked);
+      if (!billed.length) {
+        throw new Error('Pick the rows this invoice bills.');
+      }
+      return write(billed.map(p => ({set: p.x.id, cells: {stripe_invoice: invoice, status: 'requested'}})));
+    },
+  });
+}
+
 function paymentsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Payments'));
-  card.append(el('div', 'hint', 'One row for every place billed, and for anything sold outside the app. The rows sharing a Stripe invoice are that invoice. Set where each stands, or who pays; nothing is charged here.'));
+  card.append(el('div', 'hint', 'One row for every place billed, and for anything sold outside the app. The rows sharing a Stripe invoice are that invoice. Once you send one, record its ID on the payer’s owed rows it bills, which marks them Requested. Set where each stands, or who pays; nothing is charged here.'));
   let shown = state.model.current || (state.model.celebrations[0] || {}).id;
   const partyPick = el('select');
   const status = el('select');
@@ -215,7 +234,12 @@ function paymentsCard() {
       const first = items[0];
       const head = el('div', 'invoice-head');
       const owed = items.filter(x => x.status !== 'cancelled').reduce((n, x) => n + (Number(x.amount) || 0), 0);
-      head.append(el('span', 'invoice-name', first.payerName || first.payerEmail), el('span', 'invoice-email', `${first.payerEmail} · ${items.length} ${items.length === 1 ? 'row' : 'rows'}`), el('span', 'invoice-sum', money(owed)));
+      head.append(el('span', 'invoice-name', first.payerName || first.payerEmail), el('span', 'invoice-email', `${first.payerEmail} · ${items.length} ${items.length === 1 ? 'row' : 'rows'}`));
+      const unbilled = items.filter(x => !x.status);
+      if (unbilled.length) {
+        head.append(button('Record invoice', 'plus', 'button button-secondary button-small', () => openInvoice(first.payerName || first.payerEmail, unbilled, label)));
+      }
+      head.append(el('span', 'invoice-sum', money(owed)));
       table.append(head);
       for (const x of items.sort((a, b) => (a.added || '').localeCompare(b.added || ''))) {
         const row = el('div', 'invoice-row invoice-ledger-row');
