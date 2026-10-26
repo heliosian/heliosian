@@ -1,0 +1,23 @@
+# Defer Loop delivery details until a message is expanded
+
+byre task tskkZJ5tR50rqE, "Lazy delivery details", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskkZJ5tR50rqE in byre (GET /api/events?task_id=tskkZJ5tR50rqE).
+
+## Summary
+
+Audited main at c8757d9 for user-noticeable performance waste, reading project rules/docs and tracing request serving, model/store rebuilds, query API, workers, search, dashboard streams, and browser rendering. Made one small change in web/loop/pages/group.js.
+
+Before: Loop History constructed all recipient delivery-detail rows immediately, although every message's details started hidden.
+Now: Each message constructs those details on first expansion through a one-time click listener, retaining the DOM for reopening. Summary counts, ordering, text, and interactions remain the same.
+
+Chose deferred rendering because it deletes unseen work with two additional executable lines, without caches, configuration, or new state machinery. An illustrative headless Chrome workload of 100 messages and 200 recipients each measured median initial rendering of 84.2 ms before versus 4.2 ms after over five interleaved rounds, with 121,400 versus 1,400 DOM nodes. These are synthetic stress measurements, not production timings or production volume. A one-off under ignored local/performance-audit compared actual renderer HTML before/after across expansion, collapse, reopening, failure-reason and empty-recipient cases. Browser checks, targeted Go tests, vet of internal/db and internal/app, and diff whitespace checks passed; checks repeated after clean merges from main.
+
+Deliberately left full-history querying/pagination alone: the current delivery counts use all recipient records, and bounding history needs broader navigation or server aggregation work. Did not optimize search duplicate bucketing without production evidence. No deployment or production-data changes. Main merged without conflicts or substantive resolution edits; no instruction departures.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Defers constructing each message’s recipient delivery rows until its delivery toggle is first opened. The rows are then retained for subsequent toggles, avoiding DOM construction and person/date formatting for collapsed details while preserving the existing content.
+
+No significant findings.
