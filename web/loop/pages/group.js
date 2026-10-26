@@ -1181,20 +1181,22 @@ function messageRow(p, copies) {
   }));
   const details = el('div', 'delivery-list');
   details.hidden = true;
-  if (p.detail) {
-    details.append(el('div', 'rule-empty', p.detail));
-  }
-  for (const c of copies) {
-    const shown = personView(c.person);
-    details.append(personRow(shown, {
-      className: 'copy-row',
-      open: Boolean(shown.email && person(shown.email)),
-      lines: [[stateWords[c.state], when(c.at), c.state === 'failed' ? c.detail : '', shown.email].filter(Boolean).join(' · ')],
-    }));
-  }
-  if (!copies.length && !p.detail) {
-    details.append(el('div', 'rule-empty', 'No copies recorded for this message.'));
-  }
+  toggle.addEventListener('click', () => {
+    if (p.detail) {
+      details.append(el('div', 'rule-empty', p.detail));
+    }
+    for (const c of copies) {
+      const shown = personView(c.person);
+      details.append(personRow(shown, {
+        className: 'copy-row',
+        open: Boolean(shown.email && person(shown.email)),
+        lines: [[stateWords[c.state], when(c.at), c.state === 'failed' ? c.detail : '', shown.email].filter(Boolean).join(' · ')],
+      }));
+    }
+    if (!copies.length && !p.detail) {
+      details.append(el('div', 'rule-empty', 'No copies recorded for this message.'));
+    }
+  }, {once: true});
   toggle.addEventListener('click', () => {
     details.hidden = !details.hidden;
     toggle.classList.toggle('open', !details.hidden);
