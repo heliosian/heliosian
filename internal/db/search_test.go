@@ -425,8 +425,8 @@ func TestANameOnlyPersonIsFoundByNameAlone(t *testing.T) {
 	makeAll(t, s, x)
 	v := x.snapshot()
 	rowan, maya := v.rows["per00000000002"], v.rows["per00000000003"]
-	if !rowan.NameOnly || maya.NameOnly {
-		t.Fatalf("name only: Rowan %v (%q), Maya %v (%q)", rowan.NameOnly, rowan.Input, maya.NameOnly, maya.Input)
+	if !rowan.nameOnly() || maya.nameOnly() {
+		t.Fatalf("name only: Rowan %v (%q), Maya %v (%q)", rowan.nameOnly(), rowan.Input, maya.nameOnly(), maya.Input)
 	}
 	placed := v.vectors["PERSON"].placed
 	if _, ok := placed[rowan.Object]; ok {

@@ -136,12 +136,13 @@ type SearchRow struct {
 	Table, Head, Input, Object, Name, Href, When string
 	Source, SourceLine, SourceHref, Terminal     string
 	FirstPage, LastPage                          int
-	NameOnly                                     bool
-	named, source                                store.Row
 }
 
-func nameOnly(input string) bool {
-	for _, line := range strings.Split(input, "\n")[1:] {
+func (r SearchRow) nameOnly() bool {
+	if r.Table != "PERSON" {
+		return false
+	}
+	for _, line := range strings.Split(r.Input, "\n")[1:] {
 		if !strings.HasPrefix(line, "Pronouns: ") {
 			return false
 		}
@@ -374,7 +375,7 @@ func (m *Model) namedSearchRow(table string, row store.Row, excluded map[string]
 	if table == "PERSON" {
 		name, when = row["name_show"], ""
 	}
-	return SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, When: when, NameOnly: table == "PERSON" && nameOnly(input), named: row}, true
+	return SearchRow{Table: table, Input: input, Object: SearchObject(input), Name: name, Href: row["href"], When: when}, true
 }
 
 func (m *Model) documentSearchRow(row store.Row, texts map[string]string) (SearchRow, bool) {
@@ -398,7 +399,7 @@ func (m *Model) documentSearchRow(row store.Row, texts map[string]string) (Searc
 	parent, _ := docs.Get(row["parent"])
 	first, _ := strconv.Atoi(parent["first_page"])
 	last, _ := strconv.Atoi(parent["last_page"])
-	return SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, When: terminal["published"], Source: source["id"], SourceLine: line, Terminal: terminal["id"], FirstPage: first, LastPage: last, named: terminal, source: source}, true
+	return SearchRow{Table: "DOCUMENT", Head: head, Input: input, Object: SearchObject(input), Name: name, Href: terminal["href"], When: terminal["published"], Source: source["id"], SourceLine: line, SourceHref: source["href"], Terminal: terminal["id"], FirstPage: first, LastPage: last}, true
 }
 
 func (m *Model) sourceLine(source, terminal store.Row) string {
@@ -684,24 +685,13 @@ func correctedRows(was, now map[string]SearchRow, dirty map[string]bool) []strin
 }
 
 func (x *Searcher) rowsFor(m *Model, full bool, dirty map[string]bool) (map[string]SearchRow, error) {
-	linked := func(r SearchRow) SearchRow {
-		r.Href = r.named["href"]
-		if r.source != nil {
-			r.SourceHref = r.source["href"]
-		}
-		return r
-	}
 	if full {
 		texts, err := SearchTexts(context.Background(), m, x.bucket, x.texts)
 		if err != nil {
 			return nil, err
 		}
 		x.texts = texts
-		rows := m.SearchInputs(texts)
-		for id, r := range rows {
-			rows[id] = linked(r)
-		}
-		return rows, nil
+		return m.SearchInputs(texts), nil
 	}
 	if err := x.readTexts(m, dirty); err != nil {
 		return nil, err
@@ -713,7 +703,7 @@ func (x *Searcher) rowsFor(m *Model, full bool, dirty map[string]bool) (map[stri
 	for id := range dirty {
 		delete(rows, id)
 		if r, ok := m.searchRowOf(id, x.texts, excluded); ok {
-			rows[id] = linked(r)
+			rows[id] = r
 		}
 	}
 	return rows, nil
@@ -772,7 +762,7 @@ func (x *Searcher) index() {
 		for _, r := range rows {
 			if e := x.entries[r.Object]; e != nil {
 				entries[r.Object] = e
-				if !r.NameOnly {
+				if !r.nameOnly() {
 					byTable[r.Table][r.Object] = e
 				}
 			}
