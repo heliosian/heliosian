@@ -1,0 +1,21 @@
+# Remove resolved issues #199–#210 from TODO.md
+
+byre task tskzUxxYqWT3lf, "Close fixed issues", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskzUxxYqWT3lf in byre (GET /api/events?task_id=tskzUxxYqWT3lf).
+
+## Summary
+
+Verified GitHub issues #199–#210 against each supplied fix commit's stat and relevant hunks, confirming every commit is on origin/main. Closed all twelve with the authorized `Fixed in <full sha>.` comments and verified their closed states and comments.
+
+Before: twelve fixed issues remained open and appeared as outstanding work in TODO.md.
+Now: all twelve issues are closed and only their twelve TODO.md entries are removed; every other byte is preserved.
+
+No fixes were reimplemented and no tests were added. Main merged cleanly with no conflicts or manual resolutions. The task deliberately leaves all other TODO items and application behavior unchanged.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Removes the twelve TODO.md entries for issues #199–#210, leaving all other content unchanged. The referenced fix commits are already in main and address the reported problems. GitHub confirms all twelve issues are closed with the required “Fixed in <full sha>.” comments; none were left open. Reviewed the code and existing regression tests without running builds.
+
+No significant findings.
