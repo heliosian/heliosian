@@ -160,7 +160,7 @@ export function buildCalendar(a) {
   const under = by(rows.filter(g => g.kind === 'activity'), 'parent');
   const below = id => (under[id] || []).flatMap(c => [c.id, ...below(c.id)]);
   const events = rows.map(g => {
-    const source = g.kind === 'party' ? 'celebrate' : g.kind === 'activity' ? 'team' : (sources[g.id] || []).some(s => s.calendar_event) ? 'google' : (sources[g.id] || []).some(s => s.document) ? 'pdf' : 'sheet';
+    const source = g.kind === 'party' ? 'celebrate' : g.kind === 'activity' ? 'team' : (sources[g.id] || []).some(s => s.calendar_event?.startsWith('c_cmoccvs0uksquupa6g68mf2cs0@group.calendar.google.com/')) ? 'counseling' : (sources[g.id] || []).some(s => s.calendar_event) ? 'google' : (sources[g.id] || []).some(s => s.document) ? 'pdf' : 'sheet';
     const rooms = (audiences[g.audience] || []).map(r => classroomName[r.target]).filter(Boolean);
     const top = topOf(g.parent);
     const own = group => ((group && mine[group]) || []).find(m => m.person === me.id);

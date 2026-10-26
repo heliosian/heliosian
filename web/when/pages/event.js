@@ -25,7 +25,7 @@ function hero(e) {
 }
 
 function imported(e) {
-  return e.source === 'google' || e.source === 'pdf';
+  return e.source === 'google' || e.source === 'pdf' || e.source === 'counseling';
 }
 
 function imageEdit(e) {

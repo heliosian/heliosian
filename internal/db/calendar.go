@@ -20,13 +20,16 @@ import (
 )
 
 const (
-	SchoolCalendarID   = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
-	SchoolCalendarPage = "https://www.heliosschool.org/school-calendar"
-	DateLayout         = "2006-01-02"
-	MomentLayout       = "2006-01-02 15:04"
-	classifyBatch      = 10
-	noDayType          = "None"
-	celebrateSlug      = "celebrate"
+	SchoolCalendarID     = "heliosns.org_cidjj9plktli1gdm2hrkj7gqks@group.calendar.google.com"
+	CounselingCalendarID = "c_cmoccvs0uksquupa6g68mf2cs0@group.calendar.google.com"
+	CounselingCategory   = "High School Counseling"
+	counselingSlug       = "high-school-counseling"
+	SchoolCalendarPage   = "https://www.heliosschool.org/school-calendar"
+	DateLayout           = "2006-01-02"
+	MomentLayout         = "2006-01-02 15:04"
+	classifyBatch        = 10
+	noDayType            = "None"
+	celebrateSlug        = "celebrate"
 )
 
 var School = func() *time.Location {
@@ -54,6 +57,7 @@ type Category struct {
 }
 
 type Vocabulary struct {
+	Counseling string
 	Classrooms []Classroom
 	Roles      map[string]string
 	Events     []Category
@@ -73,6 +77,9 @@ func NewVocabulary(rows CalendarRows) (*Vocabulary, error) {
 		if _, ok := DayTemplates[c["name"]]; ok {
 			v.DayTypes[c["name"]] = c["id"]
 			continue
+		}
+		if c["slug"] == counselingSlug {
+			v.Counseling = c["id"]
 		}
 		if c["slug"] == celebrateSlug {
 			continue
@@ -220,8 +227,12 @@ Vocabulary seen in event titles:
 }
 
 func (v *Vocabulary) classifierSystem() string {
+	counselingTitle := ""
 	described := &strings.Builder{}
 	for _, c := range v.Events {
+		if c.ID == v.Counseling {
+			counselingTitle = c.Title
+		}
 		fmt.Fprintf(described, "- %s: %s\n", c.Title, c.Description)
 	}
 	return v.Glossary() + `
@@ -231,6 +242,9 @@ You classify events from the school calendar for a family-facing app. For each e
 - who: "families" when students and their families take part; "parents" when adults attend without students, such as a parent coffee, a parent education session or an HCA meeting; "staff" when it is for staff only.
 - category: the one of these the event is, Misc only when no other fits. Schedule is only for an event about the school day itself; an event that also changes the school day, such as a conference with an early dismissal, takes its own category and gives the day type:
 ` + described.String() + `- dayType: for an all-day event only, the day type it imposes on the students it applies to, or "None". "No School" for holidays, breaks and professional development days; "Early Dismissal" for early dismissal and half days; any other listed type only when the title says so plainly. An event with a time of day, or one that merely happens on a school day, is "None".
+
+- exclude: false for the school calendar. For the High School Counseling calendar, true unless the entry clearly describes an event, workshop, parent coffee, presentation, fair, application deadline, admissions decision date or other activity that students or families can attend or act on. Exclude individual student/family appointments, essay meetings, alumni drop-ins, counselor professional meetings and Mike's own visits or calls. An ambiguous entry such as "Alexander meeting" is excluded. A school representative's visit alone is not a family event; a fireside chat or presentation for families is. Exclude canceled events even when cancellation is only in the title.
+- For the High School Counseling calendar, use category ` + strconv.Quote(counselingTitle) + `, dayType "None", and only classrooms with students in grades 5–8. Narrow further when a grade is named; otherwise use all grades 5–8. Parent coffees are for parents; student workshops and family presentations are for families.
 
 Answer under every event's id, repeating its title exactly as given.`
 }
@@ -242,6 +256,7 @@ func digest(parts ...string) string {
 
 type CalendarItem struct {
 	Key         string `json:"-"`
+	Calendar    string `json:"calendar,omitempty"`
 	Title       string `json:"title"`
 	Start       string `json:"start"`
 	End         string `json:"end"`
@@ -251,6 +266,7 @@ type CalendarItem struct {
 }
 
 type Classification struct {
+	Exclude    bool
 	Category   string
 	Classrooms []string
 	Who        string
@@ -262,7 +278,7 @@ func (v *Vocabulary) InputHash(it CalendarItem) string {
 	for _, c := range v.Classrooms {
 		names = append(names, c.ID+"="+c.Name)
 	}
-	return digest(it.Title, it.Start, it.End, strconv.FormatBool(it.AllDay), it.Location, it.Description, v.classifierSystem(), strings.Join(names, ","), strings.Join(v.DayTypeNames(), ","))
+	return digest(it.Calendar, it.Title, it.Start, it.End, strconv.FormatBool(it.AllDay), it.Location, it.Description, v.classifierSystem(), strings.Join(names, ","), strings.Join(v.DayTypeNames(), ","))
 }
 
 func enumOf(values []string) map[string]any {
@@ -270,6 +286,7 @@ func enumOf(values []string) map[string]any {
 }
 
 type classifyAnswer struct {
+	Exclude    bool     `json:"exclude"`
 	Title      string   `json:"title"`
 	Category   string   `json:"category"`
 	Classrooms []string `json:"classrooms"`
@@ -349,8 +366,9 @@ func (v *Vocabulary) classifyBatch(ctx context.Context, client anthropic.Client,
 	}
 	one := map[string]any{
 		"type": "object", "additionalProperties": false,
-		"required": []string{"title", "category", "classrooms", "who", "dayType"},
+		"required": []string{"title", "category", "classrooms", "who", "dayType", "exclude"},
 		"properties": map[string]any{
+			"exclude":    map[string]any{"type": "boolean"},
 			"title":      map[string]any{"type": "string", "description": "the event's title, exactly as given"},
 			"category":   enumOf(categories),
 			"classrooms": map[string]any{"type": "array", "minItems": 1, "items": enumOf(v.ClassroomNames())},
@@ -399,11 +417,30 @@ func (v *Vocabulary) classified(sent map[string]CalendarItem, answers map[string
 			return nil, fmt.Errorf("claude answered %s with the title %q, not %q", handle, a.Title, it.Title)
 		}
 		c := Classification{Who: a.Who, Category: byTitle[a.Category]}
+		if it.Calendar == CounselingCategory {
+			c.Exclude = a.Exclude
+			c.Category = v.Counseling
+			if c.Category == "" {
+				return nil, fmt.Errorf("no high school counseling category")
+			}
+		}
 		for _, name := range a.Classrooms {
-			id, _ := v.ClassroomID(name)
+			id, ok := v.ClassroomID(name)
+			if !ok {
+				return nil, fmt.Errorf("unknown classroom %q", name)
+			}
+			if it.Calendar == CounselingCategory {
+				room := v.Classrooms[slices.IndexFunc(v.Classrooms, func(c Classroom) bool { return c.ID == id })]
+				if !slices.ContainsFunc(room.Grades, func(g string) bool { return slices.Contains([]string{"5", "6", "7", "8"}, g) }) {
+					continue
+				}
+			}
 			c.Classrooms = append(c.Classrooms, id)
 		}
-		if a.DayType != noDayType && it.AllDay {
+		if it.Calendar == CounselingCategory && !c.Exclude && len(c.Classrooms) == 0 {
+			return nil, fmt.Errorf("counseling event %q has no middle school classrooms", it.Title)
+		}
+		if it.Calendar != CounselingCategory && a.DayType != noDayType && it.AllDay {
 			c.DayType = a.DayType
 		}
 		out[it.Key] = c

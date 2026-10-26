@@ -483,6 +483,9 @@ const PolicySource = `
   true)
 ; the rules of groups the viewer manages
 (read RULE (manages group))
+(read RULE
+  (and (= group.parent.audience group) (in group.parent.kind "event" "party" "activity")
+       (visible group.parent)))
 ; every column of a rule
 (read RULE (id group order exclude target under person search property value replace_with within) true)
 ; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown, but never who hid something

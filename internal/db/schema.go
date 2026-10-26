@@ -460,7 +460,7 @@ var Tables = []Table{
 		Columns: []Column{
 			ident(GroupSourcePrefix),
 			ref("group", "GROUP").required().about("The group it brings."),
-			col("calendar_event", Text).about("The Google Calendar event's key: its UID, and for an instance of a repeating event its original start."),
+			col("calendar_event", Text).about("The Google Calendar event's key: its UID, and for an instance of a repeating event its original start. Counseling calendar keys begin with its calendar ID and a slash."),
 			ref("document", "DOCUMENT").about("The year-calendar PDF it was read from."),
 			col("name", Text).about("The name as the source has it: the event's title, the PDF entry's words."),
 			col("description", Text).about("The description as the source has it, as plain text."),

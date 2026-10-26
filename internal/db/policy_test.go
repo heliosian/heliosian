@@ -845,3 +845,24 @@ func TestTheJSONFormCarriesDefinitionsAndAncestors(t *testing.T) {
 		t.Errorf("round trip %s, want %s", back.String(), q.String())
 	}
 }
+
+func TestViewersReadVisibleEventAudienceRules(t *testing.T) {
+	s := sample(t)
+	ids := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "event", Row: map[string]any{"kind": "event", "status": "open", "name": "High school options", "visible_to": "grp00000000004"}},
+		{Insert: "GROUP", As: "audience", Row: map[string]any{"kind": "group", "status": "open", "parent": "@event", "name": "High school options audience", "visible_to": "grp00000000004"}},
+		{Set: "@event", Cells: map[string]any{"audience": "@audience"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "i", "target": "grp00000020026", "replace_with": "parents"}},
+		{Insert: "GROUP", As: "unrelated", Row: map[string]any{"kind": "group", "status": "open", "name": "Unrelated", "parent": "@event", "visible_to": "grp00000000004"}},
+		{Insert: "RULE", Row: map[string]any{"group": "@unrelated", "order": "i", "target": "grp00000000004"}},
+	})
+	query := `(from RULE (where (in group "` + ids[1] + `" "` + ids[4] + `")) (columns group target))`
+	rows := as(t, s, parent, query)
+	if len(rows) != 1 || rows[0]["target"] != "grp00000020026" {
+		t.Fatalf("audience rules: %v", rows)
+	}
+	apply(t, s, []Edit{{Set: ids[0], Cells: map[string]any{"visible_to": ""}}})
+	if rows := as(t, s, parent, query); len(rows) != 0 {
+		t.Fatalf("private event audience exposed: %v", rows)
+	}
+}

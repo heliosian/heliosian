@@ -105,9 +105,9 @@ func googleEvent(e *gcal.Event) (GoogleEvent, time.Time, error) {
 	return out, start, nil
 }
 
-func readFeed(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]GoogleEvent, error) {
+func readFeed(ctx context.Context, svc *gcal.Service, calendarID string, from, to time.Time) ([]GoogleEvent, error) {
 	out := []GoogleEvent{}
-	call := svc.Events.List(SchoolCalendarID).Context(ctx).
+	call := svc.Events.List(calendarID).Context(ctx).
 		SingleEvents(true).OrderBy("startTime").MaxResults(2500).
 		TimeMin(from.Format(time.RFC3339)).TimeMax(to.Format(time.RFC3339)).
 		Fields(feedFields)
@@ -123,6 +123,13 @@ func readFeed(ctx context.Context, svc *gcal.Service, from, to time.Time) ([]Goo
 			}
 			if e.Status == "cancelled" || start.Before(from) || !start.Before(to) {
 				continue
+			}
+			if calendarID == CounselingCalendarID {
+				event.Calendar = CounselingCategory
+				event.Key = CounselingCalendarID + "/" + event.Key
+				if event.Series != "" {
+					event.Series = CounselingCalendarID + "/" + event.Series
+				}
 			}
 			out = append(out, event)
 		}
@@ -194,11 +201,12 @@ type CalendarWatcher struct {
 	token    string
 	kick     wake
 	mu       sync.Mutex
-	channel  *gcal.Channel
+	channels map[string]*gcal.Channel
+	excluded map[string]string
 }
 
 func NewCalendarWatcher(s *Store, calendar *gcal.Service, anthropicKey, token string) *CalendarWatcher {
-	return &CalendarWatcher{s: s, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, kick: newWake()}
+	return &CalendarWatcher{s: s, calendar: calendar, client: anthropic.NewClient(option.WithAPIKey(anthropicKey)), token: token, channels: map[string]*gcal.Channel{}, excluded: map[string]string{}, kick: newWake()}
 }
 
 func (w *CalendarWatcher) Start() {
@@ -211,11 +219,10 @@ func (w *CalendarWatcher) Start() {
 func (w *CalendarWatcher) Stop() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.channel == nil {
-		return
+	for calendarID, ch := range w.channels {
+		w.stop(ch)
+		delete(w.channels, calendarID)
 	}
-	w.stop(w.channel)
-	w.channel = nil
 }
 
 func (w *CalendarWatcher) work() {
@@ -231,18 +238,60 @@ func (w *CalendarWatcher) work() {
 
 func (w *CalendarWatcher) sync(ctx context.Context) error {
 	from, to := feedWindow(time.Now().In(School))
-	feed, err := readFeed(ctx, w.calendar, from, to)
-	if err != nil {
-		return fmt.Errorf("read the school calendar: %w", err)
+	feed := []GoogleEvent{}
+	for _, calendarID := range []string{SchoolCalendarID, CounselingCalendarID} {
+		events, err := readFeed(ctx, w.calendar, calendarID, from, to)
+		if err != nil {
+			return fmt.Errorf("read calendar %s: %w", calendarID, err)
+		}
+		feed = append(feed, events...)
+	}
+	if err := w.ensureCounselingCategory(ctx); err != nil {
+		return err
 	}
 	rows := w.s.Model().calendarRows()
 	v, err := NewVocabulary(rows)
 	if err != nil {
 		return err
 	}
-	pending := GoogleToClassify(rows, v, feed)
+	pending := []CalendarItem{}
+	awaiting := map[string]bool{}
+	classified := map[string]Classification{}
+	for _, it := range GoogleToClassify(rows, v, feed) {
+		if w.excluded[it.Key] == v.InputHash(it) {
+			classified[it.Key] = Classification{Exclude: true}
+			continue
+		}
+		pending = append(pending, it)
+		awaiting[it.Key] = true
+	}
 	slog.InfoContext(ctx, "calendar import: feed read", "events", len(feed), "to classify", len(pending))
-	classified := v.Classify(ctx, w.client, pending)
+	for key, c := range v.Classify(ctx, w.client, pending) {
+		classified[key] = c
+	}
+	included := []GoogleEvent{}
+	for _, e := range feed {
+		c, answered := classified[e.Key]
+		if c.Exclude {
+			w.excluded[e.Key] = v.InputHash(e.CalendarItem)
+			continue
+		}
+		if e.Calendar == CounselingCategory && awaiting[e.Key] && !answered {
+			return fmt.Errorf("counseling event %q was not classified", e.Title)
+		}
+		delete(w.excluded, e.Key)
+		included = append(included, e)
+	}
+	seen := map[string]bool{}
+	for _, e := range feed {
+		seen[e.Key] = true
+	}
+	for key := range w.excluded {
+		if !seen[key] {
+			delete(w.excluded, key)
+		}
+	}
+	feed = included
 	rows = w.s.Model().calendarRows()
 	matched, err := v.MatchGoogle(ctx, w.client, rows, GoogleToMatch(rows, v, feed))
 	if err != nil {
@@ -274,12 +323,18 @@ func expiry(ch *gcal.Channel) time.Time {
 func (w *CalendarWatcher) renew() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.channel != nil && time.Until(expiry(w.channel)) > renewWithin {
+	for _, calendarID := range []string{SchoolCalendarID, CounselingCalendarID} {
+		w.renewCalendar(calendarID)
+	}
+}
+
+func (w *CalendarWatcher) renewCalendar(calendarID string) {
+	if ch := w.channels[calendarID]; ch != nil && time.Until(expiry(ch)) > renewWithin {
 		return
 	}
 	id := make([]byte, 16)
 	rand.Read(id)
-	ch, err := w.calendar.Events.Watch(SchoolCalendarID, &gcal.Channel{
+	ch, err := w.calendar.Events.Watch(calendarID, &gcal.Channel{
 		Id: hex.EncodeToString(id), Type: "web_hook", Address: hookAddress, Token: w.token,
 		Expiration: time.Now().Add(channelLife).UnixMilli(),
 	}).Do()
@@ -288,8 +343,8 @@ func (w *CalendarWatcher) renew() {
 		return
 	}
 	slog.Info("calendar watch opened", "channel", ch.Id, "expires", expiry(ch).In(School).Format(MomentLayout))
-	old := w.channel
-	w.channel = ch
+	old := w.channels[calendarID]
+	w.channels[calendarID] = ch
 	if old != nil {
 		w.stop(old)
 	}
@@ -314,4 +369,26 @@ func (w *CalendarWatcher) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.kick.poke()
 	}
 	rw.WriteHeader(http.StatusOK)
+}
+
+func (w *CalendarWatcher) ensureCounselingCategory(ctx context.Context) error {
+	everyone := ""
+	for _, g := range w.s.Model().Table("GROUP").All() {
+		if g["slug"] == "everyone" {
+			everyone = g["id"]
+		}
+		if g["kind"] == "category" && g["slug"] == counselingSlug {
+			return nil
+		}
+	}
+	if everyone == "" {
+		return fmt.Errorf("no everyone group")
+	}
+	env := Env{System: "calendar", Whole: true, Now: time.Now()}
+	_, err := Write(ctx, w.s, access.System(env.System), env, Batch{Batch: []Edit{{Insert: "GROUP", Row: map[string]any{
+		"kind": "category", "name": CounselingCategory, "slug": counselingSlug, "default": true,
+		"description": "High school admissions, counseling, family presentations and deadlines for grades 5–8.",
+		"status":      "open", "visible_to": everyone,
+	}}}})
+	return err
 }

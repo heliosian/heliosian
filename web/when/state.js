@@ -636,6 +636,8 @@ export function audienceWords(e) {
 
 export function sourceWords(e) {
   switch (e.source) {
+    case 'counseling':
+      return 'From the High School Counseling Google Calendar';
     case 'google':
       return "From the school's Google Calendar";
     case 'pdf':

@@ -62,9 +62,6 @@ Last verified: bff8f634
 - Add DOCUMENT.superseded_by, with a trigger that keeps it one hop
   Nothing marks a document as replaced by a newer one. Add a `superseded_by` reference, with a trigger that keeps chains flat, and refuse cycles on load.
   Issue: https://github.com/heliosian/heliosian/issues/178
-- Add Mike Orlando's high school counseling Google Calendar as a source in Helios When
-  Add the HS counseling Google Calendar as a Helios When source, with its events tagged and aimed at the high school classrooms. It needs the calendar's address and sharing confirmed by Mike.
-  Issue: https://github.com/heliosian/heliosian/issues/176
 - Show a loop email's actual message to the list's members and managers
   Loop pages show only an email's metadata, though the raw message is stored. Show the rendered message and its attachments to the list's members and managers.
   Issue: https://github.com/heliosian/heliosian/issues/168
