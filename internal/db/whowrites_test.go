@@ -110,6 +110,10 @@ func TestSuperAdminsRunTheAdminsGroups(t *testing.T) {
 
 func TestWhoWrites(t *testing.T) {
 	s := sample(t)
+	content := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "picture", Row: map[string]any{"hash": "public-picture", "blob": "content/public-picture", "mime": "image/png", "size": "100"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@picture"}},
+	})[0]
 	const staffColor = "set00000020004"
 	insert := func(table string, row store.Row) Change { return Change{Table: table, New: row} }
 	for _, c := range []struct {
@@ -131,11 +135,11 @@ func TestWhoWrites(t *testing.T) {
 		{"Who?'s admin captions any family's photo", staff, change(t, s, "GROUP", []string{"grp00000000020"}, store.Row{"description": "Us"}), true},
 		{"a parent colors a classroom", parent, change(t, s, "GROUP", []string{"grp00000000010"}, store.Row{"color": "#000000"}), false},
 		{"Who?'s admin colors a classroom", staff, change(t, s, "GROUP", []string{"grp00000000010"}, store.Row{"color": "#000000"}), true},
-		{"a parent adds a child's photo", parent, insert("PHOTO", store.Row{"person": student, "original": "cnt0000000000a"}), true},
-		{"a parent adds a stranger's photo", parent, insert("PHOTO", store.Row{"person": staff, "original": "cnt0000000000a"}), false},
-		{"a parent adds their family's photo", parent, insert("PHOTO", store.Row{"group": "grp00000000020", "original": "cnt0000000000a"}), true},
-		{"a parent adds a classroom's tile", parent, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "cnt0000000000a"}), false},
-		{"Who?'s admin adds a classroom's tile", staff, insert("PHOTO", store.Row{"group": "grp00000000010", "original": "cnt0000000000a"}), true},
+		{"a parent adds a child's photo", parent, insert("PHOTO", store.Row{"person": student, "original": content}), true},
+		{"a parent adds a stranger's photo", parent, insert("PHOTO", store.Row{"person": staff, "original": content}), false},
+		{"a parent adds their family's photo", parent, insert("PHOTO", store.Row{"group": "grp00000000020", "original": content}), true},
+		{"a parent adds a classroom's tile", parent, insert("PHOTO", store.Row{"group": "grp00000000010", "original": content}), false},
+		{"Who?'s admin adds a classroom's tile", staff, insert("PHOTO", store.Row{"group": "grp00000000010", "original": content}), true},
 		{"a parent adds a greeting", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": parent}), true},
 		{"a parent adds a greeting as someone else", parent, insert("GREETING", store.Row{"name": "Hi", "added_by": staff}), false},
 		{"a guest adds a greeting", guest, insert("GREETING", store.Row{"name": "Hi", "added_by": guest}), false},

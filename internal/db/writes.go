@@ -16,15 +16,16 @@ import (
 )
 
 type Edit struct {
-	Insert string         `json:"insert,omitempty"`
-	As     string         `json:"as,omitempty"`
-	Row    map[string]any `json:"row,omitempty"`
-	Set    string         `json:"set,omitempty"`
-	Cells  map[string]any `json:"cells,omitempty"`
-	Delete string         `json:"delete,omitempty"`
-	server bool
-	viewer string
-	id     string
+	Insert   string         `json:"insert,omitempty"`
+	As       string         `json:"as,omitempty"`
+	Row      map[string]any `json:"row,omitempty"`
+	Set      string         `json:"set,omitempty"`
+	Cells    map[string]any `json:"cells,omitempty"`
+	Delete   string         `json:"delete,omitempty"`
+	server   bool
+	viewer   string
+	id       string
+	uploaded string
 }
 
 type Batch struct {
@@ -216,6 +217,10 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 
 func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
 	m := s.In(tx)
+	uploaded, err := resolve(w.uploaded, names)
+	if err != nil {
+		return "", Change{}, err
+	}
 	switch {
 	case w.Insert != "" && w.Set == "" && w.Delete == "" && w.Cells == nil:
 		t, ok := Lookup(w.Insert)
@@ -244,7 +249,7 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 		if err := m.referencesExist(t, row, where, whole); err != nil {
 			return "", Change{}, err
 		}
-		c := Change{Table: t.Name, New: row}
+		c := Change{Table: t.Name, New: row, uploaded: uploaded}
 		if err := authorize(m, c); err != nil {
 			return "", Change{}, err
 		}
@@ -270,7 +275,7 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 		if err := t.Check(updated); err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
 		}
-		c := Change{Table: t.Name, Old: old, New: updated}
+		c := Change{Table: t.Name, Old: old, New: updated, uploaded: uploaded}
 		if err := authorize(m, c); err != nil {
 			return "", Change{}, err
 		}

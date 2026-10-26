@@ -536,9 +536,14 @@ func (m *Model) pagePhoto(document string, up upload) (string, string, bool) {
 }
 
 func writeUpload(ctx context.Context, s *Store, pics *Pictures, actor access.Actor, env Env, up upload, edit func(content string) Edit) ([]string, string, error) {
+	attach := func(content string) Edit {
+		e := edit(content)
+		e.uploaded = content
+		return e
+	}
 	if up.held != "" {
 		row, _ := s.Model().Table("CONTENT").Get(up.held)
-		ids, err := Write(ctx, s, actor, env, Batch{Batch: []Edit{edit(up.held)}})
+		ids, err := Write(ctx, s, actor, env, Batch{Batch: []Edit{attach(up.held)}})
 		return ids, row["hash"], err
 	}
 	kept, err := keepBytes(ctx, s.Model(), pics.bucket, up.mimeType, up.content)
@@ -553,7 +558,7 @@ func writeUpload(ctx context.Context, s *Store, pics *Pictures, actor access.Act
 		if err != nil {
 			return err
 		}
-		w.add(edit(content))
+		w.add(attach(content))
 		written, err := stageEdits(s, tx, env, w.edits, "batch", whole)
 		ids = written
 		return err
@@ -572,7 +577,7 @@ func setUpload(r *http.Request, s *Store, pics *Pictures, actor access.Actor, en
 	}
 	updated := maps.Clone(old)
 	updated[column] = "upload"
-	if err := m.Authorize(env, Change{Table: table, Old: old, New: updated}); err != nil {
+	if err := m.Authorize(env, Change{Table: table, Old: old, New: updated, uploaded: "upload"}); err != nil {
 		return nil, "", err
 	}
 	up, err := read(m)

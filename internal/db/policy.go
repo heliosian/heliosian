@@ -1818,10 +1818,11 @@ func (r *run) redact(t *Table, row store.Row, columns []Column) store.Row {
 }
 
 type Change struct {
-	Table  string
-	Old    store.Row
-	New    store.Row
-	Before []Change
+	Table    string
+	Old      store.Row
+	New      store.Row
+	Before   []Change
+	uploaded string
 }
 
 func (m *Model) authorizeServingGroups(viewer string, c Change) error {
@@ -1885,6 +1886,17 @@ func (m *Model) Authorize(env Env, c Change) error {
 			}
 			if !holds(policies.set[t.Name+"."+col.Name], changed, nil) {
 				return access.Forbidden("you may not change %s.%s", t.Name, col.Name)
+			}
+		}
+	}
+	if c.New != nil && !m.superAdmin(env.Viewer) {
+		for _, col := range t.Columns {
+			id := c.New[col.Name]
+			if col.Kind != Ref || col.Target != "CONTENT" || id == "" || id == c.Old[col.Name] || id == c.uploaded {
+				continue
+			}
+			if !r.idReadable(id) {
+				return access.Forbidden("you may not attach unreadable content to %s.%s", t.Name, col.Name)
 			}
 		}
 	}

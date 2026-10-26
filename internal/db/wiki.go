@@ -188,6 +188,7 @@ func saveWiki(ctx context.Context, s *Store, pics *Pictures, actor access.Actor,
 				edit.Cells["slug"] = slug
 			}
 		}
+		edit.uploaded = contentID
 		at := len(w.edits)
 		written := w.add(edit)
 		commit := func() error {
@@ -221,7 +222,7 @@ func saveWiki(ctx context.Context, s *Store, pics *Pictures, actor access.Actor,
 			cells := map[string]any{"name": strings.TrimSpace(side.Name), "content": sideContents[i], "order": orders[i]}
 			if side.ID == "" {
 				cells["parent"], cells["relation"] = written, "side"
-				w.add(Edit{Insert: "DOCUMENT", Row: cells})
+				w.add(Edit{Insert: "DOCUMENT", Row: cells, uploaded: sideContents[i]})
 				continue
 			}
 			old, ok := existing[side.ID]
@@ -237,7 +238,7 @@ func saveWiki(ctx context.Context, s *Store, pics *Pictures, actor access.Actor,
 			if len(cells) == 0 {
 				continue
 			}
-			w.add(Edit{Set: side.ID, Cells: cells})
+			w.add(Edit{Set: side.ID, Cells: cells, uploaded: sideContents[i]})
 		}
 		for _, gone := range slices.Sorted(maps.Keys(existing)) {
 			w.add(Edit{Delete: gone})

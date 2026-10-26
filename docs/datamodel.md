@@ -110,6 +110,8 @@ Triggers (`internal/db/trigger.go`) run on every change to their table, in one o
 
 ## Permissions
 
+Assigning a reference to `CONTENT` requires permission to read those bytes before the write, as well as permission to change the destination row and column. Upload handlers attest to the exact content whose bytes the caller supplied, including when deduplication reuses an existing private row. That attestation is internal to the server and cannot be sent in a query batch. System jobs and super admins retain their access to all content.
+
 Who may see and change what is written in the query language, in `PolicySource` in `internal/db/policy.go`, compiled when the package loads: code, never a sheet, since whoever could edit a policy could grant themselves anything. Whom a policy names is data - the members of an app's admins group, a group's `visible_to` and `members_visible_to`, who manages what. Every clause for the same thing is or-ed, so each grant is a line of its own. The source is in sections by whom the clauses are for - definitions, consent, import mode, everyone, each app's admins, and super admins - and every clause carries a one-line `;` comment saying what it grants, so each can be checked against its purpose. The read and write clauses never decide consent: they see only the rows the `show` clauses leave (Consent step, above), or every row where `reveal` holds, and decide who sees what among those. `;` starts a comment running to the end of the line anywhere in the language. A `define` no clause calls, directly or through another definition, refuses to load.
 
 Nothing is readable until a clause says yes, rows and columns alike, so every read clause only ever adds readers.
