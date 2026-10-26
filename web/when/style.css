@@ -274,9 +274,9 @@ button { font: inherit; }
 
 .mine-card-note { font-size: 12.5px; font-weight: 600; color: var(--muted); text-align: right; }
 
-.mine-card-note.is-waiting { color: #b8860b; }
+.mine-card-note.is-waiting { color: var(--maybe-text, #b8860b); }
 
-.mine-card-note.is-going { color: #1d6b48; }
+.mine-card-note.is-going { color: var(--yes-text, #1d6b48); }
 
 .nav-sub-tool.nav-sub-lock { cursor: default; opacity: 0.7; }
 
