@@ -1,0 +1,22 @@
+# Prevent Home audience edits from taking over other groups (#208)
+
+byre task tskxI1qXwg0iet, "Home audience authorization", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskxI1qXwg0iet in byre (GET /api/events?task_id=tskxI1qXwg0iet).
+
+## Summary
+
+Audited main at 7df5dffe7b94a906f4f2a3f6ce690828b1e51f8e for reachable security issues against the documented trust model. Found and reproduced #208: a Home-only admin could bind another app's managers group as an app/widget/link audience, then add/remove its members or rules and take over its events or lists. The original ordinary API batch returned HTTP 200 and made Rowan Ashdown a Fall Picnic manager.
+
+Fixed the common home_audience policy predicate, so Home-specific membership/rule grants apply only to unmanaged top-level plain groups without a slug, excluding groups that manage anything, serve as app admins, or hold hidden-list membership. This preserves normal dedicated Home audiences while refusing authority gained solely by selecting a foreign group as an audience. Added API regressions for app/widget/link bindings, all four membership/rule edits, unmanaged managers and unrelated child groups; updated docs/home/data.md. Home admins must use dedicated Viewers groups or the foreign group's existing management permissions to change its membership or rules.
+
+Review completed, then main merged automatically using git merge --no-ff --no-commit main, without conflicts or manual resolution. On the merged tree the full internal/db suite passed in 17.6 seconds, auth/MCP/app/imagesearch/mail tests and the incoming geocode tests passed under timeout 30, and go vet ./... and git diff --check passed. The merge was left uncommitted for byre to conclude as requested.
+
+Left deliberately public share previews, documented API bearer-token capabilities, and trusted system/super-admin access unchanged. No additional demonstrated vulnerability established in other inspected boundaries. No deployment performed. Security issue: https://github.com/heliosian/heliosian/issues/208.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Flash high", antigravity gemini-3.8-flash: done
+
+Tightens the definition of `home_audience` in `internal/db/policy.go` so that Home admins can only manage members and rules of groups that are unmanaged, top-level, do not manage other groups, and do not serve as an app's admins or a group's hidden list. This closes a privilege-escalation vulnerability where a Home admin could set an existing managers group, child group, or administrative group as the audience of a front-page widget, app, or link, and then modify its membership or rules. Updates `docs/home/data.md` and adds comprehensive security regression tests in `internal/db/homeaudience_security_test.go`.
+
+No significant findings.
