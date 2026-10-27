@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	stillToDraw = `(from DOCUMENT (where (blank rendered) (= content.mime "application/pdf")) (columns content thumbnailed))`
-	sendTries   = 4
-	sendWait    = 5 * time.Second
+	pdfDocuments = `(from DOCUMENT (where (= content.mime "application/pdf")) (columns content thumbnail rendered))`
+	sendTries    = 4
+	sendWait     = 5 * time.Second
 )
 
 func render(pdf []byte) (string, []string, error) {
@@ -107,26 +107,56 @@ func main() {
 	if err != nil {
 		logging.Fatal("sign in", "error", err)
 	}
-	a, err := c.QueryText(stillToDraw)
+	if err := draw(c); err != nil {
+		logging.Fatal("draw pdfs", "error", err)
+	}
+}
+
+func draw(c *qclient.Client) error {
+	a, err := c.QueryText(pdfDocuments)
 	if err != nil {
-		logging.Fatal("read the pdfs still to draw", "error", err)
+		return fmt.Errorf("read the pdfs still to draw: %w", err)
 	}
 	byContent := map[string][]string{}
 	order := []string{}
+	completed := map[string]string{}
+	pending := 0
 	for _, id := range a.Result {
-		content := a.Resources["DOCUMENT"][id]["content"]
+		doc := a.Resources["DOCUMENT"][id]
+		content := doc["content"]
+		if doc["rendered"] != "" && doc["thumbnail"] != "" {
+			completed[content] = id
+			continue
+		}
+		pending++
 		if _, ok := byContent[content]; !ok {
 			order = append(order, content)
 		}
 		byContent[content] = append(byContent[content], id)
 	}
-	slog.Info("pdfs to draw", "documents", len(a.Result), "contents", len(order))
+	slog.Info("pdfs to draw", "documents", pending, "contents", len(order))
 	drawn, failed, skipped := 0, 0, 0
 	for i, content := range order {
 		ids := byContent[content]
+		if source := completed[content]; source != "" {
+			for _, id := range ids {
+				if err := reuse(c, id, content, source); err != nil {
+					var status *qclient.StatusError
+					if errors.Is(err, errStaleDocument) || (errors.As(err, &status) && status.Code == http.StatusBadRequest) {
+						skipped++
+						slog.Warn("skipped", "document", id, "content", content, "error", err)
+						continue
+					}
+					return err
+				}
+				drawn++
+				slog.Info("reused pdf pages", "n", i+1, "of", len(order), "document", id, "source", source)
+			}
+			continue
+		}
 		var pdf []byte
 		if err := c.Send(http.MethodGet, "/api/blob/"+content+"/blob", "", strings.NewReader(""), &pdf); err != nil {
-			logging.Fatal("read the pdf", "content", content, "error", err)
+			return fmt.Errorf("read pdf %s: %w", content, err)
 		}
 		dir, paths, err := render(pdf)
 		if err != nil {
@@ -135,16 +165,34 @@ func main() {
 			slog.Warn("could not draw", "n", i+1, "of", len(order), "documents", ids, "bytes", len(pdf), "error", err)
 			continue
 		}
+		sort.SliceStable(ids, func(i, j int) bool {
+			return a.Resources["DOCUMENT"][ids[i]]["rendered"] != "" && a.Resources["DOCUMENT"][ids[j]]["rendered"] == ""
+		})
+		source := ""
 		for _, id := range ids {
-			err := upload(c, id, content, paths, a.Resources["DOCUMENT"][id]["thumbnailed"] == "")
+			var err error
+			if source == "" {
+				if a.Resources["DOCUMENT"][id]["rendered"] != "" {
+					err = uploadThumbnail(c, id, content, paths[0])
+				} else {
+					doc := a.Resources["DOCUMENT"][id]
+					err = upload(c, id, content, paths, doc["thumbnail"] == "")
+				}
+			} else {
+				err = reuse(c, id, content, source)
+			}
 			var status *qclient.StatusError
-			if errors.As(err, &status) && status.Code == http.StatusBadRequest {
+			if errors.Is(err, errStaleDocument) || (errors.As(err, &status) && status.Code == http.StatusBadRequest) {
 				skipped++
 				slog.Warn("skipped", "document", id, "content", content, "error", err)
 				continue
 			}
 			if err != nil {
-				logging.Fatal("send", "document", id, "error", err)
+				os.RemoveAll(dir)
+				return fmt.Errorf("send pdf %s: %w", id, err)
+			}
+			if source == "" {
+				source = id
 			}
 			drawn++
 		}
@@ -152,7 +200,8 @@ func main() {
 		slog.Info("drawn", "n", i+1, "of", len(order), "documents", ids, "pdf bytes", len(pdf), "pages", len(paths))
 
 	}
-	slog.Info("done", "documents", len(a.Result), "drawn", drawn, "failed", failed, "skipped", skipped)
+	slog.Info("done", "documents", pending, "drawn", drawn, "failed", failed, "skipped", skipped)
+	return nil
 }
 
 func upload(c *qclient.Client, id, content string, paths []string, thumbnail bool) error {
@@ -162,11 +211,7 @@ func upload(c *qclient.Client, id, content string, paths []string, thumbnail boo
 			return err
 		}
 		if i == 0 && thumbnail {
-			thumb, err := blob.Thumbnail(picture)
-			if err != nil {
-				return err
-			}
-			if err := send(c, "/api/do/thumbnail", id, content, 0, 0, thumb); err != nil {
+			if err := uploadThumbnail(c, id, content, path); err != nil {
 				return err
 			}
 		}
@@ -176,4 +221,16 @@ func upload(c *qclient.Client, id, content string, paths []string, thumbnail boo
 		slog.Info("uploaded a page", "document", id, "page", i+1, "of", len(paths), "bytes", len(picture))
 	}
 	return nil
+}
+
+func uploadThumbnail(c *qclient.Client, id, content, path string) error {
+	picture, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	thumb, err := blob.Thumbnail(picture)
+	if err != nil {
+		return err
+	}
+	return send(c, "/api/do/thumbnail", id, content, 0, 0, thumb)
 }

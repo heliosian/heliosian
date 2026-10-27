@@ -118,7 +118,7 @@ func saveThumbnail(ctx context.Context, s *Store, bucket *blob.Bucket, actor acc
 	_, err := s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		m := s.In(tx)
 		now, ok := m.Table("DOCUMENT").Get(doc["id"])
-		if !ok || now["thumbnailed"] != "" || now["content"] != doc["content"] {
+		if !ok || now["content"] != doc["content"] || (now["thumbnailed"] != "" && (now["thumbnail"] != "" || thumb == nil)) {
 			return nil
 		}
 		w := &pendingWrites{}

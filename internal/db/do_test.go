@@ -775,3 +775,24 @@ func TestImportedDeckCanRestorePreviousBytes(t *testing.T) {
 		t.Fatalf("original bytes appear in %d documents, want only the original", got)
 	}
 }
+
+func TestClientThumbnailFillsMissingAttemptedImage(t *testing.T) {
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	pics := NewPictures(s, bucket)
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "pdf", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 1))},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@pdf", "thumbnailed": "2026-10-26 20:00:00"}},
+	})
+	fields := map[string]string{"document": ids[1], "content": ids[0]}
+	if rec := postFile(t, s, pics, importing, "thumbnail", fields, "picture", redPNG(t, 120, 180)); rec.Code != http.StatusOK {
+		t.Fatalf("repair: %d %s", rec.Code, rec.Body.String())
+	}
+	doc, _ := s.Model().Table("DOCUMENT").Get(ids[1])
+	if doc["thumbnail"] == "" || doc["thumbnailed"] == "" {
+		t.Fatalf("thumbnail was not repaired: %v", doc)
+	}
+	if rec := postFile(t, s, pics, importing, "thumbnail", fields, "picture", redPNG(t, 180, 120)); rec.Code != http.StatusBadRequest {
+		t.Fatalf("replaced an existing thumbnail: %d %s", rec.Code, rec.Body.String())
+	}
+}

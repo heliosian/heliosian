@@ -240,7 +240,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		}
 		id := r.FormValue("document")
 		doc, found := s.Model().Table("DOCUMENT").Get(id)
-		if !found || doc["content"] == "" || doc["thumbnailed"] != "" {
+		if !found || doc["content"] == "" || (doc["thumbnailed"] != "" && doc["thumbnail"] != "") {
 			serve.Error(w, r, access.Invalid("%q is not a document still to thumbnail", id))
 			return
 		}
