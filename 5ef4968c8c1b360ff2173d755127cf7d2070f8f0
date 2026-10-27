@@ -1,0 +1,23 @@
+# Derive query type classes from their column kinds
+
+byre task tskUJ6kuF3eej0, "Derive query types", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskUJ6kuF3eej0 in byre (GET /api/events?task_id=tskUJ6kuF3eej0).
+
+## Summary
+
+Audited main at 20a50c795e70c8541addbe5d3b2a508394dc879c for structural simplicity, consulting project rules, docs, prior findings, and code across storage, the model, app wiring, shared clients, mail and workers.
+
+Before: query types in internal/db/value.go stored both Kind and the category derived from it; constructors and readers across query.go, members.go and slug.go maintained both.
+Now: query types store only Kind, table and enum values; all category decisions use the existing classOf(kind) mapping. Contradictory kind/category pairs cannot be constructed. Query behavior and stored schemas remain unchanged.
+
+Kept the audit focused on this single structural simplification. Left picture/search queues separate because they coordinate different locks and worker scheduling; consolidation would add machinery. Added no validation, comments, tests or compatibility paths.
+
+Targeted existing query, membership and slug tests passed under timeout 30; repository-wide go vet ./... and diff checks passed. After merge authorization, ran git merge --no-ff --no-commit main: already up to date, with no conflicts or additional edits. Re-ran vet and targeted tests successfully. No production writes or deployment.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Removes the stored query type class and derives it from the existing column kind through classOf. Updates type checks, literal coercion, comparisons, membership operations, and slug types to use that single source of truth. Reviewed the diff, surrounding code, and existing tests by reading only; no builds or tests were run, as requested.
+
+No significant findings.
