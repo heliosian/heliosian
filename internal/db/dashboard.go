@@ -116,7 +116,13 @@ func (b *board) snapshot() dashboard {
 	b.mu.Unlock()
 	status := b.store.Status()
 	out.LastRefresh = status.LastRefresh
-	out.Queues = append(slices.Clone(out.Queues), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
+	out.Queues = slices.Clone(out.Queues)
+	for i, queue := range out.Queues {
+		if queue.Name == "thumbnails" {
+			out.Queues[i] = m.thumbnailQueue()
+		}
+	}
+	out.Queues = append(out.Queues, m.searchProcessing(), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 	errors := vitals.Errors()
 	since := time.Now().Add(-time.Hour)
 	for _, e := range errors {

@@ -30,8 +30,9 @@ const (
 var idleInboxes = []inboxName{consentInbox, fetchInbox, classifyInbox, extractInbox, geocodeInbox, sweepInbox, digestInbox, thumbnailInbox}
 
 type services struct {
-	inboxes [inboxCount]*inbox
-	writes  atomic.Uint64
+	inboxes    [inboxCount]*inbox
+	writes     atomic.Uint64
+	thumbnails thumbnailAttempts
 }
 
 type heldWrite struct {

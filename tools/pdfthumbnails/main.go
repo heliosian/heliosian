@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"heliosian/internal/blob"
 	"heliosian/internal/logging"
 	"heliosian/internal/qclient"
 )
@@ -93,8 +92,11 @@ func send(c *qclient.Client, path, id, content string, page, total int, picture 
 		var out struct{}
 		err := c.Send(http.MethodPost, path, form.FormDataContentType(), bytes.NewReader(body), &out)
 		var status *qclient.StatusError
-		if err == nil || try == sendTries || !errors.As(err, &status) || (status.Code != http.StatusTooManyRequests && status.Code < 500) {
-			return err
+		if err == nil || try == sendTries || !errors.As(err, &status) || status.Code < 500 {
+			if err != nil {
+				return err
+			}
+			return waitForProcessing(c)
 		}
 		slog.Warn("send again", "document", id, "try", try, "in", wait, "error", err)
 		time.Sleep(wait)
@@ -113,6 +115,9 @@ func main() {
 }
 
 func draw(c *qclient.Client) error {
+	if err := waitForProcessing(c); err != nil {
+		return err
+	}
 	a, err := c.QueryText(pdfDocuments)
 	if err != nil {
 		return fmt.Errorf("read the pdfs still to draw: %w", err)
@@ -173,10 +178,9 @@ func draw(c *qclient.Client) error {
 			var err error
 			if source == "" {
 				if a.Resources["DOCUMENT"][id]["rendered"] != "" {
-					err = uploadThumbnail(c, id, content, paths[0])
+					err = completePDFThumbnail(c, id, content)
 				} else {
-					doc := a.Resources["DOCUMENT"][id]
-					err = upload(c, id, content, paths, doc["thumbnail"] == "")
+					err = upload(c, id, content, paths)
 				}
 			} else {
 				err = reuse(c, id, content, source)
@@ -204,33 +208,16 @@ func draw(c *qclient.Client) error {
 	return nil
 }
 
-func upload(c *qclient.Client, id, content string, paths []string, thumbnail bool) error {
+func upload(c *qclient.Client, id, content string, paths []string) error {
 	for i, path := range paths {
 		picture, err := os.ReadFile(path)
 		if err != nil {
 			return err
-		}
-		if i == 0 && thumbnail {
-			if err := uploadThumbnail(c, id, content, path); err != nil {
-				return err
-			}
 		}
 		if err := send(c, "/api/do/pdf-page", id, content, i+1, len(paths), picture); err != nil {
 			return err
 		}
 		slog.Info("uploaded a page", "document", id, "page", i+1, "of", len(paths), "bytes", len(picture))
 	}
-	return nil
-}
-
-func uploadThumbnail(c *qclient.Client, id, content, path string) error {
-	picture, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	thumb, err := blob.Thumbnail(picture)
-	if err != nil {
-		return err
-	}
-	return send(c, "/api/do/thumbnail", id, content, 0, 0, thumb)
+	return completePDFThumbnail(c, id, content)
 }

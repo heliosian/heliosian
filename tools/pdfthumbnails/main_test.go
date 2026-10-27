@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
-	"image/jpeg"
 	"image/png"
 	"io"
 	"net/http"
@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"heliosian/internal/db"
 	"heliosian/internal/qclient"
 )
 
@@ -84,13 +85,16 @@ func TestEveryPDFPageIsRenderedAndUploaded(t *testing.T) {
 	}
 	pages, thumbnails := 0, 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if finishUpload(w, r, t) {
+			return
+		}
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Error(err)
 			http.Error(w, "bad form", 400)
 			return
 		}
 		defer r.MultipartForm.RemoveAll()
-		if r.FormValue("document") != "doc-example" || r.FormValue("content") != "cnt-example" {
+		if r.FormValue("document") != "doc00000000001" || r.FormValue("content") != "cnt00000000001" {
 			t.Error("the upload lost its source identity")
 		}
 		if r.URL.Path == "/api/do/thumbnail" {
@@ -109,11 +113,7 @@ func TestEveryPDFPageIsRenderedAndUploaded(t *testing.T) {
 			return
 		}
 		defer file.Close()
-		if r.URL.Path == "/api/do/thumbnail" {
-			if _, err := jpeg.Decode(file); err != nil {
-				t.Error(err)
-			}
-		} else if _, err := png.Decode(file); err != nil {
+		if _, err := png.Decode(file); err != nil {
 			t.Error(err)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -121,15 +121,15 @@ func TestEveryPDFPageIsRenderedAndUploaded(t *testing.T) {
 	}))
 	defer server.Close()
 	c := &qclient.Client{Base: server.URL}
-	if err := upload(c, "doc-example", "cnt-example", paths, true); err != nil {
+	if err := upload(c, "doc00000000001", "cnt00000000001", paths); err != nil {
 		t.Fatal(err)
 	}
-	if pages != 3 || thumbnails != 1 {
+	if pages != 3 || thumbnails != 0 {
 		t.Fatalf("uploaded %d pages and %d thumbnails", pages, thumbnails)
 	}
 }
 
-func TestLargePageUsesASmallThumbnailAndUnchangedPageUpload(t *testing.T) {
+func TestLargePageUploadsUnchangedWithoutALocalThumbnail(t *testing.T) {
 	img := image.NewNRGBA(image.Rect(0, 0, 2481, 3508))
 	for i := 3; i < len(img.Pix); i += 4 {
 		img.Pix[i] = 255
@@ -152,6 +152,9 @@ func TestLargePageUsesASmallThumbnailAndUnchangedPageUpload(t *testing.T) {
 		if r.URL.Path == "/api/do/thumbnail" {
 			r.Body = http.MaxBytesReader(w, r.Body, 21<<20)
 		}
+		if finishUpload(w, r, t) {
+			return
+		}
 		if err := r.ParseMultipartForm(1 << 20); err != nil {
 			t.Error(err)
 			http.Error(w, "too large", 400)
@@ -164,13 +167,7 @@ func TestLargePageUsesASmallThumbnailAndUnchangedPageUpload(t *testing.T) {
 			return
 		}
 		defer file.Close()
-		if r.URL.Path == "/api/do/thumbnail" {
-			thumbnails++
-			config, err := jpeg.DecodeConfig(file)
-			if err != nil || config.Width != 480 {
-				t.Errorf("thumbnail: %v %v", config, err)
-			}
-		} else if r.URL.Path == "/api/do/pdf-page" {
+		if r.URL.Path == "/api/do/pdf-page" {
 			pages++
 			got, err := io.ReadAll(file)
 			if err != nil || !bytes.Equal(got, raw) {
@@ -183,10 +180,48 @@ func TestLargePageUsesASmallThumbnailAndUnchangedPageUpload(t *testing.T) {
 		io.WriteString(w, "{}")
 	}))
 	defer server.Close()
-	if err := upload(&qclient.Client{Base: server.URL}, "doc-example", "cnt-example", []string{path}, true); err != nil {
+	if err := upload(&qclient.Client{Base: server.URL}, "doc00000000001", "cnt00000000001", []string{path}); err != nil {
 		t.Fatal(err)
 	}
-	if pages != 1 || thumbnails != 1 {
+	if pages != 1 || thumbnails != 0 {
 		t.Fatalf("uploaded %d pages and %d thumbnails", pages, thumbnails)
 	}
+}
+
+func writeDrained(w http.ResponseWriter) {
+	io.WriteString(w, `{"queues":[{"name":"thumbnails","pending":0},{"name":"search indexing","pending":0},{"name":"search processing","pending":0},{"name":"pending writes","pending":0}]}`)
+}
+
+func finishUpload(w http.ResponseWriter, r *http.Request, t *testing.T) bool {
+	t.Helper()
+	if r.URL.Path == "/api/queues" {
+		writeDrained(w)
+		return true
+	}
+	if r.URL.Path != "/api/q" {
+		return false
+	}
+	if r.Method == http.MethodPost {
+		var batch db.Batch
+		if err := json.NewDecoder(r.Body).Decode(&batch); err != nil {
+			t.Error(err)
+		}
+		if len(batch.Batch) != 1 || batch.Batch[0].Set != "doc00000000001" || batch.Batch[0].Cells["thumbnail"] != "cnt00000000002" {
+			t.Errorf("pdf thumbnail was not copied from the server page: %v", batch)
+		}
+		io.WriteString(w, `{}`)
+		return true
+	}
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		t.Error(err)
+	}
+	if _, err := db.ParseJSON(raw); err != nil {
+		t.Error(err)
+	}
+	json.NewEncoder(w).Encode(qclient.Answer{Resources: map[string]map[string]map[string]string{"DOCUMENT": {
+		"doc00000000001": {"content": "cnt00000000001"},
+		"doc00000000101": {"parent": "doc00000000001", "thumbnail": "cnt00000000002", "thumbnailed": "2026-10-26 20:00:00"},
+	}}})
+	return true
 }

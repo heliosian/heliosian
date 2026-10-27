@@ -42,7 +42,7 @@ func reuse(c *qclient.Client, id, content, source string) error {
 	}
 	for n := 1; n <= total; n++ {
 		page := pages[strconv.Itoa(n)]
-		if page["content"] == "" || page["last_page"] != strconv.Itoa(n) {
+		if page["content"] == "" || page["thumbnail"] == "" || page["last_page"] != strconv.Itoa(n) {
 			return fmt.Errorf("source %s is missing page %d", source, n)
 		}
 	}
@@ -67,7 +67,7 @@ func reuse(c *qclient.Client, id, content, source string) error {
 			continue
 		}
 		page := pages[number]
-		writes = append(writes, db.Edit{Insert: "DOCUMENT", Row: map[string]any{"parent": id, "relation": "page", "content": page["content"], "first_page": number, "last_page": number, "name": page["name"], "order": page["order"], "extracted": page["extracted"]}})
+		writes = append(writes, db.Edit{Insert: "DOCUMENT", Row: map[string]any{"parent": id, "relation": "page", "content": page["content"], "first_page": number, "last_page": number, "name": page["name"], "order": page["order"], "extracted": page["extracted"], "thumbnail": page["thumbnail"], "thumbnailed": page["thumbnailed"]}})
 	}
 	set := map[string]any{}
 	if to["rendered"] == "" {
@@ -83,5 +83,8 @@ func reuse(c *qclient.Client, id, content, source string) error {
 		return nil
 	}
 	_, err = c.Write(db.Batch{Batch: writes})
-	return err
+	if err != nil {
+		return err
+	}
+	return waitForProcessing(c)
 }

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -35,15 +36,35 @@ var drawers = map[string]drawFunc{
 
 var pageImageProperties = []string{"og:image", "og:image:url", "og:image:secure_url", "twitter:image"}
 
+type thumbnailAttempts struct {
+	mu       sync.Mutex
+	failures map[[2]string]int
+}
+
+func (a *thumbnailAttempts) failed(key [2]string) int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.failures == nil {
+		a.failures = map[[2]string]int{}
+	}
+	a.failures[key]++
+	return a.failures[key]
+}
+
+func (a *thumbnailAttempts) exhausted(key [2]string) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.failures[key] >= thumbnailTries
+}
+
 type Thumbnailer struct {
 	s      *Store
 	bucket *blob.Bucket
-	tries  map[[2]string]int
 	in     *inbox
 }
 
 func StartThumbnailer(s *Store, bucket *blob.Bucket) {
-	t := &Thumbnailer{s: s, bucket: bucket, tries: map[[2]string]int{}, in: s.Model().services.inbox(thumbnailInbox)}
+	t := &Thumbnailer{s: s, bucket: bucket, in: s.Model().services.inbox(thumbnailInbox)}
 	go t.run()
 	s.OnTick(t.in.wake.poke)
 	t.in.wake.poke()
@@ -57,12 +78,12 @@ func (t *Thumbnailer) run() {
 			start := time.Now()
 			drawn, err := t.make(doc)
 			if err != nil {
-				t.tries[key]++
-				if t.tries[key] >= thumbnailTries {
-					slog.Error("thumbnail, left until a restart", "document", id, "content", doc["content"], "tries", t.tries[key], "error", err)
+				tries := t.s.Model().services.thumbnails.failed(key)
+				if tries >= thumbnailTries {
+					slog.Error("thumbnail, left until a restart", "document", id, "content", doc["content"], "tries", tries, "error", err)
 					continue
 				}
-				slog.Warn("thumbnail, to be tried again", "document", id, "content", doc["content"], "tries", t.tries[key], "error", err)
+				slog.Warn("thumbnail, to be tried again", "document", id, "content", doc["content"], "tries", tries, "error", err)
 				continue
 			}
 			slog.Info("thumbnail: made", "document", id, "drawn", drawn, "took", time.Since(start).Round(time.Millisecond))
@@ -75,7 +96,7 @@ func (t *Thumbnailer) pending() []store.Row {
 	contents := m.Table("CONTENT")
 	out := []store.Row{}
 	for _, doc := range m.Table("DOCUMENT").All() {
-		if doc["content"] == "" || doc["thumbnailed"] != "" || t.tries[thumbnailKey(doc)] >= thumbnailTries {
+		if doc["content"] == "" || doc["thumbnailed"] != "" || m.services.thumbnails.exhausted(thumbnailKey(doc)) {
 			continue
 		}
 		c, ok := contents.Get(doc["content"])

@@ -160,20 +160,44 @@ func (r SearchRow) body() string {
 }
 
 type SearchIndex struct {
-	mu      sync.RWMutex
-	rows    map[string]SearchRow
-	entries map[string]*SearchEntry
-	missing map[string]bool
-	dropped map[string]int64
-	full    bool
-	view    *searchView
-	version int
-	poke    wake
-	reindex wake
+	mu             sync.RWMutex
+	rows           map[string]SearchRow
+	entries        map[string]*SearchEntry
+	missing        map[string]bool
+	dropped        map[string]int64
+	full           bool
+	view           *searchView
+	version        int
+	indexedVersion int
+	following      bool
+	poke           wake
+	reindex        wake
 }
 
 func NewSearchIndex() *SearchIndex {
-	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]int64{}, view: emptyView(), poke: newWake(), reindex: newWake()}
+	return &SearchIndex{rows: map[string]SearchRow{}, entries: map[string]*SearchEntry{}, missing: map[string]bool{}, dropped: map[string]int64{}, view: emptyView(), indexedVersion: -1, poke: newWake(), reindex: newWake()}
+}
+
+func (m *Model) searchProcessing() queueCount {
+	in := m.services.inbox(searchInbox)
+	in.mu.Lock()
+	pending := len(in.pending)
+	in.mu.Unlock()
+	x := m.index
+	x.mu.RLock()
+	busy := pending > 0 || x.following || x.full || x.version != x.indexedVersion
+	for _, row := range x.rows {
+		if entry := x.entries[row.Object]; entry != nil && entry.unfinished() {
+			busy = true
+			break
+		}
+	}
+	x.mu.RUnlock()
+	count := 0
+	if busy {
+		count = 1
+	}
+	return queueCount{Name: "search processing", About: "committed changes being read or rebuilt into the in-memory search index", Pending: count, Total: count}
 }
 
 func (x *SearchIndex) drop(object string) {
@@ -555,117 +579,134 @@ func (m *Model) searchInput(table string, row store.Row) string {
 
 func (x *Searcher) follow() {
 	for range x.poke {
-		start := time.Now()
+		x.followChanges()
+	}
+}
+
+func (x *Searcher) followChanges() {
+	x.mu.Lock()
+	x.following = true
+	x.mu.Unlock()
+	defer func() {
 		x.mu.Lock()
-		dropped := maps.Clone(x.dropped)
-		clear(x.dropped)
-		full := x.full
-		x.full = false
+		x.following = false
 		x.mu.Unlock()
-		in := x.s.Model().services.inbox(searchInbox)
-		changes := in.take()
-		for hash, generation := range dropped {
-			if generation == 0 {
-				continue
-			}
-			if err := x.bucket.Remove(context.Background(), hash, generation); err != nil {
-				slog.Error("search: remove a deleted entry", "object", hash, "error", err)
-			}
-		}
-		if len(dropped) > 0 {
-			slog.Info("search: removed deleted entries", "objects", len(dropped))
-		}
-		if !full && len(changes) == 0 {
+	}()
+	start := time.Now()
+	x.mu.Lock()
+	dropped := maps.Clone(x.dropped)
+	clear(x.dropped)
+	full := x.full
+	x.full = false
+	x.mu.Unlock()
+	in := x.s.Model().services.inbox(searchInbox)
+	changes := in.take()
+	for hash, generation := range dropped {
+		if generation == 0 {
 			continue
 		}
-		m := x.s.Model()
-		dirty := map[string]bool{}
-		for _, d := range changes {
-			for _, id := range m.searchReach(d.change) {
-				dirty[id] = true
-			}
+		if err := x.bucket.Remove(context.Background(), hash, generation); err != nil {
+			slog.Error("search: remove a deleted entry", "object", hash, "error", err)
 		}
-		rows, err := x.rowsFor(m, full, dirty)
-		if err != nil {
-			slog.Error("search: read the extracts", "error", err)
-			x.mu.Lock()
-			x.full = x.full || full
-			x.mu.Unlock()
-			in.giveBack(changes)
-			continue
+	}
+	if len(dropped) > 0 {
+		slog.Info("search: removed deleted entries", "objects", len(dropped))
+	}
+	if !full && len(changes) == 0 {
+		return
+	}
+	m := x.s.Model()
+	dirty := map[string]bool{}
+	for _, d := range changes {
+		for _, id := range m.searchReach(d.change) {
+			dirty[id] = true
 		}
+	}
+	rows, err := x.rowsFor(m, full, dirty)
+	if err != nil {
+		slog.Error("search: read the extracts", "error", err)
 		x.mu.Lock()
-		if full && len(x.rows) > 0 {
-			corrected := correctedRows(x.rows, rows, dirty)
-			slog.Info("search: full pass", "rows", len(rows), "corrected", len(corrected), "ids", corrected[:min(len(corrected), 10)], "took", time.Since(start).Round(time.Millisecond))
+		x.full = x.full || full
+		x.mu.Unlock()
+		in.giveBack(changes)
+		return
+	}
+	x.mu.Lock()
+	if full && len(x.rows) > 0 {
+		corrected := correctedRows(x.rows, rows, dirty)
+		slog.Info("search: full pass", "rows", len(rows), "corrected", len(corrected), "ids", corrected[:min(len(corrected), 10)], "took", time.Since(start).Round(time.Millisecond))
+	}
+	wanted := map[string]bool{}
+	unknown := map[string]bool{}
+	for _, r := range rows {
+		wanted[r.Object] = true
+		if _, gone := x.dropped[r.Object]; x.entries[r.Object] == nil && !x.missing[r.Object] && !gone {
+			unknown[r.Object] = true
 		}
-		wanted := map[string]bool{}
-		unknown := map[string]bool{}
-		for _, r := range rows {
-			wanted[r.Object] = true
-			if _, gone := x.dropped[r.Object]; x.entries[r.Object] == nil && !x.missing[r.Object] && !gone {
-				unknown[r.Object] = true
-			}
+	}
+	removed := map[string]int64{}
+	for _, r := range x.rows {
+		if e := x.entries[r.Object]; x.client != nil && !wanted[r.Object] && e != nil {
+			removed[r.Object] = e.generation
 		}
-		removed := map[string]int64{}
-		for _, r := range x.rows {
-			if e := x.entries[r.Object]; x.client != nil && !wanted[r.Object] && e != nil {
-				removed[r.Object] = e.generation
-			}
-		}
-		sweep := x.client != nil && !x.swept
-		x.swept = x.swept || sweep
+	}
+	sweep := x.client != nil && !x.swept
+	x.swept = x.swept || sweep
+	if !maps.Equal(x.rows, rows) {
 		x.rows = rows
 		x.version++
-		for hash := range x.entries {
-			if !wanted[hash] {
-				delete(x.entries, hash)
+	}
+	for hash := range x.entries {
+		if !wanted[hash] {
+			delete(x.entries, hash)
+		}
+	}
+	for hash := range x.missing {
+		if !wanted[hash] {
+			delete(x.missing, hash)
+		}
+	}
+	x.mu.Unlock()
+	if sweep {
+		x.strays(wanted, removed)
+	}
+	if len(removed) > 0 {
+		slog.Info("search: remove the unwanted entries", "objects", len(removed))
+	}
+	for _, hash := range slices.Sorted(maps.Keys(removed)) {
+		if err := x.bucket.Remove(context.Background(), hash, removed[hash]); err != nil {
+			slog.Error("search: remove", "object", hash, "error", err)
+		}
+	}
+	toLoad := slices.Sorted(maps.Keys(unknown))
+	loaded, errs := loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
+	x.mu.Lock()
+	for i, hash := range toLoad {
+		if errs[i] != nil {
+			slog.Error("search: load", "object", hash, "error", errs[i])
+			continue
+		}
+		if loaded[i] != nil {
+			x.entries[hash] = loaded[i]
+			x.version++
+			continue
+		}
+		x.missing[hash] = true
+	}
+	missing := len(x.missing)
+	if x.client != nil {
+		for _, hash := range slices.Sorted(maps.Keys(wanted)) {
+			if e := x.entries[hash]; e == nil || e.unfinished() {
+				x.enqueue(hash)
 			}
 		}
-		for hash := range x.missing {
-			if !wanted[hash] {
-				delete(x.missing, hash)
-			}
-		}
-		x.mu.Unlock()
-		if sweep {
-			x.strays(wanted, removed)
-		}
-		if len(removed) > 0 {
-			slog.Info("search: remove the unwanted entries", "objects", len(removed))
-		}
-		for _, hash := range slices.Sorted(maps.Keys(removed)) {
-			if err := x.bucket.Remove(context.Background(), hash, removed[hash]); err != nil {
-				slog.Error("search: remove", "object", hash, "error", err)
-			}
-		}
-		toLoad := slices.Sorted(maps.Keys(unknown))
-		loaded, errs := loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
-		x.mu.Lock()
-		for i, hash := range toLoad {
-			if errs[i] != nil {
-				slog.Error("search: load", "object", hash, "error", errs[i])
-				continue
-			}
-			if loaded[i] != nil {
-				x.entries[hash] = loaded[i]
-				x.version++
-				continue
-			}
-			x.missing[hash] = true
-		}
-		missing := len(x.missing)
-		if x.client != nil {
-			for _, hash := range slices.Sorted(maps.Keys(wanted)) {
-				if e := x.entries[hash]; e == nil || e.unfinished() {
-					x.enqueue(hash)
-				}
-			}
-		}
-		x.mu.Unlock()
-		if len(unknown) > 0 {
-			slog.Info("search: read the index", "rows", len(rows), "loaded", len(unknown), "missing", missing, "took", time.Since(start).Round(time.Millisecond))
-		}
+	}
+	rebuild := x.version != x.indexedVersion
+	x.mu.Unlock()
+	if len(unknown) > 0 {
+		slog.Info("search: read the index", "rows", len(rows), "loaded", len(unknown), "missing", missing, "took", time.Since(start).Round(time.Millisecond))
+	}
+	if rebuild {
 		x.reindex.poke()
 	}
 }
@@ -755,6 +796,11 @@ func (x *Searcher) index() {
 	for range x.reindex {
 		start := time.Now()
 		x.mu.RLock()
+		version := x.version
+		if x.indexedVersion == version {
+			x.mu.RUnlock()
+			continue
+		}
 		rows := x.rows
 		entries := map[string]*SearchEntry{}
 		byTable := map[string]map[string]*SearchEntry{}
@@ -780,6 +826,7 @@ func (x *Searcher) index() {
 		view := buildView(rows, entries, vectors)
 		x.mu.Lock()
 		x.view = view
+		x.indexedVersion = version
 		x.mu.Unlock()
 		slog.Info("search: indexed", "entries", len(entries), "names", len(view.names), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
 		select {

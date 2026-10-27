@@ -47,7 +47,7 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 			if tc.completed {
 				docs["doc00000000001"]["rendered"] = "2026-10-26 20:00:00"
 				docs["doc00000000001"]["page_count"] = "1"
-				docs["doc-source-page"] = map[string]string{"parent": "doc00000000001", "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000002", "extracted": "2026-10-26 20:00:00"}
+				docs["doc-source-page"] = map[string]string{"parent": "doc00000000001", "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000002", "thumbnail": "cnt00000000008", "thumbnailed": "2026-10-26 20:00:00", "extracted": "2026-10-26 20:00:00"}
 			}
 			if tc.firstMarked {
 				docs["doc00000000002"]["thumbnailed"] = "2026-10-26 20:00:00"
@@ -78,6 +78,10 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 			downloads, pages, thumbnails, copies := 0, 0, 0, 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/queues" {
+					writeDrained(w)
+					return
+				}
 				switch r.URL.Path {
 				case "/api/q":
 					if r.Method == "POST" {
@@ -89,7 +93,7 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 						}
 						for _, edit := range batch.Batch {
 							if edit.Insert == "DOCUMENT" {
-								if edit.Row["content"] != "cnt00000000002" {
+								if edit.Row["content"] != "cnt00000000002" || edit.Row["thumbnail"] != "cnt00000000008" || edit.Row["thumbnailed"] == "" {
 									t.Errorf("page lost its shared content: %v", edit.Row)
 								}
 								row := map[string]string{}
@@ -144,7 +148,7 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 					id := r.FormValue("document")
 					docs[id]["rendered"] = "2026-10-26 20:00:00"
 					docs[id]["page_count"] = "1"
-					docs[id+"-page"] = map[string]string{"parent": id, "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000002", "extracted": "2026-10-26 20:00:00"}
+					docs[id+"-page"] = map[string]string{"parent": id, "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000002", "thumbnail": "cnt00000000008", "thumbnailed": "2026-10-26 20:00:00", "extracted": "2026-10-26 20:00:00"}
 				case "/api/do/thumbnail":
 					thumbnails++
 					if err := r.ParseMultipartForm(1 << 20); err != nil {
@@ -174,12 +178,12 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 			if err := draw(&qclient.Client{Base: server.URL}); err != nil {
 				t.Fatal(err)
 			}
-			wantDownloads, wantPages, wantThumbnails, wantCopies := 1, 1, 1, 1
+			wantDownloads, wantPages, wantThumbnails, wantCopies := 1, 1, 0, 2
 			if tc.completed {
 				wantPages = 0
 			}
 			if tc.thumbnail {
-				wantDownloads, wantThumbnails = 0, 0
+				wantDownloads, wantCopies = 0, 1
 			}
 			if tc.laterIncomplete {
 				wantCopies++
@@ -200,11 +204,15 @@ func TestChangedPDFIsSkippedAndLaterPDFContinues(t *testing.T) {
 				"doc00000000101": {"parent": "doc00000000001", "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000002"},
 				"doc00000000004": {"content": "cnt00000000005", "rendered": "2026-10-26 20:00:00", "page_count": "1", "thumbnail": "cnt00000000007"},
 				"doc00000000005": {"content": "cnt00000000005"},
-				"doc00000000104": {"parent": "doc00000000004", "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000006"},
+				"doc00000000104": {"parent": "doc00000000004", "relation": "page", "first_page": "1", "last_page": "1", "content": "cnt00000000006", "thumbnail": "cnt00000000008", "thumbnailed": "2026-10-26 20:00:00"},
 			}
 			writes := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/api/queues" {
+					writeDrained(w)
+					return
+				}
 				if r.URL.Path != "/api/q" {
 					t.Errorf("unexpected upload %s", r.URL.Path)
 					http.Error(w, "unexpected upload", 400)

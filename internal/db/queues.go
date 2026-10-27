@@ -40,7 +40,7 @@ func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens) {
 		}
 		status := s.Status()
 		report := queueReport{Queues: m.queueCounts(), LastRefresh: status.LastRefresh}
-		report.Queues = append(report.Queues, queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
+		report.Queues = append(report.Queues, m.searchProcessing(), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
 		serve.Write(w, r, http.StatusOK, report)
 	})
 }
@@ -169,6 +169,8 @@ func (m *Model) queueCounts() []queueCount {
 	})
 	out = append(out, search)
 
+	out = append(out, m.thumbnailQueue())
+
 	photos := queueCount{Name: "photos", About: "photos whose re-encode, crop and thumbnail are not made for the current original and box", Query: `(from PHOTO (where (not ready)))`}
 	for _, row := range m.Table("PHOTO").All() {
 		photos.Total++
@@ -189,4 +191,20 @@ func (m *Model) queueCounts() []queueCount {
 		sweep.Parts = append(sweep.Parts, queueCount{Name: baseType(mimeType), Pending: byMime[mimeType]})
 	}
 	return append(out, sweep)
+}
+
+func (m *Model) thumbnailQueue() queueCount {
+	thumbnails := queueCount{Name: "thumbnails", About: "documents still awaiting a server thumbnail attempt; exhausted failures wait for a restart"}
+	for _, doc := range m.Table("DOCUMENT").All() {
+		content, _ := m.Table("CONTENT").Get(doc["content"])
+		if _, ok := drawers[baseType(content["mime"])]; !ok {
+			continue
+		}
+		thumbnails.Total++
+		if doc["thumbnailed"] == "" && !m.services.thumbnails.exhausted(thumbnailKey(doc)) {
+			thumbnails.Pending++
+		}
+	}
+	thumbnails.Done = thumbnails.Total - thumbnails.Pending
+	return thumbnails
 }

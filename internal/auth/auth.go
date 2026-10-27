@@ -107,7 +107,7 @@ func Public(r *http.Request) bool {
 }
 
 func Bearer(r *http.Request) (string, bool) {
-	if r.URL.Path != "/api/q" && !strings.HasPrefix(r.URL.Path, "/api/do/") && !strings.HasPrefix(r.URL.Path, "/api/blob/") {
+	if r.URL.Path != "/api/q" && r.URL.Path != "/api/queues" && !strings.HasPrefix(r.URL.Path, "/api/do/") && !strings.HasPrefix(r.URL.Path, "/api/blob/") {
 		return "", false
 	}
 	return strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")

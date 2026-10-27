@@ -1187,3 +1187,117 @@ func TestLoadedReplacementChainResolvesToLatest(t *testing.T) {
 	apply(t, s, []Edit{{Insert: "DOCUMENT_GROUP", Row: map[string]any{"document": "doc00000000903", "group": "grp00000000031", "relation": "sent_to"}}})
 	check("")
 }
+
+func TestSearchProcessingIncludesCommittedAndUnpublishedWork(t *testing.T) {
+	index := NewSearchIndex()
+	m := &Model{index: index, services: newServices(index)}
+	x := &Searcher{SearchIndex: index, ready: make(chan struct{})}
+	if m.searchProcessing().Pending != 1 {
+		t.Fatal("an unbuilt index was reported idle")
+	}
+	go x.index()
+	index.reindex.poke()
+	wait := func() {
+		t.Helper()
+		for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+			if m.searchProcessing().Pending == 0 {
+				return
+			}
+		}
+		t.Fatal("search processing did not drain")
+	}
+	wait()
+	in := m.services.inbox(searchInbox)
+	in.deliver(delivery{})
+	if m.searchProcessing().Pending != 1 {
+		t.Fatal("a committed change was reported idle before the follower read it")
+	}
+	index.mu.Lock()
+	index.following = true
+	index.mu.Unlock()
+	in.take()
+	if m.searchProcessing().Pending != 1 {
+		t.Fatal("a change being followed was reported idle")
+	}
+	index.mu.Lock()
+	index.following = false
+	index.version++
+	index.mu.Unlock()
+	if m.searchProcessing().Pending != 1 {
+		t.Fatal("a version not yet published in the in-memory index was reported idle")
+	}
+	index.reindex.poke()
+	wait()
+	index.mu.Lock()
+	index.rows = map[string]SearchRow{"row": {Object: "object"}}
+	index.entries["object"] = &SearchEntry{}
+	index.mu.Unlock()
+	if m.searchProcessing().Pending != 1 {
+		t.Fatal("an unfinished search entry was reported idle")
+	}
+}
+
+func TestThumbnailWritesLeaveTheSearchIndexUnchanged(t *testing.T) {
+	s := sample(t)
+	bucket := sampleBucket(t)
+	x := &Searcher{SearchIndex: s.Model().index, s: s, bucket: bucket, texts: map[string]string{}, ready: make(chan struct{})}
+	x.rebuild()
+	x.followChanges()
+	go x.index()
+	wait := func() {
+		t.Helper()
+		for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+			if s.Model().searchProcessing().Pending == 0 {
+				return
+			}
+		}
+		t.Fatal("index did not finish rebuilding")
+	}
+	wait()
+	version, view := x.current(), x.snapshot()
+	document := ""
+	for _, row := range view.rows {
+		if row.Table == "DOCUMENT" {
+			document = row.Terminal
+			break
+		}
+	}
+	if document == "" {
+		t.Fatal("fixture has no searchable documents")
+	}
+	thumbnail, err := blob.Thumbnail(redPNG(t, 120, 180))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "thumbnail", Row: storedContent(t, bucket, "image/jpeg", thumbnail)},
+		{Set: document, Cells: map[string]any{"thumbnail": "@thumbnail", "thumbnailed": "2026-10-27 12:00:00"}},
+	})
+	if len(ids) == 0 || s.Model().searchProcessing().Pending == 0 {
+		t.Fatal("thumbnail write did not reach search")
+	}
+	x.followChanges()
+	if x.current() != version || x.snapshot() != view || len(x.reindex) != 0 {
+		t.Fatal("thumbnail-only change rebuilt the search index")
+	}
+	x.rebuild()
+	x.followChanges()
+	if x.current() != version || x.snapshot() != view || len(x.reindex) != 0 {
+		t.Fatal("unchanged full pass rebuilt the search index")
+	}
+	apply(t, s, []Edit{{Set: document, Cells: map[string]any{"name": "A changed searchable document title"}}})
+	x.followChanges()
+	wait()
+	if x.current() == version || x.snapshot() == view {
+		t.Fatal("searchable title change did not rebuild the index")
+	}
+	found := false
+	for _, row := range x.snapshot().rows {
+		if row.Terminal == document && row.Name == "A changed searchable document title" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("rebuilt index lacks the changed document title")
+	}
+}
