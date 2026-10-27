@@ -1,11 +1,48 @@
 package mail
 
 import (
+	"fmt"
 	"io"
 	netmail "net/mail"
 	"strings"
 	"testing"
 )
+
+func nestedMessage(depth int) string {
+	var raw strings.Builder
+	raw.WriteString("From: a@example.org\r\nContent-Type: multipart/mixed; boundary=b0\r\n\r\n")
+	for i := 0; i < depth-1; i++ {
+		fmt.Fprintf(&raw, "--b%d\r\nContent-Type: multipart/mixed; boundary=b%d\r\n\r\n", i, i+1)
+	}
+	fmt.Fprintf(&raw, "--b%d\r\nContent-Type: text/plain\r\n\r\nWords.\r\n", depth-1)
+	for i := depth - 1; i >= 0; i-- {
+		fmt.Fprintf(&raw, "--b%d--\r\n", i)
+	}
+	return raw.String()
+}
+
+func TestPartsRefusesDeepNesting(t *testing.T) {
+	for _, depth := range []int{1, 2, 100, 101, 1000} {
+		t.Run(fmt.Sprint(depth), func(t *testing.T) {
+			found, bodies, err := parts(t, nestedMessage(depth))
+			if depth > 100 {
+				if err == nil || !strings.Contains(err.Error(), "nested multipart") || len(found) != 0 {
+					t.Fatalf("deep mail: %d parts, %v", len(found), err)
+				}
+				return
+			}
+			if err != nil || len(found) != 1 || bodies[0] != "Words." {
+				t.Fatalf("ordinary mail: %d parts, %q, %v", len(found), bodies, err)
+			}
+		})
+	}
+}
+
+func TestReplyRefusesDeepNesting(t *testing.T) {
+	if _, err := ParseReply([]byte(nestedMessage(101))); err == nil || !strings.Contains(err.Error(), "nested multipart") {
+		t.Fatalf("deep reply: %v", err)
+	}
+}
 
 func parts(t *testing.T, raw string) ([]Part, []string, error) {
 	t.Helper()

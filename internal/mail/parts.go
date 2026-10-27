@@ -21,12 +21,14 @@ type Part struct {
 	Body        io.Reader
 }
 
+const maxMIMEDepth = 100
+
 func Parts(msg *netmail.Message, each func(Part) error) error {
 	h := msg.Header
-	return walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), h.Get("Content-Id"), msg.Body, each)
+	return walk(h.Get("Content-Type"), h.Get("Content-Transfer-Encoding"), h.Get("Content-Disposition"), h.Get("Content-Id"), msg.Body, each, 0)
 }
 
-func walk(contentType, encoding, disposition, contentID string, body io.Reader, each func(Part) error) error {
+func walk(contentType, encoding, disposition, contentID string, body io.Reader, each func(Part) error, depth int) error {
 	if contentType == "" {
 		contentType = "text/plain"
 	}
@@ -35,6 +37,9 @@ func walk(contentType, encoding, disposition, contentID string, body io.Reader, 
 		return fmt.Errorf("content type %q: %w", contentType, err)
 	}
 	if strings.HasPrefix(mediaType, "multipart/") {
+		if depth >= maxMIMEDepth {
+			return fmt.Errorf("mail has more than %d nested multipart containers", maxMIMEDepth)
+		}
 		reader := multipart.NewReader(body, params["boundary"])
 		for {
 			part, err := reader.NextRawPart()
@@ -44,7 +49,7 @@ func walk(contentType, encoding, disposition, contentID string, body io.Reader, 
 			if err != nil {
 				return err
 			}
-			if err := walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part.Header.Get("Content-Id"), part, each); err != nil {
+			if err := walk(part.Header.Get("Content-Type"), part.Header.Get("Content-Transfer-Encoding"), part.Header.Get("Content-Disposition"), part.Header.Get("Content-Id"), part, each, depth+1); err != nil {
 				return err
 			}
 		}
