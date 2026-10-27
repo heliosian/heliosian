@@ -10,13 +10,13 @@ import (
 
 func (cx *compiler) groupOperand(s *sexp, sc *scope, op string) (operand, error) {
 	if !s.isList() && s.kind == atomString {
-		return coerce(s, typ{class: classRow, kind: ID, table: "GROUP"})
+		return coerce(s, typ{kind: ID, table: "GROUP"})
 	}
 	g, err := cx.operand(s, sc)
 	if err != nil {
 		return operand{}, err
 	}
-	if g.lit != nil || g.t.class != classRow || g.t.table != "GROUP" {
+	if g.lit != nil || classOf(g.t.kind) != classRow || g.t.table != "GROUP" {
 		return operand{}, s.errorf("%s takes a group", op)
 	}
 	return g, nil
@@ -60,16 +60,16 @@ func (cx *compiler) membersSet(s *sexp, sc *scope) (func(f *frame) *valueSet, ty
 		}
 		f.run.memo[key] = out
 		return out
-	}, typ{class: classRow, kind: ID, table: "PERSON"}, outer, nil
+	}, typ{kind: ID, table: "PERSON"}, outer, nil
 }
 
 func (cx *compiler) groupsArg(s *sexp, sc *scope) (func(f *frame) []string, bool, error) {
 	if s.isList() && (s.head() == "select" || s.head() == "slug") {
-		set, t, outer, err := cx.set(s, sc, typ{class: classRow, kind: ID, table: "GROUP"})
+		set, t, outer, err := cx.set(s, sc, typ{kind: ID, table: "GROUP"})
 		if err != nil {
 			return nil, false, err
 		}
-		if t.class != classRow || t.table != "GROUP" {
+		if classOf(t.kind) != classRow || t.table != "GROUP" {
 			return nil, false, s.errorf("members takes a select of groups, not %s", t)
 		}
 		return func(f *frame) []string { return slices.Sorted(maps.Keys(set(f).keys)) }, outer, nil
@@ -94,11 +94,11 @@ func (cx *compiler) covers(s *sexp, sc *scope) (cond, error) {
 	if err != nil {
 		return cond{}, err
 	}
-	set, t, _, err := cx.set(s.list[2], sc, typ{class: classRow, kind: ID, table: "PERSON"})
+	set, t, _, err := cx.set(s.list[2], sc, typ{kind: ID, table: "PERSON"})
 	if err != nil {
 		return cond{}, err
 	}
-	if t.class != classRow || t.table != "PERSON" {
+	if classOf(t.kind) != classRow || t.table != "PERSON" {
 		return cond{}, s.list[2].errorf("covers takes a set of people, not %s", t)
 	}
 	return cond{eval: func(f *frame) bool {

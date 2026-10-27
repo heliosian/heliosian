@@ -412,7 +412,7 @@ func (f *frame) memoKey(key string, outer []string) string {
 }
 
 func indexed(t typ) bool {
-	return t.class == classRow || t.kind == Enum
+	return classOf(t.kind) == classRow || t.kind == Enum
 }
 
 func (s *scan) pickProbe() {
@@ -596,7 +596,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if err != nil {
 			return cond{}, err
 		}
-		if p.t.class != classBool {
+		if classOf(p.t.kind) != classBool {
 			return cond{}, s.errorf("%s is %s, not true or false", s.flat(), p.t)
 		}
 		return cond{eval: func(f *frame) bool { v := p.eval(f); return !v.blank && v.b }, cheap: p.cheap}, nil
@@ -662,7 +662,7 @@ func (cx *compiler) cond(s *sexp, sc *scope) (cond, error) {
 		if err != nil {
 			return cond{}, err
 		}
-		if p.t.class != classText {
+		if classOf(p.t.kind) != classText {
 			return cond{}, args[0].errorf("contains looks in text, and %s is %s", args[0].flat(), p.t)
 		}
 		needle := strings.ToLower(args[1].text)
@@ -825,7 +825,7 @@ func (cx *compiler) compare(s *sexp, op string, sc *scope) (cond, error) {
 		return cond{}, err
 	}
 	ordered := op != "=" && op != "!="
-	if ordered && (a.t.class == classRow || a.t.class == classBool) {
+	if ordered && (classOf(a.t.kind) == classRow || classOf(a.t.kind) == classBool) {
 		return cond{}, s.errorf("%s orders numbers, dates and text, not %s", op, a.t)
 	}
 	out := cond{cheap: a.cheap && b.cheap}
@@ -883,10 +883,10 @@ func unionOf(conds []cond) []branch {
 }
 
 func comparable(s *sexp, a, b typ) error {
-	if a.class != b.class {
+	if classOf(a.kind) != classOf(b.kind) {
 		return s.errorf("can't compare %s with %s", a, b)
 	}
-	if a.class == classRow && a.table != "" && b.table != "" && a.table != b.table {
+	if classOf(a.kind) == classRow && a.table != "" && b.table != "" && a.table != b.table {
 		return s.errorf("can't compare %s with %s", a, b)
 	}
 	return nil
@@ -951,14 +951,14 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 		if err != nil {
 			return nil, typ{}, false, err
 		}
-		if g.lit != nil || g.t.class != classRow || g.t.table == "" {
+		if g.lit != nil || classOf(g.t.kind) != classRow || g.t.table == "" {
 			return nil, typ{}, false, s.errorf("ancestors takes a row")
 		}
 		table, _ := Lookup(g.t.table)
 		if parent, ok := table.Column("parent"); !ok || parent.Kind != Ref || parent.Target != table.Name {
 			return nil, typ{}, false, s.errorf("%s has no parent to follow", table.Name)
 		}
-		t := typ{class: classRow, kind: ID, table: table.Name}
+		t := typ{kind: ID, table: table.Name}
 		return func(f *frame) *valueSet {
 			out := newValueSet(false)
 			v := g.eval(f)
@@ -994,7 +994,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			if err != nil {
 				return nil, typ{}, false, err
 			}
-			if g.lit != nil || g.t.class != classRow || g.t.table == "" {
+			if g.lit != nil || classOf(g.t.kind) != classRow || g.t.table == "" {
 				return nil, typ{}, false, s.errorf("descendants takes rows")
 			}
 			t, outer = g.t, !g.local
@@ -1007,7 +1007,7 @@ func (cx *compiler) set(s *sexp, sc *scope, x typ) (func(f *frame) *valueSet, ty
 			}
 		}
 		depends := cx.outside(mark, nil)
-		if t.class != classRow || t.table == "" {
+		if classOf(t.kind) != classRow || t.table == "" {
 			return nil, typ{}, false, s.errorf("descendants takes rows")
 		}
 		table, _ := Lookup(t.table)
@@ -1194,12 +1194,12 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			case "true", "false":
 				return operand{lit: s}, nil
 			case "today":
-				return operand{t: typ{class: classTime, kind: Date}, cheap: true, eval: func(f *frame) value {
+				return operand{t: typ{kind: Date}, cheap: true, eval: func(f *frame) value {
 					y, mo, d := f.run.now.Date()
 					return value{kind: Date, s: "today", t: time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)}
 				}}, nil
 			case "now":
-				return operand{t: typ{class: classTime, kind: Moment}, cheap: true, eval: func(f *frame) value {
+				return operand{t: typ{kind: Moment}, cheap: true, eval: func(f *frame) value {
 					return value{kind: Moment, s: "now", t: f.run.now}
 				}}, nil
 			}
@@ -1214,7 +1214,7 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 		if err != nil {
 			return operand{}, err
 		}
-		return operand{t: typ{class: classNumber, kind: Int}, eval: func(f *frame) value {
+		return operand{t: typ{kind: Int}, eval: func(f *frame) value {
 			return remembered(f, inner, func() value {
 				n := int64(0)
 				inner.each(f, func(*frame) bool { n++; return true })
@@ -1234,7 +1234,7 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 		if err != nil {
 			return operand{}, err
 		}
-		if p.t.class != classNumber {
+		if classOf(p.t.kind) != classNumber {
 			return operand{}, s.list[1].errorf("sum adds numbers, and %s is %s", s.list[1].flat(), p.t)
 		}
 		return operand{t: p.t, eval: func(f *frame) value {
@@ -1274,7 +1274,7 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 			}
 			sets = append(sets, set)
 		}
-		return operand{t: typ{class: classNumber, kind: Int}, eval: func(f *frame) value {
+		return operand{t: typ{kind: Int}, eval: func(f *frame) value {
 			v, n := x.eval(f), 0
 			for _, set := range sets {
 				n += set(f).count(v)
@@ -1289,10 +1289,10 @@ func (cx *compiler) operand(s *sexp, sc *scope) (operand, error) {
 		if err != nil {
 			return operand{}, err
 		}
-		if p.t.class != classText {
+		if classOf(p.t.kind) != classText {
 			return operand{}, s.list[1].errorf("length counts the characters of text, and %s is %s", s.list[1].flat(), p.t)
 		}
-		return operand{t: typ{class: classNumber, kind: Int}, local: p.local, cheap: p.cheap, eval: func(f *frame) value {
+		return operand{t: typ{kind: Int}, local: p.local, cheap: p.cheap, eval: func(f *frame) value {
 			return value{kind: Int, num: new(big.Rat).SetInt64(int64(utf8.RuneCountInString(p.eval(f).s)))}
 		}}, nil
 	}
@@ -1303,12 +1303,12 @@ func coerce(lit *sexp, t typ) (operand, error) {
 	v := value{kind: t.kind, s: lit.text}
 	switch {
 	case lit.kind == atomName && (lit.text == "true" || lit.text == "false"):
-		if t.class != classBool {
+		if classOf(t.kind) != classBool {
 			return operand{}, lit.errorf("%s is true or false, and wants %s", lit.text, t)
 		}
 		v.b = lit.text == "true"
 	case lit.kind == atomNumber:
-		if t.class != classNumber {
+		if classOf(t.kind) != classNumber {
 			return operand{}, lit.errorf("%s is a number, and wants %s", lit.text, t)
 		}
 		n, ok := new(big.Rat).SetString(lit.text)
@@ -1317,7 +1317,7 @@ func coerce(lit *sexp, t typ) (operand, error) {
 		}
 		v.num = n
 	case lit.kind == atomString:
-		switch t.class {
+		switch classOf(t.kind) {
 		case classText:
 			if t.values != nil && !slices.ContainsFunc(t.values, func(s string) bool { return strings.EqualFold(s, lit.text) }) {
 				return operand{}, lit.errorf("%q is not one of %s", lit.text, strings.Join(t.values, ", "))
@@ -1424,7 +1424,7 @@ func (cx *compiler) path(s *sexp, sc *scope) (operand, error) {
 	}
 	out := operand{local: local}
 	if len(steps) == 0 {
-		out.t = typ{class: classRow, kind: ID, table: start.Name}
+		out.t = typ{kind: ID, table: start.Name}
 	} else {
 		out.t = columnType(table.Name, steps[len(steps)-1])
 	}

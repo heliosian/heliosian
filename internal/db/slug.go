@@ -7,7 +7,7 @@ import (
 	"heliosian/internal/logging"
 )
 
-var groupID = typ{class: classRow, kind: ID, table: "GROUP"}
+var groupID = typ{kind: ID, table: "GROUP"}
 
 func (cx *compiler) slugNames(s *sexp, many bool) ([]string, error) {
 	names := []string{}

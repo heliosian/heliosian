@@ -21,14 +21,13 @@ const (
 )
 
 type typ struct {
-	class  class
 	kind   Kind
 	table  string
 	values []string
 }
 
 func (t typ) String() string {
-	switch t.class {
+	switch classOf(t.kind) {
 	case classNumber:
 		return "a number"
 	case classTime:
@@ -59,7 +58,7 @@ func classOf(k Kind) class {
 }
 
 func columnType(table string, c Column) typ {
-	t := typ{class: classOf(c.Kind), kind: c.Kind}
+	t := typ{kind: c.Kind}
 	if c.Kind == Enum {
 		t.values = c.ValueNames()
 	}
