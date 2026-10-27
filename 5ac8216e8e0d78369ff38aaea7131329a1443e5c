@@ -1,0 +1,35 @@
+# Share the one-shot row route lookup
+
+byre task tskBgw26FFEeLL, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskBgw26FFEeLL in byre (GET /api/events?task_id=tskBgw26FFEeLL).
+
+## Summary
+
+Simplicity audit of main at a22fab07. Celebrate, Loop, When, and Team each had a copy of “find the row, otherwise fetch it once, otherwise say it is missing,” and those copies had drifted. They now share loadRow in web/common/router.js. The apps only supply find, load, an optional address settle, the page, and the missing-page noun.
+
+Before: a Celebrate path with no loaded party and no alias stayed on Looking….
+Now: it shows Not here once the alias lookup returns nothing.
+
+Before: a second render during a When or Celebrate fetch could flash Not here, and Loop or Team could start a second fetch.
+Now: all four stay on Looking… until that fetch settles.
+
+Before: Loop and Team showed a blank page while a row was loading.
+Now: they show Looking….
+
+Before: a When or Celebrate lookup that finished after you left the page could still replace the address.
+Now: it does not.
+
+Before: a rejected lookup on Celebrate and When later looked like a missing row, because they latched the path before the result. Loop and Team latched only an empty result and retried.
+Now: loadRow follows the Loop and Team rule and rethrows. A review asked to paint the failure as Not here; that was left, because it would hide a failed request.
+
+Checked in headless Chrome against the sample server (byre WebKit rejected the dev certificate): known rows render, id URLs rewrite to the slug, and missing Celebrate, When, and Team URLs say Not here. go vet and go test ./... passed. Merging main was already up to date, so there was nothing to resolve.
+
+Left alone: date and time formatters (different mail and calendar wording), GitHub #211 and #212 (already fixed in the code, left open), redirect styles, groupsBelow versus groupsUnder, the searcher's three wakes, PHOTO.ready / SEARCH.made / page_count, and the Who directory's two-stage open.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+Four apps each had their own “look up a row, else fetch once, else not-found” route. That sequence now lives in `loadRow` in `web/common/router.js`, and Celebrate, Loop, Team, and When call it. Canonical URLs are still written with `history.replaceState` before the page is shown.
+
+- A failed `loadRow` fetch clears its in-flight latch and never renders, so the page stays on “Looking…” and the next render fetches again instead of showing not-found.
