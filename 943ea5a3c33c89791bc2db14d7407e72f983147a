@@ -1,0 +1,23 @@
+# Bound multipart nesting in inbound mail
+
+byre task tskVUpBIzVS4Iv, "Bound mail nesting", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskVUpBIzVS4Iv in byre (GET /api/events?task_id=tskVUpBIzVS4Iv).
+
+## Summary
+
+Audited main at 5ef4968c8c1b360ff2173d755127cf7d2070f8f0 for reachable security problems across authentication, OAuth, model permissions, guest links, uploads, inbound mail, browser rendering and integrations. Fixed one denial-of-service risk in the shared MIME parser.
+
+Before: inbound MIME parsing accepted unlimited multipart nesting, including calendar replies parsed before sender authentication and invitation-token lookup.
+Now: all shared MIME-parser callers refuse messages exceeding 100 nested multipart containers, bounding recursive reader and stack growth. Senders of deeper messages must resend with a simpler MIME structure; ordinary mail retains its behavior.
+
+The regression reproduced acceptance of 1,000 containers in 65,727 bytes before the fix. Tests cover acceptance through depth 100, rejection at 101 and 1,000, and error propagation through calendar-reply parsing. The parser is the shared choke point; no individual-hook checks, configuration flags or alternate paths were introduced. Public share previews and tokens in privileged project logs were deliberately left intact under the documented trust model and earlier decisions. No malicious production message, GitHub issue or deployment was made. Historical security issues were consulted after the initial source scan rather than before it.
+
+After review, ran the requested git merge --no-ff --no-commit main; Git reported Already up to date, so there were no conflicts or merge edits. Mail and database tests, go vet ./... and git diff --check were rerun for final verification. Repository commit, squash and push remain managed by byre.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Limits the shared mail MIME parser to 100 nested multipart containers, returning an error before descending further. This bounds recursion for both document extraction and calendar replies. Tests cover accepted depths through 100, rejection at 101 and 1,000, and error propagation through calendar reply parsing. Reviewed by reading the code; no builds or tests were run.
+
+No significant findings.
