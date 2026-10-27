@@ -1,13 +1,10 @@
 import {loadModel, group, fetchGroup} from './state.js';
 import {initChrome} from './chrome.js';
-import {el} from '/elements.js';
 import {showPage, clearSearch} from '/shell.js';
-import {startApp, load, render, notFound} from '/router.js';
+import {startApp, load, loadRow} from '/router.js';
 import {initModal} from '/modal.js';
 import {groupsPage} from './pages/groups.js';
 import {groupPage, newGroupModal} from './pages/group.js';
-
-const missing = new Set();
 
 const routes = {
   '': () => groupsPage(),
@@ -17,20 +14,12 @@ const routes = {
   },
   g: parts => {
     const key = parts[1] || '';
-    const g = group(key);
-    if (g) {
-      return groupPage(g);
-    }
-    if (!key || missing.has(key)) {
-      return notFound(key || 'That group');
-    }
-    fetchGroup(key).then(found => {
-      if (!found) {
-        missing.add(key);
-      }
-      render();
+    return loadRow(key, {
+      find: group,
+      load: fetchGroup,
+      show: groupPage,
+      missing: key || 'That group',
     });
-    return el('div', 'list-page');
   },
 };
 

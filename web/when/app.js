@@ -1,32 +1,29 @@
 import {loadModel, event, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
-import {el} from '/elements.js';
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
-import {startApp, render, load, notFound} from '/router.js';
+import {startApp, load, loadRow, notFound} from '/router.js';
 import {initModal} from '/modal.js';
 import {homePage} from './pages/home.js';
 import {eventPage} from './pages/event.js';
 import {adminPage} from './pages/admin.js';
 import {minePage} from './pages/mine.js';
 
-const fetched = new Set();
-
 function eventRoute(parts) {
   const id = parts.slice(1).join('/');
-  const e = event(id);
-  if (!e) {
-    if (!fetched.has(id)) {
-      fetched.add(id);
-      fetchEvent(id).then(render);
-      return el('div', 'list-page', 'Looking…');
-    }
-    return notFound('That event');
-  }
-  if (e.path !== location.pathname) {
-    history.replaceState(null, '', e.path + location.search);
-  }
-  state.day = eventDates(e)[0];
-  return eventPage(e);
+  return loadRow(id, {
+    find: event,
+    load: fetchEvent,
+    settle: e => {
+      if (e.path !== location.pathname) {
+        history.replaceState(null, '', e.path + location.search);
+      }
+    },
+    show: e => {
+      state.day = eventDates(e)[0];
+      return eventPage(e);
+    },
+    missing: 'That event',
+  });
 }
 
 const routes = {

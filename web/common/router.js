@@ -60,6 +60,44 @@ export function setPath(path) {
   render();
 }
 
+const waiting = new Map();
+
+export function loadRow(key, {find, load, settle, show, missing}) {
+  const row = find(key);
+  if (row) {
+    if (settle) {
+      settle(row);
+    }
+    return show(row);
+  }
+  if (!key || waiting.get(key) === 'miss') {
+    return notFound(missing);
+  }
+  if (waiting.get(key) !== 'wait') {
+    waiting.set(key, 'wait');
+    const path = location.pathname;
+    load(key).then(found => {
+      if (location.pathname !== path) {
+        waiting.delete(key);
+        return;
+      }
+      if (found) {
+        waiting.delete(key);
+        if (settle) {
+          settle(found);
+        }
+      } else {
+        waiting.set(key, 'miss');
+      }
+      render();
+    }, err => {
+      waiting.delete(key);
+      throw err;
+    });
+  }
+  return el('div', 'list-page', 'Looking…');
+}
+
 export function notFound(what) {
   const target = app.redirect ? app.redirect(location.pathname) : '';
   if (target) {

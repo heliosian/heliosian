@@ -1,37 +1,27 @@
 import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty} from './state.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
-import {el} from '/elements.js';
 import {initModal} from '/modal.js';
-import {startApp, load, render, notFound} from '/router.js';
+import {startApp, load, loadRow, notFound} from '/router.js';
 import {partiesPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
 import {myPage} from './pages/my.js';
 import {hostingPage} from './pages/hosting.js';
 import {adminPage} from './pages/admin.js';
 
-const fetched = new Set();
-
 function party(parts) {
   const segment = parts.length === 2 ? parts[1] : '';
-  const p = segment ? partyAt(segment) : null;
-  if (!p) {
-    if (segment && !fetched.has(segment)) {
-      fetched.add(segment);
-      fetchParty(segment).then(found => {
-        if (found) {
-          history.replaceState(null, '', found.path);
-          render();
-        }
-      });
-      return el('div', 'list-page', 'Looking…');
-    }
-    return notFound('That party');
-  }
-  if (p.path !== location.pathname) {
-    history.replaceState(null, '', p.path);
-  }
-  return partyPage(p);
+  return loadRow(segment, {
+    find: partyAt,
+    load: fetchParty,
+    settle: p => {
+      if (p.path !== location.pathname) {
+        history.replaceState(null, '', p.path);
+      }
+    },
+    show: partyPage,
+    missing: 'That party',
+  });
 }
 
 const routes = {
