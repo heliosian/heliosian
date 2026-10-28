@@ -13,6 +13,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/trace"
+	"heliosian/internal/workload"
 )
 
 const (
@@ -30,6 +31,7 @@ type Part[M any] struct {
 }
 
 type Store[M any] struct {
+	Work   *workload.Scheduler
 	parts  []Part[M]
 	finish func(ctx context.Context, m *M) error
 	check  func(ctx context.Context, base, m *M) error
@@ -44,19 +46,21 @@ type Store[M any] struct {
 	first     chan struct{}
 	firstOnce sync.Once
 
-	work        sync.Mutex
-	cond        *sync.Cond
-	pending     []func()
-	holds       int
-	draining    bool
-	done        chan struct{}
-	lastRefresh time.Time
+	work         sync.Mutex
+	cond         *sync.Cond
+	pending      []func()
+	holds        int
+	draining     bool
+	done         chan struct{}
+	lastRefresh  time.Time
+	refreshDone  chan struct{}
+	refreshAgain bool
 }
 
 type Settle func() (swap func(), err error)
 
 func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, check func(ctx context.Context, base, m *M) error, source data.Source, writer data.Writer) (*Store[M], error) {
-	s := &Store[M]{parts: parts, finish: finish, check: check, books: map[string]*Book{}, first: make(chan struct{}), done: make(chan struct{})}
+	s := &Store[M]{Work: workload.New(), parts: parts, finish: finish, check: check, books: map[string]*Book{}, first: make(chan struct{}), done: make(chan struct{})}
 	s.cond = sync.NewCond(&s.work)
 	for _, p := range parts {
 		book, err := NewBook(p.App, p.Tabs, p.Changes, source, writer)
@@ -80,17 +84,31 @@ func New[M any](parts []Part[M], finish func(ctx context.Context, m *M) error, c
 
 func (s *Store[M]) load(ctx context.Context) (Settle, error) {
 	held, base := s.current()
+	tables, took, err := s.read(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return workload.Run(ctx, s.Work, func() (Settle, error) {
+		return s.prepare(ctx, held, base, tables, took)
+	})
+}
+
+func (s *Store[M]) read(ctx context.Context) (map[string]Tables, map[string]time.Duration, error) {
 	tables := map[string]Tables{}
 	took := map[string]time.Duration{}
 	for _, p := range s.parts {
 		start := time.Now()
 		read, err := s.books[p.App].Read(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", p.App, err)
+			return nil, nil, fmt.Errorf("%s: %w", p.App, err)
 		}
 		tables[p.App] = read
 		took[p.App] = time.Since(start)
 	}
+	return tables, took, nil
+}
+
+func (s *Store[M]) prepare(ctx context.Context, held map[string]Tables, base *M, tables map[string]Tables, took map[string]time.Duration) (Settle, error) {
 	replayed := map[string]int{}
 	for app, book := range s.books {
 		plans := book.unwritten()

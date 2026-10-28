@@ -15,6 +15,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/store"
+	"heliosian/internal/workload"
 )
 
 func (m *Model) groupPhoto(group string) string {
@@ -249,9 +250,9 @@ func (p *Pictures) makeMade(made madeColumn, id string, row store.Row) error {
 		if !ok {
 			return fmt.Errorf("%s is %s, not a recording type", row[made.original], declared)
 		}
-		out, err = blob.ReencodeRecording(audio, src)
+		out, err = workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.ReencodeRecording(audio, src) })
 	} else {
-		out, err = blob.Reencode(src)
+		out, err = workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.Reencode(src) })
 	}
 	if err != nil {
 		return err
@@ -289,7 +290,7 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 		return err
 	}
 	want := map[string]madeBytes{}
-	re, err := blob.Reencode(src)
+	re, err := workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.Reencode(src) })
 	if err != nil {
 		return err
 	}
@@ -302,14 +303,14 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 		return err
 	}
 	if cropped {
-		if shown, err = blob.Crop(re, box); err != nil {
+		if shown, err = workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.Crop(re, box) }); err != nil {
 			return err
 		}
 		if want["crop"], err = keepBytes(ctx, m, p.bucket, "image/jpeg", shown); err != nil {
 			return err
 		}
 	}
-	thumb, err := blob.Thumbnail(shown)
+	thumb, err := workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.Thumbnail(shown) })
 	if err != nil {
 		return err
 	}

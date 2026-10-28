@@ -29,6 +29,7 @@ import (
 	"heliosian/internal/claude"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
+	"heliosian/internal/workload"
 )
 
 const (
@@ -734,22 +735,24 @@ func (x *Searcher) rowsFor(m *Model, full bool, dirty map[string]bool) (map[stri
 			return nil, err
 		}
 		x.texts = texts
-		return m.SearchInputs(texts), nil
+		return workload.Run(context.Background(), x.s.Work, func() (map[string]SearchRow, error) { return m.SearchInputs(texts), nil })
 	}
 	if err := x.readTexts(m, dirty); err != nil {
 		return nil, err
 	}
-	x.mu.RLock()
-	rows := maps.Clone(x.rows)
-	x.mu.RUnlock()
-	excluded := m.searchExcluded()
-	for id := range dirty {
-		delete(rows, id)
-		if r, ok := m.searchRowOf(id, x.texts, excluded); ok {
-			rows[id] = r
+	return workload.Run(context.Background(), x.s.Work, func() (map[string]SearchRow, error) {
+		x.mu.RLock()
+		rows := maps.Clone(x.rows)
+		x.mu.RUnlock()
+		excluded := m.searchExcluded()
+		for id := range dirty {
+			delete(rows, id)
+			if r, ok := m.searchRowOf(id, x.texts, excluded); ok {
+				rows[id] = r
+			}
 		}
-	}
-	return rows, nil
+		return rows, nil
+	})
 }
 
 func (x *Searcher) readTexts(m *Model, dirty map[string]bool) error {
@@ -794,45 +797,51 @@ func (x *Searcher) index() {
 		vectors[t] = &vectorIndex{}
 	}
 	for range x.reindex {
-		start := time.Now()
-		x.mu.RLock()
-		version := x.version
-		if x.indexedVersion == version {
-			x.mu.RUnlock()
-			continue
-		}
-		rows := x.rows
-		entries := map[string]*SearchEntry{}
-		byTable := map[string]map[string]*SearchEntry{}
-		for _, t := range searchTables {
-			byTable[t] = map[string]*SearchEntry{}
-		}
-		for _, r := range rows {
-			if e := x.entries[r.Object]; e != nil {
-				entries[r.Object] = e
-				if !r.nameOnly() {
-					byTable[r.Table][r.Object] = e
+		err := x.s.Work.Do(context.Background(), func() error {
+			start := time.Now()
+			x.mu.RLock()
+			version := x.version
+			if x.indexedVersion == version {
+				x.mu.RUnlock()
+				return nil
+			}
+			rows := x.rows
+			entries := map[string]*SearchEntry{}
+			byTable := map[string]map[string]*SearchEntry{}
+			for _, t := range searchTables {
+				byTable[t] = map[string]*SearchEntry{}
+			}
+			for _, r := range rows {
+				if e := x.entries[r.Object]; e != nil {
+					entries[r.Object] = e
+					if !r.nameOnly() {
+						byTable[r.Table][r.Object] = e
+					}
 				}
 			}
-		}
-		x.mu.RUnlock()
-		next := map[string]*vectorIndex{}
-		cells := 0
-		for _, t := range searchTables {
-			next[t] = vectors[t].update(byTable[t])
-			cells += len(next[t].centroids)
-		}
-		vectors = next
-		view := buildView(rows, entries, vectors)
-		x.mu.Lock()
-		x.view = view
-		x.indexedVersion = version
-		x.mu.Unlock()
-		slog.Info("search: indexed", "entries", len(entries), "names", len(view.names), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
-		select {
-		case <-x.ready:
-		default:
-			close(x.ready)
+			x.mu.RUnlock()
+			next := map[string]*vectorIndex{}
+			cells := 0
+			for _, t := range searchTables {
+				next[t] = vectors[t].update(byTable[t])
+				cells += len(next[t].centroids)
+			}
+			vectors = next
+			view := buildView(rows, entries, vectors)
+			x.mu.Lock()
+			x.view = view
+			x.indexedVersion = version
+			x.mu.Unlock()
+			slog.Info("search: indexed", "entries", len(entries), "names", len(view.names), "cells", cells, "groups", len(view.members), "took", time.Since(start).Round(time.Millisecond))
+			select {
+			case <-x.ready:
+			default:
+				close(x.ready)
+			}
+			return nil
+		})
+		if err != nil {
+			slog.Error("search: index", "error", err)
 		}
 	}
 }

@@ -148,7 +148,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 			http.Error(w, "not in the directory", http.StatusForbidden)
 			return Env{}, access.Actor{}, false
 		}
-		return Env{Viewer: viewer, Mode: mode, Now: at}, access.Actor{Email: email}, true
+		return Env{Viewer: viewer, Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
 	}
 	email, _, err := tokens.Verify(token)
 	if err != nil {
@@ -168,7 +168,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 		slog.InfoContext(r.Context(), "spoof", "admin", email, "as", address)
 		email = address
 	}
-	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email}, true
+	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
 }
 
 func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {

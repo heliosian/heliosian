@@ -266,7 +266,7 @@ func (c *Core) Muxes() map[string]*http.ServeMux {
 func (c *Core) Handlers(gate func(key string, next http.Handler) http.Handler) map[string]http.Handler {
 	out := map[string]http.Handler{}
 	for _, a := range c.apps {
-		h := moved(a.Moved, gate(a.Key, Logged(a.Key, withAPI(c.api, Files(a.Key, a.Mux)))))
+		h := moved(a.Moved, gate(a.Key, Logged(a.Key, withAPI(c.Data.Work.Handler(c.api), Files(a.Key, a.Mux)))))
 		if a.Wrap != nil {
 			h = a.Wrap(h)
 		}

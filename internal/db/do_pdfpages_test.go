@@ -2,12 +2,55 @@ package db
 
 import (
 	"bytes"
+	"context"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"heliosian/internal/blob"
 )
+
+func TestCanceledPDFPageValidationDoesNotReportBadPNG(t *testing.T) {
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "pdf", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 1))},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "content": "@pdf"}},
+	})
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	for key, value := range map[string]string{"document": ids[1], "content": ids[0], "page": "1", "pages": "1"} {
+		if err := form.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file, err := form.CreateFormFile("picture", "page.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(redPNG(t, 120, 180)); err != nil {
+		t.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	r := httptest.NewRequest(http.MethodPost, "/api/do/pdf-page", &body).WithContext(ctx)
+	r.Header.Set("Content-Type", form.FormDataContentType())
+	mux := http.NewServeMux()
+	Register(mux, s, NewPictures(s, bucket), testTokens)
+	rec := httptest.NewRecorder()
+	serveAs(mux, rec, r, importing)
+	if rec.Body.Len() != 0 || rec.Code == http.StatusBadRequest {
+		t.Fatalf("canceled validation answered %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(children(s, ids[1])) != 0 {
+		t.Fatal("canceled validation wrote a page")
+	}
+}
 
 func TestClientPDFPagesAreStoredInOrderAndResume(t *testing.T) {
 	s := sample(t)

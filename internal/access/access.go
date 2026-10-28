@@ -6,11 +6,12 @@ import (
 )
 
 type Actor struct {
-	Email string
+	Email      string
+	Background bool
 }
 
 func System(name string) Actor {
-	return Actor{Email: name}
+	return Actor{Email: name, Background: true}
 }
 
 type Refusal struct {

@@ -79,6 +79,18 @@ runs the dev server over production's data with nothing reaching production, for
 
 No direct writes, ever: every change to a sheet or a bucket goes through the storage layers in `docs/storage.md` - IO, a transaction on the store, the data model, and the hooks - and nothing reaches a sheet or an object any other way.
 
+## Background work
+
+The store owns one `internal/workload.Scheduler`, shared by image transformations, PDF preparation for extraction, search input and index building, membership warming, refreshes and background transactions. Each CPU phase takes the shared permit and releases it before the next phase or an outside service call. Search index training runs serially rather than spreading across every available CPU. Sheet persistence keeps running independently so a job waiting for its write to persist cannot hold up the write itself.
+
+Refresh reads sheets on the persistence worker, then prepares and swaps the model on its own goroutine under the CPU budget. The worker can flush interactive writes while refresh waits for admission or builds its model. Books retain those writes' plans until refresh finishes so the swap replays even changes already persisted since its sheet read. Requests arriving during a refresh schedule a subsequent read; requests within the same pass coalesce. `Flush` waits for these requested rereads as well as its persistence barrier; draining holds the store open until they finish.
+
+The scheduler admits no new background phase while a query or interactive transaction is active. A phase already running finishes; foreground requests do not wait for its permit. After each phase, the scheduler leaves an idle interval equal to the process CPU time spent during that phase. This duty cycle reserves CPU for requests without estimating the cost of an image or search pass in advance. A foreground operation taking at least 750 ms extends that rest by its elapsed time. This is admission control, not preemption: a running transaction still holds the commit lock until it finishes. Waiting interactive transactions take precedence over waiting background commits.
+
+Background commits acquire the CPU permit and commit gate together, holding neither while waiting for the other. Membership warming tries its cache lock without waiting after CPU admission; a cache already being built by a request needs no second warmer.
+
+`access.System` marks a job's writes as background work without changing its audit identity or permissions. Ordinary HTTP requests keep interactive commit priority even when they write under a system identity, as feedback and subscription handlers do. Requests carrying `Helios-Mode: import` put their commits through the background budget; reading request bodies and uploading blobs do not hold its permit. Long-lived event streams do not keep background work paused. Bulk clients can keep their completion waits, but the server's CPU budget applies independently of client pacing.
+
 ## The rules live with the thing
 
 Who may see a thing, who may change it, what follows when it changes and where its page is are written once, in the data model, and every app that shows or writes it - its own pages, another app folding it in, Helios Ask and Helios MCP - goes through that one place rather than restating it, since a restated rule drifts from the one the owner's pages keep. So:

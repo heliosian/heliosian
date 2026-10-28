@@ -150,3 +150,29 @@ func TestAWriteBuildsEffectiveMembersBeforeAnyoneAsks(t *testing.T) {
 		t.Fatal("the effective members built after the write are empty")
 	}
 }
+
+func TestWarmerDoesNotWaitForAnotherCacheBuilder(t *testing.T) {
+	s := sample(t)
+	m := *s.Model()
+	m.derived = newDerived()
+	effective, _ := Lookup("EFFECTIVE_MEMBER")
+	set := m.generatedCache(effective)
+	func() {
+		set.mu.Lock()
+		defer set.mu.Unlock()
+		done := make(chan struct{})
+		go func() { defer close(done); m.warmGenerated(effective, s) }()
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("warmer waited for the active cache builder")
+		}
+		if set.ready {
+			t.Fatal("warmer modified a cache owned by another builder")
+		}
+	}()
+	m.warmGenerated(effective, s)
+	if n := len(m.generated(effective).rows); n == 0 {
+		t.Fatal("warmer did not build the available cache")
+	}
+}

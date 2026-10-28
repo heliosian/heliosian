@@ -4,6 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"heliosian/internal/db"
+	"heliosian/internal/workload"
 )
 
 func TestOldListAddressesGoToTheGroupPage(t *testing.T) {
@@ -22,7 +25,7 @@ func TestOldListAddressesGoToTheGroupPage(t *testing.T) {
 }
 
 func TestOldPagePrefixesMoveBeforeSignIn(t *testing.T) {
-	c := &Core{api: http.NewServeMux(), apps: []appSpec{
+	c := &Core{Data: &db.Store{Work: workload.New()}, api: http.NewServeMux(), apps: []appSpec{
 		{Key: "who", Mux: http.NewServeMux(), Moved: map[string]string{"/families/": "/g/", "/grades/": "/g/", "/groups/": "/g/", "/people/": "/p/"}},
 		{Key: "when", Mux: http.NewServeMux(), Moved: map[string]string{"/e/": "/g/"}},
 		{Key: "team", Mux: http.NewServeMux(), Moved: map[string]string{"/activities/": "/g/"}, Wrap: func(next http.Handler) http.Handler {

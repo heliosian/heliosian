@@ -1,6 +1,8 @@
 package db
 
 import (
+	"context"
+	"log/slog"
 	"maps"
 	"slices"
 	"strings"
@@ -155,7 +157,8 @@ func viewChanges(a, b *View, each func(old, new store.Row)) {
 }
 
 type generatedSet struct {
-	once    sync.Once
+	mu      sync.Mutex
+	ready   bool
 	version int
 	rows    []store.Row
 	by      map[string]map[string][]store.Row
@@ -232,6 +235,17 @@ func (m *Model) superAdminAddresses() []string {
 }
 
 func (m *Model) generated(t *Table) *generatedSet {
+	set := m.generatedCache(t)
+	set.mu.Lock()
+	defer set.mu.Unlock()
+	if !set.ready {
+		set.build(m, t)
+		set.ready = true
+	}
+	return set
+}
+
+func (m *Model) generatedCache(t *Table) *generatedSet {
 	version := m.index.current()
 	m.derived.mu.Lock()
 	set := m.derived.sets[t.Name]
@@ -240,8 +254,24 @@ func (m *Model) generated(t *Table) *generatedSet {
 		m.derived.sets[t.Name] = set
 	}
 	m.derived.mu.Unlock()
-	set.once.Do(func() { set.build(m, t) })
 	return set
+}
+
+func (m *Model) warmGenerated(t *Table, s *Store) {
+	set := m.generatedCache(t)
+	if err := s.Work.Do(context.Background(), func() error {
+		if !set.mu.TryLock() {
+			return nil
+		}
+		defer set.mu.Unlock()
+		if !set.ready {
+			set.build(m, t)
+			set.ready = true
+		}
+		return nil
+	}); err != nil {
+		slog.Error("warm memberships", "error", err)
+	}
 }
 
 func StartWarmer(s *Store) {
@@ -250,7 +280,7 @@ func StartWarmer(s *Store) {
 	go func() {
 		for range in.wake {
 			in.take()
-			s.Model().generated(effective)
+			s.Model().warmGenerated(effective, s)
 		}
 	}()
 	in.wake.poke()

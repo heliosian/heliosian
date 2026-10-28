@@ -82,6 +82,8 @@ type Book struct {
 	mu        sync.Mutex
 	waiting   []waitingWrite
 	scheduled bool
+	retaining bool
+	retained  []Plan
 }
 
 type waitingWrite struct {
@@ -198,11 +200,23 @@ func (b *Book) Write(p Plan) (done <-chan struct{}, schedule bool) {
 func (b *Book) unwritten() []Plan {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := []Plan{}
+	out := slices.Clone(b.retained)
 	for _, w := range b.waiting {
 		out = append(out, w.plan)
 	}
 	return out
+}
+
+func (b *Book) retain() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.retaining = true
+}
+
+func (b *Book) releaseRetained() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.retaining, b.retained = false, nil
 }
 
 func (b *Book) replay(tables Tables, plans []Plan) Tables {
@@ -218,6 +232,11 @@ func (b *Book) replay(tables Tables, plans []Plan) Tables {
 func (b *Book) flush() {
 	b.mu.Lock()
 	taken := b.waiting
+	if b.retaining {
+		for _, w := range taken {
+			b.retained = append(b.retained, w.plan)
+		}
+	}
 	b.waiting, b.scheduled = nil, false
 	b.mu.Unlock()
 	writes, log := []Op{}, []Row{}

@@ -23,6 +23,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
 	"heliosian/internal/store"
+	"heliosian/internal/workload"
 )
 
 const (
@@ -118,7 +119,13 @@ func (x *Extractor) readImage(ctx context.Context, m *Model, doc, content store.
 	if config.Width < imageSmallest && config.Height < imageSmallest {
 		return nil, nil
 	}
-	body, mimeType, err := claudeImage(raw, baseType(content["mime"]), config)
+	var body []byte
+	var mimeType string
+	err = x.s.Work.Do(ctx, func() error {
+		var err error
+		body, mimeType, err = claudeImage(raw, baseType(content["mime"]), config)
+		return err
+	})
 	if err != nil {
 		slog.Warn("extract: unreadable image", "document", id, "mime", content["mime"], "error", err)
 		return nil, nil
@@ -137,7 +144,7 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 	if before, read, err := x.readBefore(ctx, m, doc["id"], content); read || err != nil {
 		return before, err
 	}
-	pages, err := readPDFPages(ctx, raw)
+	pages, err := workload.Run(ctx, x.s.Work, func() (pdfPages, error) { return readPDFPages(ctx, raw) })
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +152,7 @@ func (x *Extractor) readPDF(ctx context.Context, m *Model, doc, content store.Ro
 		if pages.ctx.PageCount == 1 {
 			return nil, fmt.Errorf("a one-page pdf of %d bytes is larger than claude reads, %d", len(raw), pdfRangeBytes)
 		}
-		ranges, err := pages.ranges(ctx)
+		ranges, err := workload.Run(ctx, x.s.Work, func() ([]pageRange, error) { return pages.ranges(ctx) })
 		if err != nil {
 			return nil, err
 		}

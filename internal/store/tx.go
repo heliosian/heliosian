@@ -6,6 +6,7 @@ import (
 
 	"heliosian/internal/access"
 	"heliosian/internal/trace"
+	"heliosian/internal/workload"
 )
 
 type Tx[M any] struct {
@@ -56,7 +57,28 @@ func (tx *Tx[M]) Value(key any, make func() any) any {
 }
 
 func (s *Store[M]) Transact(ctx context.Context, actor access.Actor, run func(tx *Tx[M]) error) (<-chan struct{}, error) {
-	done, after, err := s.transact(ctx, actor, run)
+	var done <-chan struct{}
+	var after []func()
+	background := actor.Background && !workload.Interactive(ctx)
+	transact := func() error {
+		release, err := s.Work.Commit(ctx, background)
+		if err != nil {
+			return err
+		}
+		defer release()
+		done, after, err = s.transact(ctx, actor, run)
+		return err
+	}
+	var err error
+	if background {
+		err = transact()
+	} else {
+		err = func() error {
+			release := s.Work.Foreground()
+			defer release()
+			return transact()
+		}()
+	}
 	if err != nil {
 		return nil, err
 	}

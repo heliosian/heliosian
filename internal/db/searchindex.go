@@ -4,10 +4,8 @@ import (
 	"hash/fnv"
 	"maps"
 	"math"
-	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"unicode"
 )
 
@@ -164,7 +162,9 @@ func train(entries map[string]*SearchEntry, refs []chunkRef) *vectorIndex {
 	}
 	assigned := make([]int, len(sample))
 	for range searchRounds {
-		parallel(len(sample), func(i int) { assigned[i] = nearest(centroids, sample[i]) })
+		for i := range sample {
+			assigned[i] = nearest(centroids, sample[i])
+		}
 		sums := make([][]float32, k)
 		for i, c := range assigned {
 			if sums[c] == nil {
@@ -183,7 +183,9 @@ func train(entries map[string]*SearchEntry, refs []chunkRef) *vectorIndex {
 	}
 	out := &vectorIndex{centroids: centroids, cells: make([][]chunkRef, k), placed: map[string]placement{}, trained: len(refs)}
 	where := make([]int, len(refs))
-	parallel(len(refs), func(i int) { where[i] = nearest(centroids, refs[i].vector) })
+	for i := range refs {
+		where[i] = nearest(centroids, refs[i].vector)
+	}
 	at := 0
 	for _, o := range slices.Sorted(maps.Keys(entries)) {
 		e := entries[o]
@@ -240,19 +242,6 @@ func nearest(centroids [][]float32, v []float32) int {
 		}
 	}
 	return at
-}
-
-func parallel(n int, f func(i int)) {
-	workers := min(n, runtime.GOMAXPROCS(0))
-	var wg sync.WaitGroup
-	for w := range workers {
-		wg.Go(func() {
-			for i := w; i < n; i += workers {
-				f(i)
-			}
-		})
-	}
-	wg.Wait()
 }
 
 func dot(a, b []float32) float32 {

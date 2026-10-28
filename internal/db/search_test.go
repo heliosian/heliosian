@@ -23,6 +23,7 @@ import (
 	"heliosian/internal/intercept"
 	"heliosian/internal/store"
 	"heliosian/internal/testkit"
+	"heliosian/internal/workload"
 )
 
 var testLimits, _ = SearchLimits(nil)
@@ -1191,7 +1192,7 @@ func TestLoadedReplacementChainResolvesToLatest(t *testing.T) {
 func TestSearchProcessingIncludesCommittedAndUnpublishedWork(t *testing.T) {
 	index := NewSearchIndex()
 	m := &Model{index: index, services: newServices(index)}
-	x := &Searcher{SearchIndex: index, ready: make(chan struct{})}
+	x := &Searcher{SearchIndex: index, s: &Store{Work: workload.New()}, ready: make(chan struct{})}
 	if m.searchProcessing().Pending != 1 {
 		t.Fatal("an unbuilt index was reported idle")
 	}

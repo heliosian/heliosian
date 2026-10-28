@@ -61,8 +61,13 @@ func registerPDFPages(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.
 			serve.Error(w, r, access.Invalid("the page: %v", err))
 			return
 		}
-		if _, err := png.Decode(bytes.NewReader(raw)); err != nil {
-			serve.Error(w, r, access.Invalid("the page must be a png: %v", err))
+		if err := s.Work.Do(r.Context(), func() error {
+			if _, err := png.Decode(bytes.NewReader(raw)); err != nil {
+				return access.Invalid("the page must be a png: %v", err)
+			}
+			return nil
+		}); err != nil {
+			serve.Error(w, r, err)
 			return
 		}
 		kept, err := keepBytes(r.Context(), s.Model(), pics.bucket, "image/png", raw)

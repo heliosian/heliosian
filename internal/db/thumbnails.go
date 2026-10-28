@@ -16,6 +16,7 @@ import (
 	"heliosian/internal/blob"
 	"heliosian/internal/cells"
 	"heliosian/internal/store"
+	"heliosian/internal/workload"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 	thumbnailTries = 3
 )
 
-type drawFunc func(ctx context.Context, raw []byte, page string) ([]byte, error)
+type drawFunc func(ctx context.Context, raw []byte, page string, work *workload.Scheduler) ([]byte, error)
 
 var drawers = map[string]drawFunc{
 	"text/html":  drawPage,
@@ -121,7 +122,7 @@ func (t *Thumbnailer) make(doc store.Row) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	thumb, err := drawers[baseType(mimeType)](ctx, raw, doc["url"])
+	thumb, err := drawers[baseType(mimeType)](ctx, raw, doc["url"], t.s.Work)
 	if err != nil {
 		return false, err
 	}
@@ -158,11 +159,11 @@ func saveThumbnail(ctx context.Context, s *Store, bucket *blob.Bucket, actor acc
 	return err
 }
 
-func drawImage(_ context.Context, raw []byte, _ string) ([]byte, error) {
-	return blob.Thumbnail(raw)
+func drawImage(ctx context.Context, raw []byte, _ string, work *workload.Scheduler) ([]byte, error) {
+	return workload.Run(ctx, work, func() ([]byte, error) { return blob.Thumbnail(raw) })
 }
 
-func drawPage(ctx context.Context, raw []byte, page string) ([]byte, error) {
+func drawPage(ctx context.Context, raw []byte, page string, work *workload.Scheduler) ([]byte, error) {
 	src, err := pageImage(raw, page)
 	if err != nil || src == "" {
 		return nil, err
@@ -175,7 +176,7 @@ func drawPage(ctx context.Context, raw []byte, page string) ([]byte, error) {
 		slog.Info("thumbnail: the page's picture is not kept", "url", ShortSource(src), "fetch", got.stop, "why", got.why)
 		return nil, nil
 	}
-	return blob.Thumbnail(got.body)
+	return drawImage(ctx, got.body, "", work)
 }
 
 func pageImage(raw []byte, page string) (string, error) {
