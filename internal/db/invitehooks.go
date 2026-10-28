@@ -201,8 +201,13 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 	}
 	at := time.Now()
 	edits := []Edit{}
-	guest := m.personAt(address)
-	if address == "" || guest == "" {
+	guest := ""
+	if address != "" {
+		if row, ok := m.Table("PERSON_EMAIL").Find(address, "Yes"); ok {
+			guest = row["person"]
+		}
+	}
+	if guest == "" {
 		edits = append(edits, Edit{Insert: "PERSON", As: "guest", Row: map[string]any{"source": "guest", "name_long_override": name}})
 		if address != "" {
 			edits = append(edits, Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@guest", "address": address, "primary": true, "source": "guest"}})

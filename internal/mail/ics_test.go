@@ -18,7 +18,7 @@ func TestFoldAndEscape(t *testing.T) {
 	if strings.ReplaceAll(folded, "\r\n ", "") != long {
 		t.Errorf("fold lost text")
 	}
-	if got := escape("a;b,c\\d\nline"); got != `a\;b\,c\\d\nline` {
+	if got := escape("a;b,c\\d\nline\r\nnext\rline"); got != `a\;b\,c\\d\nline\nnext\nline` {
 		t.Errorf("escape = %q", got)
 	}
 }

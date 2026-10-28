@@ -253,6 +253,57 @@ func TestNewcomersAreInvitedOnlyWithAutoInvite(t *testing.T) {
 	}
 }
 
+func TestAnOutsideGuestCannotAttachADirectoryPerson(t *testing.T) {
+	for _, group := range []string{"event", "party"} {
+		t.Run(group, func(t *testing.T) {
+			h := newInviteHarness(t)
+			if group == "party" {
+				h.event = tacoNight
+				h.setup([]Edit{{Set: tacoNight, Cells: map[string]any{"join": "others", "price": "", "eligible": "", "capacity": "20"}}})
+			}
+			if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
+				"group": h.event, "send": true, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
+			}); rec.Code != http.StatusOK {
+				t.Fatalf("the host's invitation answered %d: %s", rec.Code, rec.Body)
+			}
+			coach := h.s.Model().personAt("coach@example.net")
+			token := h.copyOf(coach)["token"]
+			if rec := h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Not Rowan", "email": rowan}); rec.Code != http.StatusNoContent {
+				t.Fatalf("bringing a guest at a directory address answered %d: %s", rec.Code, rec.Body)
+			}
+			brought := h.s.Model().broughtGuests(h.group(), coach)
+			if slices.Contains(brought, parent) || len(brought) != 1 || h.s.Model().nameOf(brought[0]) != "Not Rowan" {
+				t.Fatalf("brought %v as %q", brought, h.s.Model().nameOf(brought[0]))
+			}
+			if h.s.Model().personAt(rowan) != parent {
+				t.Fatal("the directory person no longer holds the address")
+			}
+			if h.copyOf(parent)["id"] != "" {
+				t.Fatal("the directory person was invited")
+			}
+			rec := h.do("", http.MethodGet, "/open/ext/"+token, nil)
+			var view extView
+			if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusOK || len(view.Brought) != 1 || view.Brought[0].Key == parent || view.Brought[0].Name != "Not Rowan" {
+				t.Fatalf("the outside page: %d %+v", rec.Code, view)
+			}
+			if rec := h.do("", http.MethodPost, "/open/ext/"+token, map[string]string{"answer": "yes", "key": parent}); rec.Code != http.StatusForbidden || h.s.Model().answerOf(h.group(), parent) != "" {
+				t.Fatalf("answering for the directory person: %d, answer %q", rec.Code, h.s.Model().answerOf(h.group(), parent))
+			}
+			if rec := h.do("", http.MethodPost, "/open/ext/"+token+"/guest", map[string]string{"name": "Again", "email": rowan}); rec.Code != http.StatusNoContent {
+				t.Fatalf("adding the same directory address again answered %d: %s", rec.Code, rec.Body)
+			}
+			again := h.s.Model().broughtGuests(h.group(), coach)
+			held, ok := h.s.Model().Table("PERSON_EMAIL").Find(rowan, "Yes")
+			if len(again) != 1 || again[0] != brought[0] || !ok || held["person"] != brought[0] || h.s.Model().nameOf(again[0]) != "Not Rowan" {
+				t.Fatalf("the second add brought %v, guest email %v", again, held)
+			}
+		})
+	}
+}
+
 func TestAnOutsideGuestBringsOnlySoManyGuests(t *testing.T) {
 	h := newInviteHarness(t)
 	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"auto_invite": true}}})

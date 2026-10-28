@@ -192,7 +192,7 @@ const (
 	dateTimeFormat = "2006-01-02 15:04"
 )
 
-var escaper = strings.NewReplacer(`\`, `\\`, ";", `\;`, ",", `\,`, "\r\n", `\n`, "\n", `\n`)
+var escaper = strings.NewReplacer(`\`, `\\`, ";", `\;`, ",", `\,`, "\r\n", `\n`, "\n", `\n`, "\r", `\n`)
 
 func escape(s string) string {
 	return escaper.Replace(s)
