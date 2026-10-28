@@ -1,0 +1,138 @@
+# Bound background work to preserve API responsiveness
+
+byre task tskGQp200m5Jyi, "Server workload isolation", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskGQp200m5Jyi in byre (GET /api/events?task_id=tskGQp200m5Jyi).
+
+## Summary
+
+The task began with an authorized production import and document catch-up. Duplicate PDF rendering and production overload during that work led to the server workload-isolation change. Production catch-up was paused; it remains stopped.
+
+Before: identical PDFs could be rendered and uploaded repeatedly.
+Now: the uploader reuses page image and server-thumbnail CONTENT references through ordinary write batches, using the PDF content ID as identity. It uploads pages, lets the server thumbnail them, then copies both references. No custom reuse endpoint remains. This earlier work was merged during the task.
+
+Before: image processing, search rebuilding, refreshes and background commits competed independently with client API requests.
+Now: expensive phases share one in-process CPU budget with foreground priority, serial search training and idle intervals based on actual process CPU use. Background commits acquire CPU and commit admission atomically; network I/O holds no CPU permit. Interactive HTTP writes retain priority even under a system audit identity. Membership warming does not wait on an occupied cache while holding CPU admission.
+
+Before: refresh admission waits blocked persistence, and refresh requests arriving during an active pass could be discarded.
+Now: preparation and swapping run off the persistence worker, flushed plans remain available for replay, and requests during a pass schedule a reread. Flush and drain account for those passes. Cancellation during PNG validation is preserved rather than reported as invalid image input.
+
+In a local production-snapshot test using two CPU threads, foreground edit maximum latency fell from 1.19s to 595ms and warmed-query maximum from 138ms to 1.3ms; background completions fell from 30 to 11 over the same interval. Snapshot data was deleted. Store/scheduler race tests, targeted database race checks, database tests, app/access/mail tests and repository-wide vet passed. Main merged without conflicts or substantive adjustments; the final database verification ran in two batches after the combined run exceeded the 30-second command limit.
+
+Deliberately excluded: separate worker processes, hard memory isolation, preemption of running transactions, removal of the client's backlog checks, production deployment/restart and renewed production catch-up. A separate roughly 800ms cold membership-cache query cost remains.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #2, reviewer "Review · Grok medium", grok grok-4.7: done
+
+The snapshot adds one bullet to the Verifying section of AGENTS.md. It tells agents to run the production import with `go run ./tools/import`, mentions `--dry-run` as a preview, and says to inspect the calendar batch before treating its edit count as real calendar changes, because a reading-prompt change rewrites `GROUP_SOURCE.hash` on PDF sources when the calendar data itself is unchanged.
+
+- The task was to run the import in dry-run mode; the snapshot only adds an AGENTS.md note and contains no dry-run result.
+- The new Verifying bullet leads with the live `go run ./tools/import` command, which writes production.
+
+### Snapshot #3, reviewer "Review · Grok medium", grok grok-4.7: done
+
+Adds one verification note to AGENTS.md: preview a production import with `go run ./tools/import --dry-run`, because omitting that flag writes to production. It also records that the tool runs both exporters itself, that `VCEXPORT` and `WEBEXPORT` are the exporter checkouts rather than output directories, and that a reading-prompt change rewrites the `GROUP_SOURCE.hash` fingerprint on PDF sources even when the calendar data is unchanged, so a large calendar edit count needs to be read before it is treated as real data drift.
+
+No significant findings.
+
+### Snapshot #4, reviewer "Review · Grok medium", grok grok-4.7: done
+
+Adds two notes to the Verifying section of AGENTS.md. Agents should preview the production import with `go run ./tools/import --dry-run` (omitting the flag writes to production), treat `VCEXPORT` and `WEBEXPORT` as the exporter checkouts, and not treat a large calendar edit count as real calendar changes when a reading-prompt change rewrites `GROUP_SOURCE.hash` on PDF sources. An authorized document catch-up runs `go run ./tools/fetchsignin` before `go run ./tools/pdfthumbnails`; both write to production.
+
+No significant findings.
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds an import-only endpoint that copies completed PDF page references and thumbnails between documents holding the same PDF content. Updates the client uploader to upload images for one document and reuse them for other copies, with tests and documentation.
+
+- A rendered PDF without a thumbnail is selected as a reuse source, leaving all pending copies skipped indefinitely.
+
+### Snapshot #6, reviewer "Review · Sonnet high", claude claude-sonnet-5-5: done
+
+Adds `POST /api/do/reuse-pdf-pages` (import mode), which gives a document over the same unchanged PDF `CONTENT` its own `page` children, `page_count`, `rendered`, `thumbnail` and `thumbnailed` by copying them from an already complete source document. It checks both documents and the source's completeness in the same transaction as the writes. `tools/pdfthumbnails` now reads every PDF document, not just unrendered ones. For each content it reuses an existing complete document if there is one. Otherwise it draws and uploads once, for the first document that accepts it, and reuses that for the rest. The change adds server and client tests, an OpenAPI entry, and doc updates.
+
+- AGENTS.md gains import and fetchsignin guidance unrelated to deduplicating PDF uploads
+- Client can send a thumbnail upload the server will refuse, skipping a recoverable document
+
+### Snapshot #7, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The PDF uploader now reuses completed page images and thumbnails across documents holding the same PDF content. A new import-only endpoint validates and copies page references transactionally, preserves matching partial uploads, and avoids sending duplicate image bytes. The change also allows uploads to repair missing thumbnails whose attempt marker is already set.
+
+- An unrendered PDF with a thumbnail-attempt marker but no thumbnail becomes an invalid reuse source, leaving sibling documents incomplete until another run.
+
+### Snapshot #8, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The PDF uploader now renders and uploads one document per shared PDF content, then reuses its stored page images and thumbnail for other documents. A new import-only endpoint validates and completes matching partial uploads transactionally. The change also handles missing thumbnails and adds tests and documentation. Review was by code inspection; no builds or tests were run.
+
+No significant findings.
+
+### Snapshot #9, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The PDF thumbnail tool now finds completed documents with identical PDF content and reuses their page images and thumbnails through query API write batches. It uploads pages once when no completed source exists and repairs missing thumbnails even when a prior attempt marker is present. Documentation and tests cover the reuse and repair paths. Reviewed by reading code; no builds or tests were run.
+
+- Reuse writes can attach stale images to replacement PDFs or create duplicate pages because their checks are outside the write transaction.
+- A detected content change aborts the entire catch-up instead of skipping the affected document.
+
+### Snapshot #10, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The PDF thumbnail tool now groups documents by PDF content, uploads one page set, and reuses stored page images and thumbnails for other documents through query write batches. It also repairs missing thumbnails when an earlier thumbnail attempt was already recorded, with tests and documentation for the reuse behavior.
+
+- Reuse writes can attach stale PDF pages or duplicate children because their checks occur outside the write transaction.
+
+### Snapshot #11, reviewer "Review · Grok medium", grok grok-4.7: done
+
+PDF uploads no longer post a client-made JPEG preview. After each page upload or reuse write, `pdfthumbnails` polls `GET /api/queues` until thumbnails, search indexing, in-memory search processing, and pending writes are all empty (five minutes, then the run stops; a 429 is not retried). The server adds those queue counts, including a new search-processing flag, and the tool copies the first page's server thumbnail onto the PDF and onto reused page rows.
+
+- The thumbnail queue stays pending after the thumbnailer gives up, so `pdfthumbnails` hits its five-minute limit and uploads nothing.
+- An in-memory search rebuild can publish a stale index and still report search processing idle, so the uploader sends the next page while that rebuild is outstanding.
+
+### Snapshot #12, reviewer "Review · Grok medium", grok grok-4.7: done
+
+PDF page uploads now wait until server thumbnails, search indexing, the in-memory search rebuild, and pending writes have all drained, and a 429 or a queue that stays busy for five minutes stops the run. The client no longer posts a preview JPEG: the server thumbnails each uploaded page, and the client copies the first page's thumbnail onto the PDF. Reused pages copy that thumbnail and its completion stamp as well, so they do not re-enter the thumbnail worker. Failed thumbnail attempts are counted in process memory; after three failures the document drops out of the pending count until the process restarts. Super-admin bearer tokens can read GET /api/queues, which is what the uploader polls.
+
+- `TestSharedPDFUploadsOnceAndReusesCompletedPages` still expects a PDF download for a rendered file whose page thumbnail only needs to be copied, so the missing-thumbnail cases fail.
+
+### Snapshot #13, reviewer "Review · Grok low", grok grok-4.7: done
+
+PDF thumbnail uploads now wait until the server has drained thumbnail generation, search indexing, in-memory search processing, and pending writes before the next page or reuse write, and they stop on a 429 or if that drain takes more than five minutes. The client no longer uploads its own preview JPEG. After the server thumbnails the first page image, the tool copies that thumbnail onto the PDF, and reused pages copy both the image and the thumbnail. Queue reporting shares the thumbnailer's attempt counts and adds a search-processing gauge. Search index rebuilds skip a publish when a follow pass does not change rows, so thumbnail-only writes do not rebuild the in-memory index.
+
+- `TestUploadsWaitForThumbnailsAndBothSearchStages` never stubs `POST /api/q`, so `upload` fails in `completePDFThumbnail` before the poll count is checked.
+- `completePDFThumbnail` treats a missing first-page thumbnail as fatal even though the page row is already stored, so a later run of the same PDF cannot finish.
+
+### Snapshot #14, reviewer "",  : skipped
+
+### Snapshot #15, reviewer "Review · Grok low", grok grok-4.7: done
+
+Background CPU and commits now share one scheduler. Image and PDF work, search input and index training, membership warming, sheet refresh, and any access.System transaction take a single permit and then rest for about as much process CPU time as that phase used. QUERY /api/q and interactive transactions are foreground: they do not wait for a running phase, they pause new background phases, and their commits cut ahead of background commits. Requests with Helios-Mode: import, including nested work, use the background permit. Search k-means training is single-threaded.
+
+- `access.System` now waits on the background CPU permit, so interactive writes such as feedback and list subscribe/unsubscribe stall behind search indexing, thumbnails, and the post-phase rest.
+- Sheet refresh and `Helios-Mode: import` hold that same single permit across network I/O, so one Google Sheets read or page upload blocks every other background phase.
+
+### Snapshot #16, reviewer "Review · Grok low", grok grok-4.7: done
+
+Background CPU and commits now share one scheduler. Image, PDF, thumbnail, search-input, and search-index work, plus membership warming and background transactions, take a single permit and then rest for about as long as the process CPU they used. Interactive queries (`QUERY /api/q`) and interactive commits pause new background phases without waiting for a phase that has already started. `Helios-Mode: import` and `access.System` commits use the background budget, except system writes made from an ordinary request. Search training no longer fans out across every CPU.
+
+- Refresh waits for the CPU scheduler on the store's only worker, so sheet flushes queued behind it stall until foreground work and the duty cycle finish.
+- A cancelled wait to validate an uploaded PDF page is reported as HTTP 400 ("must be a png"), which the thumbnail importer treats as a skipped document.
+
+### Snapshot #17, reviewer "Review · Grok low", grok grok-4.7: done
+
+Background CPU work (image and PDF transforms, search indexing, membership warming, refresh model builds, and background transactions) now shares one admission scheduler. Interactive queries and interactive commits jump ahead of that work, each background phase is followed by an idle gap equal to the CPU time it used, and a sheet refresh no longer occupies the persistence queue while it waits to build or swap the model. Imports (`Helios-Mode: import`) commit as background work; system jobs do too unless they run on an interactive request.
+
+- Background commits and refresh swaps hold the single CPU permit while blocked on the commit lock, so search, images, and other background phases stall behind interactive writes.
+- The membership warmer takes that permit and then blocks inside `generated`'s `sync.Once`, so a request already building EFFECTIVE_MEMBER freezes every background phase until it finishes.
+
+### Snapshot #18, reviewer "Review · Grok low", grok grok-4.7: done
+
+Background CPU work (image transforms, PDF prep, search input and index training, membership warming, refreshes, and background commits) now shares one scheduler. It runs one phase at a time, pauses while a `/api/q` query or an interactive transaction is active, then rests for about as long as that phase used in process CPU. Import requests (`Helios-Mode: import`) commit under that budget; ordinary requests that write as a system actor stay interactive. Sheet flushes stay on the persistence worker while a refresh waits for CPU or builds its model, and books keep flushed plans so the swap still replays them. Search training is serial.
+
+- A `Refresh` that arrives while one is already reading or building is dropped, so sheet changes can stay invisible until the next 30-minute tick.
+- `Flush` only waits for the refresh already in flight, so `Refresh` plus `Flush` can return on a snapshot taken before the new sheet data existed.
+
+### Snapshot #19, reviewer "Review · Grok low", grok grok-4.7: done
+
+Background CPU work (image and PDF transforms, search indexing, membership warming, and model refresh) now shares one scheduler that runs a single background phase at a time and pauses new phases while a query or interactive transaction is in progress. After each phase it idles for about as long as the process CPU time that phase used, and a query or transaction that lasts at least 750ms extends that rest. Sheet flushes stay on the persistence worker, so a refresh can read sheets, keep later writes for replay, and build the replacement model off to the side. Import-mode requests and `access.System` jobs commit through that same budget; ordinary HTTP calls, including system identities such as feedback, still commit as interactive work.
+
+No significant findings.
