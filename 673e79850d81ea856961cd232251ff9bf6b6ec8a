@@ -1,0 +1,37 @@
+# Keep outside guests from binding directory people
+
+byre task tskJ6YsfhvRjzE, "Outside guest binding", created by ian@fc.run, merged by ian@fc.run.
+Full transcripts: the events of task tskJ6YsfhvRjzE in byre (GET /api/events?task_id=tskJ6YsfhvRjzE).
+
+## Summary
+
+Security audit of heliosian at 5ac8216. Two reachable issues were fixed.
+
+An outside guest, or anyone holding their invitation link, could add a directory person by email on a list that allows guests. The next view showed that person's real name and id, hosts saw them on the list, and the token holder could RSVP for them. The outside add now creates a guest with the typed name, or reuses the guest who already holds that address (`PERSON_EMAIL` looked up as a guest, not `personAt`, which prefers the directory holder). The directory person is not added and cannot be answered for. Sign-in still resolves the address to them. The invitation still goes to that address, at most ten times.
+
+Before: an outside guest who typed a directory email added that person, under their real name, and could RSVP for them.
+Now: the same request creates or reuses an outside guest with the typed name, and the directory person stays off the list.
+
+Before: a second add of that address missed the guest row and the write failed on the unique address.
+Now: it reuses the guest who already holds the address, and does nothing more when they are already on the list.
+
+A bare carriage return in a name, title, or place could start a new line in a calendar invite. The calendar text escape now writes it as a line break inside the field. URLs stay unescaped because they are server-built and comma-escaping would change a real URL.
+
+Before: a bare carriage return in a calendar field started a new line in the invite.
+Now: it stays inside the field, written as a calendar line break.
+
+Left alone: member invitation tokens still open the outside page (the sample and the When preview test use one); reusing another outside guest by email still shows their stored name, because a second guest cannot hold that address; signed-in add-guests still attaches a directory person by email; share cards stay public; `person_visible` was not narrowed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+An outside guest who names a directory person's email no longer gets that person attached as their guest. The handler reuses a person only when that person is already a guest, and otherwise inserts a new guest person and email. Calendar text escaping now turns a bare carriage return into `\n`, with the fold/escape test updated to cover it.
+
+- Reusing a guest at a directory address goes through `personAt`, which prefers the directory person, so a second add of that address hits the guest-email unique key and fails.
+
+### Snapshot #2, reviewer "Review · Grok low", grok grok-4.7: done
+
+An outside RSVP token can no longer bind a directory person by typing that person's email as a brought guest. The handler only reuses a person who already holds the address as a guest (PERSON_EMAIL unique on address plus the generated guest flag), and otherwise creates a new guest person, even when a directory row has the same address. A second add of that address reuses the guest row. Calendar text escaping now turns a bare carriage return into the escaped newline, so a CR cannot break an iCalendar line.
+
+No significant findings.
