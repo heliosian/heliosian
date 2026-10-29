@@ -299,7 +299,7 @@ function volunteersBox(node) {
     box.append(el('div', 'vol-note vol-full', node.volunteersComplete ? 'The volunteers are all set. Thank you, everyone!' : 'Every spot is taken. Thank you, everyone!'));
   }
   if (listHidden(node) && revealed) {
-    box.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
+    box.append(el('div', 'vol-note', 'This list is private; only the co-chairs see it.'));
   }
   if (node.spots) {
     box.append(el('div', 'vol-note', `${node.taken} of ${node.spots} spots taken.`));
@@ -405,7 +405,7 @@ function ownVolunteers(view, labeled) {
     return;
   }
   if (!view.revealed) {
-    listing.append(el('div', 'vol-note', 'This list is private; only the organizers see it.'));
+    listing.append(el('div', 'vol-note', 'This list is private; only the co-chairs see it.'));
   } else if (!people.length && !chairs.length) {
     listing.append(el('div', 'vol-note', 'Nobody yet.'));
   }

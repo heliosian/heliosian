@@ -138,7 +138,7 @@ function cardFoot(info, done) {
   const foot = el('div', 'who-foot');
   if (info) {
     const profile = el('a', 'button', '');
-    profile.append(svg('open'), el('span', '', 'Open Helios Who? Profile'));
+    profile.append(svg('open'), el('span', '', 'Open Helios Who?'));
     profile.href = info.who_href;
     profile.target = '_blank';
     profile.rel = 'noopener';

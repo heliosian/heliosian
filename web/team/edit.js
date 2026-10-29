@@ -136,7 +136,7 @@ function signUpForm(node, existing, someoneElse) {
   } else {
     fields.push(field('Availability', position));
   }
-  note.placeholder = 'Anything the organizers and whoever is signed up should know';
+  note.placeholder = 'Anything the co-chairs and whoever is signed up should know';
   const noteLabel = el('span', '', 'Note ');
   noteLabel.append(el('small', '', '(optional)'));
   fields.push(field(noteLabel, note));
@@ -264,8 +264,8 @@ export function openActivity(act, options) {
     const policy = opts.category ? categoryOf(opts.category) : opts.parent;
     const live = under && ((opts.parent && opts.parent.canEdit) || (policy && policy.allowAdding === ADDING.yes));
     const lead = el('p', 'field-lead suggest-lead', under
-      ? `Adding to ${root.title}. ${live ? 'It will go live right away.' : 'The organizers will take a look before it goes live.'}`
-      : 'Have an idea for something the HCA could do? Tell us about it and an organizer will take a look.');
+      ? `Adding to ${root.title}. ${live ? 'It will go live right away.' : 'The co-chairs will take a look before it goes live.'}`
+      : 'Have an idea for something the HCA could do? Tell us about it and a co-chair will take a look.');
     fields.unshift(lead);
   } else {
     if (under) {
@@ -358,7 +358,7 @@ export function openActivity(act, options) {
       fields.push(suggestImage.wrap);
     } else {
       timing.placeholder = 'Spring, a Friday in March, a few times a year…';
-      fields.push(field('When (optional)', timing, 'Roughly - the organizers will pin it down with you.'));
+      fields.push(field('When (optional)', timing, 'Roughly - the co-chairs will pin it down with you.'));
     }
     fields.push(signMeRow);
     body = fields;
@@ -896,7 +896,7 @@ export function openVolunteerSettings(node, replace) {
         await moveCategory(node.id, cats, moved.index, moved.index < i ? i - 1 : i, null);
       }, false);
     }
-    const locked = root.canEdit ? '' : 'Only the event’s organizers can change this';
+    const locked = root.canEdit ? '' : 'Only the event’s co-chairs can change this';
     heading.classList.toggle('is-hidden', Boolean(cat.hidden) || root.status === 'Hidden');
     heading.append(
       eye(!cat.hidden, root.status === 'Hidden' ? root.title : '', locked, open => saveCategory(cat, {hidden: !open})),
@@ -1039,8 +1039,8 @@ export function openCategory(category, eventId, after) {
     {dropzone: true, hint: 'Add an image to represent this category (optional).'});
   const policies = [
     {label: 'Yes - people can add, and it goes live', value: ADDING.yes},
-    {label: 'Approval needed - people can add, an admin approves', value: ADDING.approval},
-    {label: 'No - only organizers add here', value: ADDING.no},
+    {label: 'Approval needed - people can add, a co-chair approves', value: ADDING.approval},
+    {label: 'No - only co-chairs add here', value: ADDING.no},
   ];
   const adding = select(policies, category ? category.allowAdding : ADDING.no);
   const addingWrap = el('div', 'status-select policy-select');
@@ -1083,7 +1083,7 @@ export function openCategory(category, eventId, after) {
 }
 
 function addingWords(category) {
-  return {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only organizers add here'}[category.allowAdding] || '';
+  return {[ADDING.yes]: 'People can add here', [ADDING.approval]: 'People can suggest here', [ADDING.no]: 'Only co-chairs add here'}[category.allowAdding] || '';
 }
 
 async function moveCategory(eventId, list, from, to, after) {

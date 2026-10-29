@@ -74,7 +74,7 @@ function openFamilyCard(named, counts, members, gradeColors) {
     who.href = named.familyHref;
     who.target = '_blank';
     who.rel = 'noopener';
-    who.append(svg('open'), el('span', '', 'Open on Helios Who?'));
+    who.append(svg('open'), el('span', '', 'Open Helios Who?'));
     foot.append(who);
   }
   foot.append(doneButton());
