@@ -17,6 +17,7 @@ import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
 import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from '/members.js';
 import {keyBetween} from '/order.js';
+import {infoBanner} from '/infobanner.js';
 
 const visibilityNotes = {
   hidden: 'Only the email list\'s managers and the super admins see it.',
@@ -836,6 +837,9 @@ export function groupPage(g) {
     actions.push(unsubscribeButton(g));
   }
   page.append(pageHead(g.title, actions));
+  if (canEdit && !g.address) {
+    page.append(infoBanner('alert', 'mail', 'This email list has no address yet', `Nobody can mail ${g.title} until it has one. Choose its address, and it goes to everyone on the list.`, 'Choose an address', `${location.pathname}?edit=1&tab=details`, false));
+  }
   page.append(overview(g));
 
   const members = el('div');

@@ -226,6 +226,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 .rule-list li { margin: 4px 0; }
 
 .group-overview { margin-bottom: 16px; }
+.group-page .infobanner-wrap { padding-top: 0; margin-bottom: 20px; }
 .member-tools { display: flex; align-items: flex-start; gap: 10px; }
 .member-csv { margin-left: auto; text-decoration: none; white-space: nowrap; }
 .person-cards { margin-bottom: 28px; }

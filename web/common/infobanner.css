@@ -1,0 +1,162 @@
+.infobanner-wrap {
+  padding-top: 20px;
+  background: var(--page);
+}
+
+.infobanner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-radius: 16px;
+  padding: 16px 20px;
+  border: 1px solid transparent;
+}
+
+.infobanner-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  min-width: 0;
+}
+
+.infobanner-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.infobanner-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.infobanner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.infobanner-title {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.infobanner-desc {
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.infobanner-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 11px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.infobanner-button svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2.2;
+}
+
+/* An alert banner is the palette's yellow: a pale card with a gold bar at
+   its left, the mark in a gold disc, a rule between it and the words, the
+   title in gold, and a gold button. */
+.infobanner-alert {
+  position: relative;
+  overflow: hidden;
+  background: var(--notice-wash);
+  border-color: var(--notice-line);
+  border-radius: 0 16px 16px 0;
+}
+
+.infobanner-alert::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  background: var(--notice-bar);
+}
+
+.infobanner-alert .infobanner-icon {
+  background: var(--notice-disc);
+  color: var(--notice-disc-ink);
+}
+
+.infobanner-alert .infobanner-main::before {
+  content: '';
+  order: 1;
+  width: 1px;
+  height: 36px;
+  background: var(--notice-ink);
+  opacity: 0.45;
+}
+
+.infobanner-alert .infobanner-body { order: 2; }
+
+.infobanner-alert .infobanner-title {
+  color: var(--notice-ink);
+}
+
+.infobanner-alert .infobanner-desc {
+  color: var(--notice-text);
+}
+
+.infobanner-alert .infobanner-button {
+  background: #f1b940;
+  color: var(--brand-deep);
+  border-radius: 999px;
+}
+
+.infobanner-alert .infobanner-button:hover { background: #e9ad2e; }
+
+.infobanner-close {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  color: var(--notice-text);
+  opacity: 0.6;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.infobanner-close:hover {
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  .infobanner {
+    position: relative;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .infobanner-button {
+    justify-content: center;
+  }
+  .infobanner-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+  }
+}

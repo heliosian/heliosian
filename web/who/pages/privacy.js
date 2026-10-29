@@ -1,5 +1,5 @@
 import {privacyLinks, viewer, familyOf, adultsOf} from '../state.js';
-import {infoBanner} from '../dom.js';
+import {infoBanner} from '/infobanner.js';
 import {el, svg} from '/elements.js';
 
 const veracrossAddressLabels = {full: 'Full Address', partial: 'Partial (City Only)', hidden: 'Hidden'};

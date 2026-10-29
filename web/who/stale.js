@@ -1,5 +1,6 @@
 import {staleYears, viewer, isStudent, isStaff, isParent, familyOf, adultsOf, kidsOf, photosOf, canEditFamily} from './state.js';
-import {firstName, infoBanner} from './dom.js';
+import {firstName} from './dom.js';
+import {infoBanner} from '/infobanner.js';
 import {el, svg, link} from '/elements.js';
 import {uploadPhoto} from './edit.js';
 import {agedPast} from '/staleness.js';
