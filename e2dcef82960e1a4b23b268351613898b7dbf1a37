@@ -1,0 +1,22 @@
+# Collapse duplicated helpers and derive queue done
+
+byre task tskSzOawAKaFYR, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskSzOawAKaFYR in byre (GET /api/events?task_id=tskSzOawAKaFYR).
+
+## Summary
+
+Simplicity audit of main at 8e7b9f76. The tree was already in good shape on the open cleanup issues (sexp lists derive isList; geocode lookups are one record). The audit collapsed four real duplications and left the rest because the copies are different rules.
+
+Built: one setPicture in web/common/images.js for Home, Team, and Celebrate (post a photo, then delete the previous one). One andList in web/common/andlist.js for the English "A, B and C" lists that had been copied in the calendar, parties, and the When event page. Home's parseDate and tint live once in web/home/state.js, shared by the month view and widgets. queueCount no longer stores Done; JSON derives done as 0 when total is 0 and total minus pending otherwise, including nested parts.
+
+Decisions: andList is its own leaf module so the calendar does not import person tiles. Home's date parser was not switched to parseWhen, which returns null on a bad string. When's setPicture stayed, because it posts only when a file was chosen and deletes the event's current photo. Queue done keeps the old zero-total case so sign-in and sweep JSON do not go negative.
+
+Left out: school-year start versus Staff Birthdays' year start, HMAC signers for different tokens, the two PDF thumbnail walks, When versus Home availability wording, the server's mail joinNames, and single-implementation store interfaces. Review found nothing to change. Merging main added only a log line in tools/pdfthumbnails when a PDF's pages are reused; that combined cleanly.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+The audit collapses three copies of the same ideas into one place each. English name lists ("A, B and C") now live in web/common/andlist.js and are used by the calendar, parties, celebrate, team, and when pages. Replacing a group's picture is one setPicture in web/common/images.js, called from celebrate, team, and home. Home's date parser and event tint class live once in web/home/state.js and are shared by the month view and widgets. Queue JSON still reports done, but that count is derived at marshal time from total minus pending instead of being stored on queueCount and kept in step by every tally.
+
+No significant findings.
