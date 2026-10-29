@@ -9,7 +9,8 @@ import {answerWords, answerIcon, answerFor, firstName, ticketWords, stamp, picke
 import {openGuestForm, openGuestCard, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker, guestAdders} from './addpeople.js';
-import {personTile, personCard, peopleRow, andList} from '/people.js';
+import {andList} from '/andlist.js';
+import {personTile, personCard, peopleRow} from '/people.js';
 import {personRow} from '/personrow.js';
 import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 import {countList} from '/countlist.js';

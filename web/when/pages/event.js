@@ -11,6 +11,7 @@ import {load} from '/router.js';
 import {setPicture, setStatus} from '../writes.js';
 import {openGuestForm} from '../guestpopups.js';
 import {answerIcon} from '../inviteparts.js';
+import {andList} from '/andlist.js';
 import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
 import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
@@ -231,7 +232,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
   }
   const hosts = view.hosts.map(h => h.name).filter(Boolean);
   if (linkedLine && hosts.length) {
-    linkedLine.textContent = (isParty(e) ? 'Hosted by ' : 'Chaired by ') + (hosts.length > 1 ? hosts.slice(0, -1).join(', ') + ' and ' + hosts[hosts.length - 1] : hosts[0]);
+    linkedLine.textContent = (isParty(e) ? 'Hosted by ' : 'Chaired by ') + andList(hosts);
   }
 }
 
@@ -549,7 +550,7 @@ function linkedBadge(e) {
 function linkedLineWords(e, kind) {
   if (e.hostNames && e.hostNames.length) {
     const names = e.hostNames;
-    return (kind === 'celebrate' ? 'Hosted by ' : 'Chaired by ') + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]);
+    return (kind === 'celebrate' ? 'Hosted by ' : 'Chaired by ') + andList(names);
   }
   if (e.minePeople && e.minePeople.length) {
     return [...new Set(e.minePeople.map(p => p.name))].join(', ');

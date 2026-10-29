@@ -9,7 +9,7 @@ import {keyBetween} from '/order.js';
 import {el, svg, toast, button} from '/elements.js';
 import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
-import {imageTools, postPhoto, postFlyer} from '/images.js';
+import {imageTools, postFlyer, setPicture} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
@@ -824,13 +824,6 @@ function hostEdits(p, ids) {
     }
   }
   return edits;
-}
-
-export async function setPicture(groupId, name, old) {
-  await postPhoto({group: groupId}, name);
-  if (old) {
-    await write([{delete: old}]);
-  }
 }
 
 function parentOf(celebrationId, categoryId) {

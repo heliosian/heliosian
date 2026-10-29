@@ -1,5 +1,6 @@
 import {queries, rowsOf, write} from '/rail.js';
 import {parseWhen} from '/datecard.js';
+import {andList} from '/andlist.js';
 
 export const eventKinds = '(in kind "event" "party" "activity")';
 
@@ -43,17 +44,10 @@ export function availabilityOf(g, sold, now) {
   return g.waitlist ? 'waitlist' : 'sold-out';
 }
 
-function namesWords(names) {
-  if (names.length < 2) {
-    return names[0] || '';
-  }
-  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-}
-
 const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};
 
 function mineWords(e) {
-  const names = namesWords(e.mineWho) === 'You' ? '' : namesWords(e.mineWho);
+  const names = andList(e.mineWho) === 'You' ? '' : andList(e.mineWho);
   if (e.mine === 'waitlisted') {
     return names ? `${names} ${e.mineWho.length > 1 ? 'are' : 'is'} waitlisted` : 'Waitlisted';
   }
@@ -181,7 +175,7 @@ export function buildCalendar(a) {
       link: g.celebrate_href || g.team_href,
       linkedId: g.kind === 'event' ? '' : g.id, availability, image: imageOf(g.id), hosts: [], hostNames: [], hosted: hosted.has(g.id),
       mine: holders.length ? 'going' : waiting.length ? 'waitlisted' : '', mineWho: (holders.length ? holders : waiting).map(nameOf), minePeople: [],
-      going: going.length ? namesWords(going.map(nameOf)) + (going.length > 1 || going[0] === me.id ? ' are going' : ' is going') : '',
+      going: going.length ? andList(going.map(nameOf)) + (going.length > 1 || going[0] === me.id ? ' are going' : ' is going') : '',
       me: {answer}, invited: invitedTo.has(g.id), invitation: invitedTo.has(g.id), dayType: '', keywords: [], addedBy: g.added_by || '', added: g.added || '',
       myRows, groups: {rsvp_yes: g.rsvp_yes || '', rsvp_no: g.rsvp_no || '', hidden_for: g.hidden_for || '', audience: g.audience || ''},
       audienceRules: (audiences[g.audience] || []).map(r => r.id), photo: photos[g.id] ? photos[g.id][0].id : '', category: top,

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"maps"
 	"net/http"
 	"slices"
@@ -16,10 +17,21 @@ type queueCount struct {
 	Name    string       `json:"name"`
 	About   string       `json:"about,omitempty"`
 	Pending int          `json:"pending"`
-	Done    int          `json:"done"`
 	Total   int          `json:"total"`
 	Query   string       `json:"query,omitempty"`
 	Parts   []queueCount `json:"parts,omitempty"`
+}
+
+func (c queueCount) MarshalJSON() ([]byte, error) {
+	done := 0
+	if c.Total != 0 {
+		done = c.Total - c.Pending
+	}
+	type count queueCount
+	return json.Marshal(struct {
+		count
+		Done int `json:"done"`
+	}{count: count(c), Done: done})
 }
 
 type queueReport struct {
@@ -79,11 +91,9 @@ func (t *tally) add(c *queueCount, part string, pending bool) {
 func (t *tally) finish(c *queueCount, query func(part string) string) {
 	for _, name := range slices.Sorted(maps.Keys(t.parts)) {
 		p := t.parts[name]
-		p.Done = p.Total - p.Pending
 		p.Query = query(name)
 		c.Parts = append(c.Parts, *p)
 	}
-	c.Done = c.Total - c.Pending
 }
 
 func (m *Model) queueCounts() []queueCount {
@@ -135,7 +145,6 @@ func (m *Model) queueCounts() []queueCount {
 			}
 		}
 	}
-	classifying.Done = classifying.Total - classifying.Pending
 	byType.finish(&extraction, func(kind string) string { return extractionQuery(mimesOf[kind]) })
 	byRelation.finish(&fetching, func(relation string) string { return fetchingQuery(relation) })
 	for _, relation := range []string{"image", "linked"} {
@@ -154,7 +163,6 @@ func (m *Model) queueCounts() []queueCount {
 			digest.Pending++
 		}
 	}
-	digest.Done = digest.Total - digest.Pending
 	out = append(out, digest)
 
 	search := queueCount{Name: "search indexing", About: "groups, people and extracts whose search entry Claude and Vertex have not made yet", Query: `(from SEARCH (where (not made)))`}
@@ -178,7 +186,6 @@ func (m *Model) queueCounts() []queueCount {
 			photos.Pending++
 		}
 	}
-	photos.Done = photos.Total - photos.Pending
 	out = append(out, photos)
 
 	sweep := queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object"}
@@ -205,6 +212,5 @@ func (m *Model) thumbnailQueue() queueCount {
 			thumbnails.Pending++
 		}
 	}
-	thumbnails.Done = thumbnails.Total - thumbnails.Pending
 	return thumbnails
 }

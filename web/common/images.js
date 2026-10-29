@@ -1,6 +1,7 @@
 import {openImageCrop} from '/crop.js';
 import {popup} from '/modal.js';
 import {api} from '/api.js';
+import {write} from '/rail.js';
 import {el, svg, toast} from '/elements.js';
 
 const held = new Map();
@@ -35,6 +36,13 @@ export async function postFlyer(group, name) {
   form.append('group', group);
   appendPicture(form, 'flyer', name);
   return api('POST', '/api/do/flyer', form);
+}
+
+export async function setPicture(groupId, name, old) {
+  await postPhoto({group: groupId}, name);
+  if (old) {
+    await write([{delete: old}]);
+  }
 }
 
 export function imageTools(apiBase, {state}) {

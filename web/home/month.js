@@ -1,4 +1,4 @@
-import {state, feed, readMonth, shiftMonth, clock} from './state.js';
+import {state, feed, readMonth, shiftMonth, clock, parseDate, tint} from './state.js';
 import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
@@ -9,16 +9,7 @@ let month = null;
 let selected = '';
 let loaded = null;
 
-function parseDate(date) {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
 const pad = n => String(n).padStart(2, '0');
-
-function tint(event) {
-  return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
-}
 
 function lastDay(event) {
   return event.endAt.slice(0, 10);

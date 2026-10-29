@@ -46,10 +46,6 @@ export function personTile(person, opts = {}) {
   return tile;
 }
 
-export function andList(names) {
-  return names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0] || '';
-}
-
 export function peopleRow({title, line, notes = [], tiles, after = []}) {
   const row = el('div', 'side-row people-row');
   const icon = el('div', 'side-icon');

@@ -9,7 +9,8 @@ import {openPhotoLightbox} from '/crop.js';
 import {detailHero} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
-import {personTile, personCard, peopleRow, andList} from '/people.js';
+import {andList} from '/andlist.js';
+import {personTile, personCard, peopleRow} from '/people.js';
 import {personRow} from '/personrow.js';
 import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
 

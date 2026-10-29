@@ -80,6 +80,15 @@ function dateOf(d) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+export function parseDate(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export function tint(event) {
+  return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
+}
+
 export function eventCard(e) {
   const linked = e.source === 'celebrate' || e.source === 'team';
   return {

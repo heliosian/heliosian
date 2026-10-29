@@ -1,4 +1,4 @@
-import {state, isAdmin, feed, readUpcoming, readToDos, holdsApps, inGrid, widgetGrid, categoryOf, fraction, clock} from './state.js';
+import {state, isAdmin, feed, readUpcoming, readToDos, holdsApps, inGrid, widgetGrid, categoryOf, fraction, clock, parseDate, tint} from './state.js';
 import {appOrigin} from '/appswitch.js';
 import {searchInput} from '/shell.js';
 import {el, svg, toast} from '/elements.js';
@@ -7,15 +7,6 @@ import {calendarMark, calendarMenu, categoryItems, dropdown, opensOutside, shown
 import {categoryMarkOf} from './dom.js';
 import {dayBar, dayChip, dayRow, eventRow, standing} from '/dayrows.js';
 import {rsvpPanel} from '/rsvps.js';
-
-function parseDate(date) {
-  const [y, m, d] = date.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
-
-function tint(event) {
-  return event.linkApp === 'celebrate' ? 'is-celebrate' : event.linkApp === 'team' ? 'is-team' : 'is-school';
-}
 
 function startTime(event, date) {
   const [day, time] = event.startAt.split(' ');

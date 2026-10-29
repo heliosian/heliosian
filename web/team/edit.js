@@ -6,7 +6,7 @@ import {whenEditor, treeFilter} from './dom.js';
 import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
 import {el, svg, toast, button, imageThumb} from '/elements.js';
-import {imageTools} from '/images.js';
+import {imageTools, setPicture} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, known, emailOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
 import {openPersonCard} from '/personcard.js';
@@ -1071,7 +1071,7 @@ export function openCategory(category, eventId, after) {
       const id = await writes.saveHeading(category, fields, owner);
       const picked = image.value();
       if (picked && picked !== (category ? category.image : '')) {
-        await writes.setPicture(id, picked, category ? category.image : '');
+        await setPicture(id, picked, category ? category.image : '');
       }
       await load();
     },

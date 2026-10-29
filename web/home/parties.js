@@ -1,5 +1,6 @@
 import {rowsOf} from '/rail.js';
 import {availabilityOf} from '/calendar.js';
+import {andList} from '/andlist.js';
 
 const upcoming = '(= kind "party") (not (in status "closed" "pending")) (not (blank visible_to)) (not (blank start)) (or (>= start today) (>= end today))';
 
@@ -13,15 +14,8 @@ export const partyQueries = {
 
 const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out'};
 
-function joinNames(names) {
-  if (names.length < 2) {
-    return names[0] || '';
-  }
-  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
-}
-
 function mineWords(mine, who) {
-  const names = joinNames(who) === 'You' ? '' : joinNames(who);
+  const names = andList(who) === 'You' ? '' : andList(who);
   if (mine === 'waitlisted') {
     if (names) {
       return `${names} ${who.length > 1 ? 'are' : 'is'} waitlisted`;

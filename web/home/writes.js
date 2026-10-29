@@ -1,5 +1,5 @@
 import {api} from '/api.js';
-import {postPhoto} from '/images.js';
+import {setPicture} from '/images.js';
 import {keyBetween, movedKey} from '/order.js';
 import {ruleRow, ruleSaysSomething} from '/listrules.js';
 import {state} from './state.js';
@@ -99,13 +99,6 @@ export function audienceEdits(thing, name, draft) {
     ...ruleInserts('@audience', rules),
     ...people.map(p => ({insert: 'MEMBER', row: {group: '@audience', person: p, member: 'yes', added_by: state.model.user.id}})),
   ];
-}
-
-export async function setPicture(groupId, name, old) {
-  await postPhoto({group: groupId}, name);
-  if (old) {
-    await write([{delete: old}]);
-  }
 }
 
 function lastOrder(list) {

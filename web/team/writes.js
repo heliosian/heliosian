@@ -2,7 +2,7 @@ import {state, me, activity, category, descendants, yearGroup, addingValue, form
 import {write} from '/rail.js';
 import {known} from '/directory.js';
 import {keyBetween} from '/order.js';
-import {picked, postPhoto, postFlyer} from '/images.js';
+import {picked, postFlyer, setPicture} from '/images.js';
 
 function now() {
   return formatWhen(new Date(), true);
@@ -353,13 +353,6 @@ export function yearOwner(year) {
 
 export async function deleteHeading(heading) {
   await write([{delete: heading.id}]);
-}
-
-export async function setPicture(groupId, name, old) {
-  await postPhoto({group: groupId}, name);
-  if (old) {
-    await write([{delete: old}]);
-  }
 }
 
 export async function removePicture(photo) {
