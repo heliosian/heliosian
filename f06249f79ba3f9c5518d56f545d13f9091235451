@@ -1,0 +1,30 @@
+# Probe PDF document and page lookups in thumbnail polling
+
+byre task tskxAQlRHI6hNp, "PDF thumbnail probing", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskxAQlRHI6hNp in byre (GET /api/events?task_id=tskxAQlRHI6hNp).
+
+## Summary
+
+### Goals
+Audit the codebase for latency, wasteful computation, unneeded polling, or queries that perform full table scans on request or background data paths.
+
+### Changes
+- Fixed polling queries in [processing.go](file:///Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskxAQlRHI6hNp/tools/pdfthumbnails/processing.go) and [reuse.go](file:///Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskxAQlRHI6hNp/tools/pdfthumbnails/reuse.go) during PDF thumbnail generation and reuse:
+  Before: PDF thumbnail polling walked all 10,013 rows of `DOCUMENT` every two seconds, taking ~77ms–93ms per poll.
+  Now: queries probe `id` and `parent` indexes directly, completing scans in ~0.06ms–0.09ms (~800x–1,400x faster).
+- Added regression tests in [query_test.go](file:///Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskxAQlRHI6hNp/internal/db/query_test.go) (`TestAnOrOfProbesProbesEachBranch`) verifying that `(or (= id …) (= parent …))` and `(or (in id …) (in parent …))` probe each branch.
+
+### Key Decisions
+- **Filter relation in Go rather than compound query branch**: In `(where (or (= id <id>) (and (= parent <id>) (= relation "page"))))`, the second branch's `and` caused the query planner to forfeit probe selection, defaulting to walking the entire 10k+ row table. Probing `(or (= id <id>) (= parent <id>))` directly checks indexed columns while Go filters page relation.
+
+### Deliberately Left Out
+- Combining alert badges and birthday work queries in `web/common/alerts.js`: `parseObject` in [page_test.go](file:///Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskxAQlRHI6hNp/internal/db/page_test.go) strictly enforces spreading only `...navQueries()`.
+- Category kind filter in `web/team/state.js`: table slice is small (~60 rows) and scan already takes <2ms.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+pdfthumbnails was polling DOCUMENT with an OR whose second branch was parent plus relation = page. That shape cannot be two index probes, so each poll walked the whole table while the tool waited up to 15 minutes. The queries are now an OR of id and parent probes (equality in the thumbnail wait, in for reuse). Relation is applied in the client, and a query test checks that both shapes probe and still match a full walk.
+
+No significant findings.
