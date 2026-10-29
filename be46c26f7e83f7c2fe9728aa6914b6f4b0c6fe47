@@ -1,0 +1,16 @@
+# Add TODO: Handle Gayle's heliosian request
+
+byre task tskFq0f1nQMkuM, "Gayle's heliosian request", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskFq0f1nQMkuM in byre (GET /api/events?task_id=tskFq0f1nQMkuM).
+
+## Summary
+
+Added one TODO.md item, "Handle Gayle's heliosian request", at the end of the list. Detail underneath: from the Heliosian Team WhatsApp group (2026-10-29), Gayle McDowell asked what "from __" means and suggested it is really "create mailing list"; likely a label in Helios Loop's email-list UI, to be confirmed with Ian by whoever picks it up. Placed last because the brief gave no urgency or grouping; no other items touched. Merged main in cleanly (web/loop and web/who changes only, no conflicts); go vet passes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+Adds one unchecked TODO item, "Handle Gayle's heliosian request", at the end of the Issues section in TODO.md. The description is Gayle McDowell's 2026-10-29 WhatsApp question about a "from __" label in Helios Loop's email-list UI, and the note to confirm the screen with Ian. No other items were changed.
+
+No significant findings.
