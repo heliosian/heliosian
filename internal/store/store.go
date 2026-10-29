@@ -51,8 +51,10 @@ type Store[M any] struct {
 	pending      []func()
 	holds        int
 	draining     bool
+	drained      []func()
 	done         chan struct{}
 	lastRefresh  time.Time
+	lastRead     time.Time
 	refreshDone  chan struct{}
 	refreshAgain bool
 }

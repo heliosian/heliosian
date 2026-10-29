@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"image/color"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"heliosian/internal/hosts"
 	"heliosian/internal/imagesearch"
 	"heliosian/internal/intercept"
+	"heliosian/internal/lease"
 	"heliosian/internal/logging"
 	"heliosian/internal/mail"
 	"heliosian/internal/mcp"
@@ -238,10 +240,6 @@ func NewCore(cfg Config) *Core {
 	db.RegisterDashboard(adminMux, api, dataStore, external)
 	go dataStore.Tick()
 	go vitals.Sampler()
-	go func() {
-		<-dataStore.Refreshed()
-		pictures.Start()
-	}()
 	return &Core{
 		Sessions: sessions, Data: dataStore, Pictures: pictures, Search: search, ListMail: listMail, Invites: invitations, Birthdays: birthdays,
 		Spoof:   spoofing(dataStore),
@@ -354,6 +352,26 @@ func Production(domain, site string) (*http.Server, *db.Store) {
 		server.RegisterOnShutdown(func() { core.Data.Add(watcher.Stop) })
 		go func() {
 			<-core.Settled
+			writer, err := lease.Acquire(context.Background(), bucket)
+			if err != nil {
+				logging.Fatal("take the writer lease", "error", err)
+			}
+			core.Data.OnDrained(func() {
+				if err := writer.Release(context.Background()); err != nil {
+					slog.Error("release the writer lease", "error", err)
+				}
+			})
+			held := time.Now()
+			for {
+				core.Data.Refresh()
+				core.Data.Flush()
+				if core.Data.LastRead().After(held) {
+					break
+				}
+				slog.Warn("the refresh after taking the writer lease swapped nothing; reading again")
+				time.Sleep(5 * time.Second)
+			}
+			core.Pictures.Start()
 			core.ListMail.Start()
 			core.Invites.Start()
 			core.Birthdays.Start()
@@ -370,6 +388,10 @@ func Production(domain, site string) (*http.Server, *db.Store) {
 		}()
 	} else {
 		db.StartIdleWorkers(core.Data)
+		go func() {
+			<-core.Settled
+			core.Pictures.Start()
+		}()
 	}
 	<-core.Search.Ready()
 	return server, core.Data

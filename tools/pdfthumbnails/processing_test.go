@@ -29,10 +29,14 @@ func TestPagesUploadBackToBackThenWaitForEveryPageThumbnail(t *testing.T) {
 			io.WriteString(w, `{}`)
 		case r.URL.Path == "/api/q":
 			reads++
+			if reads == 1 {
+				json.NewEncoder(w).Encode(qclient.Answer{Resources: map[string]map[string]map[string]string{"DOCUMENT": {"doc00000000001": {"content": "cnt00000000001"}}}})
+				return
+			}
 			docs := map[string]map[string]string{"doc00000000001": {"content": "cnt00000000001", "page_count": "3"}}
 			for n := 1; n <= 3; n++ {
 				page := map[string]string{"parent": "doc00000000001", "first_page": fmt.Sprint(n)}
-				if reads > n {
+				if reads > n+1 {
 					page["thumbnail"], page["thumbnailed"] = fmt.Sprintf("cnt0000000001%d", n), "2026-10-28 20:00:00"
 				}
 				docs[fmt.Sprintf("doc0000000010%d", n)] = page
@@ -50,7 +54,7 @@ func TestPagesUploadBackToBackThenWaitForEveryPageThumbnail(t *testing.T) {
 	if err := upload(&qclient.Client{Base: server.URL}, "doc00000000001", "cnt00000000001", []string{path, path, path}); err != nil {
 		t.Fatal(err)
 	}
-	if pages != 3 || reads != 4 {
+	if pages != 3 || reads != 5 {
 		t.Fatalf("pages=%d reads=%d", pages, reads)
 	}
 }

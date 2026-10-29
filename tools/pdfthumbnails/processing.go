@@ -31,10 +31,7 @@ func completePDFThumbnail(c *qclient.Client, id, content string) error {
 		if docs[id]["content"] != content {
 			return fmt.Errorf("%w: document %s no longer holds pdf %s", errStaleDocument, id, content)
 		}
-		total, err := strconv.Atoi(docs[id]["page_count"])
-		if err != nil || total < 1 {
-			return fmt.Errorf("document %s has no page count", id)
-		}
+		total, _ := strconv.Atoi(docs[id]["page_count"])
 		pages := map[string]map[string]string{}
 		for _, doc := range docs {
 			if doc["parent"] == id && (doc["relation"] == "page" || doc["relation"] == "") {
@@ -42,10 +39,14 @@ func completePDFThumbnail(c *qclient.Client, id, content string) error {
 			}
 		}
 		waiting := 0
+		if total < 1 {
+			waiting = 1
+		}
 		for n := 1; n <= total; n++ {
 			page := pages[strconv.Itoa(n)]
 			if page == nil {
-				return fmt.Errorf("document %s has no page %d", id, n)
+				waiting++
+				continue
 			}
 			if page["thumbnail"] == "" && page["thumbnailed"] != "" {
 				return fmt.Errorf("%w: document %s page %d was thumbnailed without a picture", errNoThumbnail, id, n)

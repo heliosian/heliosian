@@ -41,6 +41,12 @@ func (s *Store[M]) Flush() {
 	}
 }
 
+func (s *Store[M]) OnDrained(f func()) {
+	s.work.Lock()
+	defer s.work.Unlock()
+	s.drained = append(s.drained, f)
+}
+
 func (s *Store[M]) Drain() <-chan struct{} {
 	s.work.Lock()
 	s.draining = true
@@ -56,7 +62,11 @@ func (s *Store[M]) run() {
 			s.cond.Wait()
 		}
 		if len(s.pending) == 0 {
+			drained := s.drained
 			s.work.Unlock()
+			for _, f := range drained {
+				f()
+			}
 			close(s.done)
 			return
 		}
@@ -124,6 +134,12 @@ type Status struct {
 	Pending     int       `json:"pending"`
 	Held        int       `json:"held"`
 	LastRefresh time.Time `json:"lastRefresh"`
+}
+
+func (s *Store[M]) LastRead() time.Time {
+	s.work.Lock()
+	defer s.work.Unlock()
+	return s.lastRead
 }
 
 func (s *Store[M]) Status() Status {
@@ -194,7 +210,7 @@ func (s *Store[M]) swapRefresh(ctx context.Context, start time.Time, settle Sett
 	swap()
 	s.afterSwap()
 	s.work.Lock()
-	s.lastRefresh = time.Now()
+	s.lastRefresh, s.lastRead = time.Now(), start
 	s.work.Unlock()
 	s.firstOnce.Do(func() { close(s.first) })
 	slog.Info("refreshed", "took", time.Since(start).Round(time.Millisecond), "locked", time.Since(settled).Round(time.Millisecond))

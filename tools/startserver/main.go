@@ -182,6 +182,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 	db.StartIdleWorkers(core.Data)
 	go func() {
 		<-core.Settled
+		core.Pictures.Start()
 		core.ListMail.Start()
 		core.Invites.Start()
 	}()
