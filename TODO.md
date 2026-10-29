@@ -26,3 +26,5 @@ Last verified: bff8f634
 - Add public view for Celebrate
   Give Celebrate a public view so alumni with tickets can get in.
   Issue: https://github.com/heliosian/heliosian/issues/25
+- Handle Gayle's heliosian request
+  From the Heliosian Team WhatsApp group, 2026-10-29 ~09:26 PT. Gayle McDowell posted a screenshot (not available here) and asked Ian: "What does the "from __" actually mean?" Then: "I actually think it's more like "create mailing list", because unless you've assigned the email, the mailing list doesn't really exist". Likely about a "from __" label in Helios Loop's email-list UI; whoever picks this up should confirm the screen with Ian.
