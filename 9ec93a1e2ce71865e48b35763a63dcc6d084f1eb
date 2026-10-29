@@ -1,0 +1,22 @@
+# Share the month grid and list search
+
+byre task tskvXcTg8abBF9, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskvXcTg8abBF9 in byre (GET /api/events?task_id=tskvXcTg8abBF9).
+
+## Summary
+
+Simplicity audit of main at 9f5c961. It looked for duplicated structure and collapsed the two copies that were the same widget.
+
+Staff Birthdays and HCA-Team each built a 42-cell Sun–Sat chip month. That is now `monthGrid` in `web/common/monthgrid.js`: a chip shows `label` when set and `title` otherwise, and the tooltip stays `title`. Who's directory lists and HCA-Team's opportunity list each built the magnifying-glass search field. That is now `searchBox` in `web/common/searchbox.js`. Who leaves the input type unset; HCA-Team passes `type: 'search'`. `docs/dev.md` names both. Checked in Chrome against the sample server: calendars, the starred HCA-Team chip, and the search fields, including Staff filtering and Invites focus. The review reported no findings.
+
+Left separate on purpose: When's home month and Home's month widget, Loop's shell-synced search, Staff Birthdays' `filter-search` bar, Home's date parser, `joinNames` in Go, school-year strings, HMAC signers, the two PDF thumbnail walks, availability wording, single-implementation store interfaces, the `firstName` copies, When's event date inputs, drag-reorder, and `statusOf`.
+
+Merging main was already up to date. `go vet ./...` passed. No Go tests cover these browser helpers.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+Shared browser helpers replace two copies of the same UI. `web/common/monthgrid.js` draws the six-week chip calendar that Staff Birthdays and HCA-Team each built inline, including day headers, today, other-month cells, links or buttons, and the birthday hover card. `web/common/searchbox.js` is the magnifying-glass field (placeholder, value, optional input type, trimmed lowercase `onInput`) used by Who?'s directory lists and HCA-Team's opportunity search. `docs/dev.md` names both modules.
+
+No significant findings.
