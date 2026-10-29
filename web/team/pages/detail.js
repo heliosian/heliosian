@@ -1,5 +1,6 @@
 import {state, me, family, allows, descendants, parentOf, rootOf, category, eventCategories, longDate, coChairs, mySignUp, canJoin, matches, shownVolunteers, listHidden, listRevealed, addLabel} from '../state.js';
-import {searchBox, treeFilter} from '../dom.js';
+import {treeFilter} from '../dom.js';
+import {searchBox} from '/searchbox.js';
 import {el, link, svg, button, toast, badge} from '/elements.js';
 import {render as markdown} from '/markdown.js';
 import {setTitle} from '/shell.js';
@@ -493,10 +494,10 @@ function childrenSection(node) {
   head.append(el('h2', 'section section-swoosh', 'Opportunities & Needs'));
   const actions = el('div', 'row-actions');
   if (roles.length >= 10) {
-    actions.append(searchBox('Search', q => {
+    actions.append(searchBox({type: 'search', onInput: q => {
       section.query = q;
       paintChildren(section);
-    }, true));
+    }}));
   }
   head.append(actions);
   const wrap = el('div');

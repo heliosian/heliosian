@@ -3,6 +3,7 @@ import {queries, rowsOf, write} from '/rail.js';
 import {firstName, lastName, hue} from '../dom.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {familySearchText} from '../families.js';
 import {tagFacetOptions, ensureMembers} from '../tags.js';
 import {saveTagRelations} from '../storage.js';
@@ -391,16 +392,11 @@ function invitesControls(view, again, paint) {
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
   controls.append(roleChips(paint));
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  const search = searchBox({value: state.q, onInput: q => {
+    state.q = q;
     paint();
-  });
-  search.append(input);
+  }});
+  const input = search.querySelector('input');
   controls.append(
     facetDropdown('Grade', null, gradeOptions(), state.filterGrades, paint),
     facetDropdown('Classroom', null, classroomOptions(), state.filterClassrooms, paint),

@@ -1,6 +1,7 @@
 import {state, model, isStaff, departmentName} from '../state.js';
 import {paletteColor} from '../dom.js';
-import {el, svg, link} from '/elements.js';
+import {el, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl} from '../people.js';
 import {matchesFilters} from '../filters.js';
 
@@ -86,17 +87,10 @@ export function staffPage() {
   const header = el('div', 'content-header content-header-solo');
   const controls = el('div', 'controls');
   controls.append(departmentChips(renderList));
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  controls.append(searchBox({value: state.q, onInput: q => {
+    state.q = q;
     renderList();
-  });
-  search.append(input);
-  controls.append(search);
+  }}));
   header.append(controls);
   content.append(header);
 

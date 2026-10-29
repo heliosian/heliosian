@@ -3,16 +3,6 @@ import {parseWhen} from '/datecard.js';
 import {whenPickers} from '/form.js';
 import {el, svg} from '/elements.js';
 
-export function searchBox(placeholder, onInput) {
-  const box = el('div', 'search');
-  const input = el('input');
-  input.type = 'search';
-  input.placeholder = placeholder || 'Search';
-  input.addEventListener('input', () => onInput(input.value.trim().toLowerCase()));
-  box.append(svg('search'), input);
-  return box;
-}
-
 export function treeFilter(node, below, onChange, start) {
   const chosen = new Set(start || [node.id]);
   const self = `${node.title} (itself)`;

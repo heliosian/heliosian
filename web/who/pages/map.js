@@ -1,5 +1,6 @@
 import {state, model, membersOf, geocodeOf, photosOf, thumbOf, familyName} from '../state.js';
 import {el, svg, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {familySearchText} from '../families.js';
 import {matchesFilters, familyMatchesFilters, directoryFilter} from '../filters.js';
 import {mapsKey} from '/maps.js';
@@ -128,17 +129,11 @@ export function mapPage() {
   const header = el('div', 'content-header');
   header.append(el('h1', '', 'Map'));
   const controls = el('div', 'controls');
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
   let renderPins = () => {};
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  const search = searchBox({value: state.q, onInput: q => {
+    state.q = q;
     renderPins();
-  });
-  search.append(input);
+  }});
   controls.append(search, directoryFilter(() => renderPins()));
   header.append(controls);
   content.append(header);

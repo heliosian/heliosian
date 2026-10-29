@@ -1,7 +1,8 @@
 import {state, descendants, mySignUp, rootOf, parentOf, revealed} from '../state.js';
 import {parseWhen} from '/datecard.js';
-import {el, link, svg, button} from '/elements.js';
+import {el, svg, button} from '/elements.js';
 import {setTitle} from '/shell.js';
+import {monthGrid} from '/monthgrid.js';
 import {categoryClass} from '../cards.js';
 
 let month = null;
@@ -90,29 +91,13 @@ function chipRow(onChange) {
 }
 
 function grid() {
-  const items = entries();
-  const cal = el('div', 'calendar');
-  for (const d of ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']) {
-    cal.append(el('div', 'dow', d));
-  }
-  const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const start = new Date(first);
-  start.setDate(1 - first.getDay());
-  const today = new Date().toDateString();
-  for (let i = 0; i < 42; i++) {
-    const day = new Date(start);
-    day.setDate(start.getDate() + i);
-    const cell = el('div', 'day' + (day.getMonth() !== month.getMonth() ? ' other' : '') + (day.toDateString() === today ? ' today' : ''));
-    cell.append(el('div', 'num', String(day.getDate())));
-    for (const item of items.filter(e => e.key === day.toDateString())) {
-      const cls = item.mine ? ' mine' : ' ' + categoryClass(item.category) + (item.isChild ? ' role' : '');
-      const chip = link(item.href, 'chip' + cls, (item.mine ? '⭐ ' : '') + item.title);
-      chip.title = item.title;
-      cell.append(chip);
-    }
-    cal.append(cell);
-  }
-  return cal;
+  return monthGrid(month, entries().map(e => ({
+    key: e.key,
+    title: e.title,
+    label: (e.mine ? '⭐ ' : '') + e.title,
+    href: e.href,
+    className: e.mine ? 'mine' : categoryClass(e.category) + (e.isChild ? ' role' : ''),
+  })));
 }
 
 export function calendarPage() {

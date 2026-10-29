@@ -4,7 +4,8 @@ import {el, link, svg, thumb, button} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {emptyPanel} from '../cards.js';
 import {assignToMe} from '../edit.js';
-import {monthGrid, monthNav, showToggle} from './calendar.js';
+import {monthNav, showToggle} from './calendar.js';
+import {monthGrid} from '/monthgrid.js';
 
 let month = null;
 let picked = '';

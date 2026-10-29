@@ -1,6 +1,7 @@
 import {state, model, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, membersOf, photosOf, photoUrl, thumbOf, gradeOf, classroomOf, groupById, roomParentsOf, gradeByKey, classroomByKey} from '../state.js';
 import {ordinal, firstName, listSub, paletteColor} from '../dom.js';
 import {el, svg, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {photoWithTag, applyRingColor, photoOrInitials, personPhotoUrl, sortPeople} from '../people.js';
 import {fromURL, breadcrumbs} from '../crumbs.js';
@@ -203,17 +204,10 @@ export function classroomsPage() {
   const heading = classroomsTabs.find(t => t.key === state.classTab).heading;
   header.append(el('h1', '', heading));
   const controls = el('div', 'controls');
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  controls.append(searchBox({value: state.q, onInput: q => {
+    state.q = q;
     renderList();
-  });
-  search.append(input);
-  controls.append(search);
+  }}));
   header.append(controls);
   content.append(header);
 

@@ -1,6 +1,7 @@
 import {state, model, listAt, tags, peopleOf, emailOf, isStudent, isStaff, familiesOf, familyOf, kidsOf, adultsOf, gradeName, classroomName} from '../state.js';
 import {dataGrid, csvField} from '/datagrid.js';
 import {el, svg, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {familySearchText} from '../families.js';
 import {personCard} from '../people.js';
 import {sourceLine} from '/rail.js';
@@ -144,16 +145,10 @@ export function listPage() {
     controls.append(lead);
   }
   controls.append(roleChips(() => renderGrid()));
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  const search = searchBox({value: state.q, onInput: q => {
+    state.q = q;
     renderGrid();
-  });
-  search.append(input);
+  }});
   const onTagPage = state.filterTags.size > 0;
   const facetFilters = el('div', 'facet-filters');
   if (!onTagPage) {

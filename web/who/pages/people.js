@@ -1,6 +1,7 @@
 import {state, model, familiesOf, familyOf, isStudent, thumbOf, photosOf, gradeNameColor} from '../state.js';
 import {firstName} from '../dom.js';
 import {el, svg, link} from '/elements.js';
+import {searchBox} from '/searchbox.js';
 import {tabStrip, tabHref} from '/tabs.js';
 import {personCard, photoOrInitials, cardMore, gradeChain, guestCard, familyPhoto} from '../people.js';
 import {tagFacetOptions, onTagsChange, selectedGuests, ensureMembers} from '../tags.js';
@@ -131,16 +132,10 @@ export function peoplePage() {
   if (isEveryone) {
     controls.append(roleChips(() => renderGrid()));
   }
-  const search = el('div', 'search');
-  search.append(svg('search'));
-  const input = el('input');
-  input.placeholder = 'Search';
-  input.value = state.q;
-  input.addEventListener('input', () => {
-    state.q = input.value.trim().toLowerCase();
+  const search = searchBox({value: state.q, onInput: q => {
+    state.q = q;
     renderGrid();
-  });
-  search.append(input);
+  }});
   const facetFilters = el('div', 'facet-filters');
   facetFilters.append(
     facetDropdown('Grade', null, gradeOptions(), state.filterGrades, () => renderGrid()),
