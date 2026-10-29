@@ -210,6 +210,8 @@ func draw(c *qclient.Client) error {
 			}
 			if source == "" {
 				source = id
+			} else {
+				slog.Info("reused pdf pages", "n", i+1, "of", len(order), "document", id, "source", source)
 			}
 			drawn++
 			finished = append(finished, id)
