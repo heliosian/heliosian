@@ -1,11 +1,9 @@
 import {me as whoAmI} from '/data.js';
 import {listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, directory} from '/directory.js';
-import {navQueries, navLists, viewerListCondition, listIncludes, listKinds, queries, fetchGroups, rowsOf} from '/rail.js';
+import {navQueries, navLists, viewerListCondition, listIncludes, listKinds, queries, fetchGroups, rowsOf, listDomain} from '/rail.js';
 import {nameRulesWith} from '/listrules.js';
 
 nameRulesWith({group: id => state.model.groupNames[id] || null, person: id => personView(id).name});
-
-export const domain = 'loop.heliosian.com';
 
 export const state = {model: null, people: []};
 
@@ -29,7 +27,7 @@ function summaries(answers) {
       slug: g.slug,
       path: g.path,
       title: g.name,
-      address: g.slug ? `${g.slug}@${domain}` : '',
+      address: g.slug ? `${g.slug}@${listDomain}` : '',
       description: g.description || '',
       visibility: visibility(g, everyone),
       run: runs.has(g.id),
@@ -111,7 +109,7 @@ function buildGroups(answers) {
       slug: g.slug,
       path: g.path,
       title: g.name,
-      address: g.slug ? `${g.slug}@${domain}` : '',
+      address: g.slug ? `${g.slug}@${listDomain}` : '',
       description: g.description || '',
       posting: g.posting,
       replying: g.replying,

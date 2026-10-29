@@ -1,4 +1,5 @@
-import {state, domain} from '../state.js';
+import {state} from '../state.js';
+import {listDomain} from '/rail.js';
 import {pageHead} from '/shell.js';
 import {shown, groupFilters} from '../filters.js';
 import {el, svg, link, iconButton, copyText} from '/elements.js';
@@ -58,7 +59,7 @@ export function groupsPage() {
   setTitle('My Email Lists');
   const page = el('div', 'list-page');
   page.append(pageHead('My Email Lists'));
-  page.append(el('p', 'page-lead', 'Each email list\'s members follow from its rules, drawn from the directory as it changes. A list with an address at ' + domain + ' delivers what is sent there to its members.'));
+  page.append(el('p', 'page-lead', 'Each email list\'s members follow from its rules, drawn from the directory as it changes. A list with an address at ' + listDomain + ' delivers what is sent there to its members.'));
   const list = el('div', 'group-list');
   const empty = el('div', 'panel-empty');
   const render = () => {

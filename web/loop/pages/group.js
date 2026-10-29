@@ -1,5 +1,5 @@
-import {state, person, personView, loadModel, domain} from '../state.js';
-import {queries, sourceLine, write, rowsOf} from '/rail.js';
+import {state, person, personView, loadModel} from '../state.js';
+import {queries, sourceLine, write, rowsOf, listDomain} from '/rail.js';
 import {csvField} from '/datagrid.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
 import {visibilityWords} from './groups.js';
@@ -147,7 +147,7 @@ function groupTitleInput(ed) {
 
 function updateAddress(ed) {
   const {draft} = ed;
-  ed.addressNote.textContent = draft.slug ? `${draft.slug}@${domain}` : `The address is <name>@${domain}.`;
+  ed.addressNote.textContent = draft.slug ? `${draft.slug}@${listDomain}` : `The address is <name>@${listDomain}.`;
 }
 
 function addressField(ed, alias) {
@@ -213,7 +213,7 @@ function aliasField(ed) {
   });
   const box = el('div', 'alias-box');
   box.append(input, clear);
-  add.append(box, button('Add', 'plus', 'button button-secondary', addAlias), status, el('small', '', `Another name for the same address, unused by every other email list: <name>@${domain}.`));
+  add.append(box, button('Add', 'plus', 'button button-secondary', addAlias), status, el('small', '', `Another name for the same address, unused by every other email list: <name>@${listDomain}.`));
   const wrap = el('div', 'field alias-field');
   wrap.append(rows, add);
   renderAliases(draft, rows);
@@ -231,7 +231,7 @@ function renderAliases(draft, rows) {
       draft.aliases = draft.aliases.filter(x => x !== alias);
       renderAliases(draft, rows);
     });
-    row.append(el('span', 'alias-address', `${alias}@${domain}`), remove);
+    row.append(el('span', 'alias-address', `${alias}@${listDomain}`), remove);
     rows.append(row);
   }
 }
@@ -675,7 +675,7 @@ async function changeGroup(ed) {
 function askKeepAddress(old, then) {
   const node = el('div');
   const actions = el('div', 'modal-actions');
-  node.append(el('p', '', `Keep ${old}@${domain} as an alias, so mail sent to it still reaches this email list?`), actions);
+  node.append(el('p', '', `Keep ${old}@${listDomain} as an alias, so mail sent to it still reaches this email list?`), actions);
   const {shut} = popup('Keep the old address?', node);
   const answer = keep => () => {
     shut();
@@ -912,7 +912,7 @@ function addressBand(g) {
     const tip = el('div', 'address-aliases-tip');
     tip.append(el('div', 'address-aliases-head', 'Also reached as'));
     for (const alias of [...g.aliases].sort()) {
-      tip.append(el('div', '', `${alias}@${domain}`));
+      tip.append(el('div', '', `${alias}@${listDomain}`));
     }
     aliases.append(count, tip);
     address.append(aliases);

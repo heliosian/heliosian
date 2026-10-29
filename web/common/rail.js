@@ -64,7 +64,9 @@ export function groupApp(kind) {
   return groupSources[kind] ? groupSources[kind].app : 'who';
 }
 
-export function sourceLine(g, className) {
+export const listDomain = 'loop.heliosian.com';
+
+export function sourceLine(g, className, runs) {
   const source = groupSources[g.kind];
   if (!source || source.app === currentApp() || !g[source.app + '_href']) {
     return null;
@@ -74,15 +76,29 @@ export function sourceLine(g, className) {
   const mark = el('img');
   mark.src = `/brand/apps/${source.app}.png`;
   mark.alt = '';
-  open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
   const line = el('div', className + ' magic-source');
-  line.append(svg('sparkle'), el('span', '', 'From '), open);
+  line.append(svg('sparkle'));
+  if (source.app !== 'loop') {
+    open.append(mark, el('span', '', `${source.name} - open this ${source.thing}`));
+    line.append(el('span', '', 'From '), open);
+    return line;
+  }
+  if (!g.slug) {
+    if (!runs) {
+      return null;
+    }
+    open.append(mark, el('span', '', `Create an email list on ${source.name}`));
+    line.append(open);
+    return line;
+  }
+  open.append(mark, el('span', '', `Manage this email list on ${source.name}`));
+  line.append(el('span', '', `${g.slug}@${listDomain} — `), open);
   return line;
 }
 
 export function navQueries() {
   return {
-    navTags: `(from GROUP @g (where ${tagCondition}) (include managed_by) (columns kind name managed_by path loop_href))`,
+    navTags: `(from GROUP @g (where ${tagCondition}) (include managed_by) (columns kind name slug managed_by path loop_href))`,
     navTagManagers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by @g ${tagCondition}))) (columns group person))`,
     navManaged: `(from GROUP @g (where ${runCondition}) (order name asc) ${listIncludes})`,
     navJoined: `(from GROUP @g (where ${joinedCondition}) (order name asc) ${listIncludes})`,

@@ -96,7 +96,7 @@ export function listPage() {
   const pageHeader = el('div', 'page-header container page-header-list');
   const titleWrap = el('div');
   titleWrap.append(el('h1', 'page-title', title));
-  const source = smart && smart.kind !== 'room' ? sourceLine(smart.group, 'page-subtitle') : ownTag ? sourceLine(tags[ownTag].group, 'page-subtitle') : null;
+  const source = smart && smart.kind !== 'room' ? sourceLine(smart.group, 'page-subtitle', smart.run) : ownTag ? sourceLine(tags[ownTag].group, 'page-subtitle', true) : null;
   if (source) {
     titleWrap.append(source);
   } else if (smart && smart.kind === 'room') {
