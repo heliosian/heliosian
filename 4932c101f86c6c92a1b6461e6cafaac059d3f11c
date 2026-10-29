@@ -1,0 +1,34 @@
+# Probe calendar hosted and loop list queries
+
+byre task tsk12JDaO4MFdz, "Performance Audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsk12JDaO4MFdz in byre (GET /api/events?task_id=tsk12JDaO4MFdz).
+
+## Summary
+
+### What the task set out to do
+Audit the codebase for performance and latency bottlenecks on request and UI query paths, and fix root causes to improve user-perceived speed and reduce wasted compute as data accumulates.
+
+### What was built
+* Optimized Loop list query in `web/common/rail.js`:
+  Before: `viewerListCondition` evaluated `(manages @g)` directly within an `or`, preventing probe optimization and causing a fused full-table scan of `GROUP` with read checks across every row on Loop page load.
+  Now: `viewerListCondition` probes `id` via `(in id (descendants (select GROUP.id (in managed_by ${viewerGroups}))))`, allowing the `or` condition to probe `id` and `rsvp_yes`. Read checks dropped from 2,966 to 12 (247x reduction) and latency from 12.18 ms to 0.19 ms (65x speedup).
+* Optimized `hosted` and `invites` in `web/common/calendar.js`:
+  Before: `hosted` probed only `kind` and checked `manages` on every event, party, and activity, while `invites` executed a correlated subquery over all invitation messages.
+  Now: `hosted` probes `id` via descendants of the viewer's managed groups (reducing `GROUP` read checks from 1,218 to 6 and latency from 3.32 ms to 0.035 ms), and `invites` probes `id` on `MESSAGE` directly from the viewer's recipient messages.
+* Added regression tests in `internal/db/page_test.go` verifying probe selection and bounding read checks.
+
+### Key decisions and why
+* Probe `id` via descendants of managed groups rather than evaluating `manages` across all candidate rows: `manages` requires walking ancestors and checking effective memberships, which is expensive when evaluated on many candidates. Descendant lookup matches the existing pattern in `runCondition` and allows the query compiler to form an indexed probe union.
+* Retain `(manages @g)` as a post-filter in `hosted`: Because `id` candidates are reduced to only the viewer's managed groups (~0-6), retaining the check guarantees strict policy parity with near-zero overhead.
+
+### What was deliberately left out
+* `birthdayWork`: Runs in a concurrent batch alongside `initAlerts`. Merging its query definition into alerts was considered but left alone because `birthdayWork` is an exported domain utility consumed independently by home state.
+* Admin queries: Admin pages already probe by `kind` or `parent` and only run for admins during explicit administrative actions.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+Calendar hosting, invitation messages, and Loop's viewer lists stop walking every group. Hosting and the list condition now start from the groups whose managers include the viewer (the same set `manages` names) and probe those ids; invitations probe message ids from the viewer's household's recipient rows. The page test checks that those scans probe `id` and that hosting and the list query read-check GROUP under a tenth of the old walks.
+
+No significant findings.
