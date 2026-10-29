@@ -77,6 +77,45 @@ func TestTheRailAndDirectoryQueriesAreTheShippedOnes(t *testing.T) {
 			t.Errorf("%s does not probe group", name)
 		}
 	}
+	hostedQ, err := Parse(cal["hosted"])
+	if err != nil {
+		t.Fatalf("hosted: %v", err)
+	}
+	if hostedQ.scan.probeCol != "id" || hostedQ.scan.probeSet == nil {
+		t.Errorf("hosted probes %q, want id", hostedQ.scan.probeCol)
+	}
+	const walkHosted = `(from GROUP @g (where (in kind "event" "party" "activity") (manages @g)) (columns kind))`
+	walkHostedChecks := groupReadChecks(t, wide, scaleViewer, walkHosted)
+	shippedHostedChecks := groupReadChecks(t, wide, scaleViewer, cal["hosted"])
+	t.Logf("calendar hosted GROUP checks: walk %d, shipped %d", walkHostedChecks, shippedHostedChecks)
+	if walkHostedChecks < 500 || shippedHostedChecks*10 > walkHostedChecks {
+		t.Errorf("shipped hosted read-checked GROUP %d times, the walk %d", shippedHostedChecks, walkHostedChecks)
+	}
+	invitesQ, err := Parse(cal["invites"])
+	if err != nil {
+		t.Fatalf("invites: %v", err)
+	}
+	if invitesQ.scan.probeCol != "id" || invitesQ.scan.probeSet == nil {
+		t.Errorf("invites probes %q, want id", invitesQ.scan.probeCol)
+	}
+	rail := readSource(t, "../../web/common/rail.js")
+	railBind := map[string]string{}
+	bindConsts(t, railBind, rail)
+	loopLists := fmt.Sprintf(`(from GROUP @g (where (in id (select GROUP.id @g %s))) (order name asc))`, railBind["viewerListCondition"])
+	loopQ, err := Parse(loopLists)
+	if err != nil {
+		t.Fatalf("loop lists: %v", err)
+	}
+	if loopQ.scan.probeCol != "id" || loopQ.scan.probeSet == nil {
+		t.Errorf("loop lists does not probe id set, got %q", loopQ.scan.probeCol)
+	}
+	const walkLoopLists = `(from GROUP @g (where (in id (select GROUP.id @g (or (manages @g) (in id (select EFFECTIVE_MEMBER.group (= person @viewer))) (in rsvp_yes (select EFFECTIVE_MEMBER.group (= person @viewer)))) (or (!= kind "event") (not (blank rsvp_yes))) (sidebar_group @g)))) (order name asc))`
+	walkListChecks := groupReadChecks(t, wide, scaleViewer, walkLoopLists)
+	shippedListChecks := groupReadChecks(t, wide, scaleViewer, loopLists)
+	t.Logf("loop lists GROUP checks: walk %d, shipped %d", walkListChecks, shippedListChecks)
+	if walkListChecks < 500 || shippedListChecks*10 > walkListChecks {
+		t.Errorf("shipped loop lists read-checked GROUP %d times, the walk %d", shippedListChecks, walkListChecks)
+	}
 }
 
 func TestWhoAdminQueriesProbe(t *testing.T) {
@@ -204,14 +243,18 @@ func calendarQueries(t *testing.T) map[string]string {
 	return out
 }
 
-func groupReadChecks(t *testing.T, m *Model, viewer, src string) int {
+func spanCountFor(t *testing.T, m *Model, viewer, src, table string) int {
 	t.Helper()
 	root := trace.New("request")
 	res := m.Run(trace.With(t.Context(), root), mustParse(t, src), Env{Viewer: viewer, Now: testNow})
 	if res.Err != nil {
 		t.Fatalf("%s: %v", src, res.Err)
 	}
-	return spanCount(root, "GROUP")
+	return spanCount(root, table)
+}
+
+func groupReadChecks(t *testing.T, m *Model, viewer, src string) int {
+	return spanCountFor(t, m, viewer, src, "GROUP")
 }
 
 func spanCount(s *trace.Span, name string) int {

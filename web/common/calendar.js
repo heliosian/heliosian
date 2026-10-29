@@ -90,10 +90,10 @@ export const calendarQueries = {
   photos: `(from PHOTO (where (in group (select GROUP.id (in kind "event" "party" "activity" "category")))) (order order asc) (columns group ready))`,
   places: `(from MEMBER (where (= member "yes") (in group (select GROUP.id (in kind "party" "activity") (not (blank capacity))))) (columns group person))`,
   mine: '(from MEMBER (where (= member "yes") (or (= person @viewer) (in person (household @viewer)))) (columns group person))',
-  hosted: `(from GROUP @g (where ${eventKinds} (manages @g)) (columns kind))`,
+  hosted: `(from GROUP @g (where (in id (descendants (select GROUP.id (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))))) ${eventKinds} (manages @g)) (columns kind))`,
   adders: `(from PERSON (where (in id (select GROUP.added_by ${eventKinds}))) (columns name_show))`,
   saved: '(from SAVED_SEARCH (where (= person @viewer)) (order order asc) (columns name emoji order default token search condition))',
-  invites: '(from MESSAGE @m (where (= kind "invitation") (exists RECIPIENT (= message @m) (or (= person @viewer) (in person (household @viewer))))) (columns group))',
+  invites: '(from MESSAGE @m (where (= kind "invitation") (in id (select RECIPIENT.message (or (= person @viewer) (in person (household @viewer)))))) (columns group))',
 };
 
 export function buildCalendar(a) {
