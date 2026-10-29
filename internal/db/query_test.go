@@ -470,6 +470,8 @@ func TestAnOrOfProbesProbesEachBranch(t *testing.T) {
 		{`(from MEMBER (where (or (in group (select GROUP.id (= kind "party"))) (in group (select GROUP.waitlist (= kind "party"))))))`, true},
 		{`(from MEMBER (where (or (= group "grp00000000020") (in group (select GROUP.id (= kind "family"))))))`, true},
 		{`(from MEMBER (where (or (= group "grp00000000020") (and (= member "yes") (in group (select GROUP.id (= kind "family")))))))`, false},
+		{`(from DOCUMENT (where (or (= id "doc00000000001") (= parent "doc00000000001"))))`, true},
+		{`(from DOCUMENT (where (or (in id "doc00000000001" "doc00000000002") (in parent "doc00000000001" "doc00000000002"))))`, true},
 	} {
 		q := mustParse(t, c.src)
 		if probes := q.scan.union != nil; probes != c.probes {

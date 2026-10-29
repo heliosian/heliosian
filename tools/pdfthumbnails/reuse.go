@@ -33,7 +33,7 @@ func reuse(c *qclient.Client, id, content, source string) error {
 
 func reuseOnce(c *qclient.Client, id, content, source string) (bool, error) {
 	a, err := c.Query([]any{"from", "DOCUMENT",
-		[]any{"where", []any{"or", []any{"in", map[string]any{"n": "id"}, id, source}, []any{"and", []any{"in", map[string]any{"n": "parent"}, id, source}, []any{"=", map[string]any{"n": "relation"}, "page"}}}},
+		[]any{"where", []any{"or", []any{"in", map[string]any{"n": "id"}, id, source}, []any{"in", map[string]any{"n": "parent"}, id, source}}},
 		[]any{"columns", "parent", "relation", "content", "thumbnail", "thumbnailed", "rendered", "page_count", "first_page", "last_page", "name", "order", "extracted"}})
 	if err != nil {
 		return false, err

@@ -22,8 +22,8 @@ func completePDFThumbnail(c *qclient.Client, id, content string) error {
 	started, logged := time.Now(), time.Now()
 	for {
 		a, err := c.Query([]any{"from", "DOCUMENT",
-			[]any{"where", []any{"or", []any{"=", map[string]any{"n": "id"}, id}, []any{"and", []any{"=", map[string]any{"n": "parent"}, id}, []any{"=", map[string]any{"n": "relation"}, "page"}}}},
-			[]any{"columns", "content", "parent", "page_count", "first_page", "thumbnail", "thumbnailed"}})
+			[]any{"where", []any{"or", []any{"=", map[string]any{"n": "id"}, id}, []any{"=", map[string]any{"n": "parent"}, id}}},
+			[]any{"columns", "content", "parent", "relation", "page_count", "first_page", "thumbnail", "thumbnailed"}})
 		if err != nil {
 			return err
 		}
@@ -37,7 +37,7 @@ func completePDFThumbnail(c *qclient.Client, id, content string) error {
 		}
 		pages := map[string]map[string]string{}
 		for _, doc := range docs {
-			if doc["parent"] == id {
+			if doc["parent"] == id && (doc["relation"] == "page" || doc["relation"] == "") {
 				pages[doc["first_page"]] = doc
 			}
 		}
