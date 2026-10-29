@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime/multipart"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,8 +24,7 @@ import (
 
 const (
 	pdfDocuments = `(from DOCUMENT (where (= content.mime "application/pdf")) (columns content thumbnail rendered))`
-	sendTries    = 4
-	sendWait     = 5 * time.Second
+	restartWait  = 30 * time.Second
 )
 
 func render(pdf []byte) (string, []string, error) {
@@ -86,22 +88,18 @@ func send(c *qclient.Client, path, id, content string, page, total int, picture 
 	if err := form.Close(); err != nil {
 		return err
 	}
-	body := buf.Bytes()
-	wait := sendWait
-	for try := 1; ; try++ {
-		var out struct{}
-		err := c.Send(http.MethodPost, path, form.FormDataContentType(), bytes.NewReader(body), &out)
-		var status *qclient.StatusError
-		if err == nil || try == sendTries || !errors.As(err, &status) || status.Code < 500 {
-			if err != nil {
-				return err
-			}
-			return waitForProcessing(c)
-		}
-		slog.Warn("send again", "document", id, "try", try, "in", wait, "error", err)
-		time.Sleep(wait)
-		wait *= 3
+	var out struct{}
+	return c.Send(http.MethodPost, path, form.FormDataContentType(), buf, &out)
+}
+
+func unavailable(err error) bool {
+	var status *qclient.StatusError
+	if errors.As(err, &status) {
+		return status.Code >= 500
 	}
+	var failed *url.Error
+	var broken net.Error
+	return errors.As(err, &failed) || errors.As(err, &broken) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func main() {
@@ -109,15 +107,20 @@ func main() {
 	if err != nil {
 		logging.Fatal("sign in", "error", err)
 	}
-	if err := draw(c); err != nil {
-		logging.Fatal("draw pdfs", "error", err)
+	for {
+		err := draw(c)
+		if err == nil {
+			return
+		}
+		if !unavailable(err) {
+			logging.Fatal("draw pdfs", "error", err)
+		}
+		slog.Warn("server unavailable, starting over", "in", restartWait, "error", err)
+		time.Sleep(restartWait)
 	}
 }
 
 func draw(c *qclient.Client) error {
-	if err := waitForProcessing(c); err != nil {
-		return err
-	}
 	a, err := c.QueryText(pdfDocuments)
 	if err != nil {
 		return fmt.Errorf("read the pdfs still to draw: %w", err)
@@ -144,9 +147,14 @@ func draw(c *qclient.Client) error {
 	for i, content := range order {
 		ids := byContent[content]
 		if source := completed[content]; source != "" {
-			for _, id := range ids {
+			for n, id := range ids {
 				if err := reuse(c, id, content, source); err != nil {
 					var status *qclient.StatusError
+					if errors.Is(err, errNoThumbnail) {
+						skipped += len(ids) - n
+						slog.Warn("skipped", "documents", ids[n:], "content", content, "error", err)
+						break
+					}
 					if errors.Is(err, errStaleDocument) || (errors.As(err, &status) && status.Code == http.StatusBadRequest) {
 						skipped++
 						slog.Warn("skipped", "document", id, "content", content, "error", err)
@@ -173,8 +181,8 @@ func draw(c *qclient.Client) error {
 		sort.SliceStable(ids, func(i, j int) bool {
 			return a.Resources["DOCUMENT"][ids[i]]["rendered"] != "" && a.Resources["DOCUMENT"][ids[j]]["rendered"] == ""
 		})
-		source := ""
-		for _, id := range ids {
+		source, finished := "", []string{}
+		for n, id := range ids {
 			var err error
 			if source == "" {
 				if a.Resources["DOCUMENT"][id]["rendered"] != "" {
@@ -186,6 +194,11 @@ func draw(c *qclient.Client) error {
 				err = reuse(c, id, content, source)
 			}
 			var status *qclient.StatusError
+			if errors.Is(err, errNoThumbnail) {
+				skipped += len(ids) - n
+				slog.Warn("skipped", "documents", ids[n:], "content", content, "error", err)
+				break
+			}
 			if errors.Is(err, errStaleDocument) || (errors.As(err, &status) && status.Code == http.StatusBadRequest) {
 				skipped++
 				slog.Warn("skipped", "document", id, "content", content, "error", err)
@@ -199,9 +212,12 @@ func draw(c *qclient.Client) error {
 				source = id
 			}
 			drawn++
+			finished = append(finished, id)
 		}
 		os.RemoveAll(dir)
-		slog.Info("drawn", "n", i+1, "of", len(order), "documents", ids, "pdf bytes", len(pdf), "pages", len(paths))
+		if len(finished) > 0 {
+			slog.Info("drawn", "n", i+1, "of", len(order), "documents", finished, "pdf bytes", len(pdf), "pages", len(paths))
+		}
 
 	}
 	slog.Info("done", "documents", pending, "drawn", drawn, "failed", failed, "skipped", skipped)

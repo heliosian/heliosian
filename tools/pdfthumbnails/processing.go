@@ -1,87 +1,74 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"strings"
+	"strconv"
 	"time"
 
 	"heliosian/internal/db"
 	"heliosian/internal/qclient"
 )
 
-func waitForProcessing(c *qclient.Client) error {
-	deadline := time.Now().Add(5 * time.Minute)
-	last := ""
-	for {
-		var report struct {
-			Queues []struct {
-				Name    string `json:"name"`
-				Pending int    `json:"pending"`
-			} `json:"queues"`
-		}
-		if err := c.Send(http.MethodGet, "/api/queues", "", strings.NewReader(""), &report); err != nil {
-			return fmt.Errorf("read processing queues: %w", err)
-		}
-		found := map[string]bool{}
-		pending := []string{}
-		for _, queue := range report.Queues {
-			switch queue.Name {
-			case "thumbnails", "search indexing", "search processing", "pending writes":
-				found[queue.Name] = true
-				if queue.Pending > 0 {
-					pending = append(pending, fmt.Sprintf("%s=%d", queue.Name, queue.Pending))
-				}
-			}
-		}
-		if len(found) != 4 {
-			return fmt.Errorf("server queue report lacks thumbnail, search or write processing status")
-		}
-		if len(pending) == 0 {
-			if last != "" {
-				slog.Info("processing drained")
-			}
-			return nil
-		}
-		status := strings.Join(pending, ", ")
-		if time.Now().After(deadline) {
-			return fmt.Errorf("processing did not drain within five minutes: %s", status)
-		}
-		if status != last {
-			slog.Info("waiting for processing", "pending", status)
-			last = status
-		}
-		time.Sleep(time.Second)
-	}
-}
+const (
+	thumbnailPoll = 2 * time.Second
+	thumbnailWait = 15 * time.Minute
+)
+
+var errNoThumbnail = errors.New("the server made no thumbnail")
 
 func completePDFThumbnail(c *qclient.Client, id, content string) error {
-	a, err := c.Query([]any{"from", "DOCUMENT",
-		[]any{"where", []any{"or", []any{"=", map[string]any{"n": "id"}, id}, []any{"and", []any{"=", map[string]any{"n": "parent"}, id}, []any{"=", map[string]any{"n": "relation"}, "page"}, []any{"=", map[string]any{"n": "first_page"}, 1}}}},
-		[]any{"columns", "content", "parent", "thumbnail", "thumbnailed"}})
-	if err != nil {
-		return err
-	}
-	docs := a.Resources["DOCUMENT"]
-	if docs[id]["content"] != content {
-		return fmt.Errorf("%w: document %s no longer holds pdf %s", errStaleDocument, id, content)
-	}
-	if docs[id]["thumbnail"] != "" {
-		return nil
-	}
-	for _, doc := range docs {
-		if doc["parent"] != id {
-			continue
-		}
-		if doc["thumbnail"] == "" {
-			return fmt.Errorf("document %s first page has no server thumbnail", id)
-		}
-		_, err := c.Write(db.Batch{Batch: []db.Edit{{Set: id, Cells: map[string]any{"thumbnail": doc["thumbnail"], "thumbnailed": doc["thumbnailed"]}}}})
+	started, logged := time.Now(), time.Now()
+	for {
+		a, err := c.Query([]any{"from", "DOCUMENT",
+			[]any{"where", []any{"or", []any{"=", map[string]any{"n": "id"}, id}, []any{"and", []any{"=", map[string]any{"n": "parent"}, id}, []any{"=", map[string]any{"n": "relation"}, "page"}}}},
+			[]any{"columns", "content", "parent", "page_count", "first_page", "thumbnail", "thumbnailed"}})
 		if err != nil {
 			return err
 		}
-		return waitForProcessing(c)
+		docs := a.Resources["DOCUMENT"]
+		if docs[id]["content"] != content {
+			return fmt.Errorf("%w: document %s no longer holds pdf %s", errStaleDocument, id, content)
+		}
+		total, err := strconv.Atoi(docs[id]["page_count"])
+		if err != nil || total < 1 {
+			return fmt.Errorf("document %s has no page count", id)
+		}
+		pages := map[string]map[string]string{}
+		for _, doc := range docs {
+			if doc["parent"] == id {
+				pages[doc["first_page"]] = doc
+			}
+		}
+		waiting := 0
+		for n := 1; n <= total; n++ {
+			page := pages[strconv.Itoa(n)]
+			if page == nil {
+				return fmt.Errorf("document %s has no page %d", id, n)
+			}
+			if page["thumbnail"] == "" && page["thumbnailed"] != "" {
+				return fmt.Errorf("%w: document %s page %d was thumbnailed without a picture", errNoThumbnail, id, n)
+			}
+			if page["thumbnail"] == "" {
+				waiting++
+			}
+		}
+		if waiting == 0 {
+			if docs[id]["thumbnail"] != "" {
+				return nil
+			}
+			first := pages["1"]
+			_, err := c.Write(db.Batch{Batch: []db.Edit{{Set: id, Cells: map[string]any{"thumbnail": first["thumbnail"], "thumbnailed": first["thumbnailed"]}}}})
+			return err
+		}
+		if time.Since(started) >= thumbnailWait {
+			return fmt.Errorf("%w in %s: document %s, %d of %d pages", errNoThumbnail, thumbnailWait, id, waiting, total)
+		}
+		if time.Since(logged) >= time.Minute {
+			slog.Info("waiting for page thumbnails", "document", id, "pending", waiting, "of", total)
+			logged = time.Now()
+		}
+		time.Sleep(thumbnailPoll)
 	}
-	return fmt.Errorf("document %s has no first page", id)
 }

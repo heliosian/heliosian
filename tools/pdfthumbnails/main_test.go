@@ -188,16 +188,8 @@ func TestLargePageUploadsUnchangedWithoutALocalThumbnail(t *testing.T) {
 	}
 }
 
-func writeDrained(w http.ResponseWriter) {
-	io.WriteString(w, `{"queues":[{"name":"thumbnails","pending":0},{"name":"search indexing","pending":0},{"name":"search processing","pending":0},{"name":"pending writes","pending":0}]}`)
-}
-
 func finishUpload(w http.ResponseWriter, r *http.Request, t *testing.T) bool {
 	t.Helper()
-	if r.URL.Path == "/api/queues" {
-		writeDrained(w)
-		return true
-	}
 	if r.URL.Path != "/api/q" {
 		return false
 	}
@@ -220,8 +212,8 @@ func finishUpload(w http.ResponseWriter, r *http.Request, t *testing.T) bool {
 		t.Error(err)
 	}
 	json.NewEncoder(w).Encode(qclient.Answer{Resources: map[string]map[string]map[string]string{"DOCUMENT": {
-		"doc00000000001": {"content": "cnt00000000001"},
-		"doc00000000101": {"parent": "doc00000000001", "thumbnail": "cnt00000000002", "thumbnailed": "2026-10-26 20:00:00"},
+		"doc00000000001": {"content": "cnt00000000001", "page_count": "1"},
+		"doc00000000101": {"parent": "doc00000000001", "first_page": "1", "thumbnail": "cnt00000000002", "thumbnailed": "2026-10-26 20:00:00"},
 	}}})
 	return true
 }

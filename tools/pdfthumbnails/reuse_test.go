@@ -78,10 +78,6 @@ func TestSharedPDFUploadsOnceAndReusesCompletedPages(t *testing.T) {
 			downloads, pages, thumbnails, copies := 0, 0, 0, 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == "/api/queues" {
-					writeDrained(w)
-					return
-				}
 				switch r.URL.Path {
 				case "/api/q":
 					if r.Method == "POST" {
@@ -209,10 +205,6 @@ func TestChangedPDFIsSkippedAndLaterPDFContinues(t *testing.T) {
 			writes := 0
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				if r.URL.Path == "/api/queues" {
-					writeDrained(w)
-					return
-				}
 				if r.URL.Path != "/api/q" {
 					t.Errorf("unexpected upload %s", r.URL.Path)
 					http.Error(w, "unexpected upload", 400)
