@@ -1,0 +1,22 @@
+# Remove completed Gayle request from TODO
+
+byre task tskm0g8IlWIMKB, "Remove completed request", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Handle Gayle's heliosian request".
+Full chats: the events of task tskm0g8IlWIMKB in byre (GET /api/events?task_id=tskm0g8IlWIMKB).
+
+## Summary
+
+Removed the TODO item “Handle Gayle's heliosian request” and its supporting description after Ian confirmed it was already done. No implementation work or other file changes were made.
+
+Before: TODO.md listed Gayle’s completed request.
+Now: The completed request and its description are removed.
+
+Review finished before the task was marked ready. The requested merge from main reported already up to date, with no conflicts or generated files to resolve. Verification passed: go vet ./..., timeout 30 go test ./internal/logging, and git diff --check main. No commit or push was run manually.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+Removes the TODO.md item "Handle Gayle's heliosian request" (title and its indented description) and leaves every other item and heading as they were.
+
+No significant findings.
