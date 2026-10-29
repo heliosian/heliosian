@@ -1,0 +1,78 @@
+# Align co-chair and Who? labels
+
+byre task tske6ZsyvHTIOJ, "Align screen labels", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tske6ZsyvHTIOJ in byre (GET /api/events?task_id=tske6ZsyvHTIOJ).
+
+## Summary
+
+Consistency audit of main at 30e7741. The goal was to fix wording that would mislead a reader of the schema, the docs, or the screens, without changing behavior.
+
+What landed: schema and docs/datamodel.md now match the code. MEMBER.member of excluded is someone a manager keeps off an email list, or someone taken off a guest list, not a Loop unsubscribe (an unsubscribe stays a member of the list's unsubscribed group). GROUP.name and the datamodel rename sentence include Audience and Hidden groups, and RULE.under skips audience groups, matching the rename trigger and servingColumns.
+
+Ian then asked for the screen labels that had been left alone. HCA-Team sentences that said "organizers" now say "co-chairs", and the category approval choice says "a co-chair approves" instead of "an admin approves". The person card and the family card say "Open Helios Who?", matching the birthday card.
+
+Decisions: correct the descriptions rather than change membership or renames, because the code was already right. Use "co-chairs" rather than "the co-chairs and the Team admins" because Ian chose the shorter phrase after being told Team admins also approve and see hidden lists; it matches the Chair and Co-Chairs heading. A review finding that the exclusive sentences leave Team admins out was ignored for that reason. One directory link, "Open Helios Who?", rather than "Profile" on a person and "on" on a family, because a family page is not a profile.
+
+Left out: When and Celebrate still say an admin approves, because an admin of that app is who approves there. The volunteer-settings hint that says "chairs" was not in the agreed list. Merging main was already up to date. go build ./... passed. The full test suite failed once on TestWikiShareHeader and passed on a rerun of internal/db and of ./...; that test does not touch these wording changes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Grok low", grok grok-4.7: done
+
+The audit aligns two descriptions of serving groups with the code. The datamodel and the GROUP name column now say the rename trigger also follows Audience and Hidden groups, matching `servingNames`. The RULE.under note now includes audience groups in the set that an `under` rule skips, matching `groupsUnder`. The MEMBER.member `excluded` note no longer calls that state a Loop unsubscribe; unsubscribe is a separate group, and `excluded` is someone a manager keeps off a list or an invitation.
+
+No significant findings.
+
+### Snapshot #3, reviewer "Review · Grok low", grok grok-4.7: done
+
+The snapshot lines up a few labels with names already used elsewhere. Team screens that said “organizers” now say “co-chairs.” The Who? links on the family card and the person card both say “Open Helios Who?”, matching the birthday page. Schema and data-model comments add the Audience and Hidden serving-group names to the rename trigger, drop the false claim that a Loop unsubscribe is a member=excluded row, and mention audience groups in the rule under-walk.
+
+- Team copy that now says only co-chairs review suggestions, add activities, or see a private volunteer list leaves out Team admins, who do those things too.
+
+## Decisions
+
+### Should the description fixes land as they are, or should the Team and Who? labels change too?
+
+The consistency audit corrected data-model wording that named the wrong mechanism. `timeout 30 go test ./internal/db -count=1 -run 'TestSchemaHangsTogether|TestOpenAPI'` passed.
+
+- `MEMBER.member` of `excluded`
+  Before: the schema called it a Loop unsubscribe.
+  Now: it is someone a manager keeps off an email list, or someone taken off a guest list. An unsubscribe stays a member of the list's unsubscribed group.
+- Rename trigger and `RULE.under`
+  Before: `GROUP.name` and `docs/datamodel.md` omitted `<name> Audience` and `<name> Hidden`, and `RULE.under` omitted audience groups.
+  Now: those descriptions match `servingNames` and `servingColumns`.
+
+Two other wordings were left as they are. HCA-Team says "organizers" and "an admin approves" where the page heading says Chair / Co-Chairs, and a co-chair of the parent can approve a pending activity. Three links to the directory say "Open Helios Who?", "Open Helios Who? Profile", and "Open on Helios Who?" on the birthday card, the person card, and the family card. `docs/team/team.md` already says who approves, and `docs/birthday/birthday.md` quotes the birthday label.
+
+- (*) Land the description fixes
+  Keep the schema and `docs/datamodel.md` corrections above. Leave the Team and Who? labels as they are.
+- ( ) Also rename those labels
+  Change HCA-Team's "organizers" and "an admin approves" to Chair / Co-Chairs, and use one directory-link label on the birthday card, the person card, and the family card. The description fixes stay.
+
+ian@fc.run chose: Land the description fixes
+
+### Merge the description fixes and the co-chair and Who? labels?
+
+The schema and `docs/datamodel.md` now describe membership and renames the way the code works, and two screens use one name each.
+
+- `MEMBER.member` of `excluded`
+  Before: the schema called it a Loop unsubscribe.
+  Now: it is someone a manager keeps off an email list, or someone taken off a guest list. An unsubscribe stays a member of the list's unsubscribed group.
+- Rename trigger and `RULE.under`
+  Before: `GROUP.name` and `docs/datamodel.md` omitted `<name> Audience` and `<name> Hidden`, and `RULE.under` omitted audience groups.
+  Now: those descriptions match the rename trigger and the groups an `under` rule skips.
+- HCA-Team wording
+  Before: several sentences said "organizers", and a category choice said "an admin approves".
+  Now: they say "co-chairs", and the approval choice says "a co-chair approves". Team admins also approve and see hidden lists; you picked the shorter phrase anyway. When and Celebrate still say an admin approves.
+- Directory link
+  Before: the person card said "Open Helios Who? Profile" and the family card said "Open on Helios Who?".
+  Now: both say "Open Helios Who?", which the birthday card already said.
+
+The schema package test passed. The new sentences were checked in the files that draw them, not by clicking through the running app.
+
+- (*) Merge
+  Land the description fixes and these labels, and close the task.
+- ( ) Don't merge
+  Leave the branch as it is.
+
+ian@fc.run answered: can you…suggest a merge, instead of asking me a question?
