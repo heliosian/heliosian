@@ -1,0 +1,121 @@
+# Let the PDF page uploader wait out server restarts
+
+byre task tsktDouCB0apwA, "Resume PDF page screenshots", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsktDouCB0apwA in byre (GET /api/events?task_id=tsktDouCB0apwA).
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page catch-up (`pdfthumbnails`) no longer gives up when production is briefly down or when thumbnail and search queues stay busy. A 5xx or a connection error waits 30 seconds and starts the pass again from each document's completion state. A 429 or any other refusal still stops the run. Queue waits no longer have a five-minute limit; pending queues are logged when they change and once a minute while they hold. Docs and AGENTS.md match that.
+
+- A dropped response body during a restart (connection reset or unexpected EOF after headers) is not treated as unavailable, so the catch-up still exits instead of starting the pass over.
+- `TestServerRestartsStartThePassOverAndRefusalsStop` shares the status code with the server handler with no synchronization, so `go test -race` can flag it.
+
+### Snapshot #4, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page catch-up (`pdfthumbnails`) no longer stops because production is briefly unreachable or because thumbnail and search queues take longer than five minutes. A 5xx, a dropped connection, or an unexpected end of response waits 30 seconds and starts the pass again from each document's completion state. A 429 or any other refusal still stops the run. While queues are draining it logs the pending counts when they change and once a minute while they stay the same. The tool docs and AGENTS.md match that behavior.
+
+No significant findings.
+
+### Snapshot #6, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page uploader no longer polls `/api/queues` or pauses between page uploads. It posts every page back to back, then waits until the first page has a server thumbnail before copying that onto the PDF, and until every source page has a thumbnail before reuse. A 5xx or a dropped connection waits 30 seconds and starts the pass again from each document's `rendered` and `thumbnail`; a 429 or other refusal still stops the run. Docs and AGENTS.md now describe that pacing.
+
+- The catch-up uploads every page without waiting for thumbnail, search, or write backlogs, which is the overload the task said to avoid.
+- A page the thumbnailer has given up on, or a persistent 500, never ends the pass: the tool either polls forever or restarts the whole catch-up every 30 seconds.
+
+### Snapshot #7, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page catch-up tool no longer paces itself on the server's processing queues. It uploads a document's pages back to back, waits up to 15 minutes for the thumbnails it copies (the PDF's first page, and every page of a source it reuses), and skips that document when the thumbnail never arrives. A 5xx or a dropped connection waits 30 seconds and starts the pass again from completion state; a 429 or other refusal still stops the run. Docs for the tool match that behavior.
+
+- A thumbnail timeout skips only that document, so the next document over the same PDF uploads every page again and waits another 15 minutes.
+- Any 5xx restarts the whole pass with no retry bound, so one failing upload repeats forever and later PDFs never run.
+
+### Snapshot #8, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page uploader no longer paces itself on the server's processing queues. It uploads a document's pages back to back, waits up to 15 minutes for the first page's server thumbnail (and, when reusing a source, for every page thumbnail) before copying those references, and skips that PDF for a later run if the thumbnail never arrives. A 5xx or a dropped connection waits 30 seconds and starts the pass again from each document's completion state; a 429 or other refusal still stops the run. Docs for the catch-up match that behavior.
+
+- After a thumbnail wait times out, or every document in the group is skipped, the per-content progress line still says the PDF was drawn (`tools/pdfthumbnails/main.go`).
+
+### Snapshot #9, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page catch-up no longer paces on `/api/queues`. It uploads every page of a document back to back, waits until the server has thumbnailed page 1, and copies that thumbnail onto the PDF. A sibling over the same bytes waits until every source page has a thumbnail, then copies those rows. A 5xx or a dropped connection waits 30 seconds and starts the pass over; a document whose thumbnail does not appear within 15 minutes is skipped and the run continues. Docs and AGENTS.md match that behavior.
+
+- A one-document PDF moves on as soon as page 1 is thumbnailed, so later page-1 waits grow past 15 minutes and the rest of the catch-up is skipped while the run still exits successfully.
+- A page the thumbnailer has given up on (`thumbnailed` set, no picture) still aborts the whole catch-up instead of being skipped.
+
+### Snapshot #10, reviewer "Review · Grok low", grok grok-4.7: done
+
+The PDF page catch-up no longer paces itself on the server's queue status. It uploads a document's pages back to back, waits up to 15 minutes for every page's server thumbnail (and, on reuse, for the source's page thumbnails), then copies the first page's thumbnail onto the PDF. A page the server marks thumbnailed with no picture, or a wait that expires, skips the rest of that content and the run continues. A 5xx or a dropped connection waits 30 seconds and starts the pass again from completion state; a 429 or other refusal still stops the process. Docs and AGENTS.md match that behavior.
+
+No significant findings.
+
+## Decisions
+
+### Before you restart the PDF page catch-up, can I change the uploader so it waits out server restarts instead of exiting?
+
+**What this is:** the PDF page catch-up is `go run ./tools/pdfthumbnails`, the laptop tool that renders every page of each PDF document, uploads the page images, waits for the server to thumbnail them, then copies the first page's thumbnail onto the PDF. It stopped last night. **854 PDF documents** on production still lack complete pages or a thumbnail. At last night's pace (~25 PDFs an hour, mostly spent waiting for each write to reach the sheet) that's roughly 1½ days of running.
+
+**Deploy: nothing to ask.** The workload-isolation change (shared CPU budget, foreground priority) is already live. Cloud Build deployed it when the merge was pushed, and revision `heliosian-01102-22l` has served it since 18:32 UTC today.
+
+**Why the tool stopped three times last night.** Each time the trigger was production's routine instance replacement, not upload load. Cloud Run swaps the single instance several times a day even with nothing running: today at 11:00, 11:09, 11:12, 12:38, 14:11 and 14:15 UTC, each time while the old instance was idle (CPU 0, heap ~900 MiB). A new instance spends ~60s loading before it listens. Requests in that window fail. It also re-tries 5 old, permanently broken thumbnails (two images over the pixel limit, two campaugusta.org 503s, one `localhost:3000` image). Those count as "thumbnails pending" for ~10 minutes, three tries 5 minutes apart.
+
+Real log lines from last night, and what each version of the tool does with them:
+
+| What happened | Today's tool | Proposed tool |
+|---|---|---|
+| `ERROR draw pdfs error="send pdf docA6jJkVzIdDj: processing did not drain within five minutes: thumbnails=5"` (the 5 broken thumbnails after a restart) | exits; someone restarts it by hand | keeps waiting, logging `waiting for processing pending="thumbnails=5"` once a minute, and continues when the third try clears them (~10 min) |
+| `/api/queues` answered 500, and `/api/do/pdf-page` answered 502 twice, while a new instance started (05:56, 05:57, 06:09 UTC) | retries 3 times over ~65s, then exits | logs `server unavailable, starting over in=30s`, waits 30s, rereads which PDFs are still incomplete, and resumes. Pages already stored are re-sent; the server answers success for identical bytes and adds no duplicate |
+| `429` | exits | exits (unchanged; nothing on these endpoints sends one) |
+| `400` for one document (its PDF changed meanwhile) | skips that document | skips that document (unchanged) |
+
+**What stays the same:** it still waits after every page and every write until thumbnails, search indexing, search processing and pending writes are all at 0. Which PDFs still need work is still read from real completion state (`rendered` set and `thumbnail` set). Identical PDFs still reuse a completed copy's page images and thumbnail.
+
+**Also updated:** the `AGENTS.md` line telling agents not to resume a run stopped by overload without checking health, and the `docs/dev.md` line saying a queue stuck five minutes stops the run. Both would describe the new behavior instead.
+
+- (*) Make it wait out restarts
+  Make the change above, test it, then hand you the command. Under the hood, the uploader's own 3-try retry is replaced by one 30-second "start the pass over" loop around the whole run. You'd watch it in a terminal; a real stuck queue shows up as the same `waiting for processing` line repeating every minute.
+- ( ) Run it as it is
+  No code change. I hand you the command now. Expect it to exit after most instance replacements (several a day), and to need restarting by hand each time.
+
+ian@fc.run's lead agent chose: Make it wait out restarts
+ian@fc.run's lead agent added: ian wants long-running machinery to keep retrying until it works rather than need someone to restart it by hand.
+
+### The uploader still waits for the server's queues to empty after every page. Should I take those waits out now that the server protects itself?
+
+**Your three questions:**
+
+1. **Does the client still wait?** Yes. After every page upload and every write, `tools/pdfthumbnails` polls `/api/queues` until thumbnails, search indexing, search processing and pending writes (sheet writes not yet flushed) are all 0. Today's change only stopped it *exiting* when that wait runs long. It still waits.
+2. **OSC 9 alerts.** Set up. The second terminal has `go run ./local/pdf-catchup` typed and waiting for your Enter. It runs the uploader, passes every line through unchanged, and wakes me on:
+   - any `ERROR` line
+   - the uploader exiting, for any reason
+   - the final `done`
+   - 20 minutes with no page uploaded
+   - a progress line every 30 minutes
+3. **Secondary health monitoring.** Running in the first terminal: `go run ./local/pdf-health`, read-only. Once a minute it prints query latency and the four queue counts. It wakes me when the server fails or takes over 3s for 3 minutes running, when it recovers after that, and when a queue sits non-empty and unchanged for 20 minutes. First probe: `query=224ms`, all queues 0.
+
+Both tools are in `local/`, which git ignores. The uploader terminal is ready to start as soon as you press Enter. If you pick removing the waits, I'll change the tool first; the typed command stays the same.
+
+**What the waits cost, from last night's log** (document `docaJSlsHLzhsC`, 13 pages):
+```
+21:45:08 INFO uploaded a page document=docaJSlsHLzhsC page=1 of=13
+21:45:09 INFO waiting for processing pending="thumbnails=1, pending writes=1"
+21:45:12 INFO waiting for processing pending="pending writes=1"
+21:45:26 INFO waiting for processing pending="pending writes=1"
+21:45:41 INFO processing drained
+21:45:41 INFO uploaded a page document=docaJSlsHLzhsC page=3 of=13
+...
+21:48:49 INFO drawn n=5 of=843 documents=[docaJSlsHLzhsC docRTQwV0d003o]
+```
+That's about 15s a page, almost all spent waiting for one sheet write to flush. It adds up to ~25 PDFs an hour, and ~1½ days for the 854 documents left.
+
+- (*) Drop the queue waits
+  The uploader sends each PDF's pages back to back. It waits only for its own first page's server thumbnail, which it has to copy onto the PDF. Copying pages between identical PDFs no longer waits either. The server's shared CPU budget keeps people's requests ahead of the thumbnail and search backlog, and queued sheet writes go out together in a few calls per flush (`docs/storage.md`). For `docaJSlsHLzhsC`, I'd expect 13 uploads at about 1–2s each, then a short wait for one thumbnail. That's an estimate; I haven't measured it. Risk: thumbnails and search entries pile up on the server while the run is going, hundreds at a time instead of one. The health monitor would show that, and wake me if a queue stops moving or the API slows past 3s.
+- ( ) Keep the waits
+  Start it as it is. About 15s a page, roughly 1½ days to finish, and the server never holds more than one page's work.
+
+ian@fc.run's lead agent chose: Drop the queue waits
+ian@fc.run's lead agent added: ian already asked for this: "is the client already cleaned up so it doesn't wait?"
