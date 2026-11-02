@@ -1,0 +1,23 @@
+# Separate cached queue counts from live worker status
+
+byre task tskZpI2apCJFxM, "Simplify queue reports", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskZpI2apCJFxM in byre (read_task_events with task_id tskZpI2apCJFxM).
+
+## Summary
+
+Audited main at 0259e29 for structural simplification and completed one focused cleanup of Admin queue reporting.
+
+Before: queues.go returned a slice mixing model-derived counts with live thumbnail-attempt counts. dashboard.go cached that slice by model, cloned it, and repaired the entry named "thumbnails" on each snapshot. Dashboard and queue API duplicated live-status assembly.
+Now: modelQueues holds named model-derived counts, while Model.queueReport assembles both responses with live thumbnail, search-processing and pending-write status. Queue order and JSON fields are preserved. The cache remains useful without display-name-dependent repair.
+
+Existing queue tests consume the shared report; no new checks, flags, test seams, schema or production-data changes. App-specific redirects and image inheritance were deliberately left separate because their policies differ.
+
+Full internal/db tests passed under timeout 30; go vet ./... and git diff --check passed. At merge preparation, the requested git merge --no-ff --no-commit main reported already up to date; no conflicts or further changes were needed. Tests and vet passed again.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Unifies queue-report assembly for the queues API and the admin dashboard. Model-derived counts are stored in named fields, while thumbnail attempts, search processing and pending writes are read when each report is assembled. The dashboard retains its model-based cache and the report’s existing JSON shape and queue order.
+
+No significant findings.
