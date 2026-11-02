@@ -11,6 +11,7 @@ import (
 
 	"heliosian/internal/auth"
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 type queueCount struct {
@@ -34,6 +35,11 @@ func (c queueCount) MarshalJSON() ([]byte, error) {
 	}{count: count(c), Done: done})
 }
 
+type modelQueues struct {
+	extraction, fetching, signIn, classifying queueCount
+	digest, search, photos, sweep             queueCount
+}
+
 type queueReport struct {
 	Queues      []queueCount `json:"queues"`
 	LastRefresh time.Time    `json:"lastRefresh"`
@@ -50,9 +56,7 @@ func RegisterQueues(mux *http.ServeMux, s *Store, tokens auth.Tokens) {
 			http.Error(w, "super admins only", http.StatusForbidden)
 			return
 		}
-		status := s.Status()
-		report := queueReport{Queues: m.queueCounts(), LastRefresh: status.LastRefresh}
-		report.Queues = append(report.Queues, m.searchProcessing(), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
+		report := m.queueReport(s.Status(), m.queueCounts())
 		serve.Write(w, r, http.StatusOK, report)
 	})
 }
@@ -96,7 +100,19 @@ func (t *tally) finish(c *queueCount, query func(part string) string) {
 	}
 }
 
-func (m *Model) queueCounts() []queueCount {
+func (m *Model) queueReport(status store.Status, counts modelQueues) queueReport {
+	return queueReport{
+		LastRefresh: status.LastRefresh,
+		Queues: []queueCount{
+			counts.extraction, counts.fetching, counts.signIn, counts.classifying,
+			counts.digest, counts.search, m.thumbnailQueue(), counts.photos, counts.sweep,
+			m.searchProcessing(),
+			{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held},
+		},
+	}
+}
+
+func (m *Model) queueCounts() modelQueues {
 	contents := m.Table("CONTENT")
 	mimesOf := map[string][]string{}
 	for kind := range extractors {
@@ -150,7 +166,6 @@ func (m *Model) queueCounts() []queueCount {
 	for _, relation := range []string{"image", "linked"} {
 		signIn.Parts = append(signIn.Parts, queueCount{Name: relation, Pending: signInBy[relation], Query: signInQuery(relation)})
 	}
-	out := []queueCount{extraction, fetching, signIn, classifying}
 
 	since := time.Now().In(School).Add(-MailWindow).Format(DateLayout)
 	digest := queueCount{Name: "digest", About: "mail from the last two weeks whose summary, key points and to-dos Claude has not written for the current digest revision; mail still extracting or classifying waits here too", Query: `(from DOCUMENT (where (= kind "mail") (blank parent) (>= published ` + strconv.Quote(since) + `) (or (blank digest) (< digest ` + strconv.Quote(DigestRevision) + `))))`}
@@ -163,7 +178,6 @@ func (m *Model) queueCounts() []queueCount {
 			digest.Pending++
 		}
 	}
-	out = append(out, digest)
 
 	search := queueCount{Name: "search indexing", About: "groups, people and extracts whose search entry Claude and Vertex have not made yet", Query: `(from SEARCH (where (not made)))`}
 	byTable := &tally{}
@@ -175,9 +189,6 @@ func (m *Model) queueCounts() []queueCount {
 	byTable.finish(&search, func(table string) string {
 		return `(from SEARCH @s (where (not made) (exists ` + table + ` (= id @s.target))))`
 	})
-	out = append(out, search)
-
-	out = append(out, m.thumbnailQueue())
 
 	photos := queueCount{Name: "photos", About: "photos whose re-encode, crop and thumbnail are not made for the current original and box", Query: `(from PHOTO (where (not ready)))`}
 	for _, row := range m.Table("PHOTO").All() {
@@ -186,7 +197,6 @@ func (m *Model) queueCounts() []queueCount {
 			photos.Pending++
 		}
 	}
-	out = append(out, photos)
 
 	sweep := queueCount{Name: "content sweep", About: "stored content no row refers to, which the sweeper deletes with its object"}
 	byMime := map[string]int{}
@@ -197,7 +207,7 @@ func (m *Model) queueCounts() []queueCount {
 	for _, mimeType := range slices.Sorted(maps.Keys(byMime)) {
 		sweep.Parts = append(sweep.Parts, queueCount{Name: baseType(mimeType), Pending: byMime[mimeType]})
 	}
-	return append(out, sweep)
+	return modelQueues{extraction: extraction, fetching: fetching, signIn: signIn, classifying: classifying, digest: digest, search: search, photos: photos, sweep: sweep}
 }
 
 func (m *Model) thumbnailQueue() queueCount {

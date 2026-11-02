@@ -46,7 +46,7 @@ type board struct {
 	ops    *ops.Board
 	mu     sync.Mutex
 	model  *Model
-	queues []queueCount
+	queues modelQueues
 }
 
 func RegisterDashboard(mux, api *http.ServeMux, s *Store, external *ops.Board) {
@@ -112,17 +112,10 @@ func (b *board) snapshot() dashboard {
 	if b.model != m {
 		b.model, b.queues = m, m.queueCounts()
 	}
-	out := dashboard{At: time.Now(), Queues: b.queues, Ops: b.ops.Snapshot()}
+	counts := b.queues
 	b.mu.Unlock()
-	status := b.store.Status()
-	out.LastRefresh = status.LastRefresh
-	out.Queues = slices.Clone(out.Queues)
-	for i, queue := range out.Queues {
-		if queue.Name == "thumbnails" {
-			out.Queues[i] = m.thumbnailQueue()
-		}
-	}
-	out.Queues = append(out.Queues, m.searchProcessing(), queueCount{Name: "pending writes", About: "commits and refreshes waiting on the write queue, plus work held open", Pending: status.Pending + status.Held})
+	report := m.queueReport(b.store.Status(), counts)
+	out := dashboard{At: time.Now(), Queues: report.Queues, LastRefresh: report.LastRefresh, Ops: b.ops.Snapshot()}
 	errors := vitals.Errors()
 	since := time.Now().Add(-time.Hour)
 	for _, e := range errors {

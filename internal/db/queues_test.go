@@ -16,7 +16,7 @@ import (
 func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 	s := sample(t)
 	before := map[string]int{}
-	for _, q := range s.Model().queueCounts() {
+	for _, q := range s.Model().queueReport(s.Status(), s.Model().queueCounts()).Queues {
 		before[q.Name] = q.Pending
 	}
 	apply(t, s, []Edit{
@@ -34,7 +34,7 @@ func TestEachQueuesQueryListsWhatItCounts(t *testing.T) {
 	})
 	m := s.Model()
 	counted := map[string]int{}
-	for _, q := range m.queueCounts() {
+	for _, q := range m.queueReport(s.Status(), m.queueCounts()).Queues {
 		counted[q.Name] = q.Pending
 		for _, c := range append([]queueCount{q}, q.Parts...) {
 			if c.Query == "" {
@@ -115,7 +115,7 @@ func TestCopiedPageThumbnailsCreateNoThumbnailWork(t *testing.T) {
 	}
 	page := children(s, ids[1])[0]
 	pending := func() int {
-		for _, queue := range s.Model().queueCounts() {
+		for _, queue := range s.Model().queueReport(s.Status(), s.Model().queueCounts()).Queues {
 			if queue.Name == "thumbnails" {
 				return queue.Pending
 			}
