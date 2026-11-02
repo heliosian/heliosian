@@ -92,12 +92,11 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 	}
 	more := max(0, len(found)-eventsLimit)
 	found = found[:min(len(found), eventsLimit)]
-	ids, of := []string{}, map[string]string{}
+	ids := []string{}
 	for _, g := range found {
 		for _, id := range []string{g["id"], g["audience"]} {
 			if id != "" {
 				ids = append(ids, id)
-				of[id] = g["id"]
 			}
 		}
 	}
@@ -105,17 +104,13 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 	if err != nil {
 		return nil, err
 	}
-	mine := map[string]bool{}
-	for id := range held {
-		mine[of[id]] = true
-	}
 	answers, err := c.answers(found)
 	if err != nil {
 		return nil, err
 	}
 	out := []event{}
 	for _, g := range found {
-		e := event{named: c.named("GROUP", g), Kind: g["kind"], Start: g["start"], End: g["end"], AllDay: g["all_day"] == "Yes", Timing: g["timing"], Location: g["location"], Description: clip(g["description"], clipped), ForYou: mine[g["id"]], Answer: answers[g["id"]]}
+		e := event{named: c.named("GROUP", g), Kind: g["kind"], Start: g["start"], End: g["end"], AllDay: g["all_day"] == "Yes", Timing: g["timing"], Location: g["location"], Description: clip(g["description"], clipped), ForYou: held[g["id"]] || held[g["audience"]], Answer: answers[g["id"]]}
 		if g["status"] != "open" {
 			e.Status = g["status"]
 		}
@@ -133,12 +128,12 @@ var events = define("helios_events", "Looking at the calendar", "Helios School's
 
 func (c *call) answers(groups []store.Row) (map[string]string, error) {
 	out := map[string]string{}
-	answering := map[string]string{}
+	answering := map[string]store.Row{}
 	ids := []string{}
 	for _, g := range groups {
 		for _, col := range []string{"rsvp_yes", "rsvp_no"} {
 			if g[col] != "" {
-				answering[g[col]] = g["id"]
+				answering[g[col]] = g
 				ids = append(ids, g[col])
 			}
 		}
@@ -151,14 +146,10 @@ func (c *call) answers(groups []store.Row) (map[string]string, error) {
 		return nil, err
 	}
 	for _, m := range found {
-		for _, g := range groups {
-			if g["id"] != answering[m["group"]] {
-				continue
-			}
-			out[g["id"]] = "yes"
-			if g["rsvp_no"] == m["group"] {
-				out[g["id"]] = "no"
-			}
+		g := answering[m["group"]]
+		out[g["id"]] = "yes"
+		if g["rsvp_no"] == m["group"] {
+			out[g["id"]] = "no"
 		}
 	}
 	return out, nil
