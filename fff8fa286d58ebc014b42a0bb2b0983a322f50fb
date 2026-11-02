@@ -1,0 +1,24 @@
+# Unify parallel task execution and pair results with errors
+
+byre task tskHy5mn8kEZlN, "Parallel result cleanup", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskHy5mn8kEZlN in byre (read_task_events with task_id tskHy5mn8kEZlN).
+
+## Summary
+
+Audited the codebase for structural simplifications and consolidated parallel task execution across calendar import, search loading, search planning and image-library search.
+
+Before: calendar and search owned separate fan-out helpers, and image search repeated its own goroutine loop; each kept task values and errors in separate slices.
+Now: `internal/parallel.Run` returns ordered `Result[T]` records pairing each value with its error. All former callers use it, and the old helpers and image-search loop are removed.
+
+Before: search planning launched a goroutine per object and used a global semaphore to cap active bucket requests.
+Now: its existing 16-task limit is enforced by the shared worker pool, and the semaphore is deleted.
+
+Preserved ordering, concurrency ceilings, error messages, partial-success behavior and PDF voting. Kept the geocoder's in-place lookup pool and store lifecycle queues separate because their contracts differ. No schema, production-data or visible UI changes. Affected database tests, full import and image-search tests, helper concurrency tests with the race detector, repository-wide vet and diff checks passed. The requested merge from main reported already up to date; no conflict resolutions were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Consolidates parallel task execution into `internal/parallel`, pairing each value with its error in an ordered result slice. Calendar processing, search loading, image search, and search planning use the shared worker pool while preserving their concurrency limits and error handling. Adds tests covering ordering, concurrency limits, mixed successes and failures, and empty input. Reviewed by reading the code; builds and tests were not run, as requested.
+
+No significant findings.
