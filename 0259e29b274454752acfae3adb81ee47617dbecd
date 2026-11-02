@@ -1,0 +1,82 @@
+# Import classroom update decks as documents
+
+byre task tsk0h78WEYblar, "Import classroom decks", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsk0h78WEYblar in byre (read_task_events with task_id tsk0h78WEYblar).
+
+## Summary
+
+Before: tools/import ignored classroom update decks exported by vcexport.
+Now: it reads classroom-updates.json, uploads full Markdown as file documents tied to classroom and parents audiences, skips unchanged text, and replaces changed versions by canonical deck URL through superseded_by while keeping history.
+
+Before: Markdown file roots did not enter Ask's corpus, and oversized Markdown was unreadable.
+Now: Markdown file roots are indexed directly and document reading paginates complete UTF-8 responses within a byte budget, with Unicode-character continuation offsets.
+
+The ordinary file upload supports unknown publication dates, atomic audience links and distinct source URLs over identical content. Integration tests cover versioning, audiences, search and long Unicode documents through Ask's wrapper; focused checks and vet pass. Fresh dry run planned nine decks, no directory edits, one portrait and an unchanged calendar; no production writes were performed. Ian narrowed scope to documents, deferring PNG import, classroom fields and homepage UI.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The importer reads the classroom update manifest and uploads each deck’s Markdown as a file document addressed to its classroom and Parents group. Canonical URLs and content hashes identify versions, with changed decks replacing previous documents through superseded_by. The upload API also accepts audience groups and omitted publication dates.
+
+- Imported Markdown file roots never enter Ask’s search corpus.
+- Newest-slide PNG import and homepage display are missing.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The importer reads classroom update manifests and uploads each deck’s Markdown as a file document addressed to its classroom and Parents group. It detects changes by content hash and canonical URL, replaces earlier versions through superseded_by, and includes Markdown file roots in Ask’s search corpus. The file-upload API also accepts audience groups and an omitted publication date.
+
+- Latest-slide PNG storage and the requested homepage display are missing.
+- Decks over 30,000 bytes are searchable but their text cannot be read through Ask’s document reader.
+
+### Snapshot #5, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The importer reads classroom deck manifests, uploads their Markdown as classroom-scoped documents, and links changed versions through superseded_by. Markdown file roots enter Ask search, and document reading gains continuation offsets. Latest-slide PNG storage and homepage display are absent.
+
+- Latest-slide PNG storage and homepage display are missing.
+- Unicode pagination can exceed Ask’s output limit and prevent document reading.
+
+### Snapshot #6, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+The importer reads classroom deck Markdown, files it with classroom and parent audiences, and replaces changed versions by canonical deck URL. Markdown file roots enter Ask’s search corpus, and document reading supports bounded Unicode-safe pagination. Slide PNG import and homepage display are absent.
+
+- High: The newest-slide PNG import and classroom homepage display required by the task are missing.
+
+## Decisions
+
+### Does this schema fit the classroom deck import?
+
+You asked to review the data model before building the importer, then review homepage mockups before UI implementation. I recommend reusing the document tables and adding three classroom fields.
+
+```diagram
+row
+  classroom "GROUP · classroom" "new: update → current DOCUMENT" "new: update_image → PNG · update_url → slide" blue
+row
+  audience "DOCUMENT_GROUP" "sent_to → classroom + classroom parents" green
+  current "DOCUMENT · current deck" "kind=file · url=canonical deck URL" "content → full Markdown" blue
+  png "CONTENT · newest slide" "image/png · original exported bytes" green
+row
+  old "DOCUMENT · earlier deck" "same canonical URL · content retained" plain
+  markdown "CONTENT · deck text" "text/markdown · all slides and links" green
+classroom -> current "update"
+classroom -> png "update_image"
+audience -> classroom "group"
+audience -> current "document"
+old -> current "superseded_by"
+current -> markdown "content"
+```
+
+`GROUP` holds classrooms. Proposed fields: `update` references the current deck document; `update_image` references the newest-slide PNG bytes; `update_url` opens that captured slide. `DOCUMENT` holds each deck version, with `kind=file` meaning a shared file, `url` holding its canonical Google Slides address, and `content` referencing its Markdown bytes. `CONTENT` stores deduplicated bytes. `DOCUMENT_GROUP` associates a document with its audiences; `sent_to` currently grants access to that group's members and managers. `superseded_by` points an older document at its whole-document replacement.
+
+Real input: the exported **Hummingbirds (K) Updates 2026-2027** deck contains 43 slides. Its canonical [deck URL](https://docs.google.com/presentation/d/1BaHd4hKaF152gTCsGUvWpMsewxbzeSfFItRMOlH0i1A/edit) identifies the deck; the newest image is slide 1.
+
+- (*) Approve this schema
+  Hummingbirds gets a current-document reference, its native PNG reference, and the exported direct slide link. The document holds all 43 slides as Markdown and is sent to Hummingbirds and Hummingbirds Parents, letting their members and managers read it through Ask. The PNG follows the same audience. Changed Markdown at the same deck URL produces a replacement document and retains the earlier text; identical Markdown creates no version. A changed PNG alone updates the classroom image. I recommend this because it uses the existing storage, audience and replacement mechanisms. Next I implement the importer and prepare homepage mockups for separate review.
+- ( ) Revise the schema first
+  The Hummingbirds 43-slide export remains unimported while you describe the desired schema or audience change. I revise the entity diagram before implementing.
+
+The exporter changes and real manifest are in its byre task worktree; `/Users/flamingcow/work/helios/vcexport` and GitHub main still have the earlier exporter. No implementation or production writes have occurred. Your requested review is why I am pausing here; production writes remain a separate approval.
+
+ian@fc.run answered: i don't think we need a special field on groups, at least not yet. just get them uploaded as docs for now
