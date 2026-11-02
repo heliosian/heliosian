@@ -1,0 +1,26 @@
+# Simplify calendar tool membership attribution
+
+byre task tskuPi93weraOy, "Simplify calendar attribution", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskuPi93weraOy in byre (read_task_events with task_id tskuPi93weraOy).
+
+## Summary
+
+Audited the codebase for structural simplifications and made one focused cleanup in `internal/tools/calendar.go`.
+
+Before: calendar event household attribution used an audience-to-event reverse map and a second map of matching events.
+Now: each event checks its own ID and audience reference directly against the existing membership set.
+
+Before: RSVP attribution mapped answer groups to event IDs and rescanned every event for each membership.
+Now: answer groups map directly to event rows, removing the nested scan.
+
+Kept policy-filtered queries and output shape unchanged. Left ancestry consolidation alone because query traversal could alter handling of unreadable parents; left feed and invitation span handling separate because their missing-end and all-day rules differ.
+
+The requested `git merge --no-ff --no-commit main` reported already up to date; no conflicts or additional changes were needed. The full `internal/tools` tests, repository-wide `go vet`, and diff checks passed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Simplifies calendar attribution in the shared read-only tools. Events determine household relevance directly from membership in the event or its audience, fixing attribution when several events share an audience. RSVP answers use a direct lookup of the event row instead of scanning the event list for each membership.
+
+No significant findings.
