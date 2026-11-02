@@ -11,6 +11,7 @@ import (
 	"heliosian/internal/data"
 	"heliosian/internal/db"
 	"heliosian/internal/hosts"
+	"heliosian/internal/parallel"
 	"heliosian/internal/spreadsheets"
 )
 
@@ -56,18 +57,16 @@ func main() {
 		objects = append(objects, object)
 	}
 	slices.Sort(objects)
-	held, errs := db.FanOut(len(objects), func(i int) (bool, error) {
-		limit <- struct{}{}
-		defer func() { <-limit }()
+	held := parallel.Run(len(objects), existsParallels, func(i int) (bool, error) {
 		return bucket.Exists(context.Background(), objects[i])
 	})
 	missing, chars := 0, 0
 	byTable := map[string]int{}
 	for i, object := range objects {
-		if errs[i] != nil {
-			log.Fatalf("look for %s: %v", object, errs[i])
+		if held[i].Err != nil {
+			log.Fatalf("look for %s: %v", object, held[i].Err)
 		}
-		if held[i] {
+		if held[i].Value {
 			continue
 		}
 		missing++
@@ -85,5 +84,3 @@ func main() {
 	log.Printf("claude %s: about %d input and %d output tokens (assuming %d out per row, thinking included), about $%.2f", claude.SearchSummaryModel, in, out, outputTokens, dollars)
 	log.Printf("vertex: about %d tokens to embed", chars/charsPerToken)
 }
-
-var limit = make(chan struct{}, existsParallels)

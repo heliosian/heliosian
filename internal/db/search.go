@@ -27,6 +27,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/claude"
+	"heliosian/internal/parallel"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
 	"heliosian/internal/workload"
@@ -496,15 +497,15 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 		out[id] = ""
 		missing = append(missing, c)
 	}
-	texts, errs := loadAll(len(missing), func(i int) (string, error) {
+	texts := parallel.Run(len(missing), searchLoaders, func(i int) (string, error) {
 		raw, _, err := bucket.Get(ctx, missing[i]["blob"])
 		return string(raw), err
 	})
 	for i, c := range missing {
-		if errs[i] != nil {
-			return nil, fmt.Errorf("read %s: %w", c["blob"], errs[i])
+		if texts[i].Err != nil {
+			return nil, fmt.Errorf("read %s: %w", c["blob"], texts[i].Err)
 		}
-		out[c["id"]] = texts[i]
+		out[c["id"]] = texts[i].Value
 	}
 	return out, nil
 }
@@ -680,15 +681,15 @@ func (x *Searcher) followChanges() {
 		}
 	}
 	toLoad := slices.Sorted(maps.Keys(unknown))
-	loaded, errs := loadAll(len(toLoad), func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
+	loaded := parallel.Run(len(toLoad), searchLoaders, func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
 	x.mu.Lock()
 	for i, hash := range toLoad {
-		if errs[i] != nil {
-			slog.Error("search: load", "object", hash, "error", errs[i])
+		if loaded[i].Err != nil {
+			slog.Error("search: load", "object", hash, "error", loaded[i].Err)
 			continue
 		}
-		if loaded[i] != nil {
-			x.entries[hash] = loaded[i]
+		if loaded[i].Value != nil {
+			x.entries[hash] = loaded[i].Value
 			x.version++
 			continue
 		}
@@ -848,26 +849,6 @@ func (x *Searcher) index() {
 
 func (x *Searcher) Ready() <-chan struct{} {
 	return x.ready
-}
-
-func loadAll[T any](n int, f func(i int) (T, error)) ([]T, []error) {
-	results := make([]T, n)
-	errs := make([]error, n)
-	next := make(chan int)
-	var wg sync.WaitGroup
-	for range searchLoaders {
-		wg.Go(func() {
-			for i := range next {
-				results[i], errs[i] = f(i)
-			}
-		})
-	}
-	for i := range n {
-		next <- i
-	}
-	close(next)
-	wg.Wait()
-	return results, errs
 }
 
 func (x *Searcher) load(hash string) (*SearchEntry, error) {

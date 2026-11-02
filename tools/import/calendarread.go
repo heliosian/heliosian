@@ -26,6 +26,7 @@ import (
 
 	"heliosian/internal/claude"
 	"heliosian/internal/db"
+	"heliosian/internal/parallel"
 )
 
 const (
@@ -181,11 +182,13 @@ func extractMonth(ctx context.Context, client anthropic.Client, crop anthropic.C
 		}
 		return fills, nil
 	}
-	readings, errs := db.FanOut(2, func(int) (map[int]string, error) { return read() })
-	for _, err := range errs {
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+	results := parallel.Run(2, 2, func(int) (map[int]string, error) { return read() })
+	readings := []map[int]string{}
+	for _, result := range results {
+		if result.Err != nil {
+			return nil, fmt.Errorf("%s: %w", name, result.Err)
 		}
+		readings = append(readings, result.Value)
 	}
 	disputed := 0
 	for day := 1; day <= last; day++ {
@@ -291,14 +294,14 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, v *db.
 		return out, err
 	}
 	startYear, _ := strconv.Atoi(schoolYearForm.FindStringSubmatch(out.Year)[1])
-	months, errs := db.FanOut(12, func(i int) ([]db.ShadedDay, error) {
+	months := parallel.Run(12, 12, func(i int) ([]db.ShadedDay, error) {
 		return extractMonth(ctx, client, crops[i], time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, db.School), legend)
 	})
-	for i := range 12 {
-		if errs[i] != nil {
-			return out, errs[i]
+	for _, month := range months {
+		if month.Err != nil {
+			return out, month.Err
 		}
-		out.Shaded = append(out.Shaded, months[i]...)
+		out.Shaded = append(out.Shaded, month.Value...)
 	}
 	return out, nil
 }

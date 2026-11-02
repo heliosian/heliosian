@@ -11,12 +11,12 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 
 	"heliosian/internal/claude"
+	"heliosian/internal/parallel"
 )
 
 const (
@@ -307,32 +307,21 @@ func Ask(ctx context.Context, client anthropic.Client, system string, content []
 	}, out)
 }
 
-func FanOut[T any](n int, f func(i int) (T, error)) ([]T, []error) {
-	results := make([]T, n)
-	errs := make([]error, n)
-	var wg sync.WaitGroup
-	for i := range n {
-		wg.Go(func() { results[i], errs[i] = f(i) })
-	}
-	wg.Wait()
-	return results, errs
-}
-
 func (v *Vocabulary) Classify(ctx context.Context, client anthropic.Client, items []CalendarItem) map[string]Classification {
 	out := map[string]Classification{}
 	batches := [][]CalendarItem{}
 	for start := 0; start < len(items); start += classifyBatch {
 		batches = append(batches, items[start:min(start+classifyBatch, len(items))])
 	}
-	results, errs := FanOut(len(batches), func(i int) (map[string]Classification, error) {
+	results := parallel.Run(len(batches), len(batches), func(i int) (map[string]Classification, error) {
 		return v.classifyBatch(ctx, client, batches[i])
 	})
-	for i := range batches {
-		if errs[i] != nil {
-			slog.ErrorContext(ctx, "calendar import: classify events", "batch", i+1, "of", len(batches), "error", errs[i])
+	for i, result := range results {
+		if result.Err != nil {
+			slog.ErrorContext(ctx, "calendar import: classify events", "batch", i+1, "of", len(batches), "error", result.Err)
 			continue
 		}
-		maps.Copy(out, results[i])
+		maps.Copy(out, result.Value)
 	}
 	slog.InfoContext(ctx, "calendar import: classified", "events", len(out), "of", len(items))
 	return out
@@ -484,15 +473,15 @@ func (v *Vocabulary) MatchPDF(ctx context.Context, client anthropic.Client, rows
 	for start := 0; start < len(asks); start += matchBatch {
 		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
 	}
-	results, errs := FanOut(len(batches), func(i int) (map[string][]string, error) {
+	results := parallel.Run(len(batches), len(batches), func(i int) (map[string][]string, error) {
 		return v.matchBatch(ctx, client, batches[i])
 	})
 	out := map[string][]string{}
-	for i := range batches {
-		if errs[i] != nil {
-			return nil, fmt.Errorf("match pdf entries to google events, batch %d of %d: %w", i+1, len(batches), errs[i])
+	for i, result := range results {
+		if result.Err != nil {
+			return nil, fmt.Errorf("match pdf entries to google events, batch %d of %d: %w", i+1, len(batches), result.Err)
 		}
-		maps.Copy(out, results[i])
+		maps.Copy(out, result.Value)
 	}
 	slog.InfoContext(ctx, "calendar import: matched", "entries", len(asks), "same as google", len(out))
 	return out, nil
@@ -564,14 +553,14 @@ func (v *Vocabulary) MatchGoogle(ctx context.Context, client anthropic.Client, r
 	for start := 0; start < len(asks); start += matchBatch {
 		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
 	}
-	results, errs := FanOut(len(batches), func(i int) (map[string]string, error) {
+	results := parallel.Run(len(batches), len(batches), func(i int) (map[string]string, error) {
 		return v.matchGoogleBatch(ctx, client, batches[i])
 	})
-	for i := range batches {
-		if errs[i] != nil {
-			return nil, fmt.Errorf("match google events to activities and parties, batch %d of %d: %w", i+1, len(batches), errs[i])
+	for i, result := range results {
+		if result.Err != nil {
+			return nil, fmt.Errorf("match google events to activities and parties, batch %d of %d: %w", i+1, len(batches), result.Err)
 		}
-		maps.Copy(out, results[i])
+		maps.Copy(out, result.Value)
 	}
 	same := 0
 	for _, g := range out {

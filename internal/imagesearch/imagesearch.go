@@ -19,6 +19,7 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/blob"
 	"heliosian/internal/db"
+	"heliosian/internal/parallel"
 	"heliosian/internal/ratelimit"
 	"heliosian/internal/serve"
 	"heliosian/internal/store"
@@ -141,24 +142,18 @@ func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
 }
 
 func gather(ctx context.Context, q string, searches []func(context.Context, string) ([]result, error)) ([]result, error) {
-	lists := make([][]result, len(searches))
-	errs := make([]error, len(searches))
-	var wg sync.WaitGroup
-	for i, search := range searches {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			lists[i], errs[i] = search(ctx, q)
-		}()
-	}
-	wg.Wait()
+	lists := parallel.Run(len(searches), len(searches), func(i int) ([]result, error) {
+		return searches[i](ctx, q)
+	})
 	answered := [][]result{}
-	for i, err := range errs {
-		if err != nil {
-			slog.WarnContext(ctx, "image search: a library failed", "error", err)
+	errs := []error{}
+	for _, list := range lists {
+		if list.Err != nil {
+			slog.WarnContext(ctx, "image search: a library failed", "error", list.Err)
+			errs = append(errs, list.Err)
 			continue
 		}
-		answered = append(answered, lists[i])
+		answered = append(answered, list.Value)
 	}
 	if len(answered) == 0 {
 		return nil, errors.Join(errs...)
