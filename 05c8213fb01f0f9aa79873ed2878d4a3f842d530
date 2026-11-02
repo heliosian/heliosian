@@ -1,0 +1,23 @@
+# Restore missing startup module preloads
+
+byre task tsktBL2bR856S5, "Startup module preloads", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsktBL2bR856S5 in byre (read_task_events with task_id tsktBL2bR856S5).
+
+## Summary
+
+Audited main at fff8fa286d58ebc014b42a0bb2b0983a322f50fb for user-visible performance waste across request/query execution, browser startup, background image/search work, store refreshes, feeds, and retained diagnostics.
+
+Before: Birthday, Team, and Who? omitted four required dependencies from their HTML modulepreload lists, causing late discovery through importing page modules; the existing module-graph regression test failed.
+Now: Birthday preloads monthgrid.js; Team preloads monthgrid.js and searchbox.js; Who? preloads searchbox.js. Four HTML lines schedule already-required downloads earlier, with no page-content or module-behavior changes.
+
+Used the existing preload mechanism and regression test. Larger server optimizations were deliberately left alone because none cleared the audit's evidence and simplicity bar. Browser wall-clock savings were not measured, and no production deployment was performed.
+
+Full app, store, workload, and serve tests pass; focused data-model limit/cancellation/indexing tests, go vet ./..., and git diff --check pass. The requested git merge --no-ff --no-commit main reported already up to date; no conflicts or additional file changes were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds four module preload hints across Staff Birthdays, HCA-Team, and Helios Who? so the browser can discover monthgrid.js and searchbox.js directly from the HTML. Each module is already a static dependency of its app’s startup code, and its shared dependency is already preloaded. Reviewed the imports, asset routing, and existing module-graph coverage test by reading code; no builds were run.
+
+No significant findings.
