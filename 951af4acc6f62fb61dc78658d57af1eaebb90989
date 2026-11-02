@@ -1,0 +1,65 @@
+# Prevent guest email impersonation and sign-in
+
+byre task tskXwpFbhYJzeI, "Guest identity audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskXwpFbhYJzeI in byre (read_task_events with task_id tskXwpFbhYJzeI).
+
+## Summary
+
+Audited the codebase at 05c8213 and fixed guest email identity impersonation plus a related guest sign-in bypass.
+
+Before: a member permitted to bring guests could attach their own mailbox to an established outside guest and use the guest's Loop posting rights.
+Now: the shared batch writer requires ordinary email inserts to target a person created in that same batch. Ian chose this creation-only rule over ongoing host editing authority. Existing guests, including those created without email, require a super admin to receive another address; trusted system jobs retain access.
+
+Before: case and whitespace variants such as GUEST bypassed the first guard and caused guest emails to be classified as directory addresses, admitting them through the model's sign-in gate.
+Now: the guard is independent of source spelling, and generated guest classification follows enum comparison semantics.
+
+Regression tests reproduce the attacks and cover alternate spellings, guest-only sign-in, legitimate creation, rejection of later address additions, rollback, and super admin access. The chosen rule is documented in docs/datamodel.md. Focused security and broader guest/invitation/write tests passed, along with go vet ./... and diff checks. Latest review completed before merge preparation. The requested merge from main reported already up to date; no conflicts or substantive integration changes were needed, and verification was rerun.
+
+No schema changes, production data writes, deployment, or GitHub issues. Intentional public share cards, directory lookup, privileged system access, and documented stateless OAuth behavior remain unchanged; no other security issue was confirmed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds an HTTP regression test asserting that a signed-in member cannot attach another email address to an existing guest. The test illustrates how that address could inherit the guest's permission to post to a private mailing list. No production code changes accompany it.
+
+- High: The new test reproduces guest identity impersonation, but no production authorization fix closes it.
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Restricts ordinary members to assigning guest email addresses in the batch that creates the guest, while preserving system and super-admin writes. Adds regression tests for existing guests, atomic rejection, and super-admin access, and documents the restriction.
+
+- High: Alternate spellings of the guest source bypass the new restriction and preserve guest impersonation.
+
+### Snapshot #4, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Restricts ordinary members to assigning guest email addresses in the same batch that creates the guest, preventing them from attaching their mailbox to an existing guest and impersonating that guest through incoming mail. Normalizes guest email classification across case and whitespace variants so these addresses cannot grant directory sign-in. Documents the restriction and adds regression tests for rejected writes, atomic rollback, super-admin access, and sign-in exclusion.
+
+No significant findings.
+
+## Decisions
+
+### Who should be allowed to attach email addresses to an existing outside guest?
+
+I confirmed an identity takeover through the shared write API. `PERSON_EMAIL` stores the addresses used to identify incoming mail senders; `PERSON` stores each member or outside guest. Today, any signed-in member who can bring guests can add an address to any existing guest, without managing that guest's lists. An attacker can attach a mailbox they control and send authenticated mail with that guest's posting permissions.
+
+The regression test uses the sample outside guest, gives them `guest@example.net`, and puts them on a private members-only list. Rowan Ashdown then attaches `intruder@example.net` to that guest through `/api/q`. The server returns HTTP 200; the new address identifies the guest and can post to the private list. No production code has changed.
+
+The audit instructions explicitly require your decision when a fix determines who is allowed to act. I recommend assigning guest addresses only during creation: the documented invitation and Loop flows already create a new guest and their email together.
+
+- (*) Assign addresses only at guest creation
+  Before: members could add addresses to an established guest.
+  Now: ordinary writes must create the guest and their address in the same batch; existing guests require a super admin to change their addresses.
+  On the reproduced input, Rowan's addition of `intruder@example.net` is refused, even if Rowan hosts one of the guest's events. Creating a separate new guest with that address still succeeds. This also means members cannot later supply an address for a guest originally created without one.
+- ( ) Allow hosts with authority over every affected group
+  Before: members could add addresses to an established guest without hosting any affected group.
+  Now: a member may add an address only when they manage every group containing that guest; super admins retain access.
+  On the reproduced input, Rowan's addition is refused while Rowan does not manage the private list. If Rowan becomes the host of every group containing that guest, the same addition succeeds and mail from `intruder@example.net` acts as the guest. This preserves later address entry but needs broader authorization checks across memberships.
+
+<details><summary>Reproduction</summary>
+
+The added regression is `internal/db/guestidentity_security_test.go`. It exercises the real API write handler, sender identity lookup, and Loop posting authorization. It currently fails because the unauthorized write succeeds. The initial fixture assertion failed because the sample guest was not on the selected list; I corrected the fixture to create the private list explicitly, then reproduced the successful takeover.
+
+</details>
+
+ian@fc.run chose: Assign addresses only at guest creation
