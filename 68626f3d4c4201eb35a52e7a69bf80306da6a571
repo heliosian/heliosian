@@ -1,0 +1,23 @@
+# Share parallel execution in geocoding and Ask
+
+byre task tskeMV1ApJmw5M, "Share parallel execution", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskeMV1ApJmw5M in byre (read_task_events with task_id tskeMV1ApJmw5M).
+
+## Summary
+
+Audited main at 951af4acc6f62fb61dc78658d57af1eaebb90989 for structural simplifications, reading across the shared data model, store, mail, calendar, public pages, fetching, image search and browser state before selecting two execution paths.
+
+Before: the family geocoder implemented its own channel and worker pool, and Ask launched goroutines over mutable tool-call result holders.
+Now: both use the existing ordered internal/parallel.Run helper. The geocoder preserves its eight-worker limit and address/point association; Ask preserves concurrent calls, reply order and error-marked tool replies. The change removes 24 lines overall without intended visible behavior or stored-data changes.
+
+Reused the existing runner to remove duplicated synchronization rather than introducing another abstraction. Deliberately left side-effect workers alone because result collection does not fit their purpose, and left mail/feed time parsing alone because their end-time semantics differ.
+
+Affected package tests, race checks and repository-wide go vet passed. The requested main merge reported already up to date; affected tests and repository-wide vet passed again, with a clean worktree and no conflicts.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Replaces the separate goroutine and worker-pool implementations in Ask tool execution and address geocoding with the existing internal/parallel.Run helper. The refactor preserves ordered results, per-call errors, concurrent tool execution, and the geocoder’s eight-worker limit and failure tracking. Review was by code inspection; no builds or tests were run.
+
+No significant findings.
