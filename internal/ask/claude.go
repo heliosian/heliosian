@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"slices"
 	"strings"
-	"sync"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/shared/constant"
 
 	"heliosian/internal/claude"
+	"heliosian/internal/parallel"
 )
 
 const (
@@ -49,11 +49,6 @@ func (u *Usage) add(usage anthropic.BetaUsage) {
 	u.Cached += usage.CacheReadInputTokens
 	u.Output += usage.OutputTokens
 	u.Rounds++
-}
-
-type toolCall struct {
-	use    anthropic.BetaToolUseBlock
-	result anthropic.BetaContentBlockParamUnion
 }
 
 type Claude struct {
@@ -117,7 +112,7 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 		if msg.StopReason != anthropic.BetaStopReasonToolUse {
 			break
 		}
-		calls := []*toolCall{}
+		calls := []anthropic.BetaToolUseBlock{}
 		for _, block := range msg.Content {
 			use, ok := block.AsAny().(anthropic.BetaToolUseBlock)
 			if !ok {
@@ -128,23 +123,19 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 				reply.Tools = append(reply.Tools, words)
 				emit("tool", words)
 			}
-			calls = append(calls, &toolCall{use: use})
+			calls = append(calls, use)
 		}
-		wg := sync.WaitGroup{}
-		for _, c := range calls {
-			wg.Go(func() {
-				out, err := req.Run(ctx, c.use.Name, json.RawMessage(c.use.JSON.Input.Raw()))
-				if err != nil {
-					c.result = anthropic.NewBetaToolResultBlock(c.use.ID, err.Error(), true)
-					return
-				}
-				c.result = anthropic.NewBetaToolResultBlock(c.use.ID, out, false)
-			})
-		}
-		wg.Wait()
+		answers := parallel.Run(len(calls), len(calls), func(i int) (string, error) {
+			use := calls[i]
+			return req.Run(ctx, use.Name, json.RawMessage(use.JSON.Input.Raw()))
+		})
 		results := []anthropic.BetaContentBlockParamUnion{}
-		for _, c := range calls {
-			results = append(results, c.result)
+		for i, answer := range answers {
+			if answer.Err != nil {
+				results = append(results, anthropic.NewBetaToolResultBlock(calls[i].ID, answer.Err.Error(), true))
+				continue
+			}
+			results = append(results, anthropic.NewBetaToolResultBlock(calls[i].ID, answer.Value, false))
 		}
 		reply.Messages = append(reply.Messages, anthropic.NewBetaUserMessage(results...))
 	}

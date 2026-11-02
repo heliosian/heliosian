@@ -6,11 +6,11 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"sync"
 	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/geocode"
+	"heliosian/internal/parallel"
 )
 
 const geocodeLookups = 8
@@ -31,7 +31,6 @@ type geocoder struct {
 type geocodeLookup struct {
 	address string
 	point   geocode.Point
-	err     error
 }
 
 func StartGeocoder(s *Store, client *geocode.Client) {
@@ -69,35 +68,21 @@ func (g *geocoder) run() {
 	for range g.in.wake {
 		g.in.take()
 		m := g.s.Model()
-		lookups := []geocodeLookup{}
-		for _, address := range m.unplaced() {
-			if !g.failed[address] {
-				lookups = append(lookups, geocodeLookup{address: address})
-			}
-		}
+		addresses := slices.DeleteFunc(m.unplaced(), func(address string) bool { return g.failed[address] })
 		gone := slices.DeleteFunc(m.unplaceable(), func(id string) bool { return g.failed[id] })
-		if len(lookups) == 0 && len(gone) == 0 {
+		if len(addresses) == 0 && len(gone) == 0 {
 			continue
 		}
 		start := time.Now()
-		next := make(chan *geocodeLookup)
-		wg := sync.WaitGroup{}
-		for range geocodeLookups {
-			wg.Go(func() {
-				for lookup := range next {
-					lookup.point, lookup.err = g.client.Lookup(lookup.address)
-				}
-			})
-		}
-		for i := range lookups {
-			next <- &lookups[i]
-		}
-		close(next)
-		wg.Wait()
+		lookups := parallel.Run(len(addresses), geocodeLookups, func(i int) (geocodeLookup, error) {
+			point, err := g.client.Lookup(addresses[i])
+			return geocodeLookup{address: addresses[i], point: point}, err
+		})
 		edits := []Edit{}
-		for _, lookup := range lookups {
-			if lookup.err != nil {
-				slog.Error("geocode: look up, left until a restart", "address", lookup.address, "error", lookup.err)
+		for _, result := range lookups {
+			lookup := result.Value
+			if result.Err != nil {
+				slog.Error("geocode: look up, left until a restart", "address", lookup.address, "error", result.Err)
 				g.failed[lookup.address] = true
 				continue
 			}
@@ -113,8 +98,8 @@ func (g *geocoder) run() {
 		env := Env{System: "geocoder", Now: time.Now()}
 		if _, err := Write(context.Background(), g.s, access.System(env.System), env, Batch{Batch: edits}); err != nil {
 			slog.Error("geocode: record", "placed", placed, "removed", len(gone), "error", err)
-			for _, lookup := range lookups {
-				g.failed[lookup.address] = true
+			for _, address := range addresses {
+				g.failed[address] = true
 			}
 			for _, id := range gone {
 				g.failed[id] = true
