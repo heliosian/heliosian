@@ -156,6 +156,7 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 	authorizing, staging, firing, checking := span.Tally("authorize"), span.Tally("stage"), span.Tally("fire"), span.Tally("check")
 	var authorized time.Duration
 	names := map[string]string{}
+	createdPeople := map[string]bool{}
 	written := []string{}
 	for i, w := range edits {
 		where := fmt.Sprintf("%s[%d]", label, i)
@@ -178,6 +179,9 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 		allowed := func(m *Model, c Change) error {
 			start := time.Now()
 			err := m.Authorize(authEnv, c)
+			if err == nil && c.Table == "PERSON_EMAIL" && c.Old == nil && authEnv.System == "" && !m.superAdmin(authEnv.Viewer) && !createdPeople[c.New["person"]] {
+				err = access.Forbidden("a guest's address must be assigned in the batch that creates the guest")
+			}
 			authorized += time.Since(start)
 			authorizing.Add(time.Since(start))
 			return err
@@ -194,6 +198,9 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 		}
 		if w.As != "" {
 			names[w.As] = id
+		}
+		if c.Table == "PERSON" && c.Old == nil {
+			createdPeople[id] = true
 		}
 		start = time.Now()
 		err = fire(s, tx, c, env, where)

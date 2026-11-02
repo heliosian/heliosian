@@ -381,7 +381,7 @@ func groupGenerated(rows []store.Row, origin func(app string) string) {
 }
 
 func emailGenerated(row map[string]string) {
-	row["guest"] = cells.YesNoCell(row["source"] == "guest")
+	row["guest"] = cells.YesNoCell(strings.EqualFold(strings.TrimSpace(row["source"]), "guest"))
 }
 
 func photoGenerated(row map[string]string) {
