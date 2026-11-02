@@ -119,6 +119,32 @@ Development happens on macOS. Two Homebrew installs cover everything here and in
 
 No Node, no Docker, and no cloud credentials are needed for sample-mode development. Repository layout is in the README.
 
+## Recurring laptop catch-up
+
+From the repository root on your laptop, run:
+
+```sh
+sh tools/catchup.sh
+```
+
+This writes to production. Import can incur Claude charges when it reads a new calendar PDF or new reading prompts. Run it when you want to bring school data and documents up to date; this is a manual recipe, not a scheduled job.
+
+Have Go and Poppler's `pdftoppm` installed (`brew install poppler`), and set `VCEXPORT` and `WEBEXPORT` to the source checkouts of the Veracross and school-website exporters. The import also requires `ANTHROPIC_API_KEY`. The production tools use the shared browser sign-in described under `q` below; follow that sign-in if prompted. The capture browser needs a Google account that can read the school documents. To prepare that session, run `go run ./tools/capturebrowser` and sign in to Google in the browser it opens.
+
+The script runs these commands in order, with their normal progress output:
+
+1. `go run ./tools/import` runs both exporters, synchronizes people, families and groups, imports missing portraits and classroom update decks, and synchronizes the school calendar. Do not run the exporters separately.
+2. `go run ./tools/fetchsignin` starts or reuses the capture browser, fetches documents production needs a Google sign-in to read, and sends the results to production.
+3. `go run ./tools/pdfthumbnails` renders missing PDF pages locally, uploads them, and waits for the server's thumbnails. Existing completed pages are reused.
+
+The script stops at the first command that exits unsuccessfully; earlier production writes remain. Fix the reported problem, then rerun the script, or run the failed command and the remaining commands individually. If fetching asks for a Google sign-in, sign in in the capture browser and rerun `fetchsignin` before `pdfthumbnails`. Interrupted PDF uploads resume from the documents' completion state.
+
+A successful script exit means all three commands exited successfully, not that every document is complete. Check `fetchsignin`'s filled, gone and refused counts and `pdfthumbnails`' drawn, failed and skipped counts. PDF work skipped while server thumbnails are incomplete is left for the next run. These passes process the work they find; documents discovered by subsequent server processing may need another catch-up.
+
+For an import preview, run `go run ./tools/import --dry-run` separately before the recipe. It still runs the live exporters and can incur Claude charges, but sends no import writes. The recipe itself performs the actual import.
+
+Deployment, schema setup (`createtabs`), snapshots and diagnostic tools are separate operations, not part of recurring catch-up.
+
 ## Tools
 
 Each runs as `go run ./tools/<name>`. The sheet, drive, and bucket tools authenticate with the same impersonated application-default credentials as the server (see Real data).
