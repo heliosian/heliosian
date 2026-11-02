@@ -374,7 +374,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Add a file the community received or shared",
-				"description": "The file's type is its part's Content-Type, or read from its bytes when that is absent or application/octet-stream. Mail (message/rfc822) is read from its headers alone and takes no other field; anything else needs url and published and becomes a root of kind file, or calendar with kind=calendar. supersedes names the previous root of the same kind; its superseded_by is set to the imported document atomically. An unchanged upload reuses the existing document and never replaces itself.",
+				"description": "The file's type is its part's Content-Type, or read from its bytes when that is absent or application/octet-stream. Mail (message/rfc822) is read from its headers alone and takes no other field; anything else needs url and becomes a root of kind file, or calendar with kind=calendar. published is optional when the publication date is unknown. Repeated sent_to fields name audience groups, attached atomically with the file. supersedes names the previous root of the same kind; its superseded_by is set to the imported document atomically. An unchanged upload reuses the existing document and never replaces itself.",
 				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
 					"type":     "object",
 					"required": []string{"file"},
@@ -383,11 +383,12 @@ func spec() schema {
 						"kind":       schema{"type": "string", "enum": []string{"calendar"}},
 						"name":       schema{"type": "string"},
 						"url":        schema{"type": "string", "format": "uri"},
-						"published":  schema{"type": "string", "description": "When the file last changed, in school time, as " + cells.StampFormat},
+						"published":  schema{"type": "string", "description": "When the file last changed, if known, in school time, as " + cells.StampFormat},
+						"sent_to":    schema{"type": "array", "items": schema{"type": "string", "pattern": idPattern(GroupPrefix)}, "description": "Audience groups whose members and managers may read the file."},
 						"supersedes": schema{"type": "string", "pattern": idPattern(DocumentPrefix), "description": "The previous document this file replaces in full. Requires permission to set that document's superseded_by."},
 					},
 				}}}},
-				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the file and its hash.", "Stored"), "400": failure("Mail that does not parse or has no readable Date, or another file with no url or published moment.")}),
+				"responses": refusals(schema{"200": answers("The root DOCUMENT holding the file and its hash.", "Stored"), "400": failure("Mail that does not parse or has no readable Date, or another file with no url or an invalid published moment.")}),
 			},
 		},
 		"/api/do/fetched": schema{

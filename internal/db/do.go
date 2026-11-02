@@ -178,6 +178,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 			root, sentTo, err = s.Model().mailRoot(content)
 		} else {
 			root, err = fileRoot(r, mimeType)
+			sentTo = r.MultipartForm.Value["sent_to"]
 		}
 		if err != nil {
 			serve.Error(w, r, access.Invalid("%v", err))
@@ -347,8 +348,10 @@ func fileRoot(r *http.Request, mimeType string) (map[string]any, error) {
 	if address == "" {
 		return nil, fmt.Errorf("a file needs the url it came from")
 	}
-	if _, err := time.ParseInLocation(cells.StampFormat, published, School); err != nil {
-		return nil, fmt.Errorf("published %q is not a moment like %s", published, cells.StampFormat)
+	if published != "" {
+		if _, err := time.ParseInLocation(cells.StampFormat, published, School); err != nil {
+			return nil, fmt.Errorf("published %q is not a moment like %s", published, cells.StampFormat)
+		}
 	}
 	root := map[string]any{"kind": kind, "url": address, "published": published}
 	if name := strings.TrimSpace(r.FormValue("name")); name != "" {
@@ -376,7 +379,7 @@ func storeRoot(ctx context.Context, s *Store, pics *Pictures, actor access.Actor
 	existing, found := m.Table("CONTENT").Find(hash, mimeType)
 	if found {
 		for _, row := range m.Table("DOCUMENT").Referencing("content", existing["id"]) {
-			if row["parent"] != "" || row["kind"] != root["kind"] {
+			if row["parent"] != "" || row["kind"] != root["kind"] || (mimeType != "message/rfc822" && row["url"] != root["url"]) {
 				continue
 			}
 			return row["id"], hash, addSentTo(ctx, s, actor, env, row["id"], sentTo, supersedes)

@@ -472,7 +472,7 @@ func (m *Model) markdownDocuments() []store.Row {
 }
 
 func (m *Model) markdownDocument(row store.Row) bool {
-	if row["relation"] != "extract" && row["kind"] != "wiki" {
+	if row["relation"] != "extract" && row["kind"] != "wiki" && row["kind"] != "file" {
 		return false
 	}
 	c, ok := m.Shown("CONTENT").Get(row["content"])

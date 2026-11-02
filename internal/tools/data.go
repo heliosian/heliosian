@@ -206,7 +206,15 @@ var get = define("helios_get", "Looking something up", "One record of Helios Sch
 	return out, nil
 })
 
-var readDocument = define("helios_read_document", "Reading a document", "A Helios School document by ID - a newsletter or other school email, a page or file it linked, a PDF's reading, a shared file or a Helios Wiki page - read whole: the tree of its parts, links, images and extracts, and the text of each.", func(c *call, in idIn) (any, error) {
+type documentIn struct {
+	ID     string `json:"id" jsonschema:"the document's ID"`
+	Offset int    `json:"offset,omitempty" jsonschema:"Unicode characters to skip across the complete rendered document, including its outline; omit for the beginning and use the continuation offset returned for more text"`
+}
+
+var readDocument = define("helios_read_document", "Reading a document", "A Helios School document by ID - a newsletter or other school email, a page or file it linked, a PDF's reading, a shared file or a Helios Wiki page: the tree of its parts, links, images and extracts, and a bounded portion of their text. When more text remains, call again with the same ID and the returned continuation offset.", func(c *call, in documentIn) (any, error) {
+	if in.Offset < 0 {
+		return nil, fmt.Errorf("offset must not be negative")
+	}
 	if _, err := tableOf(in.ID, "DOCUMENT"); err != nil {
 		return nil, err
 	}
@@ -281,7 +289,6 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 	}
 	outline := &strings.Builder{}
 	texts := &strings.Builder{}
-	skipped := 0
 	for _, n := range nodes {
 		r := n.row
 		notice, err := replacementNotice(r)
@@ -320,10 +327,6 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", r["content"], err)
 		}
-		if texts.Len()+len(body) > documentText {
-			skipped++
-			continue
-		}
 		fmt.Fprintf(texts, "\n## %s (%s)\n\n", what, r["id"])
 		if notice != "" {
 			fmt.Fprintf(texts, "%s\n\n", notice)
@@ -346,8 +349,26 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 		out += fmt.Sprintf("\n(the tree is cut at %d documents)\n", documentNodes)
 	}
 	out += texts.String()
-	if skipped > 0 {
-		out += fmt.Sprintf("\n(%d more extracts left out for length; helios_read_document on an extract's ID reads it)\n", skipped)
+	characters := []rune(out)
+	if in.Offset > len(characters) {
+		return nil, fmt.Errorf("offset exceeds the document's %d characters", len(characters))
+	}
+	continuation := func(offset int) string {
+		return fmt.Sprintf("\n(more text remains; call helios_read_document with id %q and offset %d to continue)\n", id, offset)
+	}
+	budget := documentText - len(continuation(len(characters)))
+	end, size := in.Offset, 0
+	for end < len(characters) {
+		n := len(string(characters[end]))
+		if size+n > budget {
+			break
+		}
+		size += n
+		end++
+	}
+	out = string(characters[in.Offset:end])
+	if end < len(characters) {
+		out += continuation(end)
 	}
 	return out, nil
 })

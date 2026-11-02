@@ -591,6 +591,35 @@ func TestAnEmailsPartsAreOneResult(t *testing.T) {
 	}
 }
 
+func TestAnUploadedMarkdownFileIsSearchable(t *testing.T) {
+	s, bucket, x := searcher(t)
+	pics := NewPictures(s, bucket)
+	text := "# Hummingbirds updates\n\nBring boots for the tide pools. [Camping](https://example.org/camping)"
+	fields := map[string]string{"name": "Hummingbirds updates", "url": "https://docs.google.com/presentation/d/hummingbirds/edit", "sent_to": "grp00000000010"}
+	rec := postUpload(t, s, pics, importing, fields, "text/markdown", []byte(text))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload: %d %s", rec.Code, rec.Body.String())
+	}
+	var out stored
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	id := out.Result[0]
+	texts, err := SearchTexts(t.Context(), s.Model(), bucket, map[string]string{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, _ := s.Model().Table("DOCUMENT").Get(id)
+	if texts[doc["content"]] != text {
+		t.Fatalf("search text: %q", texts[doc["content"]])
+	}
+	makeAll(t, s, x)
+	results := found(t, x, s.Model(), Env{Viewer: staff, Now: testNow}, "hummingbirds updates", testLimits)["DOCUMENT"]
+	if !slices.Contains(extractsOf(results), id) {
+		t.Fatalf("uploaded markdown missing from search results: %+v", results)
+	}
+}
+
 func TestARefNamesThePagesItWasReadFrom(t *testing.T) {
 	s, bucket, x := searcher(t)
 	if _, err := bucket.Put(t.Context(), "content/m1", "text/markdown", []byte("# Egg drop\n\nEach team drops one egg from the balcony."), 0); err != nil {

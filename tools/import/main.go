@@ -60,6 +60,10 @@ func importDirectory(c client, exporter, website, out string, dryRun bool) error
 	if err := run(website, "go", "run", ".", "--out", out); err != nil {
 		return fmt.Errorf("website export: %w", err)
 	}
+	updates, err := readUpdates(out)
+	if err != nil {
+		return fmt.Errorf("read classroom updates: %w", err)
+	}
 	x, err := readExport(out)
 	if err != nil {
 		return fmt.Errorf("read the export: %w", err)
@@ -68,7 +72,11 @@ func importDirectory(c client, exporter, website, out string, dryRun bool) error
 	if err != nil {
 		return fmt.Errorf("plan the import: %w", err)
 	}
-	attrs := []any{"writes", len(p.batch)}
+	uploads, err := c.updatePlan(updates, p.groups)
+	if err != nil {
+		return fmt.Errorf("plan classroom updates: %w", err)
+	}
+	attrs := []any{"writes", len(p.batch), "classroom updates", len(uploads)}
 	for _, k := range slices.Sorted(maps.Keys(p.counts)) {
 		attrs = append(attrs, k, p.counts[k])
 	}
@@ -81,13 +89,26 @@ func importDirectory(c client, exporter, website, out string, dryRun bool) error
 		slog.Info("photos to add", "photos", len(portraits))
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"batch": p.batch})
+		return enc.Encode(map[string]any{"batch": p.batch, "classroom_updates": uploads})
 	}
 	added, err := apply(c, x, p)
 	if err != nil {
 		return err
 	}
 	slog.Info("photos added", "photos", added)
+	groups, _, err := c.table("GROUP")
+	if err != nil {
+		return err
+	}
+	uploads, err = c.updatePlan(updates, groups)
+	if err != nil {
+		return err
+	}
+	for _, upload := range uploads {
+		if err := c.addUpdate(upload); err != nil {
+			return fmt.Errorf("import classroom update for %s: %w", upload.Classroom, err)
+		}
+	}
 	return nil
 }
 
