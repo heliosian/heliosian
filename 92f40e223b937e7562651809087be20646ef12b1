@@ -1,0 +1,46 @@
+# Document the recurring laptop maintenance recipe
+
+byre task tskmn1luabeusG, "Laptop maintenance recipe", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskmn1luabeusG in byre (read_task_events with task_id tskmn1luabeusG).
+
+## Summary
+
+Created a versioned recipe for recurring laptop maintenance.
+
+Before: import, signed-in document fetching, and PDF rendering had separate tool descriptions and required assembling the sequence manually.
+Now: `sh tools/catchup.sh` runs the three existing tools in order, prints stages, and stops at the first command failure. `docs/dev.md` covers prerequisites, production writes and possible Claude charges, partial completion, and recovery; `AGENTS.md` points to the recipe.
+
+Kept the executable sequence in the repository rather than duplicating it in a byre workflow or saved command. Scheduling, deployment, schema setup, and diagnostic jobs were deliberately excluded.
+
+Verified shell syntax, command order and failure stopping with a local stand-in. Ran the actual recipe at Ian's request, supplying this Mac's exporter paths for that invocation: no import changes, one document fetched successfully, no pending PDFs, no refusals or PDF failures. Main was already up to date when merged. Import and PDF tool tests, Go vet for all three tools, shell syntax, and diff checks passed.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review · Sol high", codex gpt-6.1-sol: done
+
+Adds a recurring laptop catch-up script that runs import, signed-in document fetching, and PDF rendering in order, stopping on command failure. Documents prerequisites, production writes, recovery, and incomplete-document summaries, and points agents to the recipe.
+
+No significant findings.
+
+## Decisions
+
+### Should I make the recurring laptop recipe a repository script, with setup and recovery instructions alongside it?
+
+The existing laptop maintenance commands are:
+
+```sh
+go run ./tools/import
+go run ./tools/fetchsignin
+go run ./tools/pdfthumbnails
+```
+
+`import` already runs the Veracross and school-website exporters, updates people and groups, imports missing portraits and classroom update decks, and synchronizes the school calendar. `fetchsignin` starts the capture browser and fetches documents using its Google sign-in. `pdfthumbnails` renders missing PDF pages locally with Poppler and uploads them for server thumbnails. All three write to production; import can also incur Claude charges. I have only inspected files, not run these commands.
+
+- (*) Repository script plus instructions
+  I would put the ordered commands in one script, document prerequisites and recovery in `docs/dev.md` (the developer guide), and point to it from `AGENTS.md` (the agent instructions). For the three existing commands above, you would run one command such as `sh tools/catchup.sh`; it would run import, then signed-in fetching, then PDF rendering, stopping at the first failed command. This makes the executable recipe versioned with the tools and usable outside byre. A byre launcher could call that same script later.
+- ( ) Written checklist only
+  I would put the three commands above, in that order, in a recurring-maintenance section of `docs/dev.md`, with prerequisites and recovery instructions, and point agents there. You would run each command yourself and inspect its output before proceeding. This gives you a pause between production steps but leaves you responsible for following the sequence.
+
+ian@fc.run chose: Repository script plus instructions
