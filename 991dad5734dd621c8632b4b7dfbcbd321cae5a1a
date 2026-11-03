@@ -1,0 +1,368 @@
+# Harden invitation delivery and RSVP privacy
+
+byre task tskJREFLyeXEaW, "Invite system audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskJREFLyeXEaW in byre (read_task_events with task_id tskJREFLyeXEaW).
+
+## Summary
+
+**Goal:** audit Helios When's invitation system before a whole-school invitation to the Friday movie night, "Outdoor Movie Night: Dogman" (an HCA-Team activity, /g/movie, Nov 6 2026). Production was read only: no production writes, no mail, and timing work ran on a local production snapshot. Done by opus and gpt-6.1-sol as a pair. Opus took audience, permissions, RSVP and UI; sol took delivery, recipients and calendar. Each independently verified the other's fixes.
+
+**Fixed:**
+- **RSVPs counted as sign-ups.** Answering an activity's invitation mailed Team Notices "New sign-up: X for … Going"; this was already happening in production. `MembershipMailer.mail` now skips groups that serve another group (`m.serves`).
+- **Double sends.** The invitation write path (`writeGuests` in invitations.go) now refuses inside the transaction anyone who already has a copy (409) or is named twice in one request (400). It covers invite, add-guests, the outside-guest calls and auto-invite. The Pending window disables Send while it runs and closes and refreshes on a refusal.
+- **Bulk delivery.** The mailer saves sent-stamps every 50 copies with a flush, where it used to save once at the end of the pass. It rereads the event before each copy, so a closed or cancelled event stops its queued invitations.
+- **Parent duplicates.** A student's copy leaves off parents who have their own copy of the same message. Before, a whole-school send gave 240 parents 2 copies and 59 parents 3.
+- **Calendar identity.** Calendar files keep the original invitation's organizer and guest link.
+- **Declined-RSVP privacy.** Enforced in policy (`declines`, `runs_answers`), so existing data needs no migration. Non-hosts see decliners as "Invited", and My RSVP keeps the household's real answer.
+
+**Key decisions:**
+- Saving delivery progress per copy was rejected: about 1,080 Sheets writes, against a quota of about 60 a minute, and `logging.Fatal` on a refused write. Batches of 50 are the trade, at the cost of possibly resending up to 50 after a crash.
+- Privacy went in policy rather than a data migration. Measured +3.7% on a parent's heaviest read; shipped queries within noise.
+
+**Left out:**
+- Send latency: 539 recipients take 1.7–2.5s, caused by the store rebuilding after every edit in `stageEdits`. Too risky to change before Friday.
+- Guests added to an activity by hand becoming HCA-Team volunteers; filed in TODO.md.
+
+**Setup Ian had to do before sending:** set the activity's Loop list (movie@loop.heliosian.com) posting and replying to managers, so the 540 people on the list can't mail each other; add co-chairs in HCA-Team, since the event had no hosts.
+
+## Handoffs
+
+### Session ses9lVPP8JOmww, 2026-11-03T18:32:18Z
+
+You are continuing the **Invite system audit** in the heliosian project as **Sol**, working with peer **Opus** in the same worktree.
+
+Task: `tskJREFLyeXEaW`
+Project: `prjAPohz7r9P6C`
+Worktree: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskJREFLyeXEaW`
+
+## Goal and authorization
+
+Ian’s lead requested a thorough audit of When invitations before a whole-school Friday movie-night invitation. The task explicitly permits **production reads and local tests only: do not send production mail or mutate production**. That restriction remains in force.
+
+The two-agent audit, implementation, and independent cross-checks are finished. The first automatic review found one additional duplicate-recipient case, which Opus fixed and Sol independently verified. A new snapshot was requested immediately before compaction. **The next step is to read the latest review result, resolve any findings, and propose merge once the latest snapshot has a clean review.** No merge or deployment authorization has been given.
+
+All last observed tracked changes were committed by byre; the worktree was clean at the last check. Do not assume a particular latest snapshot number: Opus ended a turn around the same time Sol requested another snapshot.
+
+## Byre mechanics to preserve
+
+- Ask every human question with `byre__ask_human`, never in prose.
+- Read task details before updating the shared overview; use its `overview_generation` with `expected_generation`.
+- Don’t commit, push, switch branches, or run git maintenance. Byre handles commits and merge.
+- Don’t call `ready_for_merge` while the latest review is pending, or in a turn that changes files.
+- End normal turns with a short final summary.
+- Describe behavioral changes in prose using adjacent `Before: …` / `Now: …` lines.
+- Preserve shared overview and peers’ work.
+- Tests must run under `timeout 30`; captures under `timeout 20`; use `go run`, not `go build`.
+- No comments in new code, apart from the AGENTS.md exception for genuinely subtle logic.
+- Read the supplied/repository AGENTS.md if needed; no special initial setup was required.
+- Don’t spawn additional agents; the explicitly authorized team is Sol and Opus.
+
+Tools such as `read_task_details` and `read_task_events` are discoverable through `byre__find_tools`, then invoked with `byre__call_tool`.
+
+**Avoid printing raw task-event responses.** They contain tool transcripts, including a huge base64 screenshot. Parse the returned JSON in `functions.exec`, filter to review-related events, and print only those. Example pattern:
+
+```js
+const raw = await tools.byre__call_tool({
+  name: "read_task_events",
+  arguments: {task_id: "tskJREFLyeXEaW", after: 1576373, limit: 200},
+  timeout_ms: 10000
+});
+const events = JSON.parse(raw);
+text(events.filter(e => /review/.test(e.kind)));
+text({last_seq: events.at(-1)?.seq});
+```
+
+Use pagination if needed. The last event sequence seen before the most recent verification/snapshot calls was around `1576373`; newer events now exist.
+
+## Team split and checks
+
+- **Sol:** dispatch, retry/durability, mail recipients/Cc, calendar attachments, and later declined-RSVP policy and labels.
+- **Opus:** audience, authorization, RSVP, UI, production event configuration; implemented concurrency and membership-notice fixes.
+- Each independently checked the other’s fixes.
+- Opus gave final approval of Sol’s delivery, calendar, privacy, and label changes and ran the six focused tests three times.
+- Sol independently checked Opus’s membership-notice fix with a synchronous positive-control test, reviewed all transaction-guard paths, and ran invitation/party/guest regressions.
+- The synchronous positive-control test was consolidated by Opus into `TestAnsweringAnActivitysInvitationMailsNobody` in `membershipmail_test.go`; the temporary `inviteaudit_test.go` was deleted.
+
+## Implemented changes
+
+### Delivery progress and current event state
+
+Before: a complete queued send pass saved its sent stamps only at the end, so an interrupted whole-school pass could resend everything already accepted.
+Now: `sendQueued` saves progress in batches of **50**, waits for persistence between batches, and saves the final partial batch.
+
+Before: queued invitations continued after the event was closed or cancelled, using one model snapshot for the whole send.
+Now: it rereads current model/event state before each recipient. Closed groups’ copies, and invitations/reminders for cancelled groups, are marked failed rather than sent. Cancellation updates remain sendable.
+
+Implementation: `internal/db/invitemail.go`, `inviteProgressBatch`, `sendQueued`.
+
+**Residual risk:** abrupt process death or an ambiguous Mailgun acceptance can resend accepted copies from the current batch, up to 50. This is explicitly documented, not exactly-once delivery. A production GCS writer lease prevents overlapping active workers. The lease and startup refresh were independently inspected in `internal/app/wiring.go` and `internal/lease/lease.go`.
+
+### Student Cc
+
+Before: a whole-school send sent parents their own copy and also Cc’d them on each student’s copy.
+Now: a student’s Cc omits parents with their own `RECIPIENT` in the **same MESSAGE**. A selected-student or students-only message still reaches parents through Cc.
+
+Implementation: `studentCC(person, msg)` in `invitemail.go`. `invitedWithCalendar` uses the same message-specific Cc rule, including actual address filtering, so a student who received an attachment doesn’t get an unnecessary calendar-on-yes email.
+
+Do not replace this with “parent is on the list”: that would lose parents when the host sends only a selected student.
+
+### Calendar identity and guest links
+
+Before: updates/reminders/cancellations used a fresh recipient token as the organizer address, changing ORGANIZER for the same event UID.
+Now: calendar attachments retain the original invitation recipient’s token/address as organizer.
+
+Before: calendar-on-yes for an outside guest used an empty `/ext/` link.
+Now: it uses the original invitation token in the guest URL and keeps the original organizer.
+
+Implementation: `calendarEvent`, `calendarInvite` in `invitemail.go`. Calendar requests without an original invitation retain the sender address as organizer.
+
+### Activity RSVP notices
+
+Before: adding Yes/No membership on an activity’s answer groups generated ancestor “New sign-up: … Going/Not Going” notices.
+Now: `MembershipMailer.mail`, in `placeJoined`, returns for serving/helper groups after preserving the explicit chair-offer and leads branches. Real activity sign-ups still thank the person and notify watchers.
+
+Implementation: `internal/db/membershipmail.go`: `if m.serves(g) { return }`.
+Regression: `TestAnsweringAnActivitysInvitationMailsNobody`, now synchronous with a real-sign-up positive control.
+
+### Stale/concurrent send guard
+
+Before: two Send calls from the same stale page model could both enqueue invitations for the same people.
+Now: all invitation-producing paths use `writeGuests` and its `writeChecked` transaction guard, which rejects a person who already has an invitation/skip copy with HTTP 409. The Pending Send All button also disables while sending.
+
+Before: a single request with `people: [p, p]` could still create duplicate recipient rows.
+Now: the same transaction guard also rejects a repeated person within `sending` with HTTP 400, “X is named twice,” before staging any edits.
+
+Files:
+- `internal/db/invitations.go`: merged old `writeInvitations` into checked `writeGuests`
+- `internal/db/invitehooks.go`: outside-guest paths use the same guard
+- `internal/db/invitemail.go`: `autoInvite` also uses `writeGuests`
+- `web/when/guestpopups.js`: Send All disables during the request and restores on failure
+- `internal/db/invitations_test.go`: `TestASecondSendFromTheSameViewMailsNobodyTwice`
+
+The latest review fix is only the per-request `named` map in this transaction check and the added duplicate-input test case. Opus owns that patch and is done editing.
+
+### Declined RSVP privacy
+
+Before: the UI promised only hosts see No, but ordinary viewers could query other households’ No memberships because existing Not Going groups have `members_visible_to = Everyone`.
+Now: raw `MEMBER` and generated `EFFECTIVE_MEMBER` reads protect declines, including existing groups without a data migration. Own/household, sponsor, hosts, appropriate list-running app admins, and super admins retain access.
+
+Before: a generic Who/Home admin could also obtain these declines, and a stranger could use a Not Going group as a rule target.
+Now: the generic Who/Home membership grants exclude decline groups, and `sees_members` rejects their use as rule targets unless the viewer has appropriate management authority.
+
+Before: the non-host UI could assert “No response” even though the answer is private.
+Now: non-host unknown answers are labeled **Invited**. Hosts retain precise No/No response labels.
+
+Files:
+- `internal/db/policy.go`: `declines`, `runs_answers`, `sees_members`, MEMBER/EFFECTIVE_MEMBER grants, generic Who/Home grants
+- `internal/db/inviteprivacy_test.go`
+- `web/when/inviteparts.js`: shared `answerLabel`
+- `web/when/invites.js`
+- `web/when/guesttable.js`
+
+`runs_answers` uses separate indexed `exists` probes for `rsvp_yes` and `rsvp_no`, ordered after ordinary/self branches. Don’t simplify away relevant app-admin access to private answer groups.
+
+## Verification completed
+
+All local mail tests use real Mailgun client code intercepted on loopback; no external messages were sent.
+
+New delivery tests in `internal/db/invitemail_test.go`:
+- `TestQueuedInvitationsPersistProgressInBatches`: before copy 2, no individual persisted stamp; before copy 51, first 50 persisted; rerun sends no duplicates
+- `TestQueuedInvitationsStopWhenTheEventCloses`
+- `TestQueuedInvitationsRetryOnlyTheRefusedCopy`
+- `TestGuestMailKeepsTheCalendarOrganizer`
+- `TestStudentInvitationsCopyParentsWithoutTheirOwnCopy`
+
+`internal/testkit/mailtest/mailtest.go` gained `Recorder.BeforeSend func(Raw) error` for deterministic real-client interception tests. This is in testkit, not production code.
+
+`TestDeclinedInvitationsArePrivateAcrossQueryTables` covers event/activity/party:
+- MEMBER and EFFECTIVE_MEMBER
+- ordinary stranger blocked
+- self, parent, host, super admin allowed
+- public Yes remains visible
+- nested PERSON selects don’t expose declines
+- `sees_members` rejects a stranger’s decline rule target
+- sponsor can read brought guest’s decline
+- unrelated Who/Home admin blocked
+- relevant app admin allowed
+
+Completed checks:
+- Focused invite/retry/party/outside guest/concurrency/limits suites
+- All named tests from `policy_test.go`, `groupsecurity_test.go`, `page_test.go`, and `query_test.go` passed together in about 6.4 seconds
+- `timeout 30 go vet ./internal/db ./internal/mail ./internal/testkit/mailtest`
+- `timeout 30 go test ./internal/mail --count=1`
+- `git diff --check`
+- gofmt
+- Local Chrome capture as a plain parent; no page errors observed
+
+**Latest independent verification:** after Opus’s repeated-person fix:
+```sh
+timeout 30 go test ./internal/db --run 'Test(ASecondSendFromTheSameViewMailsNobodyTwice|NewcomersAreInvitedOnlyWithAutoInvite|GuestAddsKeepInvitationMailBehavior|SimultaneousGuestsStayWithinTheLimit|AnOutsideGuestBringsOnlySoManyGuests)' --count=1
+```
+Passed in **1.274 seconds**, log `/tmp/invite-review-fix.log`.
+
+Other logs: `/tmp/invite-policy-suite.log`, `/tmp/invite-paths.log`, `/tmp/invite-finalfocused.log`, `/tmp/invite-vet.log`.
+
+## Production facts, read-only
+
+Serving revision was `heliosian-01117-lrb`, 100% traffic. Its image digest matched Cloud Build commit:
+`68626f3d4c4201eb35a52e7a69bf80306da6a571`, the task base. No queued/running builds existed when checked.
+
+Actual movie night:
+- **Outdoor Movie Night: Dogman**
+- It is an HCA-Team **activity**, not an event
+- Group `grpVhb8MCy7gXt`, URL `/g/movie`
+- Friday November 6, 2026, 18:00–20:00, Helios Blacktop
+- Open, public/shared members, join=others, auto_invite blank, flyer present
+- No guest-list rules yet
+- No managers/hosts anywhere on its ancestor chain
+- Ian has one historical invitation copy already sent/delivered, followed by removal from the activity; the copy persists and counts as already invited
+
+Everyone contains **540 people**:
+- 181 students, all with primary addresses
+- 299 parents
+- 63 staff, overlapping with parents
+- One staff member has no primary address
+- No people outside these role groups
+
+### Required setup before sending — do not perform it under this task’s current authorization
+
+1. **Restrict Loop posting and replying before adding Everyone.** The activity is also the email list `movie@loop.heliosian.com`. Its current posting/replying settings are `members`. Adding Everyone would let any of 540 members email the whole school and send reply-alls. Recommended settings: managers.
+2. **Assign actual hosts/co-chairs in HCA-Team.** When’s Add co-host control is absent until a managers group exists. Without hosts, the invitation says “Hosted by” with nothing following it.
+3. Account for the staff member without email.
+4. Ian’s historical invitation counts as sent; Send pending will exclude him.
+
+These findings are in the dashboard overview and were sent to Ian’s lead. No production changes were made.
+
+## Measured unresolved findings / scope exclusions
+
+- **Invite queuing latency:** actual production snapshot, Everyone rule, 539 pending recipients, sent locally as Ian:
+  - warm 1.66–2.06 seconds
+  - cold about 2.5 seconds
+  - one-row write about 1.5 ms
+  - `stageEdits` rebuilds through `s.Built(tx)` before/after every edit, producing quadratic batch cost.
+  - This exceeds AGENTS.md’s 750 ms target. We explicitly left shared-store redesign outside this audit’s fixes because it requires broader transaction verification. Do not claim the target is met.
+- **Activity guest-list coupling:** manually adding guests creates activity MEMBER rows, so HCA-Team shows them as Volunteers and removing them can send “Removed” volunteer mail. Rule-added guests avoid that. Documented as an unresolved model/product finding.
+- **At-least-once mail:** crash/ambiguous acceptance can duplicate the current batch of up to 50; no cross-system atomicity.
+
+No schema changes, migrations, or `createtabs` needed.
+
+## Production-snapshot performance cross-check
+
+Opus took a production spreadsheet snapshot, tested only its in-memory local `data.Dir`, then deleted/was authorized to delete `local/snapshot` when finished. Temporary `zz_opus_snapshot…_test.go` files were removed and must not land.
+
+Plain-parent policy measurements across 22 queries:
+- base total 1.730 s, new total 1.794 s (+3.7%)
+- almost all difference from a deliberately huge all-EFFECTIVE_MEMBER read of 193k rows, 1.614→1.666 s
+- shipped queries within noise: navJoined 9.2→10.3 ms, members 3.4→3.8 ms, Team members 15.3→15.8 ms
+- other households’ declines disappeared; unrelated results stayed intact
+- Opus had no performance objection and approved final policy semantics.
+
+## Dead ends / corrections
+
+- Initial per-copy `Write` + `Flush` delivery implementation was rejected during peer review: 540 copies would generate roughly 1080 Sheets writes and risk quota/backoff blocking RSVPs. Both source and Google quota docs were checked. It was replaced with batches of 50, roughly 11 progress commits for this audience.
+- Merely moving per-copy stamps into memory would leave uncertain crash durability; explicit batch persistence was chosen as a bounded, practical tradeoff.
+- A speculative blank-student-email issue does not affect this production send: all 181 students have addresses. Existing no-address behavior remains documented.
+- Do not suppress Cc just because parents belong to the list; selected-student sends require the same-message test.
+- Do not fix decline privacy only by changing newly created answer-group rows: existing production groups already share them. Policy enforcement avoids a migration.
+- Do not restrict only raw MEMBER reads: generated EFFECTIVE_MEMBER, generic admin grants, and rule-target access also needed checking.
+- We did not change host display to a fallback sender; real host assignment is a setup requirement.
+- No GitHub issues or TODO.md changes were made. Findings remain in task overview/history.
+
+## Files changed
+
+Production:
+- `internal/db/invitemail.go`
+- `internal/db/invitations.go`
+- `internal/db/invitehooks.go`
+- `internal/db/membershipmail.go`
+- `internal/db/policy.go`
+- `web/when/guestpopups.js`
+- `web/when/inviteparts.js`
+- `web/when/invites.js`
+- `web/when/guesttable.js`
+
+Tests:
+- `internal/db/invitemail_test.go`
+- `internal/db/inviteprivacy_test.go`
+- `internal/db/invitations_test.go`
+- `internal/db/membershipmail_test.go`
+- `internal/testkit/mailtest/mailtest.go`
+
+Docs:
+- `docs/datamodel.md`
+- `docs/when/calendar.md`
+- `docs/team/team.md`
+
+No other tracked edits should be necessary unless the latest review finds a concrete issue.
+
+## Current dashboard / completion work
+
+Latest observed overview generation was **7** after recording the first review finding and its fix. Always reread rather than reuse this number.
+
+Most audit steps are marked completed. The final verification parent step and final snapshot-review child remain in progress. Update those on a clean latest review, then call `ready_for_merge` with a full-task overview, all behavior changes, decisions/tradeoffs, and unresolved setup/latency/model risks.
+
+The first automatic review:
+- reviewer/model `gpt-6-sol`
+- snapshot 1
+- only finding: repeated person in one request produces duplicate recipients
+- Opus marked it fixing via `respond_to_finding`
+- patch and regression now implemented and independently verified
+- latest snapshot requested after this fix; review result is pending as of handoff
+
+Do not offer merge based solely on snapshot 1’s review. Read latest review state/results.
+
+Task summary already exists but ends with “final snapshot review pending”; update that when finished. It contains the full audit results and constraints. Ian’s lead was sent a self-contained report, including the Loop setup risk.
+
+## Preview artifact
+
+Local sample-parent screenshot:
+`local/screenshots/invite-audit-outsider.png`
+
+It was shown with `show_page` on Ian’s active **murky** client:
+`cliS8mm1cR7KtK`
+
+A task-media capture used in the prior final:
+`/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskJREFLyeXEaW-media/browser-3787501753.webp`
+
+The screenshot demonstrates the local page/Invited labels. No server remains running from the self-contained captures.
+
+**Do not print browser capture responses directly:** they may contain huge base64 data. Extract the saved path or strip data URLs before printing.
+
+## Immediate next actions
+
+1. Read latest task details and review events, filtering outputs.
+2. Confirm latest reviewed snapshot includes the repeated-person fix.
+3. If clean, complete plan and propose merge with the full audit overview; preserve all pre-send setup warnings and unresolved limits.
+4. If findings remain, fix proportionately, independently cross-check with Opus, run focused tests, and await the resulting review.
+5. Keep production read-only throughout.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+This audit tightens invitation writes against stale views, persists queued send progress in batches, checks event status before each send, keeps calendar organizers stable, limits student parent CCs when parents have their own copy, and makes declined answers private in the query policy and UI.
+
+- A repeated person ID in one invite request still creates and mails duplicate copies.
+
+### Snapshot #2, reviewer "Review", claude claude-fable-5-1: failed
+
+superseded by snapshot #3
+
+### Snapshot #3, reviewer "Review", claude claude-fable-5-1: done
+
+An audit pass over Helios When's invitation system ahead of a whole-school send. The mailer now persists `sent` stamps every 50 copies (with a store flush) instead of once per pass, re-reads the current model before each send so a group closed or cancelled mid-pass stops the rest, and fails invitations and reminders for closed or cancelled groups. Every write that mails an invitation (host Send, add-guests, the outside guest hook and the auto-invite job) goes through one checked write that refuses, inside the transaction, anyone who already has a copy or is named twice, so two sends from the same stale view mail nobody twice. A student's parents are no longer Cc'd on the student's copy when they have their own copy of the same message, and calendar attachments keep the original invitation copy's reply address as organizer across reminders, updates, cancellations and the calendar invite sent on a yes. The policies make a Not Going group's membership private to the person, their household, whoever brought them and whoever runs the list (app admins included), even when the group's `members_visible_to` names Everyone, across MEMBER and EFFECTIVE_MEMBER and the who/home admin reads; the page labels unanswered guests "Invited" for non-hosts. Joining a group that serves another (answer, hidden, managers groups) no longer sends sign-up thanks or notices. Tests cover each of these; docs are updated to match.
+
+- `web/when/guestpopups.js`: after a 409 from a stale Send all, the Pending popup keeps its stale rows and keeps offering the same people, so the host hits the same refusal until they reload.
+
+### Snapshot #4, reviewer "Review", grok grok-4.7: done
+
+This snapshot is the invite-system audit for a whole-school send. Writes that mail an invitation, including auto-invite, are refused at commit when anyone named already has a copy or is named twice. The mailer records sent and failed stamps every 50 copies, re-reads each recipient before sending, and stamps a copy failed without sending when the event is closed, when an invitation or reminder is for a cancelled event, or when any other queued mail is for an event that has already ended. Students' parents are copied when they do not already have that message, calendar files go out when there is no Cc, and those files keep the original invitation's organizer address. Declined RSVPs are readable by the person, their household, whoever brought them, and whoever runs the list. The guest page labels everyone else's unanswered row Invited. Joining a Going, Not Going, hidden, or managers group no longer sends a generic sign-up notice.
+
+- Household declines disappear from Who's coming.
+- Family rows still say No response for hidden declines.
+
+### Snapshot #5, reviewer "Review", codex gpt-6-sol: done
+
+The audit hardens invitation writes against duplicate sends, records queued delivery progress in batches, rechecks event state while sending, and keeps calendar organizers consistent across follow-up mail. It also limits visibility of declined RSVPs, adjusts guest list labels, avoids duplicate parent copies, and adds focused tests and documentation.
+
+No significant findings.
