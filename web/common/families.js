@@ -3,7 +3,7 @@ import {face, gradeBadge, personRow} from '/personrow.js';
 import {openModal} from '/modal.js';
 import {doneButton} from '/personcard.js';
 
-const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending'};
+const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending', invited: 'Invited'};
 
 const saidIcons = {yes: 'check', maybe: 'clock', no: 'close', pending: 'mail'};
 

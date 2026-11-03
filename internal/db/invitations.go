@@ -70,20 +70,25 @@ func (iv *Invitations) write(ctx context.Context, actor access.Actor, edits []Ed
 	return Write(ctx, iv.s, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits})
 }
 
-func (iv *Invitations) writeInvitations(ctx context.Context, actor access.Actor, edits []Edit, group, from string, more int) ([]string, error) {
-	return writeChecked(ctx, iv.s, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits}, func(m *Model) error {
-		return m.mayInvite(group, from, more)
-	})
-}
-
-func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edits []Edit, group, from string, sending int) ([]string, error) {
+func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edits []Edit, group, from string, sending []string, counted int) ([]string, error) {
 	if len(edits) == 0 {
 		return nil, nil
 	}
 	env := Env{System: invitationsJob, Now: time.Now()}
 	return writeChecked(ctx, iv.s, actor, env, Batch{Batch: edits}, func(m *Model) error {
-		if sending > 0 {
-			return m.mayInvite(group, from, sending)
+		copies := m.copiesOf(group)
+		named := map[string]bool{}
+		for _, p := range sending {
+			if _, sent := copies[p]; sent {
+				return access.Refuse(http.StatusConflict, "%s has been sent the invitation already", m.nameOf(p))
+			}
+			if named[p] {
+				return access.Invalid("%s is named twice", m.nameOf(p))
+			}
+			named[p] = true
+		}
+		if counted > 0 {
+			return m.mayInvite(group, from, counted)
 		}
 		return nil
 	})
@@ -297,12 +302,11 @@ func (iv *Invitations) invite(ctx context.Context, m *Model, env Env, actor acce
 		kind = "skip"
 	}
 	edits := append(answerGroupEdits(g), invitationEdits(g["id"], env.Viewer, kind, people, env.Now)...)
-	var ids []string
+	counted := 0
 	if !runs && kind == "invitation" {
-		ids, err = iv.writeInvitations(ctx, actor, edits, g["id"], env.Viewer, len(people))
-	} else {
-		ids, err = iv.write(ctx, actor, edits)
+		counted = len(people)
 	}
+	ids, err := iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, people, counted)
 	if err != nil {
 		return sentAnswer{}, err
 	}
@@ -559,7 +563,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	if runs {
 		counted = 0
 	}
-	_, err = iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, counted)
+	_, err = iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, sending, counted)
 	if err != nil {
 		return sentAnswer{}, err
 	}

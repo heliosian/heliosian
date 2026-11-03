@@ -3,7 +3,7 @@ import {popup} from '/modal.js';
 import {mailList} from './guestlist.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {dataGrid} from '/datagrid.js';
-import {answerWords, answerIcon, answerButtons, ticketWords, stamp} from './inviteparts.js';
+import {answerLabel, answerIcon, answerButtons, ticketWords, stamp} from './inviteparts.js';
 import {state} from './state.js';
 import {personRow} from '/personrow.js';
 
@@ -47,7 +47,7 @@ export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp
   }
   const sections = [];
   if (rsvp) {
-    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: 'No response'}], chosen: answers});
+    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: view.host ? 'No response' : 'Invited'}], chosen: answers});
   }
   if (gradeValues.length) {
     sections.push({label: 'Grade', icon: 'school', values: gradeValues, chosen: grades});
@@ -86,7 +86,7 @@ export function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
     const paintCell = () => {
       cell.replaceChildren();
       cell.className = 'guest-table-said is-' + (r.answer || 'none');
-      const word = r.answer ? answerWords[r.answer] : 'No response';
+      const word = answerLabel(r, view);
       if (!(view.host && r.mine)) {
         cell.textContent = word;
         return;
@@ -117,7 +117,7 @@ export function openTable(e, view, refresh, {answer = '', opened = ''} = {}) {
     {label: 'Name', get: r => r.name || r.email || '', show: nameCell},
     {label: 'Email', get: r => r.email || ''},
     {label: 'Grade', get: r => (r.grades || []).join(', ')},
-    {label: 'RSVP', get: r => r.answer ? answerWords[r.answer] : 'No response', show: saidCell},
+    {label: 'RSVP', get: r => answerLabel(r, view), show: saidCell},
   ];
   if (view.party) {
     columns.push({label: 'Ticket', get: r => r.ticket ? ticketWords(r.ticket) : ''});
@@ -289,7 +289,7 @@ function openPick(e, view, picked, onDone) {
       const said = el('span', 'invite-said pick-said is-' + (r.answer || 'none'));
       const mark = el('span', 'invite-said-mark');
       mark.append(svg(answerIcon(r.answer)));
-      said.append(mark, el('strong', '', r.answer ? answerWords[r.answer] : 'No response'));
+      said.append(mark, el('strong', '', answerLabel(r, view)));
       const row = personRow(r, {
         button: true,
         className: 'picker-person' + (picked.has(r.key) ? ' is-picked' : ''),

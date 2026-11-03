@@ -173,6 +173,34 @@ func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	}
 }
 
+func TestASecondSendFromTheSameViewMailsNobodyTwice(t *testing.T) {
+	h := newInviteHarness(t)
+	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "people": []map[string]string{{"person": parent}, {"person": student}}}); rec.Code != http.StatusOK {
+		t.Fatalf("the host adds guests: %d %s", rec.Code, rec.Body)
+	}
+	stale := h.s.Model()
+	iv := &Invitations{s: h.s}
+	env := Env{Viewer: staff, Now: testNow}
+	if _, err := iv.invite(context.Background(), stale, env, access.Actor{Email: maya}, inviteAsk{Group: h.event, People: []string{parent, parent}}); err == nil {
+		t.Error("a send naming someone twice went through")
+	}
+	if _, err := iv.invite(context.Background(), stale, env, access.Actor{Email: maya}, inviteAsk{Group: h.event}); err != nil {
+		t.Fatalf("the first send: %v", err)
+	}
+	if _, err := iv.invite(context.Background(), stale, env, access.Actor{Email: maya}, inviteAsk{Group: h.event}); err == nil {
+		t.Error("a second send read before the first committed went through")
+	}
+	copies := 0
+	for _, msg := range h.s.Model().Table("MESSAGE").Referencing("group", h.event) {
+		if msg["kind"] == "invitation" {
+			copies += len(h.s.Model().Table("RECIPIENT").Referencing("message", msg["id"]))
+		}
+	}
+	if copies != 2 {
+		t.Errorf("two sends of two pending guests made %d copies, want 2", copies)
+	}
+}
+
 func TestAnInvitationEncodesTheHostsEditableName(t *testing.T) {
 	h := newInviteHarness(t)
 	h.setup([]Edit{{Insert: "MEMBER", Row: map[string]any{"group": h.group()["managed_by"], "person": parent, "member": "yes"}}})

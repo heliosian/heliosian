@@ -33,10 +33,11 @@ type Raw struct {
 }
 
 type Recorder struct {
-	Mailgun  *mail.Mailgun
-	mu       sync.Mutex
-	messages []mail.Message
-	raws     []Raw
+	Mailgun    *mail.Mailgun
+	BeforeSend func(Raw) error
+	mu         sync.Mutex
+	messages   []mail.Message
+	raws       []Raw
 }
 
 var (
@@ -153,6 +154,11 @@ func (rec *Recorder) keepRaw(r *http.Request, domain string) error {
 		return err
 	}
 	raw := Raw{Domain: domain, To: r.MultipartForm.Value["to"], Recipient: first(r.MultipartForm.Value["v:"+mail.CopyVariable]), Message: content}
+	if rec.BeforeSend != nil {
+		if err := rec.BeforeSend(raw); err != nil {
+			return err
+		}
+	}
 	var decoded *mail.Message
 	if raw.Recipient != "" {
 		if m, err := rec.decode(content); err == nil {

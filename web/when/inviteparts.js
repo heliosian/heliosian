@@ -5,6 +5,10 @@ import {answerFor as answerOnList} from './guestlist.js';
 
 export const answerWords = {yes: 'Yes', no: 'No'};
 
+export function answerLabel(row, view) {
+  return answerWords[row.answer] || (view.host || row.mine ? 'No response' : 'Invited');
+}
+
 export function firstName(p) {
   return (p.name || p.email || '').split(' ')[0];
 }

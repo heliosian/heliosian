@@ -23,6 +23,8 @@ var whenBrand = mail.Brand{Name: "Helios When", Color: "#1f4d53", Tagline: "the 
 
 var queuedKinds = []string{"invitation", "reminder", "update", "post"}
 
+const inviteProgressBatch = 50
+
 func (iv *Invitations) run() {
 	ctx := context.Background()
 	for {
@@ -62,7 +64,7 @@ func (iv *Invitations) autoInvite(ctx context.Context) {
 			continue
 		}
 		edits := append(answerGroupEdits(g), invitationEdits(g["id"], "", "invitation", pending, now)...)
-		if _, err := iv.write(ctx, access.System(invitationsJob), edits); err != nil {
+		if _, err := iv.writeGuests(ctx, access.System(invitationsJob), edits, g["id"], "", pending, 0); err != nil {
 			slog.ErrorContext(ctx, "invitations: auto-invite not recorded", "group", g["id"], "error", err)
 			continue
 		}
@@ -71,36 +73,60 @@ func (iv *Invitations) autoInvite(ctx context.Context) {
 }
 
 func (iv *Invitations) sendQueued(ctx context.Context) {
+	iv.s.Flush()
 	m := iv.s.Model()
-	now := time.Now()
 	edits := []Edit{}
+	persist := func() bool {
+		if len(edits) == 0 {
+			return true
+		}
+		if _, err := iv.write(ctx, access.System(invitationsJob), edits); err != nil {
+			slog.ErrorContext(ctx, "invitations: sends not recorded", "copies", len(edits), "error", err)
+			return false
+		}
+		iv.s.Flush()
+		edits = nil
+		return true
+	}
 	for _, msg := range m.Table("MESSAGE").All() {
 		if msg["direction"] != "out" || !slices.Contains(queuedKinds, msg["kind"]) || (msg["kind"] == "post" && msg["parent"] != "") {
 			continue
 		}
-		g, ok := m.Table("GROUP").Get(msg["group"])
-		if !ok || !slices.Contains(guestListKinds, g["kind"]) {
-			continue
-		}
-		for _, r := range m.Table("RECIPIENT").Referencing("message", msg["id"]) {
+		for _, queued := range m.Table("RECIPIENT").Referencing("message", msg["id"]) {
+			current := iv.s.Model()
+			r, ok := current.Table("RECIPIENT").Get(queued["id"])
+			if !ok {
+				continue
+			}
 			if r["sent"] != "" || r["failed"] != "" {
 				continue
 			}
-			if m.ended(g, now) && g["status"] != "cancelled" {
-				edits = append(edits, Edit{Set: r["id"], Cells: map[string]any{"failed": stamp(now), "detail": "the event had passed before it went"}})
+			g, ok := current.Table("GROUP").Get(msg["group"])
+			if !ok || !slices.Contains(guestListKinds, g["kind"]) {
 				continue
 			}
-			cells, err := iv.sendCopy(ctx, m, g, msg, r)
-			if err != nil {
-				slog.ErrorContext(ctx, "invitations: send failed", "recipient", r["id"], "group", g["id"], "kind", msg["kind"], "error", err)
-				continue
+			now := time.Now()
+			var cells map[string]any
+			switch {
+			case g["status"] == "closed" || (g["status"] == "cancelled" && (msg["kind"] == "invitation" || msg["kind"] == "reminder")):
+				cells = map[string]any{"failed": stamp(now), "detail": "the event was closed or cancelled before it went"}
+			case current.ended(g, now) && g["status"] != "cancelled":
+				cells = map[string]any{"failed": stamp(now), "detail": "the event had passed before it went"}
+			default:
+				var err error
+				cells, err = iv.sendCopy(ctx, current, g, msg, r)
+				if err != nil {
+					slog.ErrorContext(ctx, "invitations: send failed", "recipient", r["id"], "group", g["id"], "kind", msg["kind"], "error", err)
+					continue
+				}
 			}
 			edits = append(edits, Edit{Set: r["id"], Cells: cells})
+			if len(edits) == inviteProgressBatch && !persist() {
+				return
+			}
 		}
 	}
-	if _, err := iv.write(ctx, access.System(invitationsJob), edits); err != nil {
-		slog.ErrorContext(ctx, "invitations: sends not recorded", "copies", len(edits), "error", err)
-	}
+	persist()
 }
 
 func (iv *Invitations) organizer(token string) string {
@@ -143,11 +169,15 @@ func (m *Model) householdOnList(g store.Row, person string) []string {
 	return out
 }
 
-func (m *Model) studentCC(person string) []string {
+func (m *Model) studentCC(person string, msg store.Row) []string {
 	if !m.students()[person] {
 		return nil
 	}
-	return without(m.withParents(person), person)
+	parents := without(m.withParents(person), person)
+	for _, copy := range m.Table("RECIPIENT").Referencing("message", msg["id"]) {
+		parents = without(parents, copy["person"])
+	}
+	return parents
 }
 
 func dayAndHours(g store.Row) (string, string) {
@@ -174,10 +204,17 @@ func (iv *Invitations) calendarEvent(m *Model, g store.Row, person, token, link 
 	if hosts == "" {
 		hosts = whenBrand.Name
 	}
+	if original, ok := m.copiesOf(g["id"])[person]; ok {
+		token = original["token"]
+	}
+	organizer := mail.AddressOf(iv.config.Sender.From())
+	if token != "" {
+		organizer = mail.AddressOf(iv.organizer(token))
+	}
 	return mail.Event{
 		UID: g["id"] + whenUID, Start: from, End: until, AllDay: allDay, Summary: g["name"],
 		Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: g["location"], URL: link,
-		Organizer: mail.Person{Name: hosts, Email: mail.AddressOf(iv.organizer(token))},
+		Organizer: mail.Person{Name: hosts, Email: organizer},
 		Attendees: []mail.Person{{Name: m.nameOf(person), Email: m.addressOf(person)}}, RSVP: true,
 	}, true
 }
@@ -205,7 +242,7 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 		return nil, err
 	}
 	link := iv.linkFor(m, g, person, r["token"])
-	cc := m.addresses(m.studentCC(person))
+	cc := m.addresses(m.studentCC(person, msg))
 	hosts := m.hostsOf(g)
 	replyTo := append(m.addresses(hosts), iv.organizer(r["token"]))
 	from := msg["from_person"]
@@ -398,7 +435,8 @@ func (iv *Invitations) react(ctx context.Context, d delivery) {
 
 func (m *Model) invitedWithCalendar(g store.Row, person string) bool {
 	r, ok := m.copiesOf(g["id"])[person]
-	return ok && r["sent"] != "" && len(m.studentCC(person)) == 0
+	msg, _ := m.Table("MESSAGE").Get(r["message"])
+	return ok && r["sent"] != "" && len(m.addresses(m.studentCC(person, msg))) == 0
 }
 
 func (iv *Invitations) sendNow(ctx context.Context, m *Model, g store.Row, kind string, to []string, msg mail.Message) {
@@ -446,12 +484,15 @@ func (iv *Invitations) tellHosts(ctx context.Context, m *Model, g store.Row, per
 }
 
 func (iv *Invitations) calendarInvite(ctx context.Context, m *Model, g store.Row, person string) {
-	link := iv.linkFor(m, g, person, "")
+	token := ""
+	if original, ok := m.copiesOf(g["id"])[person]; ok {
+		token = original["token"]
+	}
+	link := iv.linkFor(m, g, person, token)
 	e, ok := iv.calendarEvent(m, g, person, "", link)
 	if !ok {
 		return
 	}
-	e.Organizer = mail.Person{Name: whenBrand.Name, Email: mail.AddressOf(iv.config.Sender.From())}
 	e.RSVP = false
 	l := iv.letter(g, link)
 	l.Heading = "It's on your calendar"

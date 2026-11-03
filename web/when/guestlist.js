@@ -116,7 +116,7 @@ export async function fetchInvites(e) {
   return {
     id: e.id, group: g, host, sent, rules, mine, mayInvite,
     list: host ? listed_ : listed_.filter(r => r.answer !== 'no'),
-    coming: host ? listed_ : listed_.filter(r => r.answer !== 'no'),
+    coming: host ? listed_ : listed_.map(r => (r.answer === 'no' ? {...r, answer: ''} : r)),
     counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: 0, no: listed_.filter(r => r.answer === 'no').length},
     hosts: hostRows.map(h => ({...rowFor(h.person), memberRow: h})),
     managedBy: g.managed_by || '', hostsHidden: Boolean(hostGroup) && !hostGroup.visible_to,

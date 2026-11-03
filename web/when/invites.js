@@ -5,7 +5,7 @@ import {checkbox} from '/form.js';
 import {createPersonPicker} from '/picker.js';
 import {known} from '/directory.js';
 import {uploadImage} from './imagecontrol.js';
-import {answerWords, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from './inviteparts.js';
+import {answerWords, answerLabel, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from './inviteparts.js';
 import {openGuestForm, openGuestCard, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
 import {listFilters, openTable, openMessage} from './guesttable.js';
 import {openPicker, guestAdders} from './addpeople.js';
@@ -162,7 +162,7 @@ export function rsvpRow(e, view, refresh) {
     const said = el(r.mine ? 'button' : 'span', 'invite-said rsvp-row-said is-' + (r.answer || 'none'));
     const mark = el('span', 'invite-said-mark');
     mark.append(svg(answerIcon(r.answer)));
-    said.append(mark, el('strong', '', r.key === me().id ? 'You' : firstName(r)), el('span', 'rsvp-row-word', r.answer ? answerWords[r.answer] : 'No response'));
+    said.append(mark, el('strong', '', r.key === me().id ? 'You' : firstName(r)), el('span', 'rsvp-row-word', answerLabel(r, view)));
     if (r.mine) {
       said.type = 'button';
       said.title = 'Change the answer';
@@ -218,7 +218,7 @@ export function comingCard(e, view, refresh) {
   const groups = [
     {key: 'yes', label: 'Yes', cls: 'is-yes', has: r => r.answer === 'yes'},
     ...(view.host ? [{key: 'no', label: 'No', cls: 'is-no', has: r => r.answer === 'no'}] : []),
-    {key: 'waiting', label: 'No response', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
+    {key: 'waiting', label: view.host ? 'No response' : 'Invited', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
     ...(view.host ? [{key: 'pending', label: 'Pending (Unsent)', cls: 'is-pending', has: unsent}] : []),
   ];
   const familyRank = ['yes', 'waiting', 'pending', 'no'];
@@ -283,7 +283,7 @@ function ticketMark(view, p) {
 function guestFamilyRow(e, view, family, refresh) {
   return familyRow(family, family.map(r => {
     const unsent = view.host && r.pending && r.email && !r.answer;
-    const said = familySaid(unsent ? 'pending' : r.answer, r.mine);
+    const said = familySaid(unsent ? 'pending' : r.answer || (view.host ? '' : 'invited'), r.mine);
     const send = {icon: 'mail', words: 'Send Now', cls: 'is-send', run: async () => {
       try {
         await guests.sendTo(e, [r.key]);
@@ -747,7 +747,7 @@ function guestPlainRow(e, view, r, refresh) {
     after.push(warn);
   }
   const said = el('span', 'invite-said-mark guests-plain-mark is-' + (r.answer || 'none'));
-  said.title = r.answer ? answerWords[r.answer] : 'No response';
+  said.title = answerLabel(r, view);
   said.append(svg(answerIcon(r.answer)));
   after.push(said);
   return personRow(r, {

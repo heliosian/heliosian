@@ -189,6 +189,7 @@ export function openPending(e, view, refresh) {
   const picked = () => unsent.filter(r => checked.has(r.key) && !sent.has(r.key)).map(r => r.key);
   const sendAll = async () => {
     const emails = picked();
+    actions.querySelector('button').disabled = true;
     try {
       await sendTo(e, emails);
       longToast(emails.length === 1 ? 'One invite is on its way' : `${emails.length} invites are on their way`);
@@ -196,6 +197,8 @@ export function openPending(e, view, refresh) {
       refresh();
     } catch (err) {
       toast(err.message);
+      shut();
+      refresh();
     }
   };
   const sendOne = async r => {
@@ -207,6 +210,8 @@ export function openPending(e, view, refresh) {
       draw(page);
     } catch (err) {
       toast(err.message);
+      shut();
+      refresh();
     }
   };
   const paintTotals = () => {

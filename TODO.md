@@ -6,6 +6,9 @@ Last verified: bff8f634
 
 # Helios When
 
+- Separate activity guests from volunteer sign-ups
+  An activity's guest list is its sign-ups, so guests added to an activity by hand (Add Person, a guest's invite others) also become Volunteers in HCA-Team, and taking them off can send "You're no longer signed up" mail. Guests added by a rule avoid this. Separate guest-list membership from volunteer sign-up.
+
 # Helios Loop
 
 # Helios Who?

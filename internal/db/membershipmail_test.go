@@ -116,6 +116,30 @@ func TestHidingAnActivityMailsNobody(t *testing.T) {
 	}
 }
 
+func TestAnsweringAnActivitysInvitationMailsNobody(t *testing.T) {
+	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
+	s := sample(t)
+	decor := apply(t, s, []Edit{
+		{Set: year, Cells: map[string]any{"notify": superAdmins}},
+		{Insert: "GROUP", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Decor", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "members", "replying": "members", "join": "others"}},
+	})[1]
+	g, _ := s.Model().Table("GROUP").Get(decor)
+	apply(t, s, answerGroupEdits(g))
+	g, _ = s.Model().Table("GROUP").Get(decor)
+	sender := mailtest.NewRecorder(mailtest.From)
+	mm := &MembershipMailer{s: s, config: MembershipMailConfig{Sender: sender.Mailgun, Origin: testOrigin}}
+	for _, column := range []string{"rsvp_yes", "rsvp_no"} {
+		mm.mail(context.Background(), placeChange{what: placeJoined, group: g[column], person: student, actor: student})
+	}
+	if got := sender.Messages(); len(got) != 0 {
+		t.Errorf("answering an activity's invitation sent %v", got)
+	}
+	mm.mail(context.Background(), placeChange{what: placeJoined, group: decor, person: student, actor: student})
+	if got := len(sender.Messages()); got != 3 {
+		t.Errorf("signing up sent %d messages, want the thanks, its calendar invite and the notice", got)
+	}
+}
+
 func TestAnOfferToCoChairNotifiesAndThanksNobody(t *testing.T) {
 	const year, night, superAdmins = "grp00000000510", "grp00000000512", "grp00000000005"
 	s := sample(t)

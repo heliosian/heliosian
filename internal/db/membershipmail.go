@@ -124,6 +124,9 @@ func (mm *MembershipMailer) mail(ctx context.Context, change placeChange) {
 			}
 			return
 		}
+		if m.serves(g) {
+			return
+		}
 		if activity && !m.leadsOf(g, change.person) {
 			mm.thank(ctx, m, g, change)
 		}

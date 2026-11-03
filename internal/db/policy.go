@@ -35,6 +35,13 @@ const PolicySource = `
   (or (exists GROUP @answered (= rsvp_yes @g) (visible @answered))
       (exists GROUP @answered (= rsvp_no @g) (visible @answered))))
 
+(define (declines @g)
+  (exists GROUP (= rsvp_no @g)))
+
+(define (runs_answers @g)
+  (or (exists GROUP @a (= rsvp_yes @g) (runs_list @a))
+      (exists GROUP @a (= rsvp_no @g) (runs_list @a))))
+
 ; the viewer may answer for @m's person in @m's answer group: themselves, someone in their family, their guest at the group answered, or anyone in a group they manage
 (define (answers_for @m)
   (or (self_or_household @m.person)
@@ -90,7 +97,9 @@ const PolicySource = `
 (define (sees_members @g)
   (and (visible @g)
        (or (manages @g)
-           (in @g.members_visible_to (select EFFECTIVE_MEMBER.group (= person @viewer))))))
+           (and (not (declines @g))
+                (in @g.members_visible_to (select EFFECTIVE_MEMBER.group (= person @viewer))))
+           (runs_answers @g))))
 
 ; @p is the viewer, a guest in one of the viewer's groups or in a group whose members the viewer sees, or anyone else not hidden and active; the consent step has already removed everyone unconsented
 (define (person_visible @p)
@@ -494,8 +503,10 @@ const PolicySource = `
       (= guest_of @viewer)
       (and (not (hides group))
            (or (manages group)
-               (manages_visible group)
-               (sees_members group)))))
+               (and (not (declines group))
+                    (or (manages_visible group) (sees_members group)))))
+      (and (answers_visible group) (answers_for @row))
+      (runs_answers group)))
 ; every column of a membership
 (read MEMBER
   (id group person member opened guest_of note added_by added)
@@ -572,9 +583,11 @@ const PolicySource = `
 ; the viewer's own and household's effective memberships, the managers of visible groups, and members of groups that show them, but never who hid something
 (read EFFECTIVE_MEMBER
   (or (self_or_household person)
-      (and (not (hides group))
+      (and (not (hides group)) (not (declines group))
            (or (manages_visible group)
-               (sees_members group)))))
+               (sees_members group)))
+      (and (answers_visible group) (answers_for @row))
+      (runs_answers group)))
 ; every column of an effective membership
 (read EFFECTIVE_MEMBER (id group person reasons) true)
 
@@ -795,9 +808,9 @@ const PolicySource = `
 ; every directory group and plain group, pending too
 (read GROUP (and (admin_of "who") (in kind "family" "group" "classroom" "grade" "gradeband" "crew" "department")))
 ; every directory group's and plain group's memberships, but who hid something
-(read MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
+(read MEMBER (and (admin_of "who") (not (declines group)) (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
 ; every directory group's and plain group's effective members, but who hid something
-(read EFFECTIVE_MEMBER (and (admin_of "who") (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
+(read EFFECTIVE_MEMBER (and (admin_of "who") (not (declines group)) (in group.kind "family" "group" "classroom" "grade" "gradeband" "crew" "department") (not (hides group))))
 ; the rules that pick each plain group's members
 (read RULE (and (admin_of "who") (= group.kind "group")))
 ; every person's emails, deactivated too
@@ -1223,9 +1236,9 @@ const PolicySource = `
 ; every plain group and admins group
 (read GROUP (and (admin_of "home") (in kind "group" "admins")))
 ; the members of plain groups and admins groups, but who hid something
-(read MEMBER (and (admin_of "home") (in group.kind "group" "admins") (not (hides group))))
+(read MEMBER (and (admin_of "home") (not (declines group)) (in group.kind "group" "admins") (not (hides group))))
 ; the effective members of plain groups and admins groups, but who hid something
-(read EFFECTIVE_MEMBER (and (admin_of "home") (in group.kind "group" "admins") (not (hides group))))
+(read EFFECTIVE_MEMBER (and (admin_of "home") (not (declines group)) (in group.kind "group" "admins") (not (hides group))))
 ; the rules that pick plain groups' and admins groups' members
 (read RULE (and (admin_of "home") (in group.kind "group" "admins")))
 ; every app, whoever it is open to
