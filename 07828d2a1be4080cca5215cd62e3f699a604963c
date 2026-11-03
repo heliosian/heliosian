@@ -1,0 +1,52 @@
+# Fix duplicate membership when moving co-chair sign-ups
+
+byre task tsko08py0n5oY3, "Move co-chair sign-up", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsko08py0n5oY3 in byre (read_task_events with task_id tsko08py0n5oY3).
+
+## Summary
+
+Fixed moving co-chair sign-ups after opening the destination activity's invitation.
+
+Before: joining collided with the blank invitation membership.
+Now: a normal membership insert claims that row under normal insert authorization, preserving its ID and opened timestamp. Eligibility, capacity and appointment permissions still apply; active, cancelled and excluded memberships retain their insert-conflict behavior.
+
+Before: moves could retain obsolete source roles or remove management authority before granting the destination role.
+Now: moves grant destination roles first and remove source memberships with management last, retaining management shared with the destination.
+
+Before: Availability carried Co-Chair onto destinations the mover did not manage, and saving failed.
+Now: Availability follows destination permissions; movers without management rights can volunteer or offer to co-chair where available. Destination managers control appointment.
+
+The initial client-side update approach was replaced with server insert handling because ordinary users lacked update permissions. Policy regressions and actual browser forms passed as ordinary volunteers and non-admin co-chairs, including upward, downward and shared-management moves. The final review was clean. Production data changes, schema changes and broader membership conflict semantics were deliberately excluded. Main was already incorporated; the requested merge required no conflict resolution.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-opus-5-5: done
+
+Signing up for a Team activity, or moving a sign-up to another activity, failed when the person already had a MEMBER row in the destination group that wasn't a sign-up. The usual case is the blank-`member` row the server writes when someone opens an invitation (`noteOpened`). The client always inserted a new row, which broke MEMBER's unique (group, person) constraint. The change loads every MEMBER row for the activity, managers, offers and leads groups, not just `member = "yes"` ones. It filters to `yes` when building the volunteer, chair, offer and lead views. A new `joinEdits` helper in `web/team/writes.js` now sets `member: yes` (plus `note`, `added_by`, `added`) on any existing row and only inserts when there is none. Sign-up, chair, lead and offer edits all go through it.
+
+- The new set-over-existing-row path is forbidden by the server's policy for everyone except super admins, so ordinary volunteers and co-chairs still can't sign up over an opened invitation
+- Moving a co-chair to another activity still leaves them in the old activity's managers group
+
+### Snapshot #2, reviewer "Review", codex gpt-6-sol: done
+
+The change lets a new membership claim an existing blank invitation row, preserving its ID and opened time. Team sign-up moves now remove the source activity’s lead, manager, and offer memberships while retaining a manager membership shared with the destination.
+
+- A sole co-chair cannot move their sign-up to a child activity as co-chair because the batch drops their management authority before granting the destination role.
+
+### Snapshot #3, reviewer "Review", grok grok-4.7: done
+
+Signing up over a blank membership now claims that invitation row instead of inserting a second one: the row keeps its id and opened time, the write is still authorized as an insert, and triggers see the change from invitation to member. On the team page, moving a sign-up grants the destination role first and removes the old sign-up, lead, offer, and management memberships afterward, leaving a managers-group membership in place when the person stays a co-chair of a destination that shares it.
+
+- A co-chair move onto an activity the person does not run still fails, because the batch inserts a leads membership that only someone who runs the destination may add.
+
+### Snapshot #4, reviewer "Review", claude claude-fable-5-1: done
+
+Fixes moving a co-chair sign-up between activities on HCA-Team, which failed because the destination already held an opened-invitation `MEMBER` row (member blank, `opened` set) for the person, so the insert of the new sign-up collided with it on the (group, person) unique key.
+
+Server (`internal/db/writes.go`): an insert of `MEMBER` with `member=yes` whose group and person already have a blank-membership row now claims that row. It is authorized as an insert (so joining eligibility, capacity, and management checks still apply), staged as an update that keeps the row's ID and `opened`, and triggers see the transition from invitation to membership. Rows with member yes, cancelled or excluded still conflict.
+
+Team UI (`web/team/writes.js`, `web/team/edit.js`): `signUp` now grants the destination role first and removes the source sign-up, lead, offer and management memberships last, so a sole co-chair keeps authority throughout the batch; management rows shared with the destination are kept when the person stays a co-chair there; the Co-Chair option is only offered and only written when the mover manages the destination; the Availability select refreshes as the "Signed up for" target changes and the appoint card hides when moving away.
+
+Tests (`internal/db/managerwrites_test.go`) cover claiming an invitation as a volunteer and as a co-chair, refusal when normal joining permissions fail (full, ineligible, closed, self-appointment, already a member, excluded, cancelled), a chair moving onto an invitation, a sole chair moving to a child in both batch orders, and a child chair moving to the parent as a volunteer. Docs updated in `docs/datamodel.md` and `docs/team/data.md`. The new tests pass, and `go vet` and gofmt are clean.
+
+No significant findings.
