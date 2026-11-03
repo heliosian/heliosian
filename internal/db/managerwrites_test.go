@@ -238,3 +238,231 @@ func mergeRow(a, b map[string]any) map[string]any {
 	}
 	return out
 }
+
+func TestJoiningClaimsAnOpenedInvitation(t *testing.T) {
+	const night, managers, leads = "grp00000000512", "grp00000000513", "grp00000000514"
+	for _, chair := range []bool{false, true} {
+		t.Run(map[bool]string{false: "volunteer", true: "co-chair"}[chair], func(t *testing.T) {
+			s := sample(t)
+			apply(t, s, []Edit{{Set: night, Cells: map[string]any{"join": "others"}}})
+			opened := apply(t, s, []Edit{
+				{Insert: "MEMBER", Row: map[string]any{"group": night, "person": student, "opened": "2026-11-02 23:57"}},
+				{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": student, "opened": "2026-11-02 23:57"}},
+				{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "opened": "2026-11-02 23:57"}},
+			})
+			viewer := student
+			if chair {
+				viewer = parent
+			}
+			if s.Model().superAdmin(viewer) {
+				t.Fatal("regression check must use a non-super-admin")
+			}
+			edits := []Edit{{Insert: "MEMBER", As: "joined", Row: map[string]any{"group": night, "person": student, "member": "yes", "note": "Movie co-chair", "added_by": viewer, "added": "2026-11-03 12:00"}}}
+			if chair {
+				edits = append(edits,
+					Edit{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": student, "member": "yes", "added_by": viewer}},
+					Edit{Insert: "MEMBER", Row: map[string]any{"group": managers, "person": student, "member": "yes"}},
+				)
+			}
+			edits = append(edits, Edit{Set: "@joined", Cells: map[string]any{"opened": "2026-11-02 23:57"}})
+			written, err := Write(t.Context(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: edits})
+			if err != nil {
+				t.Fatalf("joining over an opened invitation: %v", err)
+			}
+			for i, id := range written[:len(written)-1] {
+				if id != opened[i] {
+					t.Errorf("write returned %s, want existing membership %s", id, opened[i])
+				}
+				row, _ := s.Model().Table("MEMBER").Get(id)
+				if row["member"] != "yes" || row["opened"] != "2026-11-02 23:57" {
+					t.Errorf("joined membership: %v", row)
+				}
+			}
+			row, _ := s.Model().Table("MEMBER").Get(opened[0])
+			if row["note"] != "Movie co-chair" || row["added_by"] != viewer || row["added"] != "2026-11-03 12:00" {
+				t.Errorf("sign-up metadata: %v", row)
+			}
+		})
+	}
+}
+
+func TestClaimingAnInvitationRequiresNormalJoiningPermissions(t *testing.T) {
+	const night, leads = "grp00000000512", "grp00000000514"
+	for _, tc := range []struct {
+		name   string
+		group  string
+		cells  map[string]any
+		member string
+	}{
+		{name: "full", group: night, cells: map[string]any{"capacity": "1"}},
+		{name: "ineligible", group: night, cells: map[string]any{"eligible": "grp00000000003"}},
+		{name: "closed joining", group: night, cells: map[string]any{"join": "none"}},
+		{name: "self appointment", group: leads},
+		{name: "already signed up", group: night, member: "yes"},
+		{name: "excluded", group: night, member: "excluded"},
+		{name: "cancelled", group: night, member: "cancelled"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := sample(t)
+			apply(t, s, []Edit{{Set: night, Cells: map[string]any{"join": "others"}}})
+			if len(tc.cells) > 0 {
+				apply(t, s, []Edit{{Set: night, Cells: tc.cells}})
+			}
+			id := apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": tc.group, "person": student, "member": tc.member, "opened": "2026-11-02 23:57"}}})[0]
+			_, err := Write(t.Context(), s, access.Actor{Email: "student@example.org"}, Env{Viewer: student, Now: testNow}, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": tc.group, "person": student, "member": "yes", "added_by": student}}}})
+			if err == nil {
+				t.Fatal("joining was allowed")
+			}
+			row, _ := s.Model().Table("MEMBER").Get(id)
+			if row["member"] != tc.member || row["opened"] != "2026-11-02 23:57" {
+				t.Errorf("refused join changed the membership: %v", row)
+			}
+		})
+	}
+}
+
+func TestAChairMovesASignUpOntoAnOpenedInvitation(t *testing.T) {
+	const night, leads = "grp00000000512", "grp00000000514"
+	s := sample(t)
+	member, _ := s.Model().Table("MEMBER").Find(night, parent)
+	lead, _ := s.Model().Table("MEMBER").Find(leads, parent)
+	made := apply(t, s, []Edit{
+		{Set: member["id"], Cells: map[string]any{"member": "", "opened": "2026-11-02 23:57"}},
+		{Delete: lead["id"]},
+		{Insert: "GROUP", As: "tech", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Tech Setup", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "join": "others"}},
+		{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "status": "open", "name": "Tech Setup Managers"}},
+		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
+		{Set: "@tech", Cells: map[string]any{"managed_by": "@managers"}},
+		{Insert: "GROUP", As: "leads", Row: map[string]any{"kind": "group", "parent": "@tech", "status": "open", "name": "Tech Setup Leads"}},
+		{Set: "@tech", Cells: map[string]any{"leads": "@leads"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@tech", "person": parent, "member": "yes"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@leads", "person": parent, "member": "yes"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": parent, "member": "yes"}},
+	})
+	if s.Model().superAdmin(parent) {
+		t.Fatal("move check must use a non-super-admin")
+	}
+	_, err := Write(t.Context(), s, access.Actor{Email: rowan}, Env{Viewer: parent, Now: testNow}, Batch{Batch: []Edit{
+		{Insert: "MEMBER", Row: map[string]any{"group": night, "person": parent, "member": "yes", "note": "Movie co-chair", "added_by": parent, "added": "2026-11-03 12:00"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": parent, "member": "yes", "added_by": parent}},
+		{Delete: made[8]},
+		{Delete: made[9]},
+		{Delete: made[10]},
+	}})
+	if err != nil {
+		t.Fatalf("co-chair moving a sign-up: %v", err)
+	}
+	for _, id := range made[8:] {
+		if _, ok := s.Model().Table("MEMBER").Get(id); ok {
+			t.Errorf("old sign-up, lead or management membership remains: %s", id)
+		}
+	}
+	joined, _ := s.Model().Table("MEMBER").Find(night, parent)
+	if joined["id"] != member["id"] || joined["member"] != "yes" || joined["opened"] != "2026-11-02 23:57" {
+		t.Errorf("destination membership: %v", joined)
+	}
+}
+
+func TestASoleChairMovesToAChild(t *testing.T) {
+	const night, leads, managers = "grp00000000512", "grp00000000514", "grp00000000513"
+	s := sample(t)
+	if s.Model().superAdmin(parent) || len(s.Model().Table("MEMBER").Referencing("group", managers)) != 1 {
+		t.Fatal("move check requires a sole non-super-admin co-chair")
+	}
+	made := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "tech", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Tech Setup", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "join": "others"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@tech", "person": parent, "opened": "2026-11-02 23:57"}},
+	})
+	member, _ := s.Model().Table("MEMBER").Find(night, parent)
+	lead, _ := s.Model().Table("MEMBER").Find(leads, parent)
+	manager, _ := s.Model().Table("MEMBER").Find(managers, parent)
+	grant := []Edit{
+		{Insert: "MEMBER", Row: map[string]any{"group": made[0], "person": parent, "member": "yes", "note": "Tech co-chair", "added_by": parent}},
+		{Insert: "GROUP", As: "leads", Row: map[string]any{"parent": made[0], "kind": "group", "status": "open", "name": "Tech Setup Leads", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "posting": "none", "replying": "none", "added_by": parent}},
+		{Set: made[0], Cells: map[string]any{"leads": "@leads"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@leads", "person": parent, "member": "yes", "added_by": parent}},
+		{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "status": "open", "name": "Tech Setup Managers", "added_by": parent}},
+		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": parent, "member": "yes"}},
+		{Set: made[0], Cells: map[string]any{"managed_by": "@managers"}},
+	}
+	remove := []Edit{{Delete: member["id"]}, {Delete: lead["id"]}, {Delete: manager["id"]}}
+	write := func(edits []Edit) error {
+		_, err := Write(t.Context(), s, access.Actor{Email: rowan}, Env{Viewer: parent, Now: testNow}, Batch{Batch: edits})
+		return err
+	}
+	if err := write(append(append([]Edit{}, remove...), grant...)); err == nil {
+		t.Fatal("granting the child role after losing source authority succeeded")
+	} else {
+		t.Logf("removing source authority first is refused: %v", err)
+	}
+	if err := write(append(grant, remove...)); err != nil {
+		t.Fatalf("moving the sole co-chair to a child: %v", err)
+	}
+	for _, e := range remove {
+		if _, ok := s.Model().Table("MEMBER").Get(e.Delete); ok {
+			t.Errorf("source membership remains: %s", e.Delete)
+		}
+	}
+	joined, _ := s.Model().Table("MEMBER").Get(made[1])
+	if joined["member"] != "yes" || joined["opened"] != "2026-11-02 23:57" {
+		t.Errorf("destination membership: %v", joined)
+	}
+	for group, want := range map[string]int{night: 0, made[0]: 1} {
+		if got := len(as(t, s, parent, `(from GROUP @g (where (= id "`+group+`") (runs_list @g)))`)); got != want {
+			t.Errorf("management of %s: %d, want %d", group, got, want)
+		}
+	}
+}
+
+func TestAChildChairMovesToAParentAsAVolunteer(t *testing.T) {
+	const night, leads, managers = "grp00000000512", "grp00000000514", "grp00000000513"
+	s := sample(t)
+	made := apply(t, s, []Edit{
+		{Set: night, Cells: map[string]any{"join": "others"}},
+		{Insert: "GROUP", As: "tech", Row: map[string]any{"parent": night, "kind": "activity", "status": "open", "name": "Tech Setup", "visible_to": "grp00000000004", "join": "others"}},
+		{Insert: "GROUP", As: "managers", Row: map[string]any{"kind": "group", "status": "open", "name": "Tech Setup Managers"}},
+		{Set: "@managers", Cells: map[string]any{"managed_by": "@managers"}},
+		{Set: "@tech", Cells: map[string]any{"managed_by": "@managers"}},
+		{Insert: "GROUP", As: "leads", Row: map[string]any{"kind": "group", "parent": "@tech", "status": "open", "name": "Tech Setup Leads"}},
+		{Set: "@tech", Cells: map[string]any{"leads": "@leads"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@tech", "person": student, "member": "yes"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@leads", "person": student, "member": "yes"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@managers", "person": student, "member": "yes"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": night, "person": student, "opened": "2026-11-02 23:57"}},
+	})
+	for group, want := range map[string]int{night: 0, made[1]: 1} {
+		if got := len(as(t, s, student, `(from GROUP @g (where (= id "`+group+`") (runs_list @g)))`)); got != want {
+			t.Fatalf("source-only management of %s: %d, want %d", group, got, want)
+		}
+	}
+	write := func(edits ...Edit) error {
+		_, err := Write(t.Context(), s, access.Actor{Email: "student@example.org"}, Env{Viewer: student, Now: testNow}, Batch{Batch: edits})
+		return err
+	}
+	if err := write(Edit{Insert: "MEMBER", Row: map[string]any{"group": leads, "person": student, "member": "yes", "added_by": student}}); err == nil {
+		t.Fatal("a child co-chair appointed themselves to the parent")
+	}
+	if err := write(
+		Edit{Insert: "MEMBER", Row: map[string]any{"group": night, "person": student, "member": "yes", "note": "Movie volunteer", "added_by": student}},
+		Edit{Delete: made[7]},
+		Edit{Delete: made[8]},
+		Edit{Delete: made[9]},
+	); err != nil {
+		t.Fatalf("moving a child co-chair to the parent as a volunteer: %v", err)
+	}
+	joined, _ := s.Model().Table("MEMBER").Get(made[10])
+	if joined["member"] != "yes" || joined["opened"] != "2026-11-02 23:57" || joined["note"] != "Movie volunteer" {
+		t.Errorf("parent sign-up: %v", joined)
+	}
+	for _, group := range []string{leads, managers} {
+		if _, ok := s.Model().Table("MEMBER").Find(group, student); ok {
+			t.Errorf("mover gained a parent co-chair membership in %s", group)
+		}
+	}
+	for _, id := range made[7:10] {
+		if _, ok := s.Model().Table("MEMBER").Get(id); ok {
+			t.Errorf("old role membership remains: %s", id)
+		}
+	}
+}

@@ -13,7 +13,7 @@ import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {openModal, closeModal} from '/modal.js';
 import {load, navigate, render} from '/router.js';
-import {field, text, textarea, select, checkbox, segmented} from '/form.js';
+import {field, text, textarea, select, fillSelect, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
 
 export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
@@ -78,14 +78,7 @@ function signUpForm(node, existing, someoneElse) {
     });
   emailField.hidden = who.value !== 'other';
   const isChair = Boolean(existing && existing.position === 'Co-Chair');
-  const positions = [{label: 'Volunteer', value: 'Volunteer'}];
-  if (node.offersOpen || (existing && existing.position === 'Open to Co-Chair')) {
-    positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
-  }
-  if (editor) {
-    positions.push({label: 'Co-Chair', value: 'Co-Chair'});
-  }
-  const position = select(positions, existing && (editor || !isChair) ? existing.position : 'Volunteer');
+  const position = select([], '');
   const note = textarea(existing ? existing.note : '', 3);
   const fields = [];
   if (!existing) {
@@ -131,11 +124,29 @@ function signUpForm(node, existing, someoneElse) {
       fields.push(field('Signed up for', where, 'Pick another to move this sign-up there.'));
     }
   }
-  if (isChair && !editor) {
-    fields.push(field('Availability', el('div', 'field-static', 'Co-Chair')));
-  } else {
-    fields.push(field('Availability', position));
+  const availability = field('Availability', position);
+  const fixedPosition = el('div', 'field-static', 'Co-Chair');
+  availability.append(fixedPosition);
+  const refreshAvailability = () => {
+    const target = where ? activity(where.value) : node;
+    const fixed = target === node && isChair && !editor;
+    const value = position.value || (existing ? existing.position : 'Volunteer');
+    const positions = [{label: 'Volunteer', value: 'Volunteer'}];
+    if (target.offersOpen || (target === node && existing && existing.position === 'Open to Co-Chair')) {
+      positions.push({label: 'Volunteer, and open to co-chairing', value: 'Open to Co-Chair'});
+    }
+    if (target.canEdit || fixed) {
+      positions.push({label: 'Co-Chair', value: 'Co-Chair'});
+    }
+    fillSelect(position, positions, fixed ? 'Co-Chair' : value);
+    position.hidden = fixed;
+    fixedPosition.hidden = !fixed;
+  };
+  refreshAvailability();
+  if (where) {
+    where.addEventListener('change', refreshAvailability);
   }
+  fields.push(availability);
   note.placeholder = 'Anything the co-chairs and whoever is signed up should know';
   const noteLabel = el('span', '', 'Note ');
   noteLabel.append(el('small', '', '(optional)'));
@@ -159,6 +170,9 @@ function signUpForm(node, existing, someoneElse) {
         }
       });
     card.append(icon, text, appoint);
+    if (where) {
+      where.addEventListener('change', () => { card.hidden = where.value !== node.id; });
+    }
     fields.push(card);
   }
   return {
@@ -172,7 +186,7 @@ function signUpForm(node, existing, someoneElse) {
       return writes.signUp(target, {
         from: where && where.value !== node.id ? node.id : '',
         email: existing ? existing.email : (who.value === 'other' ? picker.value : ''),
-        position: isChair && !editor ? 'Co-Chair' : position.value, note: note.value,
+        position: position.value, note: note.value,
       });
     },
     onDelete: existing && existing.can.delete ? () => writes.removeSignUp(node, existing) : null,

@@ -249,6 +249,16 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 				row[c.Name] = c.Default
 			}
 		}
+		var invitation store.Row
+		if t.Name == "MEMBER" && row["member"] == "yes" {
+			if old, ok := m.Table("MEMBER").Find(row["group"], row["person"]); ok && old["member"] == "" {
+				invitation = old
+				joined := maps.Clone(old)
+				maps.Copy(joined, row)
+				joined["id"], joined["opened"] = old["id"], old["opened"]
+				row = joined
+			}
+		}
 		id := row["id"]
 		if err := t.Check(row); err != nil {
 			return "", Change{}, access.Invalid("%s: %v", where, err)
@@ -259,6 +269,10 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 		c := Change{Table: t.Name, New: row, uploaded: uploaded}
 		if err := authorize(m, c); err != nil {
 			return "", Change{}, err
+		}
+		if invitation != nil {
+			c.Old = invitation
+			return id, c, s.Stage(tx, t.Sheet, store.Update(t.Name, store.Row{"id": id}, row))
 		}
 		return id, c, s.Stage(tx, t.Sheet, store.Insert(t.Name, row))
 	case w.Set != "" && w.Insert == "" && w.Delete == "" && w.Row == nil:

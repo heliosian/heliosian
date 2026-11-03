@@ -203,16 +203,6 @@ function leadEdits(node, person) {
 export async function signUp(node, {email, position, note, from}) {
   const person = personFor(email);
   const edits = [];
-  const old = from ? activity(from) : null;
-  if (old) {
-    const row = old.volunteers.find(v => v.person === person);
-    if (row) {
-      edits.push({delete: row.id});
-      if (row.lead && old.canEdit) {
-        edits.push({delete: row.lead});
-      }
-    }
-  }
   const existing = node.volunteers.find(v => v.person === person);
   const lead = position === 'Co-Chair';
   const offering = position === 'Open to Co-Chair';
@@ -222,7 +212,7 @@ export async function signUp(node, {email, position, note, from}) {
     edits.push({insert: 'MEMBER', row: {group: node.id, person, member: 'yes', note, added_by: me().id, added: now()}});
   }
   const led = existing ? existing.lead : '';
-  if (lead && !led) {
+  if (lead && !led && node.canEdit) {
     edits.push(...leadEdits(node, person));
   } else if (!lead && led) {
     edits.push({delete: led});
@@ -238,6 +228,14 @@ export async function signUp(node, {email, position, note, from}) {
   } else if (!offering && offer) {
     edits.push({delete: offer});
   }
+  const old = from ? activity(from) : null;
+  if (old) {
+    const row = old.volunteers.find(v => v.person === person);
+    if (row) {
+      const managers = position === 'Co-Chair' ? node.managerRows : [];
+      edits.push(...removeSignUpEdits(old, row).filter(e => !managers.some(m => m.id === e.delete)));
+    }
+  }
   await write(edits);
 }
 
@@ -250,13 +248,17 @@ export async function setChair(node, volunteer, on) {
   ]);
 }
 
-export async function removeSignUp(node, volunteer) {
-  await write([
+function removeSignUpEdits(node, volunteer) {
+  return [
     {delete: volunteer.id},
     ...(volunteer.lead && node.canEdit ? [{delete: volunteer.lead}] : []),
-    ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : []),
     ...(volunteer.offer ? [{delete: volunteer.offer}] : []),
-  ]);
+    ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : []),
+  ];
+}
+
+export async function removeSignUp(node, volunteer) {
+  await write(removeSignUpEdits(node, volunteer));
 }
 
 function closeOffersEdits(node) {
