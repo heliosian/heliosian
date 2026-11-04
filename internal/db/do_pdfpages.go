@@ -114,7 +114,7 @@ func registerPDFPages(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.
 			}
 			stamp := time.Now().In(School).Format(cells.StampFormat)
 			writes := &pendingWrites{}
-			content, err := stageContent(m, writes, map[string]string{}, kept)
+			content, err := writes.content(m, kept)
 			if err != nil {
 				return err
 			}

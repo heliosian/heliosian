@@ -326,7 +326,7 @@ func (f *Fetcher) keep(ctx context.Context, ids []string, got fetched) error {
 			return nil
 		}
 		w := &pendingWrites{}
-		content, err := stageContent(f.s.In(tx), w, map[string]string{}, kept)
+		content, err := w.content(f.s.In(tx), kept)
 		if err != nil {
 			return err
 		}

@@ -268,7 +268,7 @@ func (p *Pictures) makeMade(made madeColumn, id string, row store.Row) error {
 			return nil
 		}
 		w := &pendingWrites{}
-		held, err := stageContent(m, w, map[string]string{}, kept)
+		held, err := w.content(m, kept)
 		if err != nil {
 			return err
 		}
@@ -324,13 +324,12 @@ func (p *Pictures) makePhoto(id string, row store.Row) error {
 			return nil
 		}
 		w := &pendingWrites{}
-		held := map[string]string{}
 		set := map[string]any{}
 		for _, col := range photoOutputs {
 			v := ""
 			if b, ok := want[col]; ok {
 				var err error
-				if v, err = stageContent(m, w, held, b); err != nil {
+				if v, err = w.content(m, b); err != nil {
 					return err
 				}
 			}

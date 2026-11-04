@@ -173,7 +173,7 @@ func (f *Feedback) keepScreenshot(id string, shot screenshot) error {
 	}
 	_, err = f.s.Transact(ctx, access.System(feedbackActor), func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
-		content, err := stageContent(f.s.In(tx), w, map[string]string{}, kept)
+		content, err := w.content(f.s.In(tx), kept)
 		if err != nil {
 			return err
 		}

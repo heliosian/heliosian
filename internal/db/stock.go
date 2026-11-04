@@ -214,7 +214,7 @@ func (st *Stock) fetch(ctx context.Context, id, column string, row store.Row, fe
 			return nil
 		}
 		w := &pendingWrites{}
-		content, err := stageContent(m, w, map[string]string{}, kept)
+		content, err := w.content(m, kept)
 		if err != nil {
 			return err
 		}

@@ -161,14 +161,13 @@ func saveWiki(ctx context.Context, s *Store, pics *Pictures, actor access.Actor,
 			}
 		}
 		w := &pendingWrites{}
-		contents := map[string]string{}
-		contentID, err := stageContent(m, w, contents, main)
+		contentID, err := w.content(m, main)
 		if err != nil {
 			return err
 		}
 		sideContents := make([]string, len(page.Sides))
 		for i := range page.Sides {
-			if sideContents[i], err = stageContent(m, w, contents, sides[i]); err != nil {
+			if sideContents[i], err = w.content(m, sides[i]); err != nil {
 				return err
 			}
 		}

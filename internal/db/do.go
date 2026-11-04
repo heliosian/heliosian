@@ -325,7 +325,7 @@ func storeFetched(r *http.Request, s *Store, pics *Pictures, actor access.Actor,
 	whole := m.whole(env)
 	_, err = s.Transact(r.Context(), actor, func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
-		held, err := stageContent(s.In(tx), w, map[string]string{}, kept)
+		held, err := w.content(s.In(tx), kept)
 		if err != nil {
 			return err
 		}
@@ -564,7 +564,7 @@ func writeUpload(ctx context.Context, s *Store, pics *Pictures, actor access.Act
 	var ids []string
 	_, err = s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		w := &pendingWrites{}
-		content, err := stageContent(s.In(tx), w, map[string]string{}, kept)
+		content, err := w.content(s.In(tx), kept)
 		if err != nil {
 			return err
 		}

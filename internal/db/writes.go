@@ -129,7 +129,8 @@ func writeChecked(ctx context.Context, s *Store, actor access.Actor, env Env, b 
 }
 
 type pendingWrites struct {
-	edits []Edit
+	edits    []Edit
+	contents map[[2]string]string
 }
 
 func (w *pendingWrites) add(e Edit) string {
@@ -149,6 +150,26 @@ func (w *pendingWrites) add(e Edit) string {
 func (w *pendingWrites) server(e Edit) string {
 	e.server = true
 	return w.add(e)
+}
+
+func (w *pendingWrites) content(m *Model, b madeBytes) (string, error) {
+	if w.contents == nil {
+		w.contents = map[[2]string]string{}
+	}
+	key := [2]string{b.hash, b.mime}
+	if id, ok := w.contents[key]; ok {
+		return id, nil
+	}
+	if row, ok := m.Table("CONTENT").Find(b.hash, b.mime); ok {
+		w.contents[key] = row["id"]
+		return row["id"], nil
+	}
+	if !b.written {
+		return "", fmt.Errorf("the content row for %s was swept while its bytes were being stored again; try again", b.hash)
+	}
+	id := w.server(b.insert(""))
+	w.contents[key] = id
+	return id, nil
 }
 
 func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label string, whole bool) ([]string, error) {

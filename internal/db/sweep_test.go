@@ -137,7 +137,7 @@ func TestARowSweptWhileItsBytesAreReusedIsNotMadeAgain(t *testing.T) {
 	apply(t, s, []Edit{{Delete: ids[0]}})
 	stage := func(b madeBytes) error {
 		_, err := s.Transact(ctx, access.System("test"), func(tx *store.Tx[Model]) error {
-			_, err := stageContent(s.In(tx), &pendingWrites{}, map[string]string{}, b)
+			_, err := (&pendingWrites{}).content(s.In(tx), b)
 			return err
 		})
 		return err

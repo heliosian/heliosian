@@ -211,23 +211,6 @@ func (m *Model) htmlAlongside(doc store.Row) bool {
 	})
 }
 
-func stageContent(m *Model, w *pendingWrites, held map[string]string, b madeBytes) (string, error) {
-	key := b.hash + "\x00" + b.mime
-	if id, ok := held[key]; ok {
-		return id, nil
-	}
-	if row, ok := m.Table("CONTENT").Find(b.hash, b.mime); ok {
-		held[key] = row["id"]
-		return row["id"], nil
-	}
-	if !b.written {
-		return "", fmt.Errorf("the content row for %s was swept while its bytes were being stored again; try again", b.hash)
-	}
-	id := w.server(b.insert(""))
-	held[key] = id
-	return id, nil
-}
-
 func (x *Extractor) extract(id string) (int, error) {
 	ctx := context.Background()
 	m := x.s.Model()
@@ -286,11 +269,10 @@ func (x *Extractor) extract(id string) (int, error) {
 			return nil
 		}
 		w := &pendingWrites{}
-		contents := map[string]string{}
 		for i, child := range children {
 			row := map[string]any{"parent": id, "relation": child.relation, "order": orders[i]}
 			if child.body != nil {
-				content, err := stageContent(m, w, contents, kept[i])
+				content, err := w.content(m, kept[i])
 				if err != nil {
 					return err
 				}

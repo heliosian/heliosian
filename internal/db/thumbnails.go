@@ -161,7 +161,7 @@ func setThumbnail(ctx context.Context, s *Store, actor access.Actor, env Env, do
 		w := &pendingWrites{}
 		set := map[string]any{"thumbnailed": time.Now().In(School).Format(cells.StampFormat)}
 		if kept.hash != "" {
-			id, err := stageContent(m, w, map[string]string{}, kept)
+			id, err := w.content(m, kept)
 			if err != nil {
 				return err
 			}
