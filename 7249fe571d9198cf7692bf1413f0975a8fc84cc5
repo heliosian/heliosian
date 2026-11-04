@@ -1,0 +1,23 @@
+# Remove redundant query compiler state
+
+byre task tskqpobdIagQS4, "Query state cleanup", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskqpobdIagQS4 in byre (read_task_events with task_id tskqpobdIagQS4).
+
+## Summary
+
+Audited the codebase at 64d444f for structural simplicity and made one focused cleanup in internal/db/query.go.
+
+Before: query scans stored a constant flag derived from their outer-row dependency list, while selects carried an unused permission field and independently computed the scan's permission setting.
+Now: query caching and select fusion derive independence directly from the dependency list; select evaluation reads the scan's existing permission setting. Two redundant fields and a duplicate assignment are removed without intended changes to query results or permissions.
+
+Two focused groups of existing tests passed, covering correlation, fusion, execution, permissions and concurrent reads. Repository-wide go vet, formatting and diff checks passed; review found no issues. The requested merge from main reported already up to date, with no conflicts.
+
+Kept calendar eligibility and home-app routing separate because they serve distinct purposes. Kept storage implementations and worker lifecycles with justified production, sample and snapshot uses. No schema changes, production writes, new tests, flags, dependencies or compatibility paths.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+The query compiler stored two flags that repeated state it already had. `scan.constant` was set once, in `keyed`, to whether the scan names no outer row, and `selectSpec.guarded` copied the inner scan's `guarded` bit (the field itself was never read; the select closure used a local of the same value). Both are gone. Memoization, whole-table fusion, the select's "independent of the row" result, and the cell read now use `len(scan.outer) == 0` and `scan.guarded`. `outer` is assigned only in `keyed`, `guarded` only when the scan is built as `!compiler.policy`, and `policy` is fixed for the compiler, so the derived checks match the old flags.
+
+No significant findings.
