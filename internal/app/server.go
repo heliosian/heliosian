@@ -69,6 +69,21 @@ func secure(domain string, next http.Handler) http.Handler {
 	})
 }
 
+func canonical(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := r.URL.Path
+		clean := path.Clean(p)
+		if strings.HasSuffix(p, "/") && clean != "/" {
+			clean += "/"
+		}
+		if p != clean {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func cacheControl(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/brand/") {
@@ -170,7 +185,7 @@ func Server(domain string, apps, aliased map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: listenAddress(domain), Handler: compress(secure(domain, cacheControl(route(domain, apps, aliased)))), Protocols: protocols}
+	return &http.Server{Addr: listenAddress(domain), Handler: compress(secure(domain, canonical(cacheControl(route(domain, apps, aliased))))), Protocols: protocols}
 }
 
 func Serve(server *http.Server, s *db.Store) {

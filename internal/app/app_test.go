@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"heliosian/internal/auth"
 )
 
 func get(t *testing.T, handler http.Handler, host, path string) *httptest.ResponseRecorder {
@@ -265,6 +267,26 @@ func TestReportSink(t *testing.T) {
 	}
 	if rec := get(t, handler, "who.heliosian.com", "/csp-report"); rec.Code != http.StatusNotFound {
 		t.Errorf("GET report path: got %d, want 404", rec.Code)
+	}
+}
+
+func TestAnUncleanPathIsRefusedBeforeAnythingReadsIt(t *testing.T) {
+	t.Chdir("../..")
+	gate := auth.New(Domain, "client", []byte("key"), auth.Login{Title: "Helios Who?"}, func(string) bool { return true }, nil, nil)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /people", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	who := Public("who", gate.Fixed("parent@heliosschool.org", Files("who", mux)))
+	handler := Server(Domain, map[string]http.Handler{"who": who}, nil).Handler
+	for _, p := range []string{"/open/../app.js", "/open/%2e%2e/app.js", "/open/..%2fapp.js", "/brand/../app.js", "/open//../people", "/./people", "/people//", "/open/./x"} {
+		rec := get(t, handler, "who.heliosian.com", p)
+		if rec.Code != http.StatusNotFound || strings.Contains(rec.Header().Get("Content-Type"), "javascript") {
+			t.Errorf("%s: got %d %s, want 404", p, rec.Code, rec.Header().Get("Content-Type"))
+		}
+	}
+	for p, want := range map[string]int{"/people": http.StatusTeapot, "/people/": http.StatusNotFound, "/open/share/x.png": http.StatusNotFound, "/theme.js": http.StatusOK, "/app.js": http.StatusOK, "/": http.StatusNotFound} {
+		if rec := get(t, handler, "who.heliosian.com", p); rec.Code != want {
+			t.Errorf("%s: got %d, want %d", p, rec.Code, want)
+		}
 	}
 }
 
