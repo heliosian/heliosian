@@ -1,0 +1,131 @@
+# Prevent exponential expansion of group membership rules
+
+byre task tskub6FSoUiMwK, "Group rule security", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskub6FSoUiMwK in byre (read_task_events with task_id tskub6FSoUiMwK).
+
+## Summary
+
+Audited the codebase against its documented trust model, including authentication, authorization, system writes, public routes, invitations, content access, webhooks and external fetches. Found and fixed a high-severity resource-exhaustion issue reachable through ordinary signed-in member writes: overlapping, acyclic group rules caused repeated recursive expansion outside the query visit budget.
+
+Before: overlapping group rules repeatedly recalculated shared groups, producing exponential CPU and allocation work during membership queries, permission checks, warming and previews.
+Now: one membership resolver per calculation reuses completed group results across recursive expansion and draft rules, preserving membership reasons, permissions and dependency tracking.
+
+The 59-write, 18-level reproduction allocated 371 MB before the fix and about 22 KB afterward; local resolution time fell from 367 ms to 53 microseconds. Allocation growth is the primary evidence. The fix uses temporary result maps and introduces no rule limits, policy change, flags, schema changes or production test hooks. Regression tests create and query the graph as an ordinary member and check membership updates after base membership changes.
+
+All 467 database tests passed in two disjoint runs under the required 30-second cap; the combined run exceeded that cap. Auth, MCP, tools and Ask tests, go vet ./..., and diff checks passed. Independent review completed with zero findings. Main merged automatically without conflicts or manual resolutions; the two security regressions, draft preview and randomized effective-membership invalidation test passed again after integration. The merge was left uncommitted for byre to conclude.
+
+Deliberately preserved public share previews and privileged-administrator request logging as documented trusted behavior. Other investigated concerns did not establish another high-value fix. No production writes, deployment or GitHub issue creation occurred.
+
+## Handoffs
+
+### Session sesxiScTs2rHL0, 2026-11-04T05:31:34Z
+
+This task is complete and has a current **ready-for-merge proposal**. No implementation or verification remains. Wait for Ian/byre’s next instruction; do not merge, deploy, commit, push or repeat tests without a reason.
+
+Task: **Group rule security**, project **heliosian**.
+- Task ID: `tskub6FSoUiMwK`
+- Project ID: `prjAPohz7r9P6C`
+- Worktree: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskub6FSoUiMwK`
+- Branch: `byre/tskub6FSoUiMwK`
+- Audited base: `91899ddc9c5c18d60ff15f1384bd428ff3fa4a68`
+- Workflow: Audit, stage Security Audit.
+- Merge title: `Prevent exponential expansion of group membership rules`
+- Latest saved overview generation: **6**. Always reread task details before changing it.
+
+Goal and scope:
+Audit the entire codebase against its documented trust model, substantiate reachable security problems, and fix the few highest-value issues. Work was performed solo, as explicitly required. Read `AGENTS.md`, architecture/trust documentation and prior security findings. Investigated authentication/session/OAuth boundaries, host routing, app-admin grants, system writes, public invitations/feeds, content/blob permissions, webhook authentication, fetch/upload paths, browser rendering and paid-operation limits.
+
+One high-severity issue was found and fixed: **exponential group membership expansion**. An ordinary signed-in member can use normal `POST /api/q` writes to create groups they manage with overlapping rules. A valid acyclic graph with two rules per level targeting the preceding group repeatedly recalculated each shared subtree. Queries, permission checks, background membership warming and rule previews could incur this work; it is outside the query visit budget. This gives an ordinary member a practical CPU/memory exhaustion path affecting all apps.
+
+Before: overlapping group rules recursively recalculated shared groups, causing exponential allocation and CPU work.
+Now: each calculation uses a shared membership resolver that reuses completed group results, preserving memberships, reasons, permissions and dependency tracking.
+
+Measurements:
+- Depth 6 baseline: **959 allocations**.
+- Depth 12 baseline: **61,442 allocations**, demonstrating roughly 64-fold growth for doubled depth.
+- Fixed depth 6: **80 allocations**.
+- Fixed depth 12: **152 allocations**.
+- Larger reproduction: normal member creates a valid **59-write, 18-level graph**.
+  - Baseline single resolution: **3,932,165 allocations**, **371,197,576 bytes**, **367.481 ms** locally.
+  - Fixed single resolution: **222 allocations**, **21,960 bytes**, **53.041 µs** locally.
+- Timings are local illustrations; the allocation growth and reduction are the primary evidence.
+
+Implementation:
+1. `internal/db/effective.go`
+   - Introduced `membershipResolver` with model, aggregate dependency `reads`, and a map of completed group results.
+   - Moved recursive `resolve` and `selectRule` onto it.
+   - Target, within and descendant expansion all use the same resolver.
+   - `effectiveOf` creates a resolver per calculation.
+   - Shared results are copied into selector sets before narrowing, so cached membership maps are not modified.
+   - Dependency reads remain aggregated across the entire traversal; existing model cache invalidation stays intact.
+2. `internal/db/draft.go`
+   - `draftMembers` creates one resolver and shares it across draft rules, covering previews and description paths.
+3. `internal/db/rulework_security_test.go`
+   - `repeatedRuleGroups` creates the graph through ordinary member API writes.
+   - `TestRepeatedGroupRulesDoNotMultiplyMembershipWork` is the allocation-growth regression; it failed before the fix.
+   - `TestMembersCanQueryRepeatedGroupRules` queries through the ordinary API and checks direct rule reasons, then removes/adds base memberships and verifies outer membership updates.
+
+No new permission policy, input limit, refusal, flag, fallback, production test hook, schema change or dependency was introduced. Cost/tradeoff: temporary result maps for the duration of one membership calculation.
+
+Verification complete:
+- All **467 top-level database tests passed**, split into two disjoint sets, each under the required `timeout 30`:
+  - First group: **14.679 seconds**
+  - Second group: **17.220 seconds**
+- Existing randomized effective-membership cache invalidation tests and draft tests passed.
+- `timeout 30 go test ./internal/auth ./internal/mcp ./internal/tools ./internal/ask --count=1` passed.
+- `go vet ./...` passed.
+- `git diff --check` passed.
+- Latest review: **snapshot 1, one completed review, zero findings, no review failure or review running**.
+- Worktree was clean when checked after review.
+- Byre snapshotted/committed automatically. No manual commit/push was performed.
+
+Verification dead end and recovery:
+- Two aggregate `timeout 30 go test ./internal/db --count=1` attempts exceeded the cap.
+- Collected per-test JSON rather than guessing; the second attempt completed 430 top-level tests before timing out.
+- A mail test seen active in the log (`TestQueuedGuestMailStopsAfterRemoval`) passed alone in **0.733 seconds**; no mail fix was needed.
+- Split all 467 tests by alternating names from `go test --list '^Test'` and ran both sets under separate 30-second caps. Nothing was skipped.
+- Do not describe the full aggregate run as passing; all tests passed in the two bounded runs.
+
+Temporary investigation material is ignored under `local/security-audit/`:
+- `db-tests.json`, `db-test-names.txt`, `db-test-pattern-0.txt`, `db-test-pattern-1.txt`
+- `db-tests-0.txt`, `db-tests-1.txt`, `mail-test.txt`
+- Baseline/fixed measurement source and overlays: `before-effective.go`, `before-draft.go`, `measure_test.go`, `before.json`, `after.json`, `before-measure.txt`, `after-measure.txt`.
+- Measurements used Go `--overlay` to compile the base source and fixed source with the same temporary probe; tracked production files were not reverted for measurement.
+These files are not deliverables and are not committed.
+
+Other audit considerations deliberately left alone:
+- Public share previews are intentional, including invite-only and pending events, parties and activities. `AGENTS.md` explicitly settles this; prior security issue 32 was wontfix.
+- Full request URLs/tokens in Cloud project logs are deliberately accepted: only privileged administrators have those logs and already have stronger access. Prior issue 61 was closed invalid.
+- Investigated arbitrary fetch and other possible boundary concerns, but did not establish another issue worth fixing. No speculative hardening or policy changes were added.
+- No production writes or deployment occurred.
+- No GitHub issue was filed; project instructions say not to create issues unless Ian asks.
+
+Byre state/actions already completed:
+- `finish_stage` was called successfully with a detailed security report.
+- `set_task_summary` saved the full result and validation.
+- After review completion, `ready_for_merge` was called successfully, using generation 5; resulting generation is **6**.
+- Current overview covers the whole task, measured exploit, resolver tradeoff, verification, clean review and deployment being out of scope.
+- Ready proposal currently stands. Do not call `set_overview` casually: it withdraws the proposal.
+- The regression file was shown in byre’s Files view on Ian’s most recently active Mac, `roc` (`clijWRD3wJgBIR`), without switching his selected task.
+- Latest final to Ian: “Ready to merge: review found no issues; all 467 database tests and vet pass.”
+- Then byre requested compaction at 60%; `compact_self` was called. This handoff is solely for that compaction, not new work.
+
+Operating rules:
+- Ask every human question through `byre__ask_human`, never prose; end the turn after asking.
+- Do not ask permission again for already authorized implementation/testing.
+- Byre handles commits, merges and pushes. No manual commit, push, branch changes or git maintenance.
+- Tests always run under `timeout 30`; use `go vet` rather than `go build`.
+- No new code comments except genuinely subtle logic; none were added here.
+- Any prose describing behavior changes must use adjacent `Before:` / `Now:` lines. Overview tools have their own separate `changes` field.
+- End normal turns with a concise final. Ready-for-merge turns end with one line.
+- No subagents: this audit explicitly required all work in this session.
+- Read applicable `AGENTS.md` if new work arises; the user supplied it in the original task and it is present at repository root.
+- No open questions or blockers.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+Memoizes effective group memberships while resolving a rule calculation, so repeated references to the same target group no longer repeat its entire rule chain. The draft membership preview uses the same resolver. New tests cover repeated rule chains, query results, and invalidation after membership edits.
+
+No significant findings.
