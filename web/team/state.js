@@ -68,9 +68,11 @@ export async function loadModel() {
   const members = by(answers.members, 'MEMBER', 'group');
   const managers = by(answers.managers, 'MEMBER', 'group');
   const said = {};
+  const answerRows = {};
   for (const [answer, word] of [[answers.yes, 'Yes'], [answers.no, 'No']]) {
     for (const m of rowsOf(answer, 'MEMBER')) {
       said[m.group + '/' + m.person] = word;
+      (answerRows[m.group] = answerRows[m.group] || []).push(m);
     }
   }
   const offers = by(answers.offers, 'MEMBER', 'group');
@@ -128,6 +130,7 @@ export async function loadModel() {
       continue;
     }
     const rows = members[g.id] || [];
+    const inactiveMembers = rows.filter(m => m.member !== 'yes' && m.invited !== 'yes');
     const taken = rows.filter(m => m.member === 'yes').length;
     const spots = Number(g.capacity) || 0;
     const chairs = new Set((managers[g.managed_by] || []).map(m => m.person));
@@ -140,6 +143,7 @@ export async function loadModel() {
       position: led.has(m.person) || chairs.has(m.person) ? 'Co-Chair' : offered.has(m.person) ? 'Open to Co-Chair' : 'Volunteer',
       offer: offered.get(m.person) || '', lead: led.get(m.person) || '',
       note: m.note || '', added: m.added || '', addedBy: m.added_by ? emailOf({id: m.added_by}) : '', addedByName: nameOf(m.added_by),
+      invited: m.invited || '', opened: m.opened || '',
       rsvp: said[g.rsvp_yes + '/' + m.person] || said[g.rsvp_no + '/' + m.person] || (g.rsvp_yes ? 'No RSVP yet' : ''),
       can: {delete: runs.has(g.id) || m.person === viewer.id || (dir.families[m.person] || []).some(f => (dir.families[viewer.id] || []).includes(f))},
     }));
@@ -159,9 +163,10 @@ export async function loadModel() {
       priority: g.priority === 'Yes', prettyId: g.slug || '', added: g.added || '', addedBy: nameOf(g.added_by),
       reachesUnder: reaching.has(g.id), path: g.path,
       canEdit: runs.has(g.id), runs: runs.has(g.id), children: [], volunteers, managerRows: managers[g.managed_by] || [],
-      offersOpen: Boolean(g.chair_offers), offerRows, leadRows: leads[g.leads] || [],
+      offersOpen: Boolean(g.chair_offers), offerRows, leadRows: leads[g.leads] || [], inactiveMembers,
+      yesRows: answerRows[g.rsvp_yes] || [], noRows: answerRows[g.rsvp_no] || [],
       can: {
-        edit: runs.has(g.id), delete: runs.has(g.id) && !rows.length,
+        edit: runs.has(g.id), delete: runs.has(g.id) && inactiveMembers.length === rows.length,
         add: runs.has(g.id) || g.adding === 'anyone' || g.adding === 'approval',
         'sign-up': (g.join === 'direct' || g.join === 'others') && status === 'Open',
       },

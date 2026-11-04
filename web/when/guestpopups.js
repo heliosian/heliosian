@@ -1,4 +1,4 @@
-import {el, svg, button, toast, longToast} from '/elements.js';
+import {el, svg, link, button, toast, longToast} from '/elements.js';
 import {popup, closeModal, closeLayers} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {openPersonCard, doneButton} from '/personcard.js';
@@ -147,7 +147,11 @@ export function openGuestCard(e, p, view, refresh) {
       }
     }));
   }
-  if (p.invited || p.key === me().id) {
+  if (p.volunteer) {
+    const hint = el('div', 'hint', 'Volunteers stay on the guest list. Manage the sign-up in ');
+    hint.append(link(view.group.team_href, '', 'HCA-Team'), '.');
+    links.append(hint);
+  } else if (p.invited || p.key === me().id) {
     links.append(button('Take off the list', 'trash', 'link-button danger', async () => {
       if (!confirm(`Take ${p.name || p.email} off the list? Their answer goes with them${p.byRule ? ', and the group will not add them back' : ''}.`)) {
         return;

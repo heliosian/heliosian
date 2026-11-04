@@ -110,7 +110,7 @@ function memberRow(e, view, r, refresh) {
     lines: [r.guestOf ? `Guest of ${r.guestOfName}` : r.invitedBy ? `Invited by ${r.invitedBy}${r.invitedAt ? ' on ' + stamp(r.invitedAt) : ''}` : ''],
     gradeColors: state.model.gradeColors,
   }), bigChoices(e, r, refresh));
-  if (r.guestOf && r.mine) {
+  if (r.guestOf && r.mine && !r.volunteer) {
     row.append(removeGuestButton(e, view, r, 'invite-remove rsvp-person-remove', refresh));
   }
   return row;
@@ -171,7 +171,7 @@ export function rsvpRow(e, view, refresh) {
     } else {
       line.append(said);
     }
-    if (r.guestOf && r.mine) {
+    if (r.guestOf && r.mine && !r.volunteer) {
       line.append(removeGuestButton(e, view, r, 'invite-remove rsvp-row-remove', refresh));
     }
     body.append(line);
@@ -631,10 +631,11 @@ function paintGuests(e, view, panel, again) {
     chip: () => null,
     onExclude: takeOff,
     onRemove: takeOff,
+    canRemove: m => !m.volunteer,
     gradeColors: state.model.gradeColors,
   });
   const reasons = r => r.guestOf ? [{guestOf: r.guestOfName}] : r.byHand ? [{added: true}] : r.byRule ? [{rule: view.rules.findIndex(x => 'group:rule ' + x.order === r.via)}] : [{added: true}];
-  const shown = view.list.filter(r => r.invited).map(r => ({person: r.key, email: r.email, name: r.name, photoUrl: r.photoUrl, words: r.words, grade: r.grade, outside: r.outside, reasons: reasons(r)}));
+  const shown = view.list.filter(r => r.invited).map(r => ({person: r.key, email: r.email, name: r.name, photoUrl: r.photoUrl, words: r.words, grade: r.grade, outside: r.outside, volunteer: r.volunteer, reasons: reasons(r)}));
   members.show({members: shown, rules: view.rules});
   panel.replaceChildren(made.card, members.card);
 }

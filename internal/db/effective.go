@@ -338,8 +338,16 @@ func (m *Model) effectiveOf(group string, r reads) []store.Row {
 func (m *Model) resolve(group string, r reads) map[string][]string {
 	out := map[string][]string{}
 	r[readKey{readGroup, group}] = true
+	g, _ := m.Table("GROUP").Get(group)
+	activity := g["kind"] == "activity"
 	excluded := map[string]bool{}
 	for _, row := range m.Shown("MEMBER").Referencing("group", group) {
+		if activity && row["invited"] == "yes" {
+			out[row["person"]] = append(out[row["person"]], "invited")
+		}
+		if activity && row["invited"] == "excluded" && memberAs(row) != "yes" {
+			excluded[row["person"]] = true
+		}
 		switch memberAs(row) {
 		case "excluded":
 			excluded[row["person"]] = true

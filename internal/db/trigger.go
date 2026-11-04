@@ -35,6 +35,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "GROUP", fire: answerSharing},
 	{table: "GROUP", fire: hiddenGone},
 	{table: "MEMBER", fire: oneAnswer},
+	{table: "MEMBER", fire: activityGuestExcluded},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
 	{table: "MESSAGE", fire: postDocument},
 	{table: "DOCUMENT", fire: postSentTo},
@@ -185,6 +186,9 @@ func oneAnswer(m *Model, c Change) ([]Edit, error) {
 	writes := []Edit{}
 	for _, pair := range [][2]string{{"rsvp_yes", "rsvp_no"}, {"rsvp_no", "rsvp_yes"}} {
 		for _, answered := range groups.Referencing(pair[0], c.New["group"]) {
+			if answered["kind"] == "activity" && m.keptOff(answered, c.New["person"]) {
+				return nil, access.Forbidden("a person kept off this activity cannot answer its invitation")
+			}
 			other := answered[pair[1]]
 			if other == "" {
 				continue
@@ -195,6 +199,17 @@ func oneAnswer(m *Model, c Change) ([]Edit, error) {
 		}
 	}
 	return writes, nil
+}
+
+func activityGuestExcluded(m *Model, c Change) ([]Edit, error) {
+	if c.New == nil {
+		return nil, nil
+	}
+	g, _ := m.Table("GROUP").Get(c.New["group"])
+	if g["kind"] != "activity" || !m.keptOff(g, c.New["person"]) {
+		return nil, nil
+	}
+	return m.clearAnswerEdits(g, c.New["person"]), nil
 }
 
 func servingNames(m *Model, c Change) ([]Edit, error) {

@@ -494,6 +494,9 @@ var Tables = []Table{
 				v("yes", "in the group by name: a ticket on a party, a sign-up on an activity, on the guest list of an event, a place on a party's waitlist, in it for any other kind"),
 				v("cancelled", "gave it up, kept for the books: a ticket given back"),
 				v("excluded", "kept out even though a rule would put them in: someone a manager keeps off an email list, or someone taken off a group invite")).about("Whether they are in the group by name. Only yes makes an effective member."),
+			enum("invited",
+				v("yes", "on an activity's guest list without a volunteer commitment"),
+				v("excluded", "off an activity's guest list even when a rule includes them, unless they are signed up")).about("An activity's guest-list override, independent of member. Blank follows membership and rules; a volunteer remains on the list."),
 			col("opened", Moment).about("When they first opened the invitation."),
 			ref("guest_of", "PERSON").about("Who bought or brought them: the buyer of a ticket bought for someone else, the member who brought a guest, who put them on a waitlist."),
 			col("note", Text).about("Their note on it."),
@@ -756,12 +759,12 @@ var Tables = []Table{
 	{
 		Name:        "EFFECTIVE_MEMBER",
 		Generated:   true,
-		Description: "Who is in a group, and why: its member=yes rows, plus everyone its rules take in, less whoever is excluded or deactivated.",
+		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less whoever is excluded or deactivated.",
 		Columns: []Column{
 			ident(EffectiveMemberPrefix),
 			ref("group", "GROUP").about("The group."),
 			ref("person", "PERSON").about("The person."),
-			col("reasons", Text).about("Why they are in: member, or rule and the rule's order."),
+			col("reasons", Text).about("Why they are in: member, invited, or rule and the rule's order."),
 		},
 	},
 	{

@@ -41,6 +41,9 @@ func (iv *Invitations) extCopy(r *http.Request) (extCopy, error) {
 	if !ok {
 		return extCopy{}, access.Missing("that invitation is not here")
 	}
+	if !iv.s.Model().onList(g, rcp["person"]) {
+		return extCopy{}, access.Missing("that invitation is not here")
+	}
 	return extCopy{recipient: rcp, group: g, person: rcp["person"]}, nil
 }
 
@@ -86,7 +89,7 @@ func (iv *Invitations) extFlyer(w http.ResponseWriter, r *http.Request) {
 func (m *Model) broughtGuests(g store.Row, person string) []string {
 	out := []string{}
 	for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
-		if row["guest_of"] == person && memberAs(row) == "yes" {
+		if row["guest_of"] == person && m.effectivelyIn(g["id"], row["person"]) {
 			out = append(out, row["person"])
 		}
 	}
@@ -217,10 +220,21 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	edits = append(edits, guestMembership(c.group, c.person, Edit{Insert: "MEMBER", Row: map[string]any{"group": c.group["id"], "person": guest, "member": "yes", "guest_of": c.person, "added_by": c.person, "added": stamp(at)}}))
+	join := guestMembership(c.group, c.person, Edit{Insert: "MEMBER", Row: map[string]any{"group": c.group["id"], "person": guest, "member": "yes", "guest_of": c.person, "added_by": c.person, "added": stamp(at)}})
+	if row, ok := m.Table("MEMBER").Find(c.group["id"], guest); ok && c.group["kind"] == "activity" {
+		ownGuest := row["guest_of"] == c.person
+		if memberAs(row) == "excluded" || row["invited"] == "excluded" && !ownGuest {
+			serve.Error(w, r, access.Forbidden("the hosts kept this person off the guest list"))
+			return
+		}
+		join.Set, join.Insert, join.Cells, join.Row = row["id"], "", join.Row, nil
+		delete(join.Cells, "group")
+		delete(join.Cells, "person")
+	}
+	edits = append(edits, join)
 	actor := access.Actor{Email: m.addressOf(c.person)}
 	sending := []string{}
-	if address != "" {
+	if address != "" && m.copiesOf(c.group["id"])[guest] == nil {
 		edits = append(edits, invitationEdits(c.group["id"], c.person, "invitation", []string{guest}, at)...)
 		sending = append(sending, guest)
 	}
@@ -252,7 +266,14 @@ func (iv *Invitations) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, access.Missing("no guest of yours %s", body.Key))
 		return
 	}
+	if c.group["kind"] == "activity" && memberAs(row) == "yes" {
+		serve.Error(w, r, access.Forbidden("this guest is a volunteer; cancel their sign-up in hca-team to leave"))
+		return
+	}
 	edits := append([]Edit{guestMembership(c.group, c.person, Edit{Delete: row["id"]})}, m.answerEdits(c.group, body.Key, "", "", time.Now())...)
+	if c.group["kind"] == "activity" {
+		edits = []Edit{{Set: row["id"], Cells: map[string]any{"invited": "excluded"}}}
+	}
 	if _, err := iv.writeGuests(r.Context(), access.Actor{Email: m.addressOf(c.person)}, edits, c.group["id"], c.person, nil, 0); err != nil {
 		serve.Error(w, r, err)
 		return
@@ -338,6 +359,11 @@ func (iv *Invitations) replies(w http.ResponseWriter, r *http.Request) {
 	msg, _ := m.Table("MESSAGE").Get(rcp["message"])
 	g, ok := m.Table("GROUP").Get(msg["group"])
 	if !ok {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if m.keptOff(g, person) {
+		log.InfoContext(r.Context(), "invitations: reply from someone taken off the list", "person", person, "group", g["id"])
 		w.WriteHeader(http.StatusOK)
 		return
 	}

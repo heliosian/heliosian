@@ -4,6 +4,8 @@ The email lists are mail lists in the data model (`loop.md`, Entities; `docs/dat
 
 **Saving writes what changed**, in the data model, in one `POST /api/q` batch: the cells of the email list's `GROUP` that changed; its `RULE` rows, all replaced in the editor's order when any rule changed, since a rule's only settable cell is its `order`; its hand additions and kept-off people as `MEMBER` rows inserted, set or deleted by person; and its `ALIAS` rows by alias. Making one writes its managers group, the email list naming it in `managed_by`, its rules, hand additions and aliases in one batch. Anyone from outside the directory goes on it in the same batch: `/api/do/person-at` finds whoever already holds their address, and a new guest `PERSON` and `PERSON_EMAIL` are inserted for an address nobody holds. Closing one sets its `status` to closed: it takes no mail and leaves every page, and its posts and their copies stay.
 
+An activity's editor changes invitation state, not volunteer commitments. It keeps `member`, `invited`, `guest_of` and `opened` when unchanged; excluding a guest sets `invited=excluded` and clears the bringer. Additions and restorations go through `/api/do/add-guests` after the batch, using the same metadata and invitation-copy rules as When. A failed addition names the guests not added and reports any other edits already saved; the editor refreshes its saved baseline for a retry. Volunteers have no guest-removal control and manage their sign-up in HCA-Team. Draft membership accepts inactive rows without adding them, and applies invitation exclusions with the same precedence as effective membership.
+
 ## What stays keyed by the name
 
 The name is the email list's address, and what leaves the server in mail carries the name rather than the ID. A manager may change the name (`GROUP.slug`), and what carries the old one then reaches the list only while an `ALIAS` row keeps it:
@@ -14,7 +16,7 @@ The email list's page, `/g/<name>`, is found by its name, any alias or its ID (`
 
 ## The membership
 
-An email list's members are its effective members (`docs/datamodel.md`, Effective members): its `MEMBER` rows with `member=yes`, everyone its rules select, less its exclude rules, everyone with `member=excluded` and everyone deactivated. Someone in its unsubscribed group stays a member and gets no copies (Unsubscribe, below).
+An email list's members are its effective members (`docs/datamodel.md`, Effective members): its `MEMBER` rows with `member=yes`, activity guests with `invited=yes`, and everyone its rules select, less its exclude rules, everyone with `member=excluded` and everyone deactivated. An activity's `invited=excluded` also keeps someone off unless they are a volunteer (`member=yes`). Someone in its unsubscribed group stays a member and gets no copies (Unsubscribe, below).
 
 ## Mail
 

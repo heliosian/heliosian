@@ -250,7 +250,7 @@ export async function setChair(node, volunteer, on) {
 
 function removeSignUpEdits(node, volunteer) {
   return [
-    {delete: volunteer.id},
+    volunteer.invited || volunteer.opened ? {set: volunteer.id, cells: {member: ''}} : {delete: volunteer.id},
     ...(volunteer.lead && node.canEdit ? [{delete: volunteer.lead}] : []),
     ...(volunteer.offer ? [{delete: volunteer.offer}] : []),
     ...(volunteer.position === 'Co-Chair' && node.canEdit ? unchairEdits(node, volunteer.person) : []),
@@ -261,16 +261,17 @@ export async function removeSignUp(node, volunteer) {
   await write(removeSignUpEdits(node, volunteer));
 }
 
-function closeOffersEdits(node) {
-  if (!node.row.chair_offers) {
+function deleteMemberGroup(node, column, rows) {
+  const id = node.row[column];
+  if (!id) {
     return [];
   }
-  return [...node.offerRows.map(m => ({delete: m.id})), {set: node.id, cells: {chair_offers: ''}}, {delete: node.row.chair_offers}];
+  return [...rows.map(m => ({delete: m.id})), {set: node.id, cells: {[column]: ''}}, {delete: id}];
 }
 
 export async function setOffers(node, open) {
   if (!open) {
-    await write(closeOffersEdits(node));
+    await write(deleteMemberGroup(node, 'chair_offers', node.offerRows));
     return;
   }
   if (node.row.chair_offers) {
@@ -285,15 +286,15 @@ export async function setOffers(node, open) {
   ]);
 }
 
-function dropLeadsEdits(node) {
-  if (!node.row.leads) {
-    return [];
-  }
-  return [...node.leadRows.map(m => ({delete: m.id})), {set: node.id, cells: {leads: ''}}, {delete: node.row.leads}];
-}
-
 export async function deleteActivity(node) {
-  await write([...closeOffersEdits(node), ...dropLeadsEdits(node), ...(node.image ? [{delete: node.image}] : []), {delete: node.id}]);
+  await write([
+    ...deleteMemberGroup(node, 'chair_offers', node.offerRows),
+    ...deleteMemberGroup(node, 'leads', node.leadRows),
+    ...deleteMemberGroup(node, 'rsvp_yes', node.yesRows),
+    ...deleteMemberGroup(node, 'rsvp_no', node.noRows),
+    ...node.inactiveMembers.map(m => ({delete: m.id})),
+    ...(node.image ? [{delete: node.image}] : []), {delete: node.id},
+  ]);
 }
 
 export async function reorder(list, id, before) {

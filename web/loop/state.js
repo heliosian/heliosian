@@ -65,6 +65,9 @@ const reasonOf = (rules, word) => {
   if (word === 'member') {
     return {added: true};
   }
+  if (word === 'invited') {
+    return {invited: true};
+  }
   const order = word.replace(/^rule /, '');
   const rule = rules.findIndex(r => r.order === order);
   return rule < 0 ? null : {rule};

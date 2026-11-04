@@ -27,8 +27,9 @@ type draftRule struct {
 }
 
 type draftMember struct {
-	Person string `json:"person"`
-	Member string `json:"member"`
+	Person  string `json:"person"`
+	Member  string `json:"member"`
+	Invited string `json:"invited"`
 }
 
 type groupDraft struct {
@@ -40,8 +41,9 @@ type groupDraft struct {
 }
 
 type draftReason struct {
-	Rule  *int `json:"rule,omitempty"`
-	Added bool `json:"added,omitempty"`
+	Rule    *int `json:"rule,omitempty"`
+	Added   bool `json:"added,omitempty"`
+	Invited bool `json:"invited,omitempty"`
 }
 
 type draftPerson struct {
@@ -75,6 +77,7 @@ func (m *Model) visibleIDs(ctx context.Context, env Env, table, condition string
 }
 
 func (m *Model) checkDraft(ctx context.Context, env Env, d groupDraft) error {
+	g, _ := m.Table("GROUP").Get(d.List)
 	if d.List != "" {
 		runs, err := m.visibleIDs(ctx, env, "GROUP", " (runs_list @r)", []string{d.List})
 		if err != nil {
@@ -96,8 +99,11 @@ func (m *Model) checkDraft(ctx context.Context, env Env, d groupDraft) error {
 		}
 	}
 	for _, mem := range d.Members {
-		if mem.Member != "yes" && mem.Member != "excluded" {
-			return access.Invalid("a member is yes or excluded, not %q", mem.Member)
+		if !slices.Contains([]string{"", "yes", "excluded", "cancelled"}, mem.Member) {
+			return access.Invalid("invalid membership state %q", mem.Member)
+		}
+		if mem.Invited != "" && (g["kind"] != "activity" || !slices.Contains([]string{"yes", "excluded"}, mem.Invited)) {
+			return access.Invalid("invalid activity invitation state %q", mem.Invited)
 		}
 		people = append(people, mem.Person)
 	}
@@ -130,11 +136,16 @@ func (m *Model) draftMembers(ctx context.Context, env Env, d groupDraft) (draftA
 	reasons := map[string][]draftReason{}
 	excluded := map[string]bool{}
 	for _, mem := range d.Members {
-		if mem.Member == "excluded" {
+		if mem.Member == "excluded" || (mem.Invited == "excluded" && mem.Member != "yes") {
 			excluded[mem.Person] = true
 			continue
 		}
-		reasons[mem.Person] = append(reasons[mem.Person], draftReason{Added: true})
+		if mem.Member == "yes" {
+			reasons[mem.Person] = append(reasons[mem.Person], draftReason{Added: true})
+		}
+		if mem.Invited == "yes" {
+			reasons[mem.Person] = append(reasons[mem.Person], draftReason{Invited: true})
+		}
 	}
 	counts := []int{}
 	for i, r := range d.Rules {

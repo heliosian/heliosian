@@ -29,7 +29,7 @@ export function groupQueries(sel) {
     runs: `(from GROUP @g (where (in id ${sel}) (runs_list @g)) (columns slug))`,
     members: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.id (!= kind "event") (in id ${sel})))) (include person) (columns group person reasons))`,
     going: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.rsvp_yes (in id ${sel})))) (include person) (columns group person reasons))`,
-    hand: `(from MEMBER (where (in group ${sel})) (include person) (columns group person member note added))`,
+    hand: `(from MEMBER (where (in group ${sel})) (include person) (columns group person member invited guest_of opened note added))`,
     managers: `(from MEMBER (where (= member "yes") (in group (select GROUP.managed_by (in id ${sel})))) (columns group person))`,
     rules: `(from RULE (where (in group ${sel})) (order order asc) (include target within))`,
     aliases: `(from ALIAS (where (in target ${sel}) (not hidden)))`,

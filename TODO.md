@@ -6,8 +6,8 @@ Last verified: bff8f634
 
 # Helios When
 
-- Separate activity guests from volunteer sign-ups
-  An activity's guest list is its sign-ups, so guests added to an activity by hand (Add Person, a guest's invite others) also become Volunteers in HCA-Team, and taking them off can send "You're no longer signed up" mail. Guests added by a rule avoid this. Separate guest-list membership from volunteer sign-up.
+- Separate activity guest-invite settings from volunteer eligibility
+  When's People can invite others switch writes GROUP.join and GROUP.eligible, which also control Team's volunteer sign-ups. Turning it on limits volunteer eligibility to the activity's existing guest list; turning it off closes volunteer sign-ups. Give guest invitations an independent setting while preserving the activity's volunteer rules.
 
 # Helios Loop
 

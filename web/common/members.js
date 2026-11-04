@@ -15,6 +15,9 @@ export function reasonWords(member, rules, phrase) {
     if (reason.invitedBy) {
       return `Invited by ${reason.invitedBy}`;
     }
+    if (reason.invited) {
+      return 'Invited';
+    }
     if (reason.added) {
       return 'Added by hand';
     }
@@ -46,7 +49,7 @@ export function fillPager(pager, page, total, onPage) {
   pager.append(back, el('span', 'member-pager-words', `${page * pageSize + 1}–${Math.min((page + 1) * pageSize, total)} of ${total}`), next);
 }
 
-export function membersCard({noun, listWord, adders, phrase, chip, onExclude, onRemove, gradeColors}) {
+export function membersCard({noun, listWord, adders, phrase, chip, onExclude, onRemove, canRemove = () => true, gradeColors}) {
   const head = el('h2', '', `0 ${noun[1]}`);
   const headRow = el('div', 'card-head');
   headRow.append(head, adders.buttons);
@@ -84,7 +87,7 @@ export function membersCard({noun, listWord, adders, phrase, chip, onExclude, on
       list.append(compactRow(m, {
         why: reasonWords(m, rules, phrase),
         chip: chip(m),
-        onRemove: () => (m.outside ? onRemove(m) : onExclude(m)),
+        onRemove: canRemove(m) ? () => (m.outside ? onRemove(m) : onExclude(m)) : null,
         removeWords: m.outside ? `Remove ${m.name}` : `Exclude ${m.name} from this ${listWord}`,
         gradeColors,
       }));

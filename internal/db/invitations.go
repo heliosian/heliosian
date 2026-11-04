@@ -76,6 +76,31 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 	}
 	env := Env{System: invitationsJob, Now: time.Now()}
 	return writeChecked(ctx, iv.s, actor, env, Batch{Batch: edits}, func(m *Model) error {
+		g, _ := m.Table("GROUP").Get(group)
+		if g["kind"] == "activity" {
+			for _, edit := range edits {
+				if edit.Set == "" || edit.Cells["invited"] != "yes" {
+					continue
+				}
+				row, ok := m.Table("MEMBER").Get(edit.Set)
+				if !ok || row["group"] != group {
+					continue
+				}
+				if memberAs(row) == "yes" && edit.Cells["member"] == "" {
+					return access.Refuse(http.StatusConflict, "this guest signed up while being restored; try again")
+				}
+				if memberAs(row) != "excluded" && row["invited"] != "excluded" {
+					continue
+				}
+				runs, err := m.passes(ctx, Env{Viewer: from, Now: env.Now}, "GROUP", group, "(runs_list @row)")
+				if err != nil {
+					return err
+				}
+				if !runs && (memberAs(row) == "excluded" || row["guest_of"] != from) {
+					return access.Forbidden("the hosts kept this person off the guest list")
+				}
+			}
+		}
 		copies := m.copiesOf(group)
 		named := map[string]bool{}
 		for _, p := range sending {
@@ -97,6 +122,16 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 func guestMembership(g store.Row, viewer string, edit Edit) Edit {
 	if g["kind"] == "party" {
 		edit.viewer = viewer
+	}
+	if g["kind"] == "activity" {
+		switch {
+		case edit.Insert == "MEMBER":
+			delete(edit.Row, "member")
+			edit.Row["invited"] = "yes"
+		case edit.Set != "" && edit.Cells["member"] == "yes":
+			delete(edit.Cells, "member")
+			edit.Cells["invited"] = "yes"
+		}
 	}
 	return edit
 }
@@ -132,6 +167,9 @@ func (m *Model) copiesOf(group string) map[string]store.Row {
 			continue
 		}
 		for _, r := range m.Table("RECIPIENT").Referencing("message", msg["id"]) {
+			if r["sent"] == "" && r["failed"] != "" {
+				continue
+			}
 			out[r["person"]] = r
 		}
 	}
@@ -177,7 +215,15 @@ func (m *Model) hostsOf(g store.Row) []string {
 	return m.membersIn(m.chain(g), "managed_by")
 }
 
+func (m *Model) keptOff(g store.Row, person string) bool {
+	row, ok := m.Table("MEMBER").Find(g["id"], person)
+	return ok && (memberAs(row) == "excluded" || row["invited"] == "excluded" && memberAs(row) != "yes")
+}
+
 func (m *Model) onList(g store.Row, person string) bool {
+	if m.keptOff(g, person) {
+		return false
+	}
 	if _, sent := m.copiesOf(g["id"])[person]; sent {
 		return true
 	}
@@ -189,7 +235,7 @@ func (m *Model) ended(g store.Row, now time.Time) bool {
 	return ok && until.Before(now)
 }
 
-func (m *Model) answerEdits(g store.Row, person, answer, by string, at time.Time) []Edit {
+func (m *Model) clearAnswerEdits(g store.Row, person string) []Edit {
 	edits := []Edit{}
 	for _, column := range []string{"rsvp_yes", "rsvp_no"} {
 		if g[column] == "" {
@@ -199,6 +245,11 @@ func (m *Model) answerEdits(g store.Row, person, answer, by string, at time.Time
 			edits = append(edits, Edit{Delete: row["id"]})
 		}
 	}
+	return edits
+}
+
+func (m *Model) answerEdits(g store.Row, person, answer, by string, at time.Time) []Edit {
+	edits := m.clearAnswerEdits(g, person)
 	column := map[string]string{"yes": "rsvp_yes", "no": "rsvp_no"}[answer]
 	if column == "" {
 		return edits
@@ -220,7 +271,11 @@ func (m *Model) invitationsFrom(group, person string) int {
 	sent := 0
 	for _, msg := range m.Table("MESSAGE").Referencing("group", group) {
 		if msg["direction"] == "out" && msg["kind"] == "invitation" && msg["from_person"] == person {
-			sent += len(m.Table("RECIPIENT").Referencing("message", msg["id"]))
+			for _, r := range m.Table("RECIPIENT").Referencing("message", msg["id"]) {
+				if r["sent"] != "" || r["failed"] == "" {
+					sent++
+				}
+			}
 		}
 	}
 	return sent
@@ -367,6 +422,9 @@ func (iv *Invitations) guestMail(ctx context.Context, m *Model, env Env, actor a
 	}
 	people := []string{}
 	for _, p := range slices.Sorted(maps.Keys(m.copiesOf(g["id"]))) {
+		if ask.Kind != "cancel" && m.keptOff(g, p) {
+			continue
+		}
 		answer := m.answerOf(g, p)
 		word := answer
 		if word == "" {
@@ -518,8 +576,31 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	for _, p := range people {
 		if !strings.HasPrefix(p, "@") {
 			if row, ok := m.Table("MEMBER").Find(g["id"], p); ok {
-				if memberAs(row) == "excluded" && runs {
-					edits = append(edits, guestMembership(g, env.Viewer, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}}))
+				excluded := memberAs(row) == "excluded" || row["invited"] == "excluded"
+				restore := memberAs(row) == "excluded" && runs
+				ownGuest := memberAs(row) != "excluded" && row["guest_of"] == env.Viewer
+				if g["kind"] == "activity" {
+					if !excluded && m.effectivelyIn(g["id"], p) {
+						continue
+					}
+					active := memberAs(row) == "yes" || row["invited"] == "yes" && memberAs(row) != "excluded"
+					restore = (!excluded || runs || ownGuest) && !active
+				}
+				if restore {
+					joined := guestMembership(g, env.Viewer, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}})
+					if g["kind"] == "activity" {
+						joined.Cells["added_by"], joined.Cells["added"] = env.Viewer, at
+						if memberAs(row) == "excluded" {
+							joined.Cells["member"] = ""
+						}
+						if !ownGuest {
+							joined.Cells["guest_of"] = ""
+							if ask.GuestOf != p {
+								joined.Cells["guest_of"] = ask.GuestOf
+							}
+						}
+					}
+					edits = append(edits, joined)
 					added = append(added, p)
 				}
 				continue

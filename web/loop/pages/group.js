@@ -1,4 +1,4 @@
-import {state, person, personView, loadModel} from '../state.js';
+import {state, person, personView, loadModel, fetchGroup} from '../state.js';
 import {queries, sourceLine, write, rowsOf, listDomain} from '/rail.js';
 import {csvField} from '/datagrid.js';
 import {rulesCard, ruleWords, ruleSaysSomething, newRule, ruleOf, ruleRow} from '/listrules.js';
@@ -67,7 +67,7 @@ function groupDraft(g, isNew) {
     replying: isNew ? 'members' : g.replying,
     managers: [...(g.managerIds || [])],
     rules: (g.rules || []).map(r => r.id ? ruleOf(r) : r),
-    hand: (g.hand || []).map(m => ({person: m.person, member: m.member})),
+    hand: (g.hand || []).map(m => ({person: m.person, member: m.member, invited: m.invited})),
     guests: [],
   };
 }
@@ -263,7 +263,7 @@ function draftBody(ed) {
       name: ed.draft.title,
       ruleWords: rules.map(ruleWords),
       rules: rules.map(r => ({exclude: r.exclude, target: r.target, replace_with: r.replace_with, within: r.within, person: r.person, search: r.search})),
-      members: ed.draft.hand,
+      members: ed.draft.hand.filter(m => state.model.people[m.person]),
     },
   };
 }
@@ -352,6 +352,15 @@ function renderManagerRows(draft, rows) {
 
 function setHand(ed, id, member) {
   const {draft} = ed;
+  if (ed.g.row?.kind === 'activity') {
+    const was = draft.hand.find(m => m.person === id);
+    if (was?.member === 'yes') {
+      return;
+    }
+    draft.hand = draft.hand.filter(m => m.person !== id);
+    draft.hand.push({person: id, member: was?.member === 'excluded' ? '' : was?.member || '', invited: member});
+    return;
+  }
   draft.hand = draft.hand.filter(m => m.person !== id);
   if (member) {
     draft.hand.push({person: id, member});
@@ -402,13 +411,14 @@ function previewCard(ed) {
     adders: add,
     phrase: ruleWords,
     chip: m => (!isNew && m.person && !current.has(m.person) ? el('span', 'chip joins', 'Joins') : null),
+    canRemove: m => ed.g.row?.kind !== 'activity' || !draft.hand.some(row => row.person === m.person && row.member === 'yes'),
     onExclude: m => {
       setHand(ed, m.person, 'excluded');
       rulesChanged(ed);
     },
     onRemove: m => {
       if (m.person) {
-        setHand(ed, m.person, '');
+        setHand(ed, m.person, ed.g.row?.kind === 'activity' ? 'excluded' : '');
       } else {
         draft.guests = draft.guests.filter(x => x.email !== m.email);
       }
@@ -416,6 +426,13 @@ function previewCard(ed) {
     },
     gradeColors: state.model.gradeColors,
   });
+  if (ed.g.row?.kind === 'activity') {
+    const note = el('div', 'hint', 'Volunteers stay on this list. Manage sign-ups in ');
+    const team = el('a', '', 'HCA-Team');
+    team.href = ed.g.row.team_href;
+    note.append(team, '.');
+    ed.members.card.prepend(note);
+  }
   return ed.members.card;
 }
 
@@ -426,14 +443,14 @@ function keptOffCard(ed) {
   card.append(rows);
   ed.keptOff = () => {
     rows.replaceChildren();
-    const off = ed.draft.hand.filter(m => m.member === 'excluded');
+    const off = ed.draft.hand.filter(m => m.member === 'excluded' || (m.invited === 'excluded' && m.member !== 'yes'));
     card.hidden = !off.length;
     for (const m of off) {
       const shown = personView(m.person);
       const back = el('button', 'link-button', 'Put back');
       back.type = 'button';
       back.addEventListener('click', () => {
-        setHand(ed, m.person, '');
+        setHand(ed, m.person, ed.g.row?.kind === 'activity' ? 'yes' : '');
         rulesChanged(ed);
       });
       rows.append(personRow(shown, {className: 'manager-edit-row', lines: [shown.email || shown.words], after: [back]}));
@@ -485,7 +502,7 @@ async function refreshPreview(ed) {
       return {...shown, name: shown.email ? shown.name : m.name || shown.name, reasons: m.reasons};
     });
     for (const x of ed.draft.guests) {
-      members.push({email: x.email, name: x.name || x.email, words: 'Outside the directory', outside: true, reasons: [{added: true}]});
+      members.push({email: x.email, name: x.name || x.email, words: 'Outside the directory', outside: true, reasons: [ed.g.row?.kind === 'activity' ? {invited: true} : {added: true}]});
     }
     renderChanges(ed, members, rules);
     ed.ruleCounts.clear();
@@ -579,6 +596,14 @@ function handEdits(ed, group) {
   for (const m of ed.draft.hand) {
     const was = before.get(m.person);
     before.delete(m.person);
+    if (ed.g.row?.kind === 'activity') {
+      if (m.invited === 'excluded' && was?.invited !== 'excluded') {
+        edits.push(was
+          ? {set: was.id, cells: {invited: 'excluded', guest_of: ''}}
+          : {insert: 'MEMBER', row: {group, person: m.person, invited: 'excluded', added_by: state.model.viewer.id}});
+      }
+      continue;
+    }
     if (!was) {
       edits.push({insert: 'MEMBER', row: {group, person: m.person, member: m.member}});
       continue;
@@ -588,7 +613,9 @@ function handEdits(ed, group) {
     }
   }
   for (const was of before.values()) {
-    edits.push({delete: was.id});
+    if (ed.g.row?.kind !== 'activity') {
+      edits.push({delete: was.id});
+    }
   }
   return edits;
 }
@@ -603,6 +630,9 @@ function aliasEdits(ed, group) {
 }
 
 async function guestEdits(ed, group) {
+  if (ed.g.row?.kind === 'activity') {
+    return [];
+  }
   const edits = [];
   for (const [i, x] of ed.draft.guests.entries()) {
     const {person} = await api('POST', '/api/do/person-at', {address: x.email});
@@ -669,6 +699,22 @@ async function changeGroup(ed) {
   edits.push(...ruleEdits(ed, g.id), ...handEdits(ed, g.id), ...aliasEdits(ed, g.id), ...await guestEdits(ed, g.id));
   if (edits.length) {
     await write(edits);
+  }
+  if (g.row.kind === 'activity') {
+    const before = new Map(g.hand.map(m => [m.person, m]));
+    const people = draft.hand.filter(m => m.invited === 'yes' && (before.get(m.person)?.invited !== 'yes' || before.get(m.person)?.member === 'excluded')).map(m => ({person: m.person}));
+    people.push(...draft.guests.map(({email, name}) => ({email, name})));
+    if (people.length) {
+      try {
+        await api('POST', '/api/do/add-guests', {group: g.id, people});
+      } catch (err) {
+        const names = people.map(p => p.person ? personView(p.person).name : p.name || p.email).join(', ');
+        ed.g = await fetchGroup(g.id);
+        ed.original = groupDraft(ed.g, false);
+        ed.current = ed.g.members;
+        throw new Error(`${edits.length ? 'Other edits were saved. ' : ''}These guests were not added: ${names}. ${err.message}`);
+      }
+    }
   }
 }
 

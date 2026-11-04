@@ -108,6 +108,8 @@ func (iv *Invitations) sendQueued(ctx context.Context) {
 			now := time.Now()
 			var cells map[string]any
 			switch {
+			case current.keptOff(g, r["person"]) && !(msg["kind"] == "update" && g["status"] == "cancelled" && current.copiesOf(g["id"])[r["person"]]["sent"] != ""):
+				cells = map[string]any{"failed": stamp(now), "detail": "the person was taken off the guest list before it went"}
 			case g["status"] == "closed" || (g["status"] == "cancelled" && (msg["kind"] == "invitation" || msg["kind"] == "reminder")):
 				cells = map[string]any{"failed": stamp(now), "detail": "the event was closed or cancelled before it went"}
 			case current.ended(g, now) && g["status"] != "cancelled":

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"heliosian/internal/access"
 	"heliosian/internal/data"
 	"heliosian/internal/testkit/mailtest"
 )
@@ -149,6 +150,96 @@ func TestQueuedInvitationsRetryOnlyTheRefusedCopy(t *testing.T) {
 	iv.sendQueued(context.Background())
 	if len(recorder.Raws()) != 2 {
 		t.Errorf("sent %d copies across refusal and retries", len(recorder.Raws()))
+	}
+}
+
+func TestQueuedGuestMailStopsAfterRemoval(t *testing.T) {
+	for _, kind := range []string{"invitation", "reminder", "update", "post"} {
+		for _, volunteer := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/volunteer=%t", kind, volunteer), func(t *testing.T) {
+				iv, _, recorder, group := queuedInvitations(t, parent)
+				original := iv.s.Model().copiesOf(group)[parent]
+				member := ""
+				if volunteer {
+					member = "yes"
+				}
+				ids := apply(t, iv.s, []Edit{
+					{Set: group, Cells: map[string]any{"kind": "activity"}},
+					{Insert: "MEMBER", Row: map[string]any{"group": group, "person": parent, "member": member, "invited": "yes"}},
+				})
+				if kind != "invitation" {
+					iv.sendQueued(t.Context())
+					apply(t, iv.s, invitationEdits(group, staff, kind, []string{parent}, time.Now()))
+				}
+				before := len(recorder.Raws())
+				apply(t, iv.s, []Edit{{Set: ids[1], Cells: map[string]any{"invited": "excluded"}}})
+				iv.sendQueued(t.Context())
+				want := before
+				if volunteer {
+					want++
+				}
+				if got := len(recorder.Raws()); got != want {
+					t.Fatalf("sent %d messages, want %d after removal", got, want)
+				}
+				if kind != "invitation" || volunteer {
+					return
+				}
+				suppressed, _ := iv.s.Model().Table("RECIPIENT").Get(original["id"])
+				if suppressed["sent"] != "" || suppressed["failed"] == "" || suppressed["detail"] != "the person was taken off the guest list before it went" {
+					t.Fatalf("the unsent invitation was not suppressed: %v", suppressed)
+				}
+				if copy := iv.s.Model().copiesOf(group)[parent]; copy != nil {
+					t.Fatalf("the suppressed invitation still counts as a copy: %v", copy)
+				}
+				if count := iv.s.Model().invitationsFrom(group, staff); count != 0 {
+					t.Fatalf("the suppressed invitation counts %d toward the quota", count)
+				}
+				if _, err := iv.addGuests(t.Context(), iv.s.Model(), Env{Viewer: staff, Now: testNow}, access.Actor{Email: maya}, addGuestsAsk{Group: group, People: []guestAsk{{Person: parent}}, Send: true}); err != nil {
+					t.Fatalf("restore and invite the unsent guest: %v", err)
+				}
+				iv.sendQueued(t.Context())
+				iv.sendQueued(t.Context())
+				if got := len(recorder.Raws()); got != 1 || iv.s.Model().copiesOf(group)[parent]["sent"] == "" {
+					t.Fatalf("restoration delivered %d invitations, want one", got)
+				}
+				if count := iv.s.Model().invitationsFrom(group, staff); count != 1 {
+					t.Fatalf("the restored invitation counts %d toward the quota, want one", count)
+				}
+			})
+		}
+	}
+}
+
+func TestDeliveredInvitationStillCountsAfterDeliveryFailure(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	iv.sendQueued(t.Context())
+	original := iv.s.Model().copiesOf(group)[parent]
+	apply(t, iv.s, []Edit{{Set: original["id"], Cells: map[string]any{"failed": stamp(time.Now()), "detail": "permanent delivery failure"}}})
+	if copy := iv.s.Model().copiesOf(group)[parent]; copy["id"] != original["id"] || iv.s.Model().invitationsFrom(group, staff) != 1 {
+		t.Fatalf("a sent invitation stopped counting after a delivery failure: %v", copy)
+	}
+}
+
+func TestQueuedCancellationPreservesDeliveredInvitationsAfterRemoval(t *testing.T) {
+	for _, sent := range []bool{false, true} {
+		t.Run(fmt.Sprint(sent), func(t *testing.T) {
+			iv, _, recorder, group := queuedInvitations(t, parent)
+			if sent {
+				iv.sendQueued(t.Context())
+			}
+			apply(t, iv.s, append([]Edit{
+				{Set: group, Cells: map[string]any{"kind": "activity", "status": "cancelled"}},
+				{Insert: "MEMBER", Row: map[string]any{"group": group, "person": parent, "invited": "excluded"}},
+			}, invitationEdits(group, staff, "update", []string{parent}, time.Now())...))
+			iv.sendQueued(t.Context())
+			want := 0
+			if sent {
+				want = 2
+			}
+			if got := len(recorder.Raws()); got != want {
+				t.Fatalf("delivered %d messages, want %d with original sent=%t", got, want, sent)
+			}
+		})
 	}
 }
 

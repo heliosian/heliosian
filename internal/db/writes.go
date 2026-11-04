@@ -270,6 +270,7 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 				row[c.Name] = c.Default
 			}
 		}
+		requested := row
 		var invitation store.Row
 		if t.Name == "MEMBER" && row["member"] == "yes" {
 			if old, ok := m.Table("MEMBER").Find(row["group"], row["person"]); ok && old["member"] == "" {
@@ -288,7 +289,9 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 			return "", Change{}, err
 		}
 		c := Change{Table: t.Name, New: row, uploaded: uploaded}
-		if err := authorize(m, c); err != nil {
+		request := c
+		request.New = requested
+		if err := authorize(m, request); err != nil {
 			return "", Change{}, err
 		}
 		if invitation != nil {

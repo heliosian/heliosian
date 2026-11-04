@@ -109,17 +109,24 @@ const PolicySource = `
                (exists MEMBER (= person @p) (sees_members group))))
       (and (!= @p.source "guest") (not @p.hidden) (blank @p.deactivated))))
 
-; @p may join @g: @g names no eligible group, or @p is in effect a member of it
 (define (eligible_for @g @p)
-  (or (blank @g.eligible) (exists EFFECTIVE_MEMBER (= group @g.eligible) (= person @p))))
+  (and (or (blank @g.eligible) (exists EFFECTIVE_MEMBER (= group @g.eligible) (= person @p)))
+       (or (not (exists GROUP (= chair_offers @g)))
+           (exists GROUP @activity (= chair_offers @g)
+             (exists MEMBER (= group @activity) (= person @p) (= member "yes"))))))
 
 (define (invited_guest @g)
   (and (!= @g.status "closed") (= @viewer.source "guest")
-       (exists MEMBER (= group @g) (= person @viewer) (= member "yes"))))
+       (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))
+       (exists MEMBER (= group @g) (= person @viewer) (or (= member "yes") (= invited "yes")))))
 
 ; the viewer is @p or in a family with @p
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
+
+(define (leaves @m)
+  (and (not (blank @m.group.join)) (blank @m.group.price)
+       (or (= @m.person @viewer) (and (!= @m.group.join "self") (self_or_household @m.person)))))
 
 ; @g is the group of those who hid something from themselves
 (define (hides @g)
@@ -471,18 +478,20 @@ const PolicySource = `
 (set GROUP.managed_by (and (own_group @old) (= @old.added_by @viewer) (blank @old.managed_by) (= @new.managed_by @old.id)))
 ; whoever made a plain group that runs itself is the first in it
 (insert MEMBER
-  (and (own_group @new.group) (= @new.group.added_by @viewer) (= @new.group.managed_by @new.group)
+  (and (blank @new.invited) (own_group @new.group) (= @new.group.added_by @viewer) (= @new.group.managed_by @new.group)
        (= @new.person @viewer) (= @new.member "yes") (not (exists MEMBER (= group @new.group)))))
 ; a plain group's managers rename it
 (set GROUP.name (and (own_group @old) (manages @old)))
 ; a plain group's managers close it, or open it again
 (set GROUP.status (and (own_group @old) (manages @old) (in @new.status "open" "closed")))
 ; a plain group's managers put someone in it: tag them, or share the tag through its managers group
-(insert MEMBER (and (own_group @new.group) (manages @new.group) (= @new.member "yes")))
+(insert MEMBER
+  (and (blank @new.invited) (own_group @new.group) (manages @new.group) (= @new.member "yes")))
 ; a plain group's managers take someone out of it, themselves included
 (delete MEMBER (and (own_group @old.group) (manages @old.group)))
 ; an admins group's managers put someone in it
-(insert MEMBER (and (= @new.group.kind "admins") (manages @new.group) (= @new.member "yes")))
+(insert MEMBER
+  (and (blank @new.invited) (= @new.group.kind "admins") (manages @new.group) (= @new.member "yes")))
 ; an admins group's managers take someone out of it, leaving someone in one that manages itself
 (delete MEMBER
   (and (= @old.group.kind "admins") (manages @old.group)
@@ -512,46 +521,66 @@ const PolicySource = `
       (runs_answers group)))
 ; every column of a membership
 (read MEMBER
-  (id group person member opened guest_of note added_by added)
+  (id group person member invited opened guest_of note added_by added)
   true)
 ; say someone is coming, or not, to a group the viewer may see, for whoever the viewer may answer for
-(insert MEMBER (and (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
+(insert MEMBER
+  (and (blank @new.invited) (answers_visible @new.group) (= @new.member "yes") (answers_for @new)))
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
 ; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, anyone the viewer sees or an outside guest brought by their household
 (insert MEMBER
-  (and (or (visible @new.group) (invited_guest @new.group))
+  (and (blank @new.invited) (or (visible @new.group) (invited_guest @new.group))
        (in @new.group.join "direct" "others") (blank @new.group.price)
        (= @new.member "yes") (= @new.added_by @viewer)
        (or (and (self_or_household @new.person) (eligible_for @new.group @new.person))
            (and (= @new.group.join "others")
-                (or (eligible_for @new.group @viewer) (invited_guest @new.group))
+                (or (eligible_for @new.group @viewer)
+                    (and (!= @new.group.kind "activity") (invited_guest @new.group)))
+                (or (!= @new.group.kind "activity") (!= @new.group.eligible @new.group)
+                    (exists MEMBER (= group @new.group) (= person @viewer) (= member "yes")))
                 (or (person_visible @new.person)
                     (and (= @new.person.source "guest") (self_or_household @new.guest_of)))))
        (or (blank @new.group.capacity)
            (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
 ; note that the viewer or someone in their family opened the invitation to a group the viewer sees, on a row that puts nobody in it
 (insert MEMBER
-  (and (visible @new.group) (self_or_household @new.person) (blank @new.member) (not (blank @new.opened))
+  (and (blank @new.invited) (visible @new.group) (self_or_household @new.person) (blank @new.member) (not (blank @new.opened))
        (blank @new.guest_of) (blank @new.note) (blank @new.added_by)))
 ; note when the viewer or someone in their family first opened the invitation
 (set MEMBER.opened (and (self_or_household @old.person) (blank @old.opened)))
+(insert MEMBER
+  (and (= @new.group.kind "activity") (blank @new.member) (= @new.invited "excluded")
+       (blank @new.guest_of) (blank @new.opened) (blank @new.note) (= @new.added_by @viewer)
+       (or (runs_list @new.group) (and (visible @new.group) (self_or_household @new.person)))))
+(set MEMBER.invited
+  (and (= @old.group.kind "activity") (= @new.invited "excluded")
+       (or (runs_list @old.group)
+           (and (!= @old.member "yes")
+                (or (= @old.guest_of @viewer)
+                    (and (visible @old.group) (self_or_household @old.person)))))))
+(set MEMBER.guest_of
+  (and (= @old.group.kind "activity") (blank @new.guest_of) (= @new.invited "excluded")
+       (or (runs_list @old.group) (self_or_household @old.person))))
+(set MEMBER.member
+  (and (= @old.group.kind "activity") (= @old.member "yes") (blank @new.member)
+       (or (runs_list @old.group) (leaves @old))))
 ; take back a guest the viewer brought to a group that takes joining and no payment
-(delete MEMBER (and (= @old.guest_of @viewer) (not (blank @old.group.join)) (blank @old.group.price)))
+(delete MEMBER
+  (and (!= @old.group.kind "activity") (= @old.guest_of @viewer)
+       (not (blank @old.group.join)) (blank @old.group.price)))
 ; hide something the viewer sees from themselves: join its hidden group, oneself alone
 (insert MEMBER
-  (and (= @new.group.join "self") (= @new.person @viewer) (= @new.member "yes") (= @new.added_by @viewer)
+  (and (blank @new.invited) (= @new.group.join "self") (= @new.person @viewer) (= @new.member "yes") (= @new.added_by @viewer)
        (exists GROUP @t (= hidden_for @new.group) (visible @t))))
 ; leave a group that takes joining and no payment, or take someone in one's family out of it unless each joins it alone, even once it is closed or full
-(delete MEMBER
-  (and (not (blank @old.group.join)) (blank @old.group.price)
-       (or (= @old.person @viewer) (and (!= @old.group.join "self") (self_or_household @old.person)))))
+(delete MEMBER (leaves @old))
 ; a person, someone in their family unless each joins alone, or their host gives up a place; the group's managers set anyone's but who hid something; never in a family, which only super admins change
 (set MEMBER.member
   (and (!= @old.group.kind "family")
        (or (and (or (= @old.person @viewer)
                     (and (!= @old.group.join "self") (self_or_household @old.person))
-                    (= @old.guest_of @viewer))
+                    (and (!= @old.group.kind "activity") (= @old.guest_of @viewer)))
                 (= @new.member "cancelled"))
            (and (manages @old.group) (not (hides @old.group))))))
 ; what the viewer, their household or a ticket of theirs was billed, and what was billed for a group they manage
@@ -567,7 +596,7 @@ const PolicySource = `
        (not (blank @new.for)) (buys_for @new.group @new.for)))
 ; take a paid place at a party that takes joining and has room, once its payment is in: the viewer, not a student, for someone they may buy a place for, a guest of theirs brought as theirs
 (insert MEMBER
-  (and (visible @new.group) (= @new.group.kind "party") (in @new.group.join "direct" "others") (not (blank @new.group.price))
+  (and (blank @new.invited) (visible @new.group) (= @new.group.kind "party") (in @new.group.join "direct" "others") (not (blank @new.group.price))
        (= @new.member "yes") (= @new.added_by @viewer) (not (student @viewer))
        (buys_for @new.group @new.person)
        (or (!= @new.person.source "guest") (= @new.guest_of @viewer))
@@ -576,7 +605,7 @@ const PolicySource = `
        (exists PAYMENT (= group @new.group) (= for @new.person) (blank status))))
 ; ask for another place on a party's waitlist: a guest, brought by the viewer or someone in their household, or someone the viewer may buy a place for, brought by the viewer
 (insert MEMBER
-  (and (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
+  (and (blank @new.invited) (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
        (or (and (= @new.person.source "guest") (self_or_household @new.guest_of))
            (and (= @new.guest_of @viewer) (not (student @viewer)) (buys_for @new.group @new.person)))))
 ; pass a party ticket to someone else: its holder, their household, whoever brought them, or the party's hosts
@@ -752,7 +781,7 @@ const PolicySource = `
 (insert SETTING (and (admin_of "birthday") (= @new.app "birthday")))
 ; a Birthdays admin adds someone to a group whose members the Birthdays app is open to, but never an admins group, whose managers alone change it, or a role group the import keeps
 (insert MEMBER
-  (and (admin_of "birthday") (= @new.member "yes") (!= @new.group.kind "admins") (not (role_group @new.group))
+  (and (blank @new.invited) (admin_of "birthday") (= @new.member "yes") (!= @new.group.kind "admins") (not (role_group @new.group))
        (in @new.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
 ; a Birthdays admin takes someone out of a group whose members the Birthdays app is open to, but never an admins group or a role group
 (delete MEMBER
@@ -847,7 +876,8 @@ const PolicySource = `
 ; take anyone out of every view and sign-in; putting them back is for super admins in import mode
 (set PERSON.hidden (admin_of "who"))
 ; make someone a gradeband's room parent
-(insert MEMBER (and (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "gradeband") (= @new.member "yes")))
+(insert MEMBER
+  (and (blank @new.invited) (admin_of "who") (= @new.group.kind "group") (= @new.group.parent.kind "gradeband") (= @new.member "yes")))
 ; stop someone being a gradeband's room parent
 (delete MEMBER (and (admin_of "who") (= @old.group.kind "group") (= @old.group.parent.kind "gradeband")))
 ; override any family's address
@@ -931,7 +961,8 @@ const PolicySource = `
 ; who in effect manages events
 (read EFFECTIVE_MEMBER (and (admin_of "when") (managers_for group "event")))
 ; make someone a host of an event
-(insert MEMBER (and (admin_of "when") (managers_for @new.group "event")))
+(insert MEMBER
+  (and (blank @new.invited) (admin_of "when") (managers_for @new.group "event")))
 ; make someone a host of an event again, or keep them from being one
 (set MEMBER.member (and (admin_of "when") (managers_for @old.group "event")))
 ; stop someone being a host of an event
@@ -974,7 +1005,8 @@ const PolicySource = `
 ; who in effect manages activities
 (read EFFECTIVE_MEMBER (and (admin_of "team") (managers_for group "activity")))
 ; make someone a manager of an activity
-(insert MEMBER (and (admin_of "team") (managers_for @new.group "activity")))
+(insert MEMBER
+  (and (blank @new.invited) (admin_of "team") (managers_for @new.group "activity")))
 ; make someone a manager of an activity again, or keep them from being one
 (set MEMBER.member (and (admin_of "team") (managers_for @old.group "activity")))
 ; stop someone being a manager of an activity
@@ -1041,7 +1073,8 @@ const PolicySource = `
 ; who in effect hosts parties
 (read EFFECTIVE_MEMBER (and (admin_of "celebrate") (managers_for group "party")))
 ; make someone a host of a party
-(insert MEMBER (and (admin_of "celebrate") (managers_for @new.group "party")))
+(insert MEMBER
+  (and (blank @new.invited) (admin_of "celebrate") (managers_for @new.group "party")))
 ; make someone a host of a party again, or keep them from being one
 (set MEMBER.member (and (admin_of "celebrate") (managers_for @old.group "party")))
 ; stop someone being a host of a party
@@ -1141,6 +1174,12 @@ const PolicySource = `
 (set GROUP.notify (and (runs_list @old) (or (blank @new.notify) (sees_members @new.notify))))
 ; a group's managers open it to offers to co-chair it, naming a group under it, or close it
 (set GROUP.chair_offers (and (runs_list @old) (or (blank @new.chair_offers) (= @new.chair_offers.parent @old.id))))
+(set GROUP.rsvp_yes
+  (and (= @old.kind "activity") (runs_list @old) (blank @new.rsvp_yes)
+       (not (exists MEMBER (= group @old.rsvp_yes)))))
+(set GROUP.rsvp_no
+  (and (= @old.kind "activity") (runs_list @old) (blank @new.rsvp_no)
+       (not (exists MEMBER (= group @old.rsvp_no)))))
 ; a group's managers give it a co-chair offers group: open, under it, joined directly by its own members alone, seen as it is, and who offered seen by its managers alone
 (insert GROUP
   (and (= @new.kind "group") (runs_list @new.parent) (= @new.status "open") (= @new.added_by @viewer)
@@ -1194,7 +1233,7 @@ const PolicySource = `
        (not (exists GROUP (= parent @old))) (not (exists MEMBER (= group @old))) (not (exists RULE (= group @old)))))
 ; whoever runs a group runs the plain group that manages it: makes someone a co-chair, or stops them being one
 (insert MEMBER
-  (and (= @new.group.kind "group") (not (role_group @new.group)) (= @new.member "yes")
+  (and (blank @new.invited) (= @new.group.kind "group") (not (role_group @new.group)) (= @new.member "yes")
        (exists GROUP @s (= managed_by @new.group) (!= id @new.group) (runs_list @s))))
 ; and takes someone out of it
 (delete MEMBER
@@ -1218,7 +1257,8 @@ const PolicySource = `
 ; a mail list's managers take a rule away
 (delete RULE (runs_list @old.group))
 ; a mail list's managers put someone on it by hand, or keep someone off it; an admins group's members follow its own rules
-(insert MEMBER (and (runs_list @new.group) (!= @new.group.kind "admins") (in @new.member "yes" "excluded")))
+(insert MEMBER
+  (and (blank @new.invited) (runs_list @new.group) (!= @new.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers turn a hand addition into a keeping off, or back
 (set MEMBER.member (and (runs_list @old.group) (!= @old.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers take away a hand addition or a keeping off
@@ -1301,7 +1341,8 @@ const PolicySource = `
 ; and take it away
 (delete RULE (and (admin_of "home") (home_audience @old.group)))
 ; someone named by hand in the group a thing on the page shows to
-(insert MEMBER (and (admin_of "home") (home_audience @new.group) (= @new.member "yes")))
+(insert MEMBER
+  (and (blank @new.invited) (admin_of "home") (home_audience @new.group) (= @new.member "yes")))
 ; and take them off
 (delete MEMBER (and (admin_of "home") (home_audience @old.group)))
 ; a section's or a link's picture
