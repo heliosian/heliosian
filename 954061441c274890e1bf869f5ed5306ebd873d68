@@ -1,0 +1,26 @@
+# Use the guest-invite rule on the outside page
+
+byre task tskBeL98ZX3piD, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskBeL98ZX3piD in byre (read_task_events with task_id tskBeL98ZX3piD).
+
+## Summary
+
+Simplicity audit of heliosian at da562b1 (separate activity guest invitations from volunteer eligibility). The sweep found one drifted copy of a who-may rule: the outside invitation page decided who could bring a guest in Go, while the signed-in guest list already used the data model's `invites_guests`.
+
+`guestsMayInvite` now evaluates that one rule. The outside page (`extView`, `extGuest`) and the activity check inside a guest-list write both use it. A review showed that running the rule as a signed-in GROUP query also applied the group read guard, so a token holder outside `visible_to` (Coach Pat on Fondue Night) lost bring-a-guest and got a 403. The rule now runs on the group and person the invitation already resolved, with the policy compiler, so that read guard does not apply. The same helper is the write check.
+
+Left in place: `guestMembership` still rewrites an activity `member=yes` edit to `invited=yes`; small helpers whose inputs differ or that are only a few lines (`firstName`, `sameDay`, `parseDate`, `statusOf`, `fillTabbar`, `sideCard`). No identical Go or JS function bodies of eight lines or more, and no unused unexported Go functions. Main had not moved, so the merge-in was already up to date.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+The change replaces the invitation endpoints’ local guest-invite rule with the `invites_guests` query policy. It uses that policy when rendering an external invitation, adding a guest from that page, and checking activity guest writes.
+
+- External invitees whose event is hidden from them lose guest controls and get 403 when adding a guest.
+
+### Snapshot #2, reviewer "Review", antigravity gemini-3.8-flash: done
+
+Replaces the Go-side reimplementation of guest-invitation permissions in `guestsMayInvite` with direct evaluation of the data model's `(invites_guests @row @viewer)` policy rule. Policy compilation runs unguarded so outside guests opening external invitation links can invite others when permitted without needing general group read visibility, and callers across `extView`, `extGuest`, and `writeGuests` now thread context and handle errors.
+
+No significant findings.
