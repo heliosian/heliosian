@@ -159,11 +159,18 @@ func Port() string {
 	return "8080"
 }
 
+func listenAddress(domain string) string {
+	if domain == Domain {
+		return ":" + Port()
+	}
+	return "127.0.0.1:" + Port()
+}
+
 func Server(domain string, apps, aliased map[string]http.Handler) *http.Server {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	return &http.Server{Addr: ":" + Port(), Handler: compress(secure(domain, cacheControl(route(domain, apps, aliased)))), Protocols: protocols}
+	return &http.Server{Addr: listenAddress(domain), Handler: compress(secure(domain, cacheControl(route(domain, apps, aliased)))), Protocols: protocols}
 }
 
 func Serve(server *http.Server, s *db.Store) {
@@ -180,7 +187,7 @@ func Serve(server *http.Server, s *db.Store) {
 		slog.Info("reading again for the previous revision's last writes")
 		s.Refresh()
 	})
-	slog.Info("listening", "port", Port())
+	slog.Info("listening", "addr", server.Addr)
 	if err := ListenAndServe(server); err != http.ErrServerClosed {
 		logging.Fatal("serve", "error", err)
 	}

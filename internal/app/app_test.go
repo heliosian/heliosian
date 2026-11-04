@@ -268,6 +268,16 @@ func TestReportSink(t *testing.T) {
 	}
 }
 
+func TestADevServerListensOnLoopbackAlone(t *testing.T) {
+	t.Setenv("PORT", "8443")
+	if got := Server(Domain, map[string]http.Handler{}, nil).Addr; got != ":8443" {
+		t.Errorf("production listens on %q, want every interface", got)
+	}
+	if got := Server(DevDomain, map[string]http.Handler{}, nil).Addr; got != "127.0.0.1:8443" {
+		t.Errorf("the dev server listens on %q, want loopback alone", got)
+	}
+}
+
 func TestCanonicalHost(t *testing.T) {
 	cases := map[string]string{
 		"calendar.heliosian.com":      "when.heliosian.com",
