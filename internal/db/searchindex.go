@@ -129,7 +129,7 @@ func (v *vectorIndex) update(entries map[string]*SearchEntry) *vectorIndex {
 		return &vectorIndex{}
 	}
 	if len(v.centroids) == 0 || len(refs) > 2*v.trained {
-		return train(entries, refs)
+		v = &vectorIndex{centroids: trainCentroids(refs), trained: len(refs)}
 	}
 	out := &vectorIndex{centroids: v.centroids, cells: make([][]chunkRef, len(v.centroids)), placed: map[string]placement{}, trained: v.trained}
 	for _, o := range slices.Sorted(maps.Keys(entries)) {
@@ -149,7 +149,7 @@ func (v *vectorIndex) update(entries map[string]*SearchEntry) *vectorIndex {
 	return out
 }
 
-func train(entries map[string]*SearchEntry, refs []chunkRef) *vectorIndex {
+func trainCentroids(refs []chunkRef) [][]float32 {
 	k := max(1, int(math.Sqrt(float64(len(refs)))))
 	sample := [][]float32{}
 	step := max(1, len(refs)/searchTrain)
@@ -181,23 +181,7 @@ func train(entries map[string]*SearchEntry, refs []chunkRef) *vectorIndex {
 			}
 		}
 	}
-	out := &vectorIndex{centroids: centroids, cells: make([][]chunkRef, k), placed: map[string]placement{}, trained: len(refs)}
-	where := make([]int, len(refs))
-	for i := range refs {
-		where[i] = nearest(centroids, refs[i].vector)
-	}
-	at := 0
-	for _, o := range slices.Sorted(maps.Keys(entries)) {
-		e := entries[o]
-		p := placement{entry: e, cells: make([]int, len(e.Chunks))}
-		for i := range e.Chunks {
-			p.cells[i] = where[at]
-			out.cells[where[at]] = append(out.cells[where[at]], refs[at])
-			at++
-		}
-		out.placed[o] = p
-	}
-	return out
+	return centroids
 }
 
 func (v *vectorIndex) order(query []float32) []int {
