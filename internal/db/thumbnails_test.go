@@ -119,6 +119,72 @@ func TestNewContentRemakesTheThumbnail(t *testing.T) {
 	}
 }
 
+func TestIdenticalImagesReuseACompletedThumbnailWithoutReadingTheSource(t *testing.T) {
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "image", Row: storedContent(t, bucket, "image/png", redPNG(t, 960, 720))},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "First", "content": "@image"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Second", "content": "@image"}},
+	})
+	worker := &Thumbnailer{s: s, bucket: bucket}
+	first, _ := s.Model().Table("DOCUMENT").Get(ids[1])
+	if drawn, err := worker.make(first); err != nil || !drawn {
+		t.Fatalf("first image: drawn %v, error %v", drawn, err)
+	}
+	first, _ = s.Model().Table("DOCUMENT").Get(ids[1])
+	content, _ := s.Model().Table("CONTENT").Get(ids[0])
+	generation, err := bucket.Generation(t.Context(), content["blob"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bucket.Remove(t.Context(), content["blob"], generation); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := s.Model().Table("DOCUMENT").Get(ids[2])
+	if drawn, err := worker.make(second); err != nil || !drawn {
+		t.Fatalf("second image: drawn %v, error %v", drawn, err)
+	}
+	second, _ = s.Model().Table("DOCUMENT").Get(ids[2])
+	if first["thumbnail"] == "" || second["thumbnail"] != first["thumbnail"] || second["thumbnailed"] == "" {
+		t.Fatalf("the second image did not reuse the completed thumbnail: %v, %v", first, second)
+	}
+}
+
+func TestIdenticalHTMLResolvesEachPagesPicture(t *testing.T) {
+	red, black := redPNG(t, 600, 300), pngOf(t, 600)
+	asked := atomic.Int32{}
+	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked.Add(1)
+		if r.URL.Path == "/first/banner.png" {
+			w.Write(red)
+			return
+		}
+		w.Write(black)
+	}))
+	defer site.Close()
+	s := sample(t)
+	bucket := blob.NewMemoryBucket()
+	ids := apply(t, s, []Edit{
+		{Insert: "CONTENT", As: "html", Row: storedContent(t, bucket, "text/html", []byte(`<meta property="og:image" content="banner.png">`))},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "First", "content": "@html", "url": site.URL + "/first/page"}},
+		{Insert: "DOCUMENT", Row: map[string]any{"kind": "file", "name": "Second", "content": "@html", "url": site.URL + "/second/page"}},
+	})
+	worker := &Thumbnailer{s: s, bucket: bucket}
+	thumbnails := []string{}
+	for _, id := range ids[1:] {
+		doc, _ := s.Model().Table("DOCUMENT").Get(id)
+		if drawn, err := worker.make(doc); err != nil || !drawn {
+			t.Fatalf("page: drawn %v, error %v", drawn, err)
+		}
+		doc, _ = s.Model().Table("DOCUMENT").Get(id)
+		thumbnails = append(thumbnails, doc["thumbnail"])
+	}
+	if asked.Load() != 2 || thumbnails[0] == thumbnails[1] {
+		t.Fatalf("identical html did not resolve each page's picture: %d requests, %v", asked.Load(), thumbnails)
+	}
+}
+
 func TestNewContentIsTriedAfterOldContentGaveUp(t *testing.T) {
 	s := sample(t)
 	bucket := blob.NewMemoryBucket()

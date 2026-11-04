@@ -118,6 +118,17 @@ func thumbnailKey(doc store.Row) [2]string {
 func (t *Thumbnailer) make(doc store.Row) (bool, error) {
 	ctx := context.Background()
 	m := t.s.Model()
+	content, _ := m.Table("CONTENT").Get(doc["content"])
+	if strings.HasPrefix(baseType(content["mime"]), "image/") {
+		for _, other := range m.Table("DOCUMENT").Referencing("content", doc["content"]) {
+			if other["thumbnail"] == "" || other["thumbnailed"] == "" {
+				continue
+			}
+			thumb, _ := m.Table("CONTENT").Get(other["thumbnail"])
+			kept := madeBytes{hash: thumb["hash"], mime: thumb["mime"]}
+			return true, setThumbnail(ctx, t.s, access.System(thumbnailActor), Env{System: thumbnailActor}, doc, kept, true)
+		}
+	}
 	raw, mimeType, err := m.contentBytes(ctx, t.bucket, doc["content"])
 	if err != nil {
 		return false, err
@@ -137,15 +148,19 @@ func saveThumbnail(ctx context.Context, s *Store, bucket *blob.Bucket, actor acc
 			return err
 		}
 	}
+	return setThumbnail(ctx, s, actor, env, doc, kept, whole)
+}
+
+func setThumbnail(ctx context.Context, s *Store, actor access.Actor, env Env, doc store.Row, kept madeBytes, whole bool) error {
 	_, err := s.Transact(ctx, actor, func(tx *store.Tx[Model]) error {
 		m := s.In(tx)
 		now, ok := m.Table("DOCUMENT").Get(doc["id"])
-		if !ok || now["content"] != doc["content"] || (now["thumbnailed"] != "" && (now["thumbnail"] != "" || thumb == nil)) {
+		if !ok || now["content"] != doc["content"] || (now["thumbnailed"] != "" && (now["thumbnail"] != "" || kept.hash == "")) {
 			return nil
 		}
 		w := &pendingWrites{}
 		set := map[string]any{"thumbnailed": time.Now().In(School).Format(cells.StampFormat)}
-		if thumb != nil {
+		if kept.hash != "" {
 			id, err := stageContent(m, w, map[string]string{}, kept)
 			if err != nil {
 				return err
