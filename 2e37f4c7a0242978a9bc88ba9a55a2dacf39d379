@@ -1,0 +1,41 @@
+# Describe guest lists the way the code does
+
+byre task tskX0sP3ajX0JV, "Consistency audit", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskX0sP3ajX0JV in byre (read_task_events with task_id tskX0sP3ajX0JV).
+
+## Summary
+
+Consistency audit of main at 8104a56. The bar was a mismatch that would mislead a user or a later agent today. One kind cleared it: descriptions of guest lists that disagreed with the handlers. No handler behavior changed.
+
+Before: The schema and the data model treated any invited=yes or invited=excluded row as membership for every group.
+Now: Both apply those rows only on an activity, matching resolve.
+
+Before: OpenAPI let anyone add guests when join is others and they are eligible, and the data model said activity guests are added by members of guests_invited_by and event or party guests by anyone on the eligible list.
+Now: Both follow invites_guests: hosts, or an effective member of guests_invited_by or an invited outside guest, or anyone eligible on an event or party whose join is others.
+
+Before: Guest mail was described as reaching people already sent the invitation.
+Now: It reaches people who hold an invitation or skip copy, a queued copy included. A reminder or message skips anyone kept off, an update also skips people who said no, and cancel mails only when notify is set.
+
+Before: The OpenAPI draft member required member and allowed only yes or excluded, and the preview reasons were only rule and added.
+Now: Only person is required. Membership may be blank, yes, excluded or cancelled, and on an activity invited may be blank, yes or excluded. The preview reasons include invited.
+
+Files: internal/db/schema.go, internal/db/openapi.go, docs/datamodel.md. Review of the first snapshot caught the queued-copy wording and the required member field; both were fixed. Named internal/db spec tests passed.
+
+Left alone on purpose: "email list" as the name for every group, cancelled and the one organised in the Ask prompt, When and Celebrate "an admin approves", Who? Directory versus People and the three open-link phrases, separate date formatters, two log prefixes that do not misstate a fact, and accurate docs including docs/loop/data.md and docs/when/calendar.md.
+
+Merging main found it already contained; there was nothing to combine.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-terra: done
+
+Updates the data model and generated API descriptions to reflect activity guest membership, invitation states, and guest-list mailing rules.
+
+- Guest-mail documentation excludes queued and skipped invitations even though they qualify.
+- The draft schema rejects valid invitation-only members.
+
+### Snapshot #2, reviewer "Review", antigravity gemini-3.8-flash: done
+
+Updates the data model documentation and OpenAPI specification for effective membership, draft members, guest-list mail, and guest-list additions to match the server handlers: clarifying activity-specific `invited` state handling, documenting the `invited` draft override and reason fields with their valid values, and detailing recipient criteria and permission rules for guest-list mailing and additions.
+
+No significant findings.
