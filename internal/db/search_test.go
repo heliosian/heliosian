@@ -789,6 +789,70 @@ func byNameOf(v *searchView, run *run, words string) []string {
 	return hitIDs(v.pick(run, scores, exact, testLimits)["GROUP"])
 }
 
+func searchPickInputs(m *Model) (*searchView, map[string]float64) {
+	rows := map[string]SearchRow{}
+	entries := map[string]*SearchEntry{}
+	scores := map[string]float64{}
+	add := func(id, table, terminal string) {
+		rows[id] = SearchRow{Table: table, Object: id, Name: "Matching name", Source: id, Terminal: terminal}
+		entries[id] = &SearchEntry{Summary: "made"}
+		scores[id] = 1
+	}
+	add("grp00000000004", "GROUP", "")
+	add("per00000000002", "PERSON", "")
+	for _, row := range m.Shown("DOCUMENT").All() {
+		terminal := row["terminal"]
+		if terminal == "" {
+			terminal = row["id"]
+		}
+		add(row["id"], "DOCUMENT", terminal)
+	}
+	return buildView(rows, entries, nil), scores
+}
+
+func TestSearchSkipsTablesWithZeroLimits(t *testing.T) {
+	m := sample(t).Model()
+	v, scores := searchPickInputs(m)
+	shared := v.rows["doc00000000101"]
+	shared.Object = "grp00000000004"
+	v.rows["doc00000000101"] = shared
+	delete(scores, "doc00000000101")
+	v = buildView(v.rows, v.entries, nil)
+	for _, table := range searchTables {
+		t.Run(table, func(t *testing.T) {
+			r := m.newRun(Env{Viewer: parent, Now: testNow})
+			limits := map[string]int{table: SearchLimit}
+			got := v.pick(r, scores, nil, limits)
+			for key := range r.rows {
+				if key.table == "DOCUMENT" && table != "DOCUMENT" {
+					t.Fatalf("checked a document policy while only %s results were requested", table)
+				}
+			}
+			wanted := map[string]float64{}
+			for object, score := range scores {
+				if slices.ContainsFunc(v.objects[object], func(id string) bool { return v.rows[id].Table == table }) {
+					wanted[object] = score
+				}
+			}
+			want := v.pick(m.newRun(Env{Viewer: parent, Now: testNow}), wanted, nil, limits)
+			gotJSON, _ := json.Marshal(got)
+			wantJSON, _ := json.Marshal(want)
+			if string(gotJSON) != string(wantJSON) {
+				t.Fatalf("got %s, want %s", gotJSON, wantJSON)
+			}
+		})
+	}
+}
+
+func BenchmarkSearchGroupsOnly(b *testing.B) {
+	m := scaleStore(b).Model()
+	v, scores := searchPickInputs(m)
+	limits := map[string]int{"GROUP": 200}
+	for b.Loop() {
+		v.pick(m.newRun(Env{Viewer: scaleViewer, Now: testNow}), scores, nil, limits)
+	}
+}
+
 func TestTheNewestOfEqualHitsComesFirst(t *testing.T) {
 	m := sample(t).Model()
 	v, dated := namedView(t, m, map[string]string{"oldest": "Rain Boots Sale", "newest": "Boots for the Tide Pools"})

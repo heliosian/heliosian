@@ -1104,14 +1104,19 @@ func (r *run) replacementRef(ref SearchRef) SearchRef {
 }
 
 func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bool, limits map[string]int) map[string][]SearchResult {
-	objects := slices.Collect(maps.Keys(scores))
+	objects := []string{}
+	for object := range scores {
+		if slices.ContainsFunc(v.objects[object], func(id string) bool { return limits[v.rows[id].Table] > 0 }) {
+			objects = append(objects, object)
+		}
+	}
 	when := func(o string) string {
 		return v.rows[v.objects[o][0]].When
 	}
 	replacements := map[string]store.Row{}
 	for _, object := range objects {
 		for _, id := range v.objects[object] {
-			if v.rows[id].Table == "DOCUMENT" {
+			if limits["DOCUMENT"] > 0 && v.rows[id].Table == "DOCUMENT" {
 				replacements[id] = r.documentReplacement(id)
 			}
 		}
@@ -1120,7 +1125,7 @@ func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bo
 	for _, object := range objects {
 		for _, id := range v.objects[object] {
 			row := v.rows[id]
-			if row.Table != "DOCUMENT" || (readable(r, "DOCUMENT", id) && replacements[id] == nil) {
+			if row.Table != "DOCUMENT" || limits["DOCUMENT"] == 0 || (readable(r, "DOCUMENT", id) && replacements[id] == nil) {
 				superseded[object] = false
 				break
 			}
@@ -1174,6 +1179,9 @@ func (v *searchView) pick(r *run, scores map[string]float64, exact map[string]bo
 		})
 		for _, id := range ids {
 			row := v.rows[id]
+			if limits[row.Table] == 0 {
+				continue
+			}
 			if row.Table != "DOCUMENT" {
 				if len(out[row.Table]) < limits[row.Table] && readable(r, row.Table, id) {
 					out[row.Table] = append(out[row.Table], SearchResult{ID: id, Name: row.Name, Href: row.Href, Summary: summary, Score: score})
