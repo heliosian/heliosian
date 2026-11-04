@@ -1,0 +1,50 @@
+# Block private fetches and redact mail logs
+
+byre task tskwVgBOsavT8r, "Security audit", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskwVgBOsavT8r in byre (read_task_events with task_id tskwVgBOsavT8r).
+
+## Summary
+
+Audited the Heliosian codebase at main commit `2e37f4c` for reachable security problems. The audit found two issues in background fetching and logging, fixed them, and took review through a clean result.
+
+Before: a vouched community email could supply a linked page or image URL that made the fetcher connect to a private service or cloud metadata address, including after DNS resolution or a redirect.
+Now: the shared fetch transport checks each resolved socket address and refuses nonpublic destinations. Private linked pages and images are not imported; the sender must use a public link or the supported document path.
+
+Before: fetch and digest logs could expose capability URLs, mail text, and model output, including malformed image or redirect targets.
+Now: fetch logs retain URL origins and fixed error reasons, while digest logs retain counts without message content.
+
+The connection-time check was chosen to cover DNS and redirect paths at one choke point. Redacted logging keeps operational outcomes without token-bearing URLs or private mail. Focused fetch, extraction, digest, and security tests passed under the repository's 30-second test limit; `go vet ./...` and `git diff --check` passed. The full `internal/db` suite exceeded the per-run limit, so affected tests were selected. The final review found no significant issues. Public `/open/share/` cards and previews were left untouched because the project explicitly makes them public by ID. Main had not advanced when the final merge turn ran, so `git merge --no-ff --no-commit main` reported already up to date.
+
+## Handoffs
+
+### Session sesfDtUDZ0fIyO, 2026-11-04T20:42:15Z
+
+## Handoff: Heliosian security audit
+
+**Goal:** Audit the whole codebase at main commit `2e37f4c7a0242978a9bc88ba9a55a2dacf39d379`, fix reachable high-value security problems, and take reviews to a clean result. Work alone; the task brief explicitly prohibits subagents. Worktree: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r`.
+
+The audit found and fixed two issues:
+
+1. A vouched community email could supply a page or image URL, including a redirect, that made the background fetcher contact a private or metadata address. The fetch transport now checks the resolved socket address on every connection and refuses nonpublic destinations. It permits a loopback development proxy used by existing intercept tests.
+2. Fetch and digest logs could expose capability URLs, email text, and model output. Fetch logs now show URL origins; digest logs retain counts. Invalid image URLs and malformed redirect targets now produce fixed reasons, preventing their complete URLs from reaching logs.
+
+The first snapshot’s reviewer raised the invalid-image and malformed-redirect error paths. Both findings were confirmed, answered with `respond_to_finding` as **fixing**, and fixed with regression tests. Relevant files are [fetch.go](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/internal/db/fetch.go), [fetch_test.go](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/internal/db/fetch_test.go), [extract_images.go](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/internal/db/extract_images.go), [extract_test.go](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/internal/db/extract_test.go), and [digest.go](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/internal/db/digest.go).
+
+**Verified:** Focused fetch, extraction, digest, and security tests passed under `timeout 30`; `timeout 30 go vet ./...` and `git diff --check` passed. The full `internal/db` suite previously exceeded the repository’s required 30-second per-run limit, so affected tests were selected. Two initial test fixtures put `%zz` in a query, which Go accepts; moving it into the path made the tests exercise the intended validation errors.
+
+The byre overview is current, with all three plan steps completed. The workflow stage was already marked finished in the prior turn; a second `finish_stage` call returned “stage already finished.” The latest edits were left for byre’s automatic end-of-turn snapshot and review. **Next:** check that review, answer every finding before changing code, fix valid findings, and repeat until clean. Only then propose the task for merge; do not call `ready_for_merge` in the same turn as file changes. Public `/open/share/` previews were deliberately left alone because [AGENTS.md](/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskwVgBOsavT8r/AGENTS.md) explicitly makes them public by ID.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-terra: done
+
+The change restricts document and image fetches to public network addresses, including across redirects, and removes email-derived content and URL details from several logs. It also adds tests for private-address refusals and URL redaction.
+
+- Image validation errors can still log complete capability URLs.
+- Malformed redirect targets can still expose capability URLs in fetch logs.
+
+### Snapshot #2, reviewer "Review", codex gpt-6-astra: done
+
+The change blocks document and thumbnail fetches to private network addresses, including destinations reached through DNS resolution and redirects. It removes sensitive email content and URL capability data from logs, and adds regression tests for private destinations and malformed URLs and redirects. Both findings from the earlier snapshot are resolved; this review was performed by reading code without running builds or tests.
+
+No significant findings.
