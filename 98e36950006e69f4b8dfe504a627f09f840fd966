@@ -1,0 +1,23 @@
+# Derive content sweep routing from the schema
+
+byre task tskFoOuq4NTPbe, "Content sweep routing", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskFoOuq4NTPbe in byre (read_task_events with task_id tskFoOuq4NTPbe).
+
+## Summary
+
+Audited main at 4877234 for structural complexity across shared server, store, document workers, tools, and browser code. Made one bounded cleanup in internal/db/sweep.go and internal/db/trigger.go.
+
+Before: content sweeping discovered stored reference columns from the schema, but nine manual table registrations separately determined which commits woke the sweeper.
+Now: one schema-derived contentReferences map drives both reference discovery and sweeper notifications. The nine-table notification coverage is preserved, and future stored content references automatically participate in cleanup notifications.
+
+Chose a shared schema rule over maintaining parallel registrations; generated columns and generated tables remain excluded. Focused sweeping, committed-trigger, incremental-refresh, cross-sheet-commit, and schema tests passed, as did repository-wide go vet and diff checks. Review finished with no findings. The requested merge from main reported already up to date, with no conflicts or further edits.
+
+Deliberately excluded broader worker/query/client rewrites because they lacked evidence of sufficient value. No UI changes, production operations, schema migrations, flags, compatibility paths, or test hooks. Earlier open cleanup issues about expression list flags and geocoder parallel slices were already structurally fixed in the audited tree.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-fable-5-1: done
+
+Routes committed writes to the content sweeper by schema instead of by a hand-kept table list. `internal/db/sweep.go` now computes `contentReferences` once at package init: every non-generated table's non-generated reference columns that point at CONTENT or at any table. `unreferencedContent` iterates that map, and `committedInboxes` in `internal/db/trigger.go` wakes the sweep inbox for CONTENT itself and for any table in the map, replacing nine hardcoded `sweepInbox` entries. The computed set (PERSON, PHOTO, GROUP, DOCUMENT, STOCK, REPORT, MESSAGE, ALIAS, plus CONTENT) is exactly the set the old list named, so behavior is unchanged today, and a future CONTENT-referencing column can no longer be left out of the sweep wake-up. `Tables` is a package-level literal, so the init-order dependency is sound; `go vet ./internal/db` passes.
+
+No significant findings.
