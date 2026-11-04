@@ -148,9 +148,10 @@ func (m *Model) draftMembers(ctx context.Context, env Env, d groupDraft) (draftA
 		}
 	}
 	counts := []int{}
+	resolver := membershipResolver{m: m, reads: reads{}, resolved: map[string]map[string][]string{}}
 	for i, r := range d.Rules {
 		row := store.Row{"target": r.Target, "person": r.Person, "search": r.Search, "replace_with": r.ReplaceWith, "within": r.Within}
-		selected := m.selectRule("", row, reads{})
+		selected := resolver.selectRule("", row)
 		counts = append(counts, len(selected))
 		for person := range selected {
 			if r.Exclude {

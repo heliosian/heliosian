@@ -331,7 +331,8 @@ func (m *Model) effectiveAll() []store.Row {
 }
 
 func (m *Model) effectiveOf(group string, r reads) []store.Row {
-	reasons := m.resolve(group, r)
+	resolver := membershipResolver{m: m, reads: r, resolved: map[string]map[string][]string{}}
+	reasons := resolver.resolve(group)
 	out := []store.Row{}
 	for _, person := range slices.Sorted(maps.Keys(reasons)) {
 		out = append(out, store.Row{"id": Derive(EffectiveMemberPrefix, group, person), "group": group, "person": person, "reasons": strings.Join(reasons[person], ", ")})
@@ -339,9 +340,19 @@ func (m *Model) effectiveOf(group string, r reads) []store.Row {
 	return out
 }
 
-func (m *Model) resolve(group string, r reads) map[string][]string {
+type membershipResolver struct {
+	m        *Model
+	reads    reads
+	resolved map[string]map[string][]string
+}
+
+func (r *membershipResolver) resolve(group string) map[string][]string {
+	if out, ok := r.resolved[group]; ok {
+		return out
+	}
+	m := r.m
 	out := map[string][]string{}
-	r[readKey{readGroup, group}] = true
+	r.reads[readKey{readGroup, group}] = true
 	g, _ := m.Table("GROUP").Get(group)
 	activity := g["kind"] == "activity"
 	excluded := map[string]bool{}
@@ -363,7 +374,7 @@ func (m *Model) resolve(group string, r reads) map[string][]string {
 	rules := m.Shown("RULE").Referencing("group", group)
 	slices.SortStableFunc(rules, func(a, b store.Row) int { return store.CompareKeys(a["order"], b["order"]) })
 	for _, rule := range rules {
-		selected := m.selectRule(group, rule, r)
+		selected := r.selectRule(group, rule)
 		for person := range selected {
 			if exclude, _ := cells.YesNo(rule["exclude"], false); exclude {
 				excluded[person] = true
@@ -374,16 +385,18 @@ func (m *Model) resolve(group string, r reads) map[string][]string {
 	}
 	people := m.Shown("PERSON")
 	for person := range out {
-		r[readKey{readPerson, person}] = true
+		r.reads[readKey{readPerson, person}] = true
 		row, ok := people.Get(person)
 		if excluded[person] || !ok || strings.TrimSpace(row["deactivated"]) != "" {
 			delete(out, person)
 		}
 	}
+	r.resolved[group] = out
 	return out
 }
 
-func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]bool {
+func (r *membershipResolver) selectRule(group string, rule store.Row) map[string]bool {
+	m := r.m
 	var picked map[string]bool
 	narrow := func(s map[string]bool) {
 		if picked == nil {
@@ -399,15 +412,15 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 	if target := rule["target"]; target != "" {
 		s := map[string]bool{}
 		if target != group {
-			for person := range m.resolve(target, r) {
+			for person := range r.resolve(target) {
 				s[person] = true
 			}
 		}
 		if under, _ := cells.YesNo(rule["under"], false); under {
-			r[readKey{readGroup, target}] = true
+			r.reads[readKey{readGroup, target}] = true
 			for _, g := range m.Shown("GROUP").groupsUnder(target) {
-				r[readKey{readGroup, g}] = true
-				for person := range m.resolve(g, r) {
+				r.reads[readKey{readGroup, g}] = true
+				for person := range r.resolve(g) {
 					s[person] = true
 				}
 			}
@@ -427,7 +440,7 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 			}
 		}
 		if within := rule["within"]; within != "" {
-			for person := range m.resolve(within, r) {
+			for person := range r.resolve(within) {
 				textGuest[person] = true
 			}
 		}
@@ -436,7 +449,7 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 		return row["source"] != "guest" || textGuest[row["id"]]
 	}
 	if search := strings.ToLower(strings.TrimSpace(rule["search"])); search != "" {
-		r[readKey{kind: readPeople}] = true
+		r.reads[readKey{kind: readPeople}] = true
 		found := m.search(search)
 		for person := range found {
 			row, ok := m.Shown("PERSON").Get(person)
@@ -447,7 +460,7 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 		narrow(found)
 	}
 	if property := strings.TrimSpace(rule["property"]); property != "" {
-		r[readKey{kind: readPeople}] = true
+		r.reads[readKey{kind: readPeople}] = true
 		want := strings.TrimSpace(rule["value"])
 		s := map[string]bool{}
 		for _, row := range m.Shown("PERSON").All() {
@@ -461,11 +474,11 @@ func (m *Model) selectRule(group string, rule store.Row, r reads) map[string]boo
 		return map[string]bool{}
 	}
 	if how := strings.ToLower(strings.TrimSpace(rule["replace_with"])); how != "" {
-		r[readKey{kind: readHouseholds}] = true
+		r.reads[readKey{kind: readHouseholds}] = true
 		picked = m.replaceWith(picked, how)
 	}
 	if within := rule["within"]; within != "" {
-		in := m.resolve(within, r)
+		in := r.resolve(within)
 		for person := range picked {
 			if _, ok := in[person]; !ok {
 				delete(picked, person)
