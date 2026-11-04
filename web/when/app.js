@@ -29,13 +29,13 @@ function eventRoute(parts) {
 const routes = {
   '': () => homePage(today()),
   c: parts => {
-    const f = allCalendars().find(x => x.token === parts[1]);
+    const f = allCalendars().find(x => x.key === parts[1]);
     if (!f) {
       return notFound('That calendar');
     }
     if (state.appliedCalendar !== location.pathname) {
       state.appliedCalendar = location.pathname;
-      setActiveFeed(f.token);
+      setActiveFeed(f.key);
       setClassrooms(feedClassrooms(f));
       setTags(feedTags(f));
     }

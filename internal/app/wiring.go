@@ -143,7 +143,7 @@ func NewCore(cfg Config) *Core {
 	registerDirectoryPages(mux, whoAbout, cfg.BrowserKey)
 	mux.Handle("GET /{$}", http.RedirectHandler("/people", http.StatusFound))
 	calendarMux := http.NewServeMux()
-	serve.Pages(calendarMux, "web/when/index.html", "/{$}", "/c/{token}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}")
+	serve.Pages(calendarMux, "web/when/index.html", "/{$}", "/c/{id}", "/day/{date}", "/mine", "/mine/{list}", "/admin", "/g/{key}")
 	whenSearch := cfg.ImageSearch
 	whenSearch.UserAgent = "Helios When image search (+https://when.heliosian.com)"
 	whenSearch.Register(api, "/api/when")

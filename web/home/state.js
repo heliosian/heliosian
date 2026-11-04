@@ -129,11 +129,11 @@ function calendarsOf(cal) {
   const builtinRooms = cal.home.classrooms.length ? cal.home.classrooms : cal.mineRooms.length ? cal.mineRooms : all;
   const home = cal.home.id ? cal.saved.find(s => s.id === cal.home.id) : null;
   const list = [{
-    id: home ? home.id : 'my-heliosian', token: home ? home.token : 'my-heliosian', name: cal.home.name || 'My Heliosian', emoji: cal.home.emoji || '', locked: true,
+    id: home ? home.id : 'my-heliosian', key: 'my-heliosian', name: cal.home.name || 'My Heliosian', emoji: cal.home.emoji || '', locked: true,
     condition: home ? home.condition : wordsCondition(builtinWords(cal)), rooms: builtinRooms,
   }];
   for (const s of cal.saved.filter(s => !s.locked)) {
-    list.push({id: s.id, token: s.token, name: s.name, emoji: s.emoji, locked: false, condition: s.condition || wordsCondition(wordsFor(cal, s.classrooms.length ? s.classrooms : all, s.tags.length ? s.tags : cal.tags.map(t => t.id))), rooms: s.classrooms.length ? s.classrooms : all});
+    list.push({id: s.id, key: s.key, name: s.name, emoji: s.emoji, locked: false, condition: s.condition || wordsCondition(wordsFor(cal, s.classrooms.length ? s.classrooms : all, s.tags.length ? s.tags : cal.tags.map(t => t.id))), rooms: s.classrooms.length ? s.classrooms : all});
   }
   for (const c of list) {
     c.days = daysFor(cal, c.rooms);

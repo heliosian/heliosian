@@ -203,11 +203,11 @@ export function calendarMenu(list, current, chosen, onPick) {
   const menu = el('div', 'category-calendar-menu');
   menu.hidden = true;
   for (const c of list) {
-    const item = el('button', 'category-calendar-item' + (c.token === current.token ? ' is-on' : ''));
+    const item = el('button', 'category-calendar-item' + (c.key === current.key ? ' is-on' : ''));
     item.type = 'button';
     item.append(calendarMark(c), el('span', '', c.name));
     const tail = el('span', 'category-calendar-tail');
-    if (c.token === chosen.token) {
+    if (c.key === chosen.key) {
       tail.append(el('span', 'category-calendar-default', 'default'));
     }
     if (c.locked) {

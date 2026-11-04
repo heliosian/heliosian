@@ -83,7 +83,7 @@ export function editFeedPopup(f) {
     await load();
   });
   actions.append(submit, button('Cancel', '', 'button button-secondary', shut), status, remove);
-  if (defaultFeed().token !== f.token) {
+  if (defaultFeed().key !== f.key) {
     const first = button('Make default', 'pin', 'button button-secondary modal-default', async () => {
       shut();
       await makeDefaultFeed(f);
@@ -131,9 +131,9 @@ export async function makeDefaultFeed(f) {
   await load();
 }
 
-async function orderFeeds(tokens) {
+async function orderFeeds(keys) {
   try {
-    await orderSaved(tokens.map(token => allCalendars().find(f => f.token === token).id));
+    await orderSaved(keys.map(key => allCalendars().find(f => f.key === key).id));
   } catch (err) {
     toast(err.message);
     return false;
@@ -147,11 +147,11 @@ export function calendarMenu(onPick) {
   const chosen = defaultFeed();
   const working = activeFeed();
   for (const f of allCalendars()) {
-    const item = el('button', 'calendar-menu-item' + (working && working.token === f.token ? ' is-on' : ''));
+    const item = el('button', 'calendar-menu-item' + (working && working.key === f.key ? ' is-on' : ''));
     item.type = 'button';
     item.append(feedMark(f), el('span', 'calendar-menu-name', f.name));
     const tail = el('span', 'calendar-menu-tail');
-    if (f.token === chosen.token) {
+    if (f.key === chosen.key) {
       const star = el('span', 'nav-sub-star');
       star.append(svg('pin'));
       tail.append(star);
@@ -227,7 +227,7 @@ function acceptDrops(nav) {
 
 function feedRow(f, rail) {
   const row = el('div', 'nav-sub-row' + (editingNav ? ' is-draggable' : '') + (f.locked ? ' is-locked' : ''));
-  row.dataset.token = f.token;
+  row.dataset.key = f.key;
   if (!editingNav) {
     row.append(feedLink(f, rail));
     return row;
@@ -254,7 +254,7 @@ function draggableRow(row, f, rail) {
     rail.dragging = row;
     row.classList.add('is-dragging');
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', f.token);
+    e.dataTransfer.setData('text/plain', f.key);
   });
   row.addEventListener('dragover', e => {
     if (!rail.dragging) {
@@ -273,20 +273,20 @@ function draggableRow(row, f, rail) {
   row.addEventListener('dragend', async () => {
     row.classList.remove('is-dragging');
     rail.dragging = null;
-    const order = [...rail.nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.token);
-    if (order.join() !== rail.all.map(x => x.token).join()) {
+    const order = [...rail.nav.querySelectorAll('.nav-sub-row')].map(r => r.dataset.key);
+    if (order.join() !== rail.all.map(x => x.key).join()) {
       await orderFeeds(order);
     }
   });
 }
 
 function feedLink(f, rail) {
-  const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && rail.working && rail.working.token === f.token ? ' is-working' : ''));
-  a.href = '/c/' + f.token;
+  const a = el('a', 'nav-sub' + (active('/') && showsFeed(f) ? ' is-active' : active('/') && rail.working && rail.working.key === f.key ? ' is-working' : ''));
+  a.href = '/c/' + f.key;
   a.append(feedMark(f), el('span', '', f.name));
   a.title = f.locked ? 'The calendar\u2019s own view, for everyone' : 'Show the calendar as ' + f.name + ' sees it';
   const marks = el('span', 'nav-sub-marks');
-  if (f.token === rail.chosen.token) {
+  if (f.key === rail.chosen.key) {
     const star = el('span', 'nav-sub-star');
     star.title = 'Your default calendar';
     star.append(svg('pin'));
@@ -338,12 +338,12 @@ function refresh() {
 }
 
 function pickFeed(f) {
-  setActiveFeed(f.token);
+  setActiveFeed(f.key);
   setClassrooms(feedClassrooms(f));
   setTags(feedTags(f));
   state.appliedCalendar = '';
   carriedQuery = typed();
-  setPath('/c/' + f.token);
+  setPath('/c/' + f.key);
 }
 
 function chip(label, on, onClick, color) {

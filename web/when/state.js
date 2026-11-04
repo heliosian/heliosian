@@ -7,8 +7,8 @@ import {loadCalendar, buildCalendar, wordsFor as wordsOfCalendar, wordsCondition
 const remembered = readFilters();
 export const state = {model: null, filters: {classrooms: remembered.classrooms, tags: remembered.tags}, query: '', day: '', month: '', activeFeed: remembered.active, appliedCalendar: '', matching: new Set(), found: new Set()};
 
-export function setActiveFeed(token) {
-  state.activeFeed = token;
+export function setActiveFeed(key) {
+  state.activeFeed = key;
   saveFilters();
 }
 
@@ -164,7 +164,7 @@ export const MY_HELIOSIAN = 'my-heliosian';
 
 export function myHeliosian() {
   const home = me().home;
-  return {id: home.id, url: home.url || '', token: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', order: home.order || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
+  return {id: home.id, url: home.url || '', key: MY_HELIOSIAN, name: home.name || 'My Heliosian', emoji: home.emoji || '', order: home.order || '', locked: true, position: home.position || 0, classrooms: [], tags: []};
 }
 
 export function allCalendars() {
@@ -200,12 +200,12 @@ export function activeFeed() {
   const feeds = allCalendars();
   const shown = feeds.find(showsFeed);
   if (shown) {
-    if (state.activeFeed !== shown.token) {
-      setActiveFeed(shown.token);
+    if (state.activeFeed !== shown.key) {
+      setActiveFeed(shown.key);
     }
     return shown;
   }
-  return feeds.find(f => f.token === state.activeFeed) || defaultFeed();
+  return feeds.find(f => f.key === state.activeFeed) || defaultFeed();
 }
 
 export function classroomNames() {

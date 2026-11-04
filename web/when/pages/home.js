@@ -212,7 +212,7 @@ function saveCalendar() {
     shut();
     longToast(`Saved. ${body.name} is under Calendar in the rail.`);
     await loadModel();
-    setActiveFeed(state.model.feeds.find(f => f.id === made.id).token);
+    setActiveFeed(state.model.feeds.find(f => f.id === made.id).key);
     render();
   });
   name.focus();
@@ -335,7 +335,7 @@ async function saveOnto(f) {
     toast(err.message);
     return;
   }
-  setActiveFeed(f.token);
+  setActiveFeed(f.key);
   longToast(`Saved onto ${f.name}.`);
   await load();
 }
@@ -447,7 +447,7 @@ export function homePage(date) {
       headline.append(changed, saveButton());
     }
     headline.append(subscribeMenu(shown));
-    if (shown.token === defaultFeed().token) {
+    if (shown.key === defaultFeed().key) {
       const badge = el('span', 'calendar-default');
       badge.append(svg('pin'), el('span', '', 'Default Calendar'));
       badge.title = 'The calendar this page opens to, and Heliosian reads';

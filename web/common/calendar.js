@@ -208,7 +208,7 @@ export function buildCalendar(a) {
     return out;
   };
   const savedRows = rowsOf(a.saved, 'SAVED_SEARCH');
-  const saved = savedRows.map((s, i) => ({id: s.id, token: s.token, name: s.name, emoji: s.emoji || '', order: s.order || '', position: i, locked: s.default === 'Yes', url: `/open/feed/${s.token}.ics`, condition: s.condition || '', ...wordsOf(s.search)}));
+  const saved = savedRows.map((s, i) => ({id: s.id, key: s.id, name: s.name, emoji: s.emoji || '', order: s.order || '', position: i, locked: s.default === 'Yes', url: `/open/feed/${s.token}.ics`, condition: s.condition || '', ...wordsOf(s.search)}));
   const home = saved.find(s => s.locked) || {id: '', name: 'My Heliosian', emoji: '', position: 0, url: '', classrooms: [], tags: []};
   const mineRooms = [...new Set(household.filter(p => p.id !== me.id && p.grade && p.classroom).map(p => classroomName[p.classroom]).filter(Boolean))];
   return {
