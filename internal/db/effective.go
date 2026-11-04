@@ -504,14 +504,13 @@ func (m *Model) search(text string) map[string]bool {
 
 func (m *Model) students() map[string]bool {
 	out := map[string]bool{}
-	for _, g := range m.Table("GROUP").All() {
-		if g["kind"] != "group" || g["slug"] != "students" {
-			continue
-		}
-		for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
-			if memberAs(row) == "yes" {
-				out[row["person"]] = true
-			}
+	g, ok := m.Table("GROUP").Distinct("slug", "students")
+	if !ok || g["kind"] != "group" || g["slug"] != "students" {
+		return out
+	}
+	for _, row := range m.Table("MEMBER").Referencing("group", g["id"]) {
+		if memberAs(row) == "yes" {
+			out[row["person"]] = true
 		}
 	}
 	return out
