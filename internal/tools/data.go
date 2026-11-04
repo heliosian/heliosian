@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"heliosian/internal/db"
 	"heliosian/internal/store"
@@ -288,7 +289,7 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 		return notice, nil
 	}
 	outline := &strings.Builder{}
-	texts := &strings.Builder{}
+	parts := []struct{ content, name, heading string }{}
 	for _, n := range nodes {
 		r := n.row
 		notice, err := replacementNotice(r)
@@ -323,15 +324,11 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 		if !ok {
 			continue
 		}
-		body, _, err := c.deps.Bucket.Get(c.ctx, name)
-		if err != nil {
-			return nil, fmt.Errorf("read %s: %w", r["content"], err)
-		}
-		fmt.Fprintf(texts, "\n## %s (%s)\n\n", what, r["id"])
+		heading := fmt.Sprintf("\n## %s (%s)\n\n", what, r["id"])
 		if notice != "" {
-			fmt.Fprintf(texts, "%s\n\n", notice)
+			heading += notice + "\n\n"
 		}
-		fmt.Fprintf(texts, "%s\n", body)
+		parts = append(parts, struct{ content, name, heading string }{r["content"], name, heading})
 	}
 	out := "# " + title(root) + "\n\n"
 	if href := c.href("DOCUMENT", root); href != "" {
@@ -347,6 +344,30 @@ var readDocument = define("helios_read_document", "Reading a document", "A Helio
 	out += outline.String()
 	if len(nodes) >= documentNodes {
 		out += fmt.Sprintf("\n(the tree is cut at %d documents)\n", documentNodes)
+	}
+	texts := &strings.Builder{}
+	skipped, available := in.Offset, 0
+	count := func(text string) {
+		for _, ch := range text {
+			if skipped > 0 {
+				skipped--
+				continue
+			}
+			available += utf8.RuneLen(ch)
+		}
+	}
+	count(out)
+	for _, part := range parts {
+		if available >= documentText {
+			break
+		}
+		body, _, err := c.deps.Bucket.Get(c.ctx, part.name)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", part.content, err)
+		}
+		text := part.heading + string(body) + "\n"
+		texts.WriteString(text)
+		count(text)
 	}
 	out += texts.String()
 	characters := []rune(out)
