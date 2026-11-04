@@ -1,0 +1,23 @@
+# Use the group index when resolving student relatives
+
+byre task tskqAOfZ9rWZq4, "Performance audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskqAOfZ9rWZq4 in byre (read_task_events with task_id tskqAOfZ9rWZq4).
+
+## Summary
+
+Audited the whole Heliosian codebase at 0b425c1 for performance costs people would notice, including query/request paths, browser data loads, background workers and scheduling, membership derivation, storage, search, and telemetry. Retained one small indexed-lookup fix in internal/db/effective.go: 7 added lines and 8 removed lines.
+
+Before: every household replacement in membership rules scanned all groups to find the student roster.
+Now: it locates the same roster through the existing unique group-slug index, preserving the original kind, spelling and membership checks.
+
+Three alternating old/new runs on a production snapshot measured the parent directory query batch immediately after a profile edit at 561.1 ms versus 223.0 ms median (60.3% lower). First read before warming measured 780.8 ms versus 291.7 ms. These are local query-engine measurements, excluding network, response encoding, browser rendering and live worker contention. All 195,067 membership rows and complete parent/admin query answers match after respecting ordering only where specified. Nine focused tests, go vet ./..., and diff checks pass. Automatic review completed without findings. No production data was written; the raw snapshot and diagnostic result files were deleted.
+
+A broader nested-membership cache experiment was removed because its gain was modest. Loop history paging/count work was left alone because production had only 39 inbound posts, and search cancellation had no reproduced cost justifying a change. No new cache, queue, dependency, schema or configuration was introduced. Main merged cleanly into this branch without conflicts or substantive resolution changes; the merge was left uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Membership checks for the Students role group no longer walk every group. `students()` looks the group up by its unique slug and still keeps only direct `yes` members of the one group whose kind is `group` and whose slug is exactly `students`. That set is what household rules, family names, consent, and student mail copies already used. Because `GROUP.slug` is a distinct column, the lookup returns the same row the full scan would have kept.
+
+No significant findings.
