@@ -248,19 +248,22 @@ const PolicySource = `
       (and (not (exists DOCUMENT (in id (ancestors @d)) (= kind "mail")))
            (not (exists DOCUMENT_GROUP (in document (ancestors @d)) (= relation "sent_to"))))))
 
-; @g is the group a section of links on the front page holds its links under
+(define (home_group @g)
+  (and (= @g.kind "group") (blank @g.slug) (blank @g.managed_by)
+       (not (exists GROUP (or (= managed_by @g) (= hidden_for @g))))
+       (not (exists APP (= admins @g)))))
+
+; @g is a dedicated top-level plain group a front-page widget holds its links under
 (define (home_section @g)
-  (exists WIDGET (= group @g)))
+  (and (home_group @g) (blank @g.parent) (exists WIDGET (= group @g))))
 
 ; @g is a section of links on the front page, or a link in one
 (define (home_thing @g)
-  (and (= @g.kind "group") (or (home_section @g) (home_section @g.parent))))
+  (and (home_group @g) (or (home_section @g) (home_section @g.parent))))
 
 ; @g is a plain group with no slug that something on the front page shows to: an app, a widget, or a link
 (define (home_audience @g)
-  (and (= @g.kind "group") (blank @g.slug) (blank @g.parent) (blank @g.managed_by)
-       (not (exists GROUP (or (= managed_by @g) (= hidden_for @g))))
-       (not (exists APP (= admins @g)))
+  (and (home_group @g) (blank @g.parent)
        (or (exists WIDGET (= visible_to @g))
            (exists APP (= visible_to @g))
            (exists GROUP @l (= visible_to @g) (home_section @l.parent)))))
@@ -1288,11 +1291,11 @@ const PolicySource = `
 ; a link's place in its section
 (set GROUP.order (and (admin_of "home") (home_thing @old)))
 ; move a link into another section
-(set GROUP.parent (and (admin_of "home") (home_section @old.parent) (home_section @new.parent)))
+(set GROUP.parent (and (admin_of "home") (home_thing @old) (home_section @old.parent) (home_section @new.parent)))
 ; take a link away
-(delete GROUP (and (admin_of "home") (= @old.kind "group") (home_section @old.parent)))
+(delete GROUP (and (admin_of "home") (home_thing @old) (home_section @old.parent)))
 ; take away a plain group nothing names any longer: a section after its widget, or the group a thing on the page showed to
-(delete GROUP (and (admin_of "home") (= @old.kind "group") (blank @old.parent) (blank @old.slug) (not @old.listed) (blank @old.managed_by)))
+(delete GROUP (and (admin_of "home") (home_group @old) (blank @old.parent) (not @old.listed)))
 ; a rule of the group a thing on the page shows to
 (insert RULE (and (admin_of "home") (home_audience @new.group)))
 ; and take it away
@@ -1302,9 +1305,9 @@ const PolicySource = `
 ; and take them off
 (delete MEMBER (and (admin_of "home") (home_audience @old.group)))
 ; a section's or a link's picture
-(insert PHOTO (and (admin_of "home") (or (home_section @new.group) (home_section @new.group.parent))))
+(insert PHOTO (and (admin_of "home") (home_thing @new.group)))
 ; take it away
-(delete PHOTO (and (admin_of "home") (or (home_section @old.group) (home_section @old.group.parent))))
+(delete PHOTO (and (admin_of "home") (home_thing @old.group)))
 
 ;; Wiki admins
 
