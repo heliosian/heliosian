@@ -1,0 +1,212 @@
+# Enable MCP updates with fresh consent for edit access
+
+byre task tskAQRxx7ZLS18, "MCP updates", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskAQRxx7ZLS18 in byre (read_task_events with task_id tskAQRxx7ZLS18).
+
+## Summary
+
+Security audit of main at 7ce5c40 reproduced an OAuth consent mismatch with sample data: a connector described as unable to edit could write through the bearer API. Ian explicitly chose “Let MCP clients make updates.” No production data was touched.
+
+Before: ordinary OAuth approval promised no edits despite existing API write authority, and MCP offered reading tools alone.
+Now: all approvals disclose edit authority, and helios_write supports atomic insert/set/delete batches through the apps’ shared parser, permissions, triggers and audit log. Helios Ask retains reading tools alone.
+
+Before: outstanding tokens, pending codes and already-open approval pages retained grants under misleading wording.
+Now: the shared verifier rejects old tokens across MCP and bearer APIs; old codes and stale approval submissions are refused. Existing MCP, iPhone-app and laptop-tool connections require fresh approval once after deployment; browser sessions and client registrations remain valid.
+
+Shared write policies were chosen over parallel MCP permissions. Distinct signed token/code purposes enforce fresh consent without scopes or compatibility paths. The first review’s consent finding was fixed. A subsequent recommendation to remove writes for prompt-injection risk was declined because it reversed Ian’s explicit instruction. That risk is disclosed: injected documents or messages can persuade an external model to make permitted edits or send mail, and the server does not independently confirm human intent for each write.
+
+MCP/auth tests, focused database security tests, shared-tool tests, qclient compilation, vet and diff checks passed. Earlier Ask/app/mail suites passed. The full database suite hit its required 30-second timeout; only its focused tests are claimed as passing. Main merged automatically without conflicts or manual resolution, and MCP/auth/shared-tool tests passed on the merged tree. The merge was left uncommitted for byre to conclude.
+
+Public share previews and trusted administrator/cloud-owner access were deliberately left alone under the documented trust model. No other concrete vulnerability was established; no GitHub issues, new read-only scope system or deployment work were included.
+
+## Handoffs
+
+### Session sesATk1vpJNq7K, 2026-11-04T04:09:32Z
+
+Task: **MCP updates**, project **heliosian**, task ID `tskAQRxx7ZLS18`, worktree `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tskAQRxx7ZLS18`.
+
+This began as the **Security Audit** stage of workflow **Audit**, auditing main at `7ce5c407ae103cf05cbddc374afb594c336ec6f6`. The audit stage has already finished. Its implementation is awaiting another review after addressing snapshot #6’s one finding. **Do not call finish_stage again**: I tried after the review fix and it returned “stage already finished.” Once the newest review returns clean, call **ready_for_merge** immediately. Never commit, push, deploy, or switch branches directly; byre handles commits at turn end.
+
+Read `AGENTS.md` before working. Key requirements: no new comments except subtle logic (two lines maximum), reuse shared permission/write paths, no compatibility fallbacks or test-only production machinery, tests always under `timeout 30`, captures under `timeout 20`, use `go vet`, never `go build`. No delegation. Ask questions only with `byre__ask_human`. Every behavior change in final prose/task summaries must use adjacent **Before:** / **Now:** lines.
+
+Goal and human decision:
+- Broadly audit reachable security boundaries and fix actual issues.
+- Verified one issue: general OAuth approval promised a connection could “change nothing,” yet its access token could already write through `/api/q`.
+- I initially offered read-only scopes or truthful disclosure. Ian rejected that incomplete framing: **“why is ‘just let the mcp client make updates’ not an option?”**
+- I then offered that choice, and Ian explicitly chose **“Let MCP clients make updates.”**
+- Implement one MCP write tool through existing data-model permissions, accurately disclose authority, and require fresh approval for connections granted under the old wording.
+- No read-only scope system. Helios Ask retains its shared reading tools.
+- `byre__observe` recorded Ian’s preference to consider exposing useful updates instead of assuming MCP must remain read-only.
+
+Current behavior:
+
+Before: ordinary OAuth approval promised no edits despite existing bearer-token write authority, and MCP exposed only reading tools.
+Now: every approval discloses that the connection can change what its approving person can, and `helios_write` supports authorized atomic batches.
+
+Before: outstanding tokens and pending codes retained approvals made under misleading wording.
+Now: old tokens/codes are rejected, and old approval pages must reload before granting access.
+
+**Connection impact must appear plainly in the merge proposal:** all existing MCP, iPhone-app and laptop-tool access tokens will be refused after deployment; users must sign in and approve again once. Old pending authorization codes must restart authorization. An old already-open approval page must reload. Browser sessions and registered OAuth clients remain valid.
+
+Implementation:
+1. `internal/mcp/tools.go`
+   - Adds `helios_write` only to MCP.
+   - Input schema derives from `db.Batch` using `jsonschema.For`.
+   - Uses `db.ParseBatch` for strict shared parsing, and `db.Write` for real transactions/policies/triggers.
+   - Supports insert/row/optional as, set/cells, delete and `@name` references to earlier inserts.
+   - Resolves viewer from the verified token, not arguments.
+   - Uses `access.Actor{Email: email}` and `db.Env{Viewer: viewer, Now: tokens.Now()}`.
+   - Returns JSON `{"result":[affected IDs...]}` in edit order.
+   - Refused edits roll back whole batches.
+   - Write tool is marked mutating (empty SDK annotations => readOnlyHint false, idempotent false).
+   - Description explicitly explains normal mail/invitation side effects.
+2. `internal/mcp/oauth.go`
+   - `verify` calls `auth.Identify(r, email, email)` after checking token. Real/effective identities and change-log attribution reflect approving account.
+   - Removes client-dependent `Changes` from approval-description response; all clients have same disclosed authority.
+   - New `approvalPurpose = "read and write approval"` used when sealing/unsealing authorization codes; rejects legacy `"code"` signatures.
+   - `pending` now has `Query` and `Consent`.
+   - `approve` requires `Consent == "read and write"`, otherwise HTTP 400: `reload this approval page to review edit access`. This closes an old page left open across deployment minting a new grant without showing updated wording.
+3. `internal/auth/access.go`
+   - New private `accessPurpose = "read and write access"`, used by `Tokens.Issue` and `Tokens.Verify`.
+   - Legacy `"access"` signatures fail centrally, covering both MCP endpoints and every bearer API route.
+   - AccessKey derivation/client-registration signatures unchanged. No old-token fallback.
+4. `web/mcp/authorize.html`
+   - All clients: “wants to use Heliosian” and “can change what you can change.”
+5. `web/mcp/authorize.js`
+   - Removes old conditional wording.
+   - Approval/denial POST now sends `{query, consent: 'read and write'}`.
+6. `web/mcp/index.html`, `internal/mcp/mcp.go`
+   - Front page/server instructions describe updates and existing permissions.
+   - Instructions say use writes for user-requested updates after reading rows/schema/policies and explain side effects.
+7. `docs/mcp/mcp.md`, `README.md`
+   - Document tool, permissions, audit identity, consent and invalidation/reapproval.
+   - Explain explicit signed purposes and stale-page refusal.
+
+Tests:
+- New `internal/mcp/write_test.go`.
+- `internal/mcp/mcp_test.go` fixture now exposes store/Dir for assertions and registers real `db.Register` routes on same test mux with same auth token configuration.
+- Tests use real OAuth registration/approval/exchange and SDK client.
+- Authorized inserts, sets, deletes, batch `@name` references on both `/mcp` and POST `/`.
+- Stored values and persisted `CHANGES.actor` / `real_actor`.
+- Other-household profile edit, imported `vc_name` edit, Super Admin membership insertion all refused; earlier allowed edit in same batch rolled back.
+- Strict parser rejects forged `server` fields and top-level `viewer`.
+- Mutation annotations, approval wording, sign-out revocation.
+- Legacy-token regressions cover `/mcp`, `/`, QUERY and POST `/api/q`, `/api/do/wiki`, `/api/blob/...`.
+- Fresh approval works via MCP and API.
+- Legacy unexpired authorization code cannot mint token.
+- Same registered client can reapprove.
+- Old approval POST lacking consent must reload.
+- Existing approval-time tests now unseal new signing purposes so sign-out/code lifetime guarantees remain tested.
+
+Verification completed after latest changes:
+- `timeout 30 go test ./internal/mcp ./internal/auth ./internal/qclient --count=1`
+  - MCP 1.032s, auth 0.151s; qclient compiles, no tests.
+- `timeout 30 go test ./internal/db --run 'TestTokens|TestGuestsNeverSignIn|TestATokensWriteNamesWhoHeldIt|TestImportModeIsASuperAdmins|TestContentReferences|TestAGroupCannotBorrowTheSuperAdminsAsAnswers' --count=1`
+  - Passed 0.597s.
+- `timeout 30 go vet ./...`
+- `git diff --check`
+- Before review fix, complete `internal/tools`, `internal/ask`, `internal/app`, `internal/mail` also passed.
+- **Full internal/db suite previously hit 30-second timeout. Do not claim it passed.** Focused relevant security tests passed.
+- Original consent mismatch and review regressions were reproduced before fixes. Logs in ignored `local/securityprobe/`.
+- No failing assertion remains.
+- No production data read/written for reproduction or verification.
+
+Snapshot #6 reviewer **Review**, finding **1 [high] Existing read-only grants can invoke new write tool**:
+- Responded via `respond_to_finding` as **fixing** before editing.
+- Accepted because old misleading approvals should not persist, despite existing API authority.
+- Latest follow-up invalidates tokens/codes and blocks stale pages as described.
+- New snapshot review should arrive automatically after last turn’s file changes. **Do not ready_for_merge before that latest review finishes.**
+
+Audit scope/left alone:
+- Read AGENTS, README, dev/API/data-model/MCP/security-audit docs, past security issues and decisions.
+- Inspected authentication/session/spoof, routing, policies and staged writes/triggers, public invitation/guest/reply paths, content attachment/blob visibility, mail authentication, rendering/link handling, fetchers, paid integrations/limits and signed hooks.
+- Public share cards/previews are explicitly public by product policy; don’t narrow them.
+- Super admins, cloud-project owners/log readers and Spoof Mode are trusted as documented.
+- Considered outbound fetching but did not establish another concrete exploit against documented deployment; no speculative hardening.
+- No other real issue established, no GitHub issues filed (project says only Ian authorizes filing).
+
+Artifacts and preview:
+- Ignored original one-off reproduction: `local/securityprobe/main.go`; runs `timeout 30 go run ./local/securityprobe` against fictional sample data.
+  - It may now fail at approval because its old request lacks `consent`; don’t confuse that with regression. Update only if useful.
+- Screenshot of actual sample OAuth page: `local/screenshots/mcp-approval.png`.
+- Captured using repo `tools/screenshot` in Chrome, waiting for `#ask:not([hidden])`; visual wording still accurate after review fix.
+- Byre WebKit rejected local TLS certificate; used documented Chrome support for local dev cert.
+- Screenshot shown via `show_page` on Ian’s most recent client **roc**, ID `cliAD6XXdIwO0L`.
+- Uploaded image blob `blbRXu9OWdFcHo` if needed.
+- Byre browser capture on roc failed because Page view wasn’t visible. Don’t seize/change Ian’s pane to force a capture.
+- Task-owned sample server terminal **MCP preview**, ID `trmeHei3sEVDXs`, running `PORT=18467 go run ./tools/startserver`, bound to 127.0.0.1.
+- **That running binary predates latest protocol changes.** Restart that task-owned terminal before using it for current functional checks. Always name terminal in calls; don’t type tests into server terminal.
+- No need to recapture unchanged visible copy merely for signing-purpose changes.
+
+Dashboard/state:
+- Latest overview generation **7** (read_task_details before updates; don’t assume unchanged).
+- Title **MCP updates**.
+- Merge title **Enable MCP updates with fresh consent for edit access**.
+- Current overview and task summary cover entire task, accepted review finding, screenshot and one-time reconnect impact.
+- Plan:
+  1. Read trust model/reproduce mismatch — complete.
+  2. Implement writes/truthful approval — complete.
+  3. Address review with fresh approval — complete.
+     - Verify refusals/fresh grants/permissions — complete.
+  4. Complete review and propose merge — in progress.
+- Original stage finished with `finish_stage`; later call failed because already finished. Do not repeat.
+- Byre already commits snapshots; no manual git operations performed beyond read-only status/diff/log.
+
+Next:
+1. Read newest review/status.
+2. Check/respond to any findings before edits.
+3. If clean, call `ready_for_merge` with entire task overview, current generation, completed plan, all before/now behavior pairs, rationale for shared writer and fresh consent, explicit reconnect impact and full-DB-timeout limitation.
+4. No additional testing needed absent new changes or a concrete concern.
+5. Final short summary, with Before/Now formatting for changed behavior.
+
+## Reviews
+
+### Snapshot #2, reviewer "",  : skipped
+
+### Snapshot #6, reviewer "Review", codex gpt-6-sol: done
+
+Adds a `helios_write` MCP tool that applies insert, set, and delete batches through the data model's shared writer. It also updates the OAuth approval page and MCP documentation to disclose write access, and adds tests for permissions, rollback, audit attribution, and sign-out.
+
+- Existing read-only MCP grants gain write access without renewed consent.
+
+### Snapshot #7, reviewer "Review", grok grok-4.7: done
+
+MCP access tokens were already able to write through the shared bearer API, while the approval page told most clients they could change nothing. This change makes every approval say the client can change what that person can change, refuses an approval that does not send that consent, and signs new approval codes and access tokens under new purposes so grants made under the old wording stop working on MCP and on every bearer API route. It also adds a `helios_write` tool that commits the same insert, set, and delete batches as `POST /api/q`, as the person who connected, including the apps' mail and invitation side effects.
+
+- `helios_write` lets text in school mail and documents drive edits and outgoing mail as the connected person; keep the consent fix and do not give the model a write tool.
+
+## Decisions
+
+### Should ordinary MCP connections stay read-only, with separate consent for clients that need to edit?
+
+This security audit found a verified OAuth consent mismatch. A connection approved by a member receives a token for that member. The iPhone app and laptop tools need that token to make edits; third-party MCP connectors are currently told they can change nothing, although their tokens can call the same write API.
+
+The local reproduction registered a connector with the return address `https://connector.example/callback`, approved it as sample parent Rowan Ashdown, and exchanged the approval for a token. The approval description said `changes: false`. Using only that token, the connector changed Rowan's displayed name to **Changed by read-only connector** through `/api/q`, the shared data-model endpoint. The request returned HTTP 200 and the new name was stored. No production data was touched. A malicious connector could make any edit its approving member is allowed to make; an admin's connection carries their admin authority.
+
+The audit instructions require asking you when a fix needs a decision about who should be allowed to act. This choice determines the permissions connections receive.
+
+- (*) Enforce read-only connections by default
+  On the reproduced input, the connector still reads Rowan's data, but its attempt to change Rowan's name receives HTTP 403 and Rowan's name stays unchanged. A client needing edits explicitly requests that authority and the approval page says it can change what Rowan can change. The iPhone app retains its existing edit approval; laptop tools request edit approval too. Existing tokens need to be replaced through sign-in so the new permission is carried in the token. I recommend this because the permission matches what people approve.
+- ( ) Disclose full access for every connection
+  On the same reproduced input, the name change still receives HTTP 200 and stores **Changed by read-only connector**. Every connector's approval page instead says it can change what Rowan can change, as the iPhone app's page already does. Connections retain their existing authority and tokens; this is simpler, but connecting any third-party MCP client grants it editing authority even though the MCP tools themselves only read.
+
+<details><summary>Audit evidence and current status</summary>
+The probe is in the ignored local investigation file `local/securityprobe/main.go`. It runs against the repository's fictional community and uses the real OAuth and API handlers. No tracked files have changed. Authentication, shared API routing, write authorization, public invitations, content attachment checks, incoming mail authentication, and prior security decisions have been inspected; the broad audit will continue after this decision.
+</details>
+
+ian@fc.run answered: why is "just let the mcp client make updates" not an option?
+
+### Shall I let MCP clients make updates through the existing write API and make the approval page say so?
+
+Helios MCP currently offers only reading tools, while every approved connection already receives a token that can use Heliosian's write API with the approving person's permissions. Its approval page incorrectly says it can change nothing. Your suggestion adds the useful option I left out: let the MCP client make updates directly.
+
+The verified local example uses sample parent Rowan Ashdown. A connector's token successfully changed Rowan's displayed name to **Changed by read-only connector** through the existing write API. Normal data-model permissions still apply: Rowan can edit their household's profiles, but cannot grant themselves admin rights.
+
+- (*) Let MCP clients make updates
+  Add an MCP write tool that uses the same batch writer and permissions as the apps. For example, the client can send `{"batch":[{"set":"per00000000002","cells":{"name_long_override":"Rowan Ashdown"}}]}`; the referenced row is Rowan's sample profile, and `name_long_override` supplies its displayed full name. The tool stores **Rowan Ashdown** when connected as Rowan and refuses edits outside their permissions. Every connection's approval says it can change what you can change. This keeps one permission model and requires no separate read-only token system.
+- ( ) Keep ordinary MCP clients read-only
+  On the same profile edit, an ordinary MCP connection receives HTTP 403 and the stored name stays unchanged. Clients needing updates must request separate edit consent, carried in their tokens; the iPhone app and laptop tools retain a route to that authority. This requires permission scopes and replacing existing tokens.
+
+I recommend allowing updates through the shared write path, as you suggested. This would extend the audit fix to the MCP tool list as well as correcting the consent statement.
+
+ian@fc.run chose: Let MCP clients make updates
