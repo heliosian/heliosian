@@ -1,0 +1,35 @@
+# Share the phone title strip and tab bar
+
+byre task tsktXNrIw75mZ3, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsktXNrIw75mZ3 in byre (read_task_events with task_id tsktXNrIw75mZ3).
+
+## Summary
+
+Simplicity audit of main at 10a673b. The one change shares the phone title strip and tab bar.
+
+Staff Birthdays, Helios When, Helios Celebrate, HCA-Team, Helios Loop and Helios Wiki each had a copy of the same phone layout in their stylesheet. Those rules now live once in web/common/shell.css, as flat selectors. Each of those six apps opts in with phone-chrome on body. Who? and Helios Ask keep their own chrome: Who?'s strip has a back control and a different tab bar, and Ask's header has its own buttons and no tab bar. Making the shared rules the default and overriding those two would have kept a second copy of the differences.
+
+body.is-admin main { padding: 0 } comes after the phone padding at the same specificity, so Admin Tools on a phone does not keep space for the hidden strip and tab bar. Nesting was rejected because Safari before 17.2 drops a nested element selector and the rules after it. Gating the rules on a title-only header was rejected because adding one control would silently drop the whole layout.
+
+Left unshared, as earlier audits had: date wording, school-year helpers, the two HMAC signers, the two PDF thumbnail walks, desktop rail copies, and Who?'s students and staff renderers. Phone and desktop captures of Celebrate, plus phone captures of Who, Ask, and Celebrate's Admin Tools, matched the previous layout.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+Moves the identical phone header, tab bar, and mobile layout CSS from six apps into `web/common/shell.css`, selecting those apps by their title-only mobile header. Updates the toolbar documentation to describe the shared styling.
+
+- Mobile Admin Tools pages gain empty top and bottom spacing because the new shared `main` selector overrides the admin padding rule.
+
+### Snapshot #2, reviewer "Review", claude claude-opus-5-5: done
+
+Six apps (Staff Birthdays, Helios When, Helios Celebrate, HCA-Team, Helios Loop, Helios Wiki) each had their own copy of the phone layout CSS: the teal title strip under the toolbar, the bottom tab bar, the fixed scrolling `main`, and the `--tabbar` variable. This change deletes all six copies and puts one rule in `web/common/shell.css`. The rule applies to any page whose `<header class="mobile-top">` contains only the `.mobile-title` element, which leaves out Who? (it has a back link) and Ask (it has menu and new-chat buttons). The padding on `main` sits under `:where`, so the existing `body.is-admin main { padding: 0 }` still wins. `docs/toolbar.md` now says which apps use the shared rule.
+
+- The shared rule uses CSS nesting, which nothing else in the repo uses, and the nested `main {` breaks the whole phone layout on Safari before 17.2 (iOS 16.5–17.1).
+- Whether a page gets the shared phone layout depends on `.mobile-title` being the header's only child, so adding any element to one of the six headers silently drops the layout.
+
+### Snapshot #3, reviewer "Review", codex gpt-6-sol: done
+
+The change moves the common phone title strip, tab bar, and mobile shell layout from six app stylesheets into `web/common/shell.css`. Each affected page adds `phone-chrome` to its body, and the toolbar documentation names the shared styling.
+
+No significant findings.
