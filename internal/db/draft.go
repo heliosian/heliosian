@@ -13,7 +13,6 @@ import (
 	"heliosian/internal/auth"
 	"heliosian/internal/claude"
 	"heliosian/internal/describe"
-	"heliosian/internal/serve"
 	"heliosian/internal/store"
 )
 
@@ -221,149 +220,84 @@ func (m *Model) groupFacts(d groupDraft, members []draftPerson) describe.GroupFa
 
 var roleWord = map[string]string{"students": "Student", "staff": "Staff", "parents": "Parent"}
 
-func readDraft(w http.ResponseWriter, r *http.Request) (groupDraft, bool) {
-	var d groupDraft
-	if !serve.Decode(w, r, &d) {
-		return groupDraft{}, false
-	}
-	return d, true
-}
-
 func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer, tokens auth.Tokens) {
-	mux.HandleFunc("POST /api/do/draft-members", func(w http.ResponseWriter, r *http.Request) {
-		m := s.Model()
-		env, _, ok := caller(w, r, m, tokens)
-		if !ok {
-			return
+	mux.HandleFunc("POST /api/do/draft-members", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, _ access.Actor, d groupDraft) (draftAnswer, error) {
+		if err := m.checkDraft(ctx, env, d); err != nil {
+			return draftAnswer{}, err
 		}
-		d, ok := readDraft(w, r)
-		if !ok {
-			return
+		return m.draftMembers(ctx, env, d)
+	}))
+	mux.HandleFunc("POST /api/do/describe-group", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, actor access.Actor, d groupDraft) (map[string]string, error) {
+		if err := m.checkDraft(ctx, env, d); err != nil {
+			return nil, err
 		}
-		if err := m.checkDraft(r.Context(), env, d); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		out, err := m.draftMembers(r.Context(), env, d)
+		members, err := m.draftMembers(ctx, env, d)
 		if err != nil {
-			serve.Error(w, r, err)
-			return
+			return nil, err
 		}
-		serve.Write(w, r, http.StatusOK, out)
-	})
-	mux.HandleFunc("POST /api/do/describe-group", func(w http.ResponseWriter, r *http.Request) {
-		m := s.Model()
-		env, actor, ok := caller(w, r, m, tokens)
-		if !ok {
-			return
-		}
-		d, ok := readDraft(w, r)
-		if !ok {
-			return
-		}
-		if err := m.checkDraft(r.Context(), env, d); err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		members, err := m.draftMembers(r.Context(), env, d)
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		description, err := describer.Group(r.Context(), actor.Email, m.groupFacts(d, members.Members))
+		description, err := describer.Group(ctx, actor.Email, m.groupFacts(d, members.Members))
 		if errors.Is(err, claude.ErrTooMany) {
-			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", err))
-			return
+			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
 		}
 		if errors.Is(err, describe.ErrTooLong) {
-			serve.Error(w, r, access.Invalid("%v", err))
-			return
+			return nil, access.Invalid("%v", err)
 		}
 		if err != nil {
-			slog.ErrorContext(r.Context(), "describe group", "viewer", env.Viewer, "name", d.Name, "error", err)
-			serve.Error(w, r, access.Refuse(http.StatusBadGateway, "could not write a description right now"))
-			return
+			slog.ErrorContext(ctx, "describe group", "viewer", env.Viewer, "name", d.Name, "error", err)
+			return nil, access.Refuse(http.StatusBadGateway, "could not write a description right now")
 		}
-		slog.InfoContext(r.Context(), "described group", "viewer", env.Viewer, "name", d.Name, "members", len(members.Members))
-		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
-	})
-	mux.HandleFunc("POST /api/do/describe-activity", func(w http.ResponseWriter, r *http.Request) {
-		_, actor, ok := caller(w, r, s.Model(), tokens)
-		if !ok {
-			return
-		}
-		var body activityDraft
-		if !serve.Decode(w, r, &body) {
-			return
-		}
+		slog.InfoContext(ctx, "described group", "viewer", env.Viewer, "name", d.Name, "members", len(members.Members))
+		return map[string]string{"description": description}, nil
+	}))
+	mux.HandleFunc("POST /api/do/describe-activity", modelAction(s, tokens, func(ctx context.Context, _ *Model, _ Env, actor access.Actor, body activityDraft) (map[string]string, error) {
 		facts := describe.ActivityFacts{Title: body.Title, Parent: body.Parent, Category: body.Category, When: body.When, Notes: body.Notes}
-		description, err := describer.Activity(r.Context(), actor.Email, facts)
+		description, err := describer.Activity(ctx, actor.Email, facts)
 		if errors.Is(err, claude.ErrTooMany) {
-			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", err))
-			return
+			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
 		}
 		if errors.Is(err, describe.ErrTooLong) {
-			serve.Error(w, r, access.Invalid("%v", err))
-			return
+			return nil, access.Invalid("%v", err)
 		}
 		if err != nil {
-			slog.ErrorContext(r.Context(), "describe activity", "actor", actor.Email, "title", body.Title, "error", err)
-			serve.Error(w, r, access.Refuse(http.StatusBadGateway, "could not write a description right now"))
-			return
+			slog.ErrorContext(ctx, "describe activity", "actor", actor.Email, "title", body.Title, "error", err)
+			return nil, access.Refuse(http.StatusBadGateway, "could not write a description right now")
 		}
-		slog.InfoContext(r.Context(), "described activity", "actor", actor.Email, "title", body.Title)
-		serve.Write(w, r, http.StatusOK, map[string]string{"description": description})
-	})
-	mux.HandleFunc("POST /api/do/describe-charity", func(w http.ResponseWriter, r *http.Request) {
-		m := s.Model()
-		env, actor, ok := caller(w, r, m, tokens)
-		if !ok {
-			return
-		}
-		var body charityDraft
-		if !serve.Decode(w, r, &body) {
-			return
-		}
+		slog.InfoContext(ctx, "described activity", "actor", actor.Email, "title", body.Title)
+		return map[string]string{"description": description}, nil
+	}))
+	mux.HandleFunc("POST /api/do/describe-charity", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, actor access.Actor, body charityDraft) (map[string]string, error) {
 		name := strings.TrimSpace(body.Name)
 		if name == "" {
-			serve.Error(w, r, access.Invalid("give the charity's name first"))
-			return
+			return nil, access.Invalid("give the charity's name first")
 		}
 		team, err := Parse(`(from APP (where (= key "birthday") (birthday_team)))`)
 		if err != nil {
-			serve.Error(w, r, err)
-			return
+			return nil, err
 		}
-		result := m.Run(r.Context(), team, env)
+		result := m.Run(ctx, team, env)
 		if result.Err != nil {
-			serve.Error(w, r, result.Err)
-			return
+			return nil, result.Err
 		}
 		if len(result.IDs) == 0 {
-			serve.Error(w, r, access.Forbidden("only the Birthdays team looks charities up"))
-			return
+			return nil, access.Forbidden("only the Birthdays team looks charities up")
 		}
-		info, err := describer.Charity(r.Context(), actor.Email, name, body.URL)
+		info, err := describer.Charity(ctx, actor.Email, name, body.URL)
 		if errors.Is(err, claude.ErrTooMany) {
-			serve.Error(w, r, access.Refuse(http.StatusTooManyRequests, "%v", err))
-			return
+			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
 		}
 		if errors.Is(err, describe.ErrTooLong) {
-			serve.Error(w, r, access.Invalid("%v", err))
-			return
+			return nil, access.Invalid("%v", err)
 		}
 		if err != nil {
-			slog.ErrorContext(r.Context(), "describe charity", "actor", actor.Email, "name", name, "error", err)
-			serve.Error(w, r, access.Refuse(http.StatusBadGateway, "could not look this charity up right now"))
-			return
+			slog.ErrorContext(ctx, "describe charity", "actor", actor.Email, "name", name, "error", err)
+			return nil, access.Refuse(http.StatusBadGateway, "could not look this charity up right now")
 		}
 		if info.Sentence == "" {
-			serve.Error(w, r, access.Missing("could not find this charity; please enter its information"))
-			return
+			return nil, access.Missing("could not find this charity; please enter its information")
 		}
-		slog.InfoContext(r.Context(), "described charity", "actor", actor.Email, "name", name, "url", info.DonationLink)
-		serve.Write(w, r, http.StatusOK, map[string]string{"description": info.Sentence, "url": info.DonationLink})
-	})
+		slog.InfoContext(ctx, "described charity", "actor", actor.Email, "name", name, "url", info.DonationLink)
+		return map[string]string{"description": info.Sentence, "url": info.DonationLink}, nil
+	}))
 }
 
 type charityDraft struct {
