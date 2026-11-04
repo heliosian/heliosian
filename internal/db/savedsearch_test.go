@@ -114,7 +114,10 @@ func TestAPagesWordsRunAsDefinitionCalls(t *testing.T) {
 
 func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 	s := sample(t)
-	apply(t, s, []Edit{{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}}})
+	apply(t, s, []Edit{
+		{Insert: "ALIAS", Row: map[string]any{"alias": "oldfeedtoken", "target": "sav00000000001", "hidden": true}},
+		{Set: "grp00000000040", Cells: map[string]any{"description": "Bring a picnic.", "location": "School field"}},
+	})
 	mux := http.NewServeMux()
 	RegisterFeeds(mux, s, func() time.Time { return testNow })
 	fetch := func(token string) *httptest.ResponseRecorder {
@@ -134,6 +137,16 @@ func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 		if strings.Contains(text, "Taco Night") {
 			t.Fatalf("%s's feed carries what its words leave out: %s", token, text)
 		}
+		for _, line := range []string{"DTSTART:20261010T190000Z", "DTEND:20261010T220000Z", `DESCRIPTION:Bring a picnic.\n\nhttps://when.test/g/fall-picnic`, "LOCATION:School field"} {
+			if !strings.Contains(text, line) {
+				t.Errorf("%s's feed lacks %s: %s", token, line, text)
+			}
+		}
+	}
+	apply(t, s, []Edit{{Set: "grp00000000040", Cells: map[string]any{"all_day": true}}})
+	text := fetch("fed00000000002").Body.String()
+	if !strings.Contains(text, "DTSTART;VALUE=DATE:20261010") || !strings.Contains(text, "DTEND;VALUE=DATE:20261011") {
+		t.Fatalf("an all-day event's feed reads %s", text)
 	}
 	if rec := fetch("nope"); rec.Code != http.StatusNotFound {
 		t.Fatalf("a token no saved search has answered %d", rec.Code)
@@ -157,6 +170,21 @@ func TestASavedSearchsWordsAreChecked(t *testing.T) {
 	} {
 		if err := save(search); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("saving %s: %v, want %q", search, err, want)
+		}
+	}
+}
+
+func BenchmarkSavedSearchFeed(b *testing.B) {
+	s := scaleStore(b)
+	_, err := Write(b.Context(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: "sav00000000001", Cells: map[string]any{"person": scaleViewer, "search": "[]"}}}})
+	if err != nil {
+		b.Fatal(err)
+	}
+	m := s.Model()
+	for b.Loop() {
+		body, ok, err := m.savedSearchICS(b.Context(), "fed00000000002", "https://when.test", testNow)
+		if err != nil || !ok || len(body) == 0 {
+			b.Fatalf("feed: %t, %v, %d bytes", ok, err, len(body))
 		}
 	}
 }

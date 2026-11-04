@@ -44,7 +44,7 @@ func checkWords(lists [][]string) error {
 }
 
 func savedSearchQuery(lists [][]string, from, to string) string {
-	return fmt.Sprintf(`(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) (<= start %q) (or (>= end %q) (and (blank end) (>= start %q))) %s) (order start asc))`,
+	return fmt.Sprintf(`(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) (<= start %q) (or (>= end %q) (and (blank end) (>= start %q))) %s) (order start asc) (columns start end all_day path name description location))`,
 		to+" 23:59", from, from, searchCondition(lists))
 }
 
