@@ -29,7 +29,8 @@ function onGuestList(id) {
 export async function fetchInvites(e) {
   const id = JSON.stringify(e.id);
   const [a, index] = await Promise.all([queries({
-    group: `(from GROUP (where (= id ${id})) (columns kind name team_href managed_by visible_to members_visible_to join eligible flyer auto_invite rsvp_yes rsvp_no added_by status))`,
+    group: `(from GROUP (where (= id ${id})) (columns kind name team_href managed_by visible_to members_visible_to join eligible guests_invited_by flyer auto_invite rsvp_yes rsvp_no added_by status))`,
+    inviters: `(from GROUP @g (where (= id ${id}) (invites_guests @g @viewer)) (columns id))`,
     runs: `(from GROUP @g (where (= id ${id}) (runs_list @g)) (columns kind))`,
     hostGroup: `(from GROUP (where (in id (select GROUP.managed_by (= id ${id})))) (columns visible_to))`,
     hosts: `(from MEMBER (where (in group (select GROUP.managed_by (= id ${id}))) (= member "yes")) (columns group person))`,
@@ -115,7 +116,7 @@ export async function fetchInvites(e) {
   const mine = listed_.filter(r => (household.has(r.key) || (r.guestOf && household.has(r.guestOf))) && (r.invited || r.answer));
   const notifyRow = rowsOf(a.notify, 'PERSON_SETTING')[0] || null;
   const myRow = memberOf[viewer];
-  const mayInvite = host || (g.join === 'others' && (!g.eligible || effective.has(viewer)));
+  const mayInvite = host || a.inviters.result.length > 0;
   return {
     id: e.id, group: g, host, sent, rules, mine, mayInvite, memberRows: Object.values(memberOf).filter(m => people[m.person]),
     list: host ? listed_ : listed_.filter(r => r.answer !== 'no'),
@@ -123,7 +124,7 @@ export async function fetchInvites(e) {
     counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: 0, no: listed_.filter(r => r.answer === 'no').length},
     hosts: hostRows.map(h => ({...rowFor(h.person), memberRow: h})),
     managedBy: g.managed_by || '', hostsHidden: Boolean(hostGroup) && !hostGroup.visible_to,
-    listPrivate: !g.members_visible_to, guests: g.join === 'others', autoInvite: g.auto_invite === 'Yes',
+    listPrivate: !g.members_visible_to, guests: g.kind === 'activity' ? Boolean(g.guests_invited_by) : g.join === 'others', autoInvite: g.auto_invite === 'Yes',
     notifyMe: Boolean(notifyRow && notifyRow.value.split(',').map(s => s.trim()).includes(e.id)), notifyRow,
     flyer: g.flyer ? `/api/blob/${e.id}/flyer` : '',
     party: isParty(e), linked: e.source === 'celebrate' || e.source === 'team',
@@ -220,8 +221,9 @@ export function setPublicList(e, on) {
   return write([{set: e.id, cells: {members_visible_to: on ? state.model.everyone : ''}}]);
 }
 
-export function setGuestsInvite(e, on) {
-  return write([{set: e.id, cells: on ? {join: 'others', eligible: e.id} : {join: '', eligible: ''}}]);
+export function setGuestsInvite(e, view, on) {
+  const cells = view.group.kind === 'activity' ? {guests_invited_by: on ? e.id : ''} : on ? {join: 'others', eligible: e.id} : {join: '', eligible: ''};
+  return write([{set: e.id, cells}]);
 }
 
 export function setAutoInvite(e, on) {

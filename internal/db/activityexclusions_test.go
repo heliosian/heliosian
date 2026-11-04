@@ -12,7 +12,7 @@ func TestActivityExclusionInsertCarriesNoForgedMetadata(t *testing.T) {
 	const host = "per00000020001"
 	h := newInviteHarness(t)
 	h.setup([]Edit{
-		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.group()["managed_by"], "person": host, "member": "yes"}},
 	})
 	insert := func(viewer string, row map[string]any) error {
@@ -48,7 +48,7 @@ func TestActivityExclusionInsertCarriesNoForgedMetadata(t *testing.T) {
 func TestActivityHostRestoresLegacyExclusionAndOwnsRestoration(t *testing.T) {
 	h := newInviteHarness(t)
 	ids := h.setup([]Edit{
-		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": student, "member": "excluded", "invited": "yes"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": guest, "invited": "excluded", "guest_of": parent}},
 	})
@@ -73,7 +73,7 @@ func TestActivityHostRestoresLegacyExclusionAndOwnsRestoration(t *testing.T) {
 func TestGuestMailSkipsThoseTakenOffAfterTheirInvitation(t *testing.T) {
 	const volunteer = "per00000020002"
 	h := newInviteHarness(t)
-	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}}})
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}}})
 	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
 		"group": h.event, "send": true, "people": []map[string]string{{"person": parent}, {"person": volunteer}, {"name": "Coach Pat", "email": "coach@example.net"}},
 	}); rec.Code != http.StatusOK {
@@ -130,7 +130,7 @@ func TestGuestMailSkipsThoseTakenOffAfterTheirInvitation(t *testing.T) {
 
 func TestCalendarReplyFromSomeoneTakenOffRecordsNoAnswer(t *testing.T) {
 	h := newInviteHarness(t)
-	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}}})
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}}})
 	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
 		"group": h.event, "send": true, "people": []map[string]string{{"person": parent}},
 	}); rec.Code != http.StatusOK {
@@ -156,7 +156,7 @@ func TestCalendarReplyFromSomeoneTakenOffRecordsNoAnswer(t *testing.T) {
 func TestActivityBringerRestorationKeepsTheirLink(t *testing.T) {
 	h := newInviteHarness(t)
 	ids := h.setup([]Edit{
-		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": guest, "invited": "excluded", "guest_of": parent}},
 	})
 	if rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
@@ -176,7 +176,7 @@ func TestActivityRestorationRechecksCurrentAuthority(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			h := newInviteHarness(t)
 			ids := h.setup([]Edit{
-				{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+				{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 				{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": guest, "invited": "excluded", "guest_of": parent}},
 				{Insert: "MEMBER", Row: map[string]any{"group": h.group()["managed_by"], "person": host, "member": "yes"}},
 			})
@@ -212,7 +212,7 @@ func TestActivityRestorationRechecksCurrentAuthority(t *testing.T) {
 func TestActivityRestorationPreservesConcurrentSignUp(t *testing.T) {
 	h := newInviteHarness(t)
 	ids := h.setup([]Edit{
-		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": guest, "member": "excluded", "invited": "yes"}},
 	})
 	stale := h.s.Model()

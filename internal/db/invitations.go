@@ -79,6 +79,28 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 		g, _ := m.Table("GROUP").Get(group)
 		if g["kind"] == "activity" {
 			for _, edit := range edits {
+				adds := edit.Insert == "MEMBER" && edit.Row["group"] == group && edit.Row["invited"] == "yes"
+				if edit.Set != "" && edit.Cells["invited"] == "yes" {
+					row, ok := m.Table("MEMBER").Get(edit.Set)
+					adds = ok && row["group"] == group
+				}
+				if !adds {
+					continue
+				}
+				allowed := m.guestsMayInvite(g, from)
+				if allowed {
+					break
+				}
+				allowed, err := m.passes(ctx, Env{Viewer: from, Now: env.Now}, "GROUP", group, "(runs_list @row)")
+				if err != nil {
+					return err
+				}
+				if !allowed {
+					return access.Forbidden("only the hosts add people to this guest list")
+				}
+				break
+			}
+			for _, edit := range edits {
 				if edit.Set == "" || edit.Cells["invited"] != "yes" {
 					continue
 				}
@@ -484,8 +506,6 @@ type addGuestsAsk struct {
 	Send    bool       `json:"send"`
 }
 
-const othersJoin = `(and (= @row.join "others") (or (blank @row.eligible) (exists EFFECTIVE_MEMBER (= group @row.eligible) (= person @viewer))))`
-
 func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor access.Actor, ask addGuestsAsk) (sentAnswer, error) {
 	g, err := m.guestList(ctx, env, ask.Group)
 	if err != nil {
@@ -496,7 +516,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 		return sentAnswer{}, err
 	}
 	if !runs {
-		others, err := m.passes(ctx, env, "GROUP", g["id"], othersJoin)
+		others, err := m.passes(ctx, env, "GROUP", g["id"], "(invites_guests @row @viewer)")
 		if err != nil {
 			return sentAnswer{}, err
 		}

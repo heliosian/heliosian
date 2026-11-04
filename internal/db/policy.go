@@ -115,6 +115,13 @@ const PolicySource = `
            (exists GROUP @activity (= chair_offers @g)
              (exists MEMBER (= group @activity) (= person @p) (= member "yes"))))))
 
+(define (invites_guests @g @p)
+  (or (and (= @g.kind "activity") (not (blank @g.guests_invited_by))
+           (or (exists EFFECTIVE_MEMBER (= group @g.guests_invited_by) (= person @p))
+               (and (= @p @viewer) (invited_guest @g))))
+      (and (!= @g.kind "activity") (= @g.join "others")
+           (or (blank @g.eligible) (exists EFFECTIVE_MEMBER (= group @g.eligible) (= person @p))))))
+
 (define (invited_guest @g)
   (and (!= @g.status "closed") (= @viewer.source "guest")
        (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))
@@ -203,6 +210,7 @@ const PolicySource = `
                  (select GROUP.hidden_for @r (= hidden_for @g) (counted hidden_for))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
+                 (select GROUP.guests_invited_by @r (= guests_invited_by @g) (counted guests_invited_by))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible)))
           1)
        (= (tally @g
@@ -217,6 +225,7 @@ const PolicySource = `
                  (select GROUP.hidden_for @r (= hidden_for @g) (counted hidden_for))
                  (select GROUP.visible_to @r (= visible_to @g) (counted visible_to))
                  (select GROUP.members_visible_to @r (= members_visible_to @g) (counted members_visible_to))
+                 (select GROUP.guests_invited_by @r (= guests_invited_by @g) (counted guests_invited_by))
                  (select GROUP.eligible @r (= eligible @g) (counted eligible))
                  (select GROUP.parent @r (= parent @g) (counted parent))
                  (select RULE.target (= target @g))
@@ -457,7 +466,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for auto_invite priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for guests_invited_by auto_invite priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -1164,6 +1173,9 @@ const PolicySource = `
 (set GROUP.flyer_original (runs_list @old))
 ; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
 (set GROUP.auto_invite (runs_list @old))
+(set GROUP.guests_invited_by
+  (and (= @old.kind "activity") (runs_list @old)
+       (or (blank @new.guests_invited_by) (sees_members @new.guests_invited_by))))
 ; a group's managers say who may join it by themselves and add others
 (set GROUP.join (runs_list @old))
 ; a group's managers say whose members may join it, naming only a group whose members they see

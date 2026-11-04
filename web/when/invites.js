@@ -660,7 +660,7 @@ function settingsPanel(e, view, refresh) {
   setting('Show the guest list to everyone', !view.listPrivate, 'Everyone who can open the event sees who said yes, and who has not answered. Only the hosts see who said no.',
     on => guests.setPublicList(e, on), on => (on ? 'Everyone who opens the event sees who is coming now.' : 'Only the hosts see who is coming now.'));
   setting('People can invite others', view.guests, 'Anyone invited may invite more people and bring guests of their own. Off, only the hosts add to the list.',
-    on => guests.setGuestsInvite(e, on), on => (on ? 'People can invite others now.' : 'Only the hosts add to the list now.'));
+    on => guests.setGuestsInvite(e, view, on), on => (on ? 'People can invite others now.' : 'Only the hosts add to the list now.'));
   setting('Send new guests their invitation', view.autoInvite, 'Whoever comes onto the list later - a family joining a class, someone a rule now takes in - is sent the invitation as they come. Off, they wait in Pending for you to send.',
     on => guests.setAutoInvite(e, on), on => (on ? 'New guests are sent the invitation as they come.' : 'New guests wait in Pending for you to send.'));
   setting('Notify me when people respond', view.notifyMe, 'An email to you as each answer comes in.',

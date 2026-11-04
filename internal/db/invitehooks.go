@@ -96,6 +96,14 @@ func (m *Model) broughtGuests(g store.Row, person string) []string {
 	return out
 }
 
+func (m *Model) guestsMayInvite(g store.Row, person string) bool {
+	if g["kind"] == "activity" {
+		p, _ := m.Table("PERSON").Get(person)
+		return g["guests_invited_by"] != "" && (m.effectivelyIn(g["guests_invited_by"], person) || p["source"] == "guest" && g["status"] != "closed" && m.onList(g, person))
+	}
+	return g["join"] == "others"
+}
+
 func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	c, err := iv.extCopy(r)
 	if err != nil {
@@ -107,7 +115,7 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	day, hours := dayAndHours(g)
 	view := extView{
 		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
-		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: g["join"] == "others", Brought: []extPerson{}, Family: []extPerson{},
+		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: m.guestsMayInvite(g, c.person), Brought: []extPerson{}, Family: []extPerson{},
 		Past: m.ended(g, time.Now()), Cancelled: g["status"] == "cancelled",
 	}
 	if g["flyer"] != "" {
@@ -179,7 +187,7 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	if c.group["join"] != "others" {
+	if !iv.s.Model().guestsMayInvite(c.group, c.person) {
 		serve.Error(w, r, access.Forbidden("the hosts add the guests to this one"))
 		return
 	}

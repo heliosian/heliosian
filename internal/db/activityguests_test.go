@@ -10,7 +10,7 @@ import (
 
 func TestActivityInvitationsAndVolunteerCommitmentsAreIndependent(t *testing.T) {
 	h := newInviteHarness(t)
-	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "capacity": "1"}}})
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004", "capacity": "1"}}})
 	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{
 		"group": h.event, "people": []map[string]string{{"person": parent}, {"person": student}},
 	}); rec.Code != http.StatusOK {
@@ -175,7 +175,7 @@ func TestInvitationStateCannotGrantGroupMembership(t *testing.T) {
 func TestActivityGuestsCanBringAndRemoveAnOpenedInvitee(t *testing.T) {
 	h := newInviteHarness(t)
 	h.setup([]Edit{
-		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}},
+		{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": student, "opened": "2026-11-03 12:00"}},
 	})
 	if rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
@@ -205,7 +205,7 @@ func TestActivityGuestsCanBringAndRemoveAnOpenedInvitee(t *testing.T) {
 
 func TestActivityBringersRestoreTheirOwnSentGuests(t *testing.T) {
 	h := newInviteHarness(t)
-	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}}})
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}}})
 	add := map[string]any{"group": h.event, "guest_of": parent, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}}}
 	if rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", add); rec.Code != http.StatusOK {
 		t.Fatalf("bring an activity guest: %d %s", rec.Code, rec.Body)
@@ -257,7 +257,7 @@ func TestActivityBringersCannotChangeVolunteerCommitments(t *testing.T) {
 	for _, operation := range []string{"delete", "cancel", "exclude"} {
 		t.Run(operation, func(t *testing.T) {
 			h := newInviteHarness(t)
-			h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": ""}}})
+			h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": "activity", "eligible": "", "guests_invited_by": "grp00000000004"}}})
 			if rec := h.do(rowan, http.MethodPost, "/api/do/add-guests", map[string]any{
 				"group": h.event, "guest_of": parent, "people": []map[string]string{{"name": "Coach Pat", "email": "coach@example.net"}},
 			}); rec.Code != http.StatusOK {

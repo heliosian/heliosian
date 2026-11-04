@@ -48,7 +48,7 @@ func newInviteHarness(t *testing.T) *inviteHarness {
 		{Set: "@hosts", Cells: map[string]any{"managed_by": "@hosts", "visible_to": "@hosts"}},
 		{Insert: "MEMBER", Row: map[string]any{"group": "@hosts", "person": staff, "member": "yes"}},
 		{Insert: "GROUP", As: "event", Row: map[string]any{"kind": "event", "name": "Fondue Night", "status": "open", "start": start, "location": "8 Kelp Lane", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "managed_by": "@hosts", "join": "others", "posting": "none", "replying": "none"}},
-		{Set: "@event", Cells: map[string]any{"eligible": "@event"}},
+		{Set: "@event", Cells: map[string]any{"eligible": "@event", "guests_invited_by": "@event"}},
 	})
 	h.event = ids[3]
 	return h
