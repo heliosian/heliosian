@@ -1,0 +1,54 @@
+# Stop serving saved calendar feeds of deactivated members
+
+byre task tskvgMLE9WJzzc, "Security audit", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskvgMLE9WJzzc in byre (read_task_events with task_id tskvgMLE9WJzzc).
+
+## Summary
+
+Audited the Heliosian codebase at `9540614` across public routes, authentication, row authorization, mail and hooks, MCP, storage, uploads, and outbound fetches. Found one reproducible disclosure through a public saved-calendar feed: a link holder could still read a pending event's title and URL after the calendar owner was deactivated.
+
+Before: A saved-calendar token continued to serve events added by its owner after that owner was deactivated.
+Now: The feed returns 404 once its owner can no longer sign in.
+
+The fix reuses the existing `Model.SignedIn` gate in `savedSearchICS`, with a regression test and calendar documentation. The test reproduced the leak on the old code; focused tests, `go vet ./...`, and review passed. The full `internal/db` test package exceeded the required 30-second limit. The mail-link URL fetcher was left unchanged because no protected internal resource was shown reachable; public share cards remain available by design. No GitHub issue was filed because `AGENTS.md` requires Ian to request one. Main merged without conflicts or new changes.
+
+## Handoffs
+
+### Session sesiHGJy5qcIL3, 2026-11-04T19:55:10Z
+
+## Handoff: Heliosian security audit
+
+Audit the whole codebase at `954061441c274890e1bf869f5ed5306ebd873d68`, fix confirmed security problems, and finish the workflow’s **Security Audit** stage with `byre__finish_stage`. Do the work yourself; the task brief prohibits delegation. Read `AGENTS.md` and `docs/audits/security.md` before further changes. The task dashboard overview is current at generation 4.
+
+### Confirmed finding and fix
+
+Anyone holding a saved calendar’s public `/open/feed/{token}.ics` URL could still receive an event’s title and link after the calendar owner was deactivated. `internal/db/savedsearch.go` ran the feed query as the owner without checking whether that owner could still sign in. The regression test sets the sample Fall Picnic to **pending**, with its deactivated owner as `added_by`; the old code returned `200` with `SUMMARY:Fall Picnic` and its URL.
+
+Before: The token continued to serve that pending event after its owner was deactivated.
+Now: The feed returns 404 when the owner fails the existing `Model.SignedIn` check.
+
+The fix is one condition in `savedSearchICS`, using `m.SignedIn(m.addressOf(row["person"]))`. The test is `TestSavedSearchFeedStopsWhenOwnerLeaves` in `internal/db/savedsearch_test.go`. `docs/when/calendar.md` now states when a feed stops. These three files are the only intended changes.
+
+### Verification
+
+- Reverted the fix temporarily and ran the regression test: it failed with a `200` response containing the pending event’s title and URL. Restored the fix.
+- `timeout 30 go test ./internal/db -run 'TestSavedSearchFeedStopsWhenOwnerLeaves|TestASavedSearchsFeedIsItsEvents' -count=1` passed after restoration.
+- `go vet ./...` passed.
+- `git diff --check` passed.
+- `timeout 30 go test ./internal/db` exceeded 30 seconds and exited 124 without output. Do not treat this as a product failure; the focused tests passed. The repository requires every test invocation to use `timeout 30`.
+
+### Audit coverage and remaining work
+
+I read the trust model in `docs/dev.md`, `docs/audits/security.md`, and the relevant app, auth, mail, MCP, and data-model code. I traced public prefixes, session and bearer gates, OAuth code exchange, row authorization, blobs, uploads, mail hooks, redirects, and linked-document fetching. I also listed all historical Security issues with `gh issue list`; none described this feed issue. Do not file a GitHub issue unless Ian asks: `AGENTS.md` says agents file issues only on request.
+
+One candidate was arbitrary URL fetching from links extracted from mail in `internal/db/fetch.go`. I found no demonstrated path to a protected internal resource: Cloud Run’s metadata service requires a header this fetcher does not send, and the app’s own host router rejects loopback hosts. Leave it alone unless you can show a concrete reachable impact. Public share cards for invite-only events are deliberately allowed by the project’s trust model.
+
+Finish a proportionate final check, update the overview’s last plan step to completed, then call `byre__finish_stage` with the finding, reachability, impact, fix, verification, and any observation left alone. The stage has **not** been finished yet. Do not commit or push; byre handles that at the end of the turn.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-astra: done
+
+Calendar feeds now return 404 when their saved-search owner can no longer sign in, preventing continued access through an existing feed token after deactivation. The change reuses the shared sign-in eligibility check, adds an HTTP regression test, and documents when feed access ends. Review was by code inspection; no builds or tests were run, as requested.
+
+No significant findings.
