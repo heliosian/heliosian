@@ -59,6 +59,10 @@ type fetched struct {
 	stop, why string
 }
 
+type fetchGroup struct {
+	docs []store.Row
+}
+
 type busy struct {
 	wait time.Duration
 }
@@ -77,8 +81,8 @@ func StartFetcher(s *Store, bucket *blob.Bucket) {
 func (f *Fetcher) run() {
 	for range f.in.wake {
 		f.in.take()
-		byHost := map[string][][]store.Row{}
-		same := map[[2]string]int{}
+		byHost := map[string][]*fetchGroup{}
+		same := map[[2]string]*fetchGroup{}
 		for _, doc := range f.pending() {
 			u, err := url.Parse(doc["url"])
 			if err != nil {
@@ -86,12 +90,13 @@ func (f *Fetcher) run() {
 				continue
 			}
 			key := [2]string{doc["relation"], doc["url"]}
-			if i, ok := same[key]; ok {
-				byHost[u.Host][i] = append(byHost[u.Host][i], doc)
+			if group, ok := same[key]; ok {
+				group.docs = append(group.docs, doc)
 				continue
 			}
-			same[key] = len(byHost[u.Host])
-			byHost[u.Host] = append(byHost[u.Host], []store.Row{doc})
+			group := &fetchGroup{docs: []store.Row{doc}}
+			same[key] = group
+			byHost[u.Host] = append(byHost[u.Host], group)
 		}
 		slots := make(chan struct{}, fetchHosts)
 		wg := sync.WaitGroup{}
@@ -99,8 +104,8 @@ func (f *Fetcher) run() {
 			wg.Go(func() {
 				slots <- struct{}{}
 				defer func() { <-slots }()
-				for _, docs := range groups {
-					f.fetch(docs)
+				for _, group := range groups {
+					f.fetch(group.docs)
 				}
 			})
 		}
