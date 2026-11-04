@@ -87,11 +87,14 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 				if !adds {
 					continue
 				}
-				allowed := m.guestsMayInvite(g, from)
+				allowed, err := m.guestsMayInvite(ctx, g, from, env.Now)
+				if err != nil {
+					return err
+				}
 				if allowed {
 					break
 				}
-				allowed, err := m.passes(ctx, Env{Viewer: from, Now: env.Now}, "GROUP", group, "(runs_list @row)")
+				allowed, err = m.passes(ctx, Env{Viewer: from, Now: env.Now}, "GROUP", group, "(runs_list @row)")
 				if err != nil {
 					return err
 				}

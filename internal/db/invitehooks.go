@@ -96,12 +96,27 @@ func (m *Model) broughtGuests(g store.Row, person string) []string {
 	return out
 }
 
-func (m *Model) guestsMayInvite(g store.Row, person string) bool {
-	if g["kind"] == "activity" {
-		p, _ := m.Table("PERSON").Get(person)
-		return g["guests_invited_by"] != "" && (m.effectivelyIn(g["guests_invited_by"], person) || p["source"] == "guest" && g["status"] != "closed" && m.onList(g, person))
+// guestsMayInvite applies invites_guests to a group and person the caller already resolved.
+// The signed-in query also requires that person to read the group, and an invitation link does not.
+func (m *Model) guestsMayInvite(ctx context.Context, g store.Row, person string, now time.Time) (bool, error) {
+	tree, err := readSexp("(invites_guests @row @viewer)")
+	if err != nil {
+		return false, err
 	}
-	return g["join"] == "others"
+	group, _ := Lookup("GROUP")
+	rule, err := newCompiler(true).cond(tree, &scope{table: group, name: "row"})
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	r := m.newRun(Env{Viewer: person, Now: now})
+	r.ctx, r.cancel, r.limited = ctx, cancel, true
+	ok := rule.eval(&frame{table: group, row: g, name: "row", run: r})
+	if err := context.Cause(ctx); err != nil {
+		return false, err
+	}
+	return ok, nil
 }
 
 func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
@@ -112,11 +127,17 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	}
 	m := iv.s.Model()
 	g := c.group
+	now := time.Now()
+	guests, err := m.guestsMayInvite(r.Context(), g, c.person, now)
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
 	day, hours := dayAndHours(g)
 	view := extView{
 		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
-		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: m.guestsMayInvite(g, c.person), Brought: []extPerson{}, Family: []extPerson{},
-		Past: m.ended(g, time.Now()), Cancelled: g["status"] == "cancelled",
+		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: guests, Brought: []extPerson{}, Family: []extPerson{},
+		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled",
 	}
 	if g["flyer"] != "" {
 		view.Flyer = "/open/ext/" + r.PathValue("token") + "/flyer"
@@ -187,7 +208,12 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	if !iv.s.Model().guestsMayInvite(c.group, c.person) {
+	may, err := iv.s.Model().guestsMayInvite(r.Context(), c.group, c.person, time.Now())
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	if !may {
 		serve.Error(w, r, access.Forbidden("the hosts add the guests to this one"))
 		return
 	}
