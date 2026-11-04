@@ -229,15 +229,17 @@ type rows struct {
 
 func (c *call) shape(res db.Result, q *db.Query) rows {
 	out := rows{Count: len(res.IDs), Rows: []store.Row{}}
+	answered := map[string]bool{}
 	if q != nil {
 		out.Query = q.String()
 	}
 	for _, row := range res.Rows() {
 		out.Rows = append(out.Rows, c.compact(res.Table, row))
+		answered[row["id"]] = true
 	}
 	for table, byID := range res.Resources {
 		for id, row := range byID {
-			if table == res.Table && slices.Contains(res.IDs, id) {
+			if table == res.Table && answered[id] {
 				continue
 			}
 			if out.Included == nil {
