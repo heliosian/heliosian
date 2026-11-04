@@ -25,12 +25,13 @@ import (
 )
 
 const (
-	codeLength     = time.Minute
-	maxRedirects   = 10
-	maxClientName  = 200
-	registerLimit  = 64 << 10
-	resourcePath   = "/.well-known/oauth-protected-resource"
-	authServerPath = "/.well-known/oauth-authorization-server"
+	codeLength      = time.Minute
+	maxRedirects    = 10
+	maxClientName   = 200
+	registerLimit   = 64 << 10
+	approvalPurpose = "read and write approval"
+	resourcePath    = "/.well-known/oauth-protected-resource"
+	authServerPath  = "/.well-known/oauth-authorization-server"
 )
 
 var appRedirects = map[string]string{
@@ -189,14 +190,14 @@ func (a authorization) back(params url.Values) string {
 }
 
 type pending struct {
-	Query string `json:"query"`
+	Query   string `json:"query"`
+	Consent string `json:"consent"`
 }
 
 type described struct {
 	Client   string `json:"client"`
 	Redirect string `json:"redirect"`
 	Email    string `json:"email"`
-	Changes  bool   `json:"changes"`
 }
 
 type onward struct {
@@ -218,7 +219,7 @@ func (s *Server) describe(r *http.Request, in pending) (described, error) {
 	if err != nil {
 		return described{}, err
 	}
-	return described{Client: a.client.Name, Redirect: destination(a.redirect), Email: auth.RealEmail(r), Changes: appRedirects[a.redirect] != ""}, nil
+	return described{Client: a.client.Name, Redirect: destination(a.redirect), Email: auth.RealEmail(r)}, nil
 }
 
 func destination(redirect string) string {
@@ -233,6 +234,9 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 	if err := sameOrigin(r); err != nil {
 		return onward{}, err
 	}
+	if in.Consent != "read and write" {
+		return onward{}, access.Invalid("reload this approval page to review edit access")
+	}
 	a, err := s.authorization(in.Query)
 	if err != nil {
 		return onward{}, err
@@ -242,7 +246,7 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 		return onward{}, access.Forbidden("%s is not in the directory", email)
 	}
 	now := s.deps.Tokens.Now()
-	code := auth.Seal(s.deps.Tokens.Key, "code", grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
+	code := auth.Seal(s.deps.Tokens.Key, approvalPurpose, grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
 	slog.InfoContext(r.Context(), "mcp: approved", "client", a.client.Name, "email", email)
 	return onward{Redirect: a.back(url.Values{"code": {code}, "iss": {origin(r)}})}, nil
 }
@@ -273,7 +277,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var g grant
-	if !auth.Unseal(s.deps.Tokens.Key, "code", r.PostForm.Get("code"), &g) {
+	if !auth.Unseal(s.deps.Tokens.Key, approvalPurpose, r.PostForm.Get("code"), &g) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code is not one this server issued")
 		return
 	}
@@ -306,10 +310,11 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) verify(_ context.Context, token string, _ *http.Request) (*sdkauth.TokenInfo, error) {
+func (s *Server) verify(_ context.Context, token string, r *http.Request) (*sdkauth.TokenInfo, error) {
 	email, expires, err := s.deps.Tokens.Verify(token)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", sdkauth.ErrInvalidToken, err)
 	}
+	auth.Identify(r, email, email)
 	return &sdkauth.TokenInfo{UserID: email, Expiration: expires}, nil
 }

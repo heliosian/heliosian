@@ -11,7 +11,7 @@ function fail(err) {
 
 async function go(path) {
   try {
-    const {redirect} = await api('POST', path, {query});
+    const {redirect} = await api('POST', path, {query, consent: 'read and write'});
     location.href = redirect;
   } catch (err) {
     fail(err);
@@ -24,10 +24,6 @@ async function start() {
     $('client').textContent = about.client;
     $('email').textContent = about.email;
     $('redirect').textContent = about.redirect;
-    if (about.changes) {
-      $('verb').textContent = 'use';
-      $('power').textContent = 'can change what you can change';
-    }
     $('ask').hidden = false;
   } catch (err) {
     fail(err);

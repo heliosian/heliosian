@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const AccessLength = 30 * 24 * time.Hour
+const (
+	AccessLength  = 30 * 24 * time.Hour
+	accessPurpose = "read and write access"
+)
 
 var (
 	ErrToken     = errors.New("not a token this server issued")
@@ -67,12 +70,12 @@ type Tokens struct {
 }
 
 func (t Tokens) Issue(email string, issued time.Time) string {
-	return Seal(t.Key, "access", accessToken{Email: email, Issued: issued.Unix()})
+	return Seal(t.Key, accessPurpose, accessToken{Email: email, Issued: issued.Unix()})
 }
 
 func (t Tokens) Verify(token string) (string, time.Time, error) {
 	var a accessToken
-	if len(t.Key) == 0 || !Unseal(t.Key, "access", token, &a) {
+	if len(t.Key) == 0 || !Unseal(t.Key, accessPurpose, token, &a) {
 		return "", time.Time{}, ErrToken
 	}
 	expires := time.Unix(a.Issued, 0).Add(AccessLength)

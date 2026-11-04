@@ -59,6 +59,8 @@ type fixture struct {
 	server   *httptest.Server
 	sessions *sessions
 	search   *db.Searcher
+	data     *db.Store
+	dir      *data.Dir
 }
 
 func setup(t *testing.T) fixture {
@@ -82,19 +84,21 @@ func setup(t *testing.T) fixture {
 	signed := &sessions{out: map[string]time.Time{}}
 	search := db.NewSearcher(s, bucket, vertex)
 	mux := http.NewServeMux()
+	tokens := auth.Tokens{
+		Key:      []byte("test"),
+		Sessions: signed,
+		SignedIn: func(email string) bool { return s.Model().SignedIn(email) != "" },
+		Now:      time.Now,
+	}
+	db.Register(mux, s, db.NewPictures(s, bucket), tokens)
 	Register(mux, mux, Deps{
-		Data:  s,
-		Tools: tools.New(tools.Deps{Search: search, Bucket: bucket, Now: time.Now}),
-		Tokens: auth.Tokens{
-			Key:      []byte("test"),
-			Sessions: signed,
-			SignedIn: func(email string) bool { return s.Model().SignedIn(email) != "" },
-			Now:      time.Now,
-		},
+		Data:   s,
+		Tools:  tools.New(tools.Deps{Search: search, Bucket: bucket, Now: time.Now}),
+		Tokens: tokens,
 	})
 	server := httptest.NewServer(authtest.Fixed(rowan, mux))
 	t.Cleanup(server.Close)
-	return fixture{server: server, sessions: signed, search: search}
+	return fixture{server: server, sessions: signed, search: search, data: s, dir: dir}
 }
 
 func (f fixture) post(t *testing.T, path, kind, body string, headers map[string]string) (int, map[string]any) {
@@ -144,7 +148,7 @@ func (f fixture) authorizeQuery(client, challenge string) string {
 
 func (f fixture) approve(t *testing.T, client string) string {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"query": f.authorizeQuery(client, challengeOf(verifier))})
+	body, _ := json.Marshal(map[string]string{"query": f.authorizeQuery(client, challengeOf(verifier)), "consent": "read and write"})
 	status, out := f.post(t, "/api/mcp/approve", "application/json", string(body), map[string]string{"Sec-Fetch-Site": "same-origin"})
 	if status != http.StatusOK {
 		t.Fatalf("approve answered %d: %v", status, out)
@@ -340,11 +344,11 @@ func TestOnlyRegisteredRedirectsAndSameOriginApprovals(t *testing.T) {
 	}
 	client := f.register(t)
 	query := strings.Replace(f.authorizeQuery(client, challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape("https://evil.example.com/cb"), 1)
-	body, _ := json.Marshal(map[string]string{"query": query})
+	body, _ := json.Marshal(map[string]string{"query": query, "consent": "read and write"})
 	if status, _ := f.post(t, "/api/mcp/approve", "application/json", string(body), map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusBadRequest {
 		t.Errorf("an unregistered redirect was approved: %d", status)
 	}
-	body, _ = json.Marshal(map[string]string{"query": f.authorizeQuery(client, challengeOf(verifier))})
+	body, _ = json.Marshal(map[string]string{"query": f.authorizeQuery(client, challengeOf(verifier)), "consent": "read and write"})
 	if status, _ := f.post(t, "/api/mcp/approve", "application/json", string(body), map[string]string{"Sec-Fetch-Site": "cross-site"}); status != http.StatusForbidden {
 		t.Errorf("a cross-site approval answered %d", status)
 	}
@@ -359,9 +363,9 @@ func TestTheAppSignsInThroughItsOwnRedirect(t *testing.T) {
 	}
 	client := out["client_id"].(string)
 	query := strings.Replace(f.authorizeQuery(client, challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape(app), 1)
-	body, _ := json.Marshal(map[string]string{"query": query})
+	body, _ := json.Marshal(map[string]string{"query": query, "consent": "read and write"})
 	same := map[string]string{"Sec-Fetch-Site": "same-origin"}
-	if status, about := f.post(t, "/api/mcp/request", "application/json", string(body), same); status != http.StatusOK || about["redirect"] != "the Heliosian app" || about["client"] != "Heliosian for iOS" || about["changes"] != true {
+	if status, about := f.post(t, "/api/mcp/request", "application/json", string(body), same); status != http.StatusOK || about["redirect"] != "the Heliosian app" || about["client"] != "Heliosian for iOS" {
 		t.Fatalf("the approval page answered %d: %v", status, about)
 	}
 	status, out = f.post(t, "/api/mcp/deny", "application/json", string(body), same)
@@ -410,7 +414,7 @@ func TestNoOtherAppRedirectRegisters(t *testing.T) {
 		}
 	}
 	query := strings.Replace(f.authorizeQuery(f.register(t), challengeOf(verifier)), url.QueryEscape(redirect), url.QueryEscape("com.heliosian.Heliosian:/oauth"), 1)
-	body, _ := json.Marshal(map[string]string{"query": query})
+	body, _ := json.Marshal(map[string]string{"query": query, "consent": "read and write"})
 	if status, _ := f.post(t, "/api/mcp/approve", "application/json", string(body), map[string]string{"Sec-Fetch-Site": "same-origin"}); status != http.StatusBadRequest {
 		t.Errorf("a client that did not register the app's redirect was sent to it: %d", status)
 	}
@@ -438,12 +442,12 @@ func TestExchangingACodeKeepsItsApprovalTime(t *testing.T) {
 	client := f.register(t)
 	code := f.approve(t, client)
 	var g grant
-	if !auth.Unseal([]byte("test"), "code", code, &g) {
+	if !auth.Unseal([]byte("test"), approvalPurpose, code, &g) {
 		t.Fatal("approval did not return a signed code")
 	}
 	g.Issued -= 10
 	g.Expires -= 10
-	code = auth.Seal([]byte("test"), "code", g)
+	code = auth.Seal([]byte("test"), approvalPurpose, g)
 	for range 2 {
 		status, out := f.exchange(t, client, code, verifier)
 		if status != http.StatusOK {
@@ -452,7 +456,7 @@ func TestExchangingACodeKeepsItsApprovalTime(t *testing.T) {
 		var token struct {
 			Issued int64 `json:"i"`
 		}
-		if !auth.Unseal([]byte("test"), "access", out["access_token"].(string), &token) || token.Issued != g.Issued {
+		if !auth.Unseal([]byte("test"), "read and write access", out["access_token"].(string), &token) || token.Issued != g.Issued {
 			t.Fatalf("token issued at %d, approval at %d", token.Issued, g.Issued)
 		}
 	}

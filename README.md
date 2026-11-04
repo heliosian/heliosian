@@ -24,7 +24,7 @@ To run against real community data instead, see [docs/dev.md](docs/dev.md).
 - `internal/db` — the data model every app reads and writes: its schema, sheets and store, the query language and permissions, `/api/q` and `/api/do/`, the consent step and the opt-in sync, the calendar import's Google stage and the planning both stages share, the school mail's hook and the digest that reads each email into key points and to-dos, the toolbar's reports and their triage, and each app's page shells and share cards ([docs/datamodel.md](docs/datamodel.md); what a query costs and how to measure one, [docs/queryspeed.md](docs/queryspeed.md))
 - `internal/ask` — Helios Ask: the chat with Claude over the data model - the prompt, the conversation, the streaming turn and the chips
 - `internal/tools` — the read-only tools over the data model that Helios MCP serves and Helios Ask gives its model
-- `internal/mcp` — Helios MCP: the OAuth server MCP clients sign in through, and the read-only tools over the data model
+- `internal/mcp` — Helios MCP: the OAuth server MCP clients sign in through, the shared reading tools, and batch updates through the data model's writer
 - `internal/artifacts` — the search's embeddings through Vertex AI, and the mail hook's settings
 - `internal/hosts` — which hostnames reach which app, and an app's address on a tier
 - `internal/mail` — outgoing email: Mailgun in production, and in development each message written to disk to open in a browser
