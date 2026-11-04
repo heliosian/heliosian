@@ -1,0 +1,25 @@
+# Read only calendar fields for subscription feeds
+
+byre task tskrDgeaXOwcnO, "Calendar feed performance", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskrDgeaXOwcnO in byre (read_task_events with task_id tskrDgeaXOwcnO).
+
+## Summary
+
+Performance audit of the requested main commit examined server request handling, browser data loading and histories, query execution/probes/redaction, media delivery, store/derived data, search and background scheduling. Selected one small fix with measured gains.
+
+Before: calendar subscription feeds read and checked every event column.
+Now: feeds request only the eight fields their calendar encoder uses, preserving event selection, permission checks and calendar contents.
+
+One changed production line in internal/db/savedsearch.go. Expanded endpoint regression coverage for timed events, all-day dates, description and location, retaining existing filtering, links and token alias checks. Added BenchmarkSavedSearchFeed over the existing synthetic school.
+
+Five alternating production query rounds after warm-up, with identical event IDs and calendar field values: ordinary parent, 658 events, median 78.543 → 33.501 ms; owner, 668 events, 37.360 → 15.342 ms. These compare query forms on the existing live server; the branch was not deployed for measurement. Local complete-feed medians across five repetitions: 13.119 → 5.711 ms, 8.20 → 4.97 MB/op, 83,862 → 55,399 allocations/op. Focused tests, go vet ./..., formatting and diff checks passed. Review completed with no findings.
+
+Deliberately left Loop history pagination, which requires a coordinated query/interface change; the similar-documents tool's whole-index scans, which lack measured noticeable latency; and roughly 8 ms of synthetic-school background search exclusion work, which does not justify additional machinery. No schema or interface changes. Merged main automatically without conflicts and left the merge uncommitted for byre.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Calendar subscription feeds no longer load every column of each matching group. The saved-search query that builds an .ics file now asks only for start, end, all_day, path, name, description, and location (id still comes back with every row). Those are the fields the feed writes into each event. The existing feed test now checks the picnic's times, description, location, link, and all-day dates, and a benchmark times the same feed over the large sample school.
+
+No significant findings.
