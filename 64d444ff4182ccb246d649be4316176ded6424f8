@@ -1,0 +1,23 @@
+# Fix security issues found in audit of 9642d27
+
+byre task tskhFDjKwnJrlF, "Security audit 9642d27", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskhFDjKwnJrlF in byre (read_task_events with task_id tskhFDjKwnJrlF).
+
+## Summary
+
+Security audit of main at 9642d27, the stage after the audit of 10a673b. Read the trust model (`docs/audits/security.md`, `docs/dev.md`, `docs/datamodel.md`, `docs/deploy.md`) and the 45 past Security issues, then the code: the sign-in gate and `auth.Public`, session and spoof cookies, bearer tokens and the MCP OAuth server, every hook's caller check, every `/open/` and `/ext/` route, blob serving, uploads, the write authorizer and the group, rule and email policies, mail and `.ics` composition, sheet writes, request logging, and the browser's HTML sinks and link targets. All of it held but one listener default.
+
+One real finding, fixed:
+
+- Before: `app.Server` bound `:PORT` on every interface for production and the dev server alike, so a laptop running `startserver --snapshot` (every request signed in as `--email`, no credential) or `--real` (sessions keyed by the fixed dev key `local-verify-key` in `tools/devenv`) served the production community data to anyone on its network.
+- Now: `listenAddress` in `internal/app/server.go` binds a server for the dev domain to `127.0.0.1`, where `heliosiandev.com` points (no AAAA), and production to every interface as Cloud Run needs. Keyed on the domain like the HSTS rule, so every dev mode is covered at the one place servers are built; a flag or startserver-only override would have missed `--real`. `TestADevServerListensOnLoopbackAlone` pins it; a live start showed `127.0.0.1:18443` in `lsof`; `docs/dev.md` (Local HTTPS) says so. Review found nothing.
+
+Noticed and left: the outside invitation page names hosts from the whole `PERSON` table, as the invitation mail already does; tokens in the request log (issue 61, closed as invalid); everything the trust model allows on purpose (public share cards by ID, `/api/do/person-at`, fetching links the school's mail names, super admins, Spoof Mode).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+The change binds development servers to IPv4 loopback while leaving the production server on all interfaces. It also documents the exposure boundary and adds a test for the selected listen addresses.
+
+No significant findings.
