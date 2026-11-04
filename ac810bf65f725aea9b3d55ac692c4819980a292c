@@ -1,0 +1,22 @@
+# Share one predicate for who is kept off a list
+
+byre task tskq9muJcX93K2, "Simplicity audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskq9muJcX93K2 in byre (read_task_events with task_id tskq9muJcX93K2).
+
+## Summary
+
+Simplicity audit of main at 91899dd. The kept-off rule (a membership row with member=excluded, or invited=excluded while member is not yes) was copied in the model, the draft preview, Loop, and When. It now lives in keptOffState in internal/db/effective.go and keptOff in web/common/members.js. Effective membership still applies the invited half only on activities.
+
+Loop's group page sentence "kept off the email list" now uses that same predicate, so an activity guest taken off with invited=excluded is counted. It previously counted only member=excluded. A volunteer (member=yes) is still not counted.
+
+Left alone on purpose: guest-add and the concurrent sign-up check, which still treat invited=excluded as blocked even for a volunteer so a sign-up is not turned back into a guest; a bringer can still restore their own activity guest; Cleanup issues 211 and 212, already fixed in the tree; and copies earlier audits judged to be different jobs (first-name helpers, status labels, school-year strings, HMAC seals, PDF waits, Home's date parser, joinNames).
+
+Review of the change reported no findings. Merging main at the end was already up to date, with nothing to combine.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+The change centralizes the rule for when a membership row keeps someone off a list. Go membership resolution, draft previews, and invitation handling share one predicate; Loop and When use a shared JavaScript predicate, and Loop counts activity invite exclusions in its summary.
+
+No significant findings.
