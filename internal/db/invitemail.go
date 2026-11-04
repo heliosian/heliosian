@@ -256,7 +256,7 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 		out = iv.cancellation(m, g, from, person, words, link)
 		method = mail.MethodCancel
 	case msg["kind"] == "invitation" || msg["kind"] == "update":
-		out = iv.invitation(m, g, msg["kind"], from, person, link, len(cc) == 0)
+		out = iv.invitation(m, g, msg["kind"], person, link, len(cc) == 0)
 	default:
 		out = iv.note(m, g, msg, from, person, words, link)
 	}
@@ -287,23 +287,25 @@ func (m *Model) addresses(people []string) []string {
 	return out
 }
 
-func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, link string, attached bool) mail.Message {
+func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, link string, attached bool) mail.Message {
 	day, hours := dayAndHours(g)
 	names := []string{}
 	for _, p := range m.householdOnList(g, person) {
 		names = append(names, m.shortName(p))
 	}
-	sender := m.nameOf(from)
-	sentBy := sender + " sent " + names[0] + " an invitation for"
+	intro := "You're invited to"
 	subject := "[" + g["name"] + "] You're invited!"
 	if kind == "update" {
-		sentBy = sender + " has updated the details of"
+		intro = "The details have been updated for"
 		subject = "[" + g["name"] + "] Updated: the details have changed"
 	}
-	hosting := "Hosted by " + joinNames(m.namesOf(m.hostsOf(g)))
+	hosting := ""
+	if hosts := m.hostsOf(g); len(hosts) > 0 {
+		hosting = "Hosted by " + joinNames(m.namesOf(hosts))
+	}
 	rsvpFor := "RSVP for " + joinNames(names) + " here"
 	var text strings.Builder
-	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", sentBy, g["name"], day)
+	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", intro, g["name"], day)
 	if hours != "" {
 		fmt.Fprintf(&text, "%s\n", hours)
 	}
@@ -315,7 +317,10 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	if g["location"] != "" {
 		fmt.Fprintf(&text, "\n%s\n", g["location"])
 	}
-	fmt.Fprintf(&text, "%s\n\nInvited: %s\n", hosting, strings.Join(names, ", "))
+	if hosting != "" {
+		fmt.Fprintf(&text, "%s\n", hosting)
+	}
+	fmt.Fprintf(&text, "\nInvited: %s\n", strings.Join(names, ", "))
 	if attached {
 		text.WriteString("\nThe invite attached puts it on your calendar.\n")
 	}
@@ -324,7 +329,7 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	h.WriteString(`<div style="max-width:600px;margin:0 auto;padding:8px 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1b2a2c">`)
 	h.WriteString(`<div style="background:#fff;border:1px solid #e6e6e6;border-radius:6px;padding:36px 32px 28px">`)
 	fmt.Fprintf(&h, `<p style="margin:0 0 24px"><a href="%s" style="display:block"><img src="%s" width="536" alt="%s" style="display:block;width:100%%;height:auto;border:0;border-radius:4px"></a></p>`, esc(link), esc(iv.cardOf(g)), esc(g["name"]))
-	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(sentBy))
+	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(intro))
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:26px;line-height:1.25;text-align:center">%s</p>`, esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;font-size:15px;text-align:center;color:#444">%s</p>`, esc(day))
 	if description != "" {
@@ -334,7 +339,9 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, from, person, lin
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;text-align:center"><a href="%s" style="display:inline-block;padding:13px 26px;border-radius:4px;background:#1f4d53;color:#fff;font-size:14px;font-weight:600;letter-spacing:0.06em;text-decoration:none">OPEN INVITATION</a></p>`, esc(link))
 	fmt.Fprintf(&h, `<p style="margin:0 0 6px;font-size:13px;font-style:italic;text-align:center;color:#777">This email is for %s. Please do not forward it.</p>`, esc(strings.Join(names, ", ")))
 	h.WriteString(`<hr style="border:0;border-top:1px solid #e6e6e6;margin:22px 0"><div style="text-align:center;font-size:14px;line-height:1.7;color:#333">`)
-	fmt.Fprintf(&h, `<p style="margin:0;font-weight:700">%s</p>`, esc(hosting))
+	if hosting != "" {
+		fmt.Fprintf(&h, `<p style="margin:0;font-weight:700">%s</p>`, esc(hosting))
+	}
 	if g["location"] != "" {
 		maps := "https://www.google.com/maps/search/?api=1&query=" + url.QueryEscape(g["location"])
 		fmt.Fprintf(&h, `<p style="margin:0"><a href="%s" style="color:#1a73e8">%s</a> <a href="%s" style="color:#2f9e6a;text-decoration:none">(View Map)</a></p>`, esc(maps), esc(g["location"]), esc(maps))

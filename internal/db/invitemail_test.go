@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"html"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +25,41 @@ func queuedInvitations(t *testing.T, people ...string) (*Invitations, *data.Dir,
 	recorder := mailtest.NewRecorder(mailtest.From)
 	iv := &Invitations{s: s, pics: newPictures(s), config: InvitationConfig{Sender: recorder.Mailgun, ReplyTo: whenReply, Origin: testOrigin}}
 	return iv, dir, recorder, group
+}
+
+func TestInvitationWording(t *testing.T) {
+	for _, hosted := range []bool{false, true} {
+		iv, _, _, group := queuedInvitations(t, parent)
+		if hosted {
+			apply(t, iv.s, []Edit{
+				{Insert: "GROUP", As: "hosts", Row: map[string]any{"kind": "group", "name": "Movie Night Hosts", "status": "open"}},
+				{Insert: "MEMBER", Row: map[string]any{"group": "@hosts", "person": staff, "member": "yes"}},
+				{Set: group, Cells: map[string]any{"managed_by": "@hosts"}},
+			})
+		}
+		m := iv.s.Model()
+		g, _ := m.Table("GROUP").Get(group)
+		for _, kind := range []string{"invitation", "update"} {
+			t.Run(fmt.Sprintf("%s/hosted=%t", kind, hosted), func(t *testing.T) {
+				msg := iv.invitation(m, g, kind, parent, "https://when.test/event", true)
+				intro := "You're invited to"
+				if kind == "update" {
+					intro = "The details have been updated for"
+				}
+				for format, body := range map[string]string{"text": msg.Text, "html": html.UnescapeString(msg.HTML)} {
+					if !strings.Contains(body, intro) || strings.Contains(body, m.nameOf(staff)+" sent ") || strings.Contains(body, m.nameOf(staff)+" has updated ") {
+						t.Errorf("%s intro: %s", format, body)
+					}
+					if strings.Contains(body, "Hosted by ") != hosted {
+						t.Errorf("%s hosted=%t: %s", format, hosted, body)
+					}
+					if hosted && !strings.Contains(body, "Hosted by "+m.nameOf(staff)) {
+						t.Errorf("%s missing host name: %s", format, body)
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestQueuedInvitationsPersistProgressInBatches(t *testing.T) {
