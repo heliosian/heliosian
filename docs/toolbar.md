@@ -50,4 +50,4 @@ The admin lists are one editor, `adminsCard({hint, title, load, save})` in the s
 
 ## On phones
 
-The bar is the topmost thing in every app, pinned under the status bar, at 48px: every app but Helios Ask adds a hamburger at its left for its drawer, the search box stays a box, and the keyboard hint and the switch's chevron drop. Under it the shell apps keep a slim teal strip for the page title (or a back arrow and a record's name); Heliosian's rail is a drawer behind the hamburger, the same column slid in from the left.
+The bar is the topmost thing in every app, pinned under the status bar, at 48px: every app but Helios Ask adds a hamburger at its left for its drawer, the search box stays a box, and the keyboard hint and the switch's chevron drop. Under it the shell apps keep a slim teal strip for the page title (or a back arrow and a record's name); Heliosian's rail is a drawer behind the hamburger, the same column slid in from the left. Staff Birthdays, Helios When, Helios Celebrate, HCA-Team, Helios Loop and Helios Wiki put `phone-chrome` on `body` and take the strip and the tab bar from `web/common/shell.css`. Who? and Helios Ask keep their own.

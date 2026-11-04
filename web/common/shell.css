@@ -167,4 +167,82 @@ body.is-admin > .tabbar { display: none !important; }
 
 body.is-admin #page { max-width: none; padding: 0; }
 
+body.phone-chrome { --tabbar: 64px; }
+
+body.phone-chrome > .mobile-top,
+body.phone-chrome > .tabbar { display: none; }
+
+@media (max-width: 900px) {
+  body.phone-chrome { display: block; height: auto; }
+
+  body.phone-chrome .sidebar { display: none; }
+
+  body.phone-chrome .app-shell { display: block; min-height: 0; }
+
+  body.phone-chrome .content-col { display: block; }
+
+  body.phone-chrome main {
+    display: block;
+    position: fixed;
+    inset: 0;
+    overflow-y: auto;
+    padding-top: calc(88px + var(--safe-top));
+    padding-bottom: calc(var(--tabbar) + var(--safe-bottom));
+  }
+
+  body.phone-chrome > .mobile-top {
+    display: flex;
+    align-items: center;
+    position: fixed;
+    top: calc(48px + var(--safe-top));
+    left: 0;
+    right: 0;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--brand-fill);
+    color: #fff;
+    z-index: 29;
+  }
+
+  body.phone-chrome .mobile-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-weight: 600;
+    font-size: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.phone-chrome > .tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--tabbar) + var(--safe-bottom));
+    padding-bottom: var(--safe-bottom);
+    background: var(--card);
+    border-top: 1px solid var(--line);
+    z-index: 20;
+  }
+
+  body.phone-chrome > .tabbar a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 11px;
+  }
+
+  body.phone-chrome > .tabbar a.is-active { color: var(--brand); }
+
+  body.phone-chrome > .tabbar svg { width: 22px; height: 22px; }
+}
+
 body.is-admin main { padding: 0; }
