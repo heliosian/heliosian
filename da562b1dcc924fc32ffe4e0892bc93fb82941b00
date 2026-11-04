@@ -1,0 +1,29 @@
+# Separate activity guest invitations from volunteer eligibility
+
+byre task tskGFVOGCtBEib, "Activity guest invitations", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Separate activity guest-invite settings from volunteer eligibility".
+Full chats: the events of task tskGFVOGCtBEib in byre (read_task_events with task_id tskGFVOGCtBEib).
+
+## Summary
+
+Completed the activity invitation-switch separation explicitly left unfinished by the earlier guest-list task.
+
+Before: When's People can invite others switch wrote GROUP.join and GROUP.eligible, potentially restricting or closing volunteer sign-ups.
+Now: GROUP.guests_invited_by independently names the group whose effective members may invite activity guests; the switch sets it to the activity itself or clears it. Invitation APIs, outside guest pages and the transaction's guest-addition check honor the permission while volunteer join, eligibility, capacity and memberships retain their rules.
+
+Before: new activities inferred invitation permission from their volunteer joining rules.
+Now: new activities start with hosts alone until invitation permission is enabled. Existing invitation permissions are preserved by the completed migration.
+
+A group reference rather than a boolean preserves existing eligibility exactly, including Everyone. Invited outside guests retain their ability to bring guests while permission is enabled. Production createtabs added the column. An ignored local migration used ordinary data-model writes in batches of 20 to preserve 198 unrestricted invitation permissions, then reread the sheets and verified all 374 activity settings and unchanged volunteer rules. No memberships were converted. Documentation and sample schema are updated; the completed TODO is removed.
+
+Focused database, access and app tests and go vet ./... passed. Chrome verified the actual switch on International Night with direct signup, Everyone eligibility and capacity 7 preserved on and off. Automated review completed with no findings. The final requested merge from main was already up to date and required no conflicts or further changes.
+
+Deliberately excluded deployment, redesigning event/party settings, and inferring repairs to historical volunteer-rule edits.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-terra: done
+
+Separates activity guest invitations from volunteer sign-up rules using a dedicated setting. Updates invitation authorization, the guest-list controls, documentation, and tests to use the new setting.
+
+No significant findings.
