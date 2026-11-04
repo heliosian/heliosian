@@ -136,7 +136,7 @@ func (m *Model) draftMembers(ctx context.Context, env Env, d groupDraft) (draftA
 	reasons := map[string][]draftReason{}
 	excluded := map[string]bool{}
 	for _, mem := range d.Members {
-		if mem.Member == "excluded" || (mem.Invited == "excluded" && mem.Member != "yes") {
+		if keptOffState(mem.Member, mem.Invited) {
 			excluded[mem.Person] = true
 			continue
 		}

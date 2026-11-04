@@ -15,7 +15,7 @@ import {tabStrip, tabParam, tabHref} from '/tabs.js';
 import {personCard} from '/people.js';
 import {personRow} from '/personrow.js';
 import {openPersonCard} from '/personcard.js';
-import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords} from '/members.js';
+import {memberAdders, personAdder, outsideAdder, membersCard, reasonWords, keptOff} from '/members.js';
 import {keyBetween} from '/order.js';
 import {infoBanner} from '/infobanner.js';
 
@@ -443,7 +443,7 @@ function keptOffCard(ed) {
   card.append(rows);
   ed.keptOff = () => {
     rows.replaceChildren();
-    const off = ed.draft.hand.filter(m => m.member === 'excluded' || (m.invited === 'excluded' && m.member !== 'yes'));
+    const off = ed.draft.hand.filter(keptOff);
     card.hidden = !off.length;
     for (const m of off) {
       const shown = personView(m.person);
@@ -1015,7 +1015,7 @@ function rulesSummary(g, rules) {
   }
   card.append(lines);
   const added = g.hand.filter(m => m.member === 'yes').length;
-  const off = g.hand.filter(m => m.member === 'excluded').length;
+  const off = g.hand.filter(keptOff).length;
   if (added) {
     card.append(el('div', 'subject-note', `${added} ${added === 1 ? 'person is' : 'people are'} on the email list by hand.`));
   }

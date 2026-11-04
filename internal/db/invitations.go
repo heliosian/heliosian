@@ -217,7 +217,7 @@ func (m *Model) hostsOf(g store.Row) []string {
 
 func (m *Model) keptOff(g store.Row, person string) bool {
 	row, ok := m.Table("MEMBER").Find(g["id"], person)
-	return ok && (memberAs(row) == "excluded" || row["invited"] == "excluded" && memberAs(row) != "yes")
+	return ok && keptOffState(memberAs(row), row["invited"])
 }
 
 func (m *Model) onList(g store.Row, person string) bool {

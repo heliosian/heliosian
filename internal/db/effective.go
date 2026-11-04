@@ -167,6 +167,10 @@ func memberAs(row store.Row) string {
 	return strings.ToLower(strings.TrimSpace(row["member"]))
 }
 
+func keptOffState(member, invited string) bool {
+	return member == "excluded" || invited == "excluded" && member != "yes"
+}
+
 func (m *Model) directMemberCount(group string) int {
 	count := 0
 	for _, row := range m.Table("MEMBER").Referencing("group", group) {
@@ -345,13 +349,14 @@ func (m *Model) resolve(group string, r reads) map[string][]string {
 		if activity && row["invited"] == "yes" {
 			out[row["person"]] = append(out[row["person"]], "invited")
 		}
-		if activity && row["invited"] == "excluded" && memberAs(row) != "yes" {
+		invited := ""
+		if activity {
+			invited = row["invited"]
+		}
+		if keptOffState(memberAs(row), invited) {
 			excluded[row["person"]] = true
 		}
-		switch memberAs(row) {
-		case "excluded":
-			excluded[row["person"]] = true
-		case "yes":
+		if memberAs(row) == "yes" {
 			out[row["person"]] = append(out[row["person"]], "member")
 		}
 	}

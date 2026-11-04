@@ -3,6 +3,7 @@ import {postFlyer} from '/images.js';
 import {queries, rowsOf, write} from '/rail.js';
 import {directory, listed, known, contactLine, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff} from '/directory.js';
 import {nameRulesWith, ruleOf, ruleRow} from '/listrules.js';
+import {keptOff} from '/members.js';
 import {keyBetween} from '/order.js';
 import {state, me, isParty} from './state.js';
 
@@ -83,7 +84,7 @@ export async function fetchInvites(e) {
     const family = familyOf(pid) || (m && m.guest_of ? familyOf(m.guest_of) : null);
     const copy = copies[pid];
     const answer = answers[pid];
-    const excluded = m && (m.member === 'excluded' || m.invited === 'excluded' && m.member !== 'yes');
+    const excluded = keptOff(m);
     const onList = !excluded && (effective.has(pid) || Boolean(copy));
     const outside = p.source === 'guest';
     const email = emailOfId[pid] || (d ? emailOf(d) : '');
