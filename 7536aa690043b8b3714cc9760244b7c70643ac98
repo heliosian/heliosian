@@ -1,0 +1,24 @@
+# Fix security issues found in audit of 64d444f
+
+byre task tskVY9rhjOYfGh, "Security audit 64d444f", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskVY9rhjOYfGh in byre (read_task_events with task_id tskVY9rhjOYfGh).
+
+## Summary
+
+Security audit of main at 64d444ff (workflow Audit, stage Security Audit). Read the trust model (`docs/audits/security.md`, `docs/dev.md`), the two prior security-fix commits and the earlier audit tasks so nothing was refiled, then the code at every boundary: sign-in, sessions and bearer tokens, Spoof Mode, every `auth.Public` path (mail and delivery hooks, calendar watch, GitHub and build hooks, feeds, unsubscribe, outside invitations, MCP OAuth), the write authorizer and policies, each `/api/do/` route, blob serving, share cards, mail in and out, server-side fetches, Claude's inputs, the browser's HTML and navigation sinks and local storage, and the deploy and logging paths.
+
+One real finding, fixed:
+- Before: Helios When's saved-calendar page was addressed by the saved search's feed token (`/c/<token>`), the same secret that opens the public feed `/open/feed/<token>.ics`, which runs the search as its owner; a copied, bookmarked or link-previewed page address handed out the owner's events, invite-only ones included, and the household's going/waitlisted standing.
+- Now: the page is at `/c/<saved search ID>` (`my-heliosian` for the default), as every other row's page uses its ID; the client identifies a calendar by `key` and the token appears only inside the feed address under Subscribe. Old `/c/<token>` links show Not here (deliberately not kept as a second path); a browser's remembered active calendar resets once.
+
+Verified with `go vet`, the app package tests, and sample-server captures of `/c/sav00000000001` and Heliosian's home. Review: one round, no findings. Main merged cleanly afterwards (one unrelated change to `internal/db/query.go`), vet and tests rerun.
+
+Noticed and left: `/api/do/thumbnail` writes an unreferenced JPEG to the bucket before the policy refuses a member (swept later; a fix would be one call-site check); list managers can claim any unclaimed `ALIAS` name for their own list; team admins' `REDIRECT` rows can send unclaimed portal paths off-site before sign-in (the documented feature); and everything the trust model allows on purpose (public share cards by ID, `person-at`, super admins and Spoof Mode, OAuth redirects to any https host, tokens in the request log).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Saved-calendar navigation now uses saved-search IDs instead of secret feed tokens, keeping those secrets out of ordinary page addresses and navigation state. Calendar selection and reordering use the same IDs, while subscription URLs retain their existing tokens. The calendar documentation describes the new addresses.
+
+No significant findings.
