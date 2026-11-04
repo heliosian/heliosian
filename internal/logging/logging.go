@@ -168,7 +168,7 @@ func Requests(app string, next http.Handler) http.Handler {
 		}
 		slog.Log(ctx, level, "request", slog.Group("httpRequest",
 			"requestMethod", r.Method,
-			"requestUrl", r.URL.RequestURI(),
+			"requestUrl", r.Pattern,
 			"status", rec.status,
 			"latency", fmt.Sprintf("%.6fs", time.Since(start).Seconds()),
 			"userAgent", r.UserAgent(),

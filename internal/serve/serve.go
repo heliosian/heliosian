@@ -82,7 +82,7 @@ func Write(w http.ResponseWriter, r *http.Request, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.ErrorContext(r.Context(), "encode response", "path", r.URL.Path, "error", err)
+		slog.ErrorContext(r.Context(), "encode response", "path", r.Pattern, "error", err)
 	}
 }
 
@@ -92,7 +92,7 @@ func Error(w http.ResponseWriter, r *http.Request, err error) {
 	}
 	var refusal *access.Refusal
 	if !errors.As(err, &refusal) {
-		slog.ErrorContext(r.Context(), "request failed", "path", r.URL.Path, "error", err)
+		slog.ErrorContext(r.Context(), "request failed", "path", r.Pattern, "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

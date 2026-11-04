@@ -3,6 +3,7 @@ package app
 import (
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"heliosian/internal/serve"
@@ -37,13 +38,26 @@ func report(w http.ResponseWriter, r *http.Request) {
 			Blocked    string `json:"blocked-uri"`
 			SourceFile string `json:"source-file"`
 			Line       int    `json:"line-number"`
-			Sample     string `json:"script-sample"`
 		} `json:"csp-report"`
 	}
 	if !serve.Decode(w, r, &body) {
 		return
 	}
 	v := body.Report
-	slog.Warn("csp violation", "document", v.Document, "directive", v.Directive, "blocked", v.Blocked, "source", v.SourceFile, "line", v.Line, "sample", v.Sample)
+	slog.Warn("csp violation", "document", reportOrigin(v.Document), "directive", v.Directive, "blocked", reportOrigin(v.Blocked), "source", reportOrigin(v.SourceFile), "line", v.Line)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func reportOrigin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if u.Scheme != "" && u.Host != "" {
+		return u.Scheme + "://" + u.Host
+	}
+	if u.Scheme != "" {
+		return u.Scheme + ":"
+	}
+	return ""
 }

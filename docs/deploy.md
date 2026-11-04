@@ -158,7 +158,7 @@ Whether the world validates the zone is the `ad` flag on `dig +dnssec heliosian.
 
 ## Logs
 
-The server writes one JSON object per line to stdout (`internal/logging`), and Cloud Run's agent turns each into a structured entry: `severity` and `message` are promoted, `httpRequest` is rendered like the request log's own summary, and every other field lands in `jsonPayload`, where it can be filtered on. Every record written while handling a request carries `app` (the app's hostname label), `user` (the signed-in address), and Cloud Run's trace, so the Logs Explorer nests it under the Cloud Run request entry with the same trace. Each request past sign-in also gets one record of its own, `message="request"`, holding method, URL, status, latency, and user agent. Writes log what changed as fields, and carry `actor` where the acting identity can differ from `user`: the directory and the volunteer portal resolve aliases. While a super admin is in Spoof Mode (`docs/toolbar.md`) every record of theirs carries `as`, the person they are viewing as, beside their own `user`.
+The server writes one JSON object per line to stdout (`internal/logging`), and Cloud Run's agent turns each into a structured entry: `severity` and `message` are promoted, `httpRequest` is rendered like the request log's own summary, and every other field lands in `jsonPayload`, where it can be filtered on. Every record written while handling a request carries `app` (the app's hostname label), `user` (the signed-in address), and Cloud Run's trace, so the Logs Explorer nests it under the Cloud Run request entry with the same trace. Each request past sign-in also gets one record of its own, `message="request"`, holding method, matched route, status, latency, and user agent. The matched route keeps bearer tokens and query values out of the server's own request record. Writes log what changed as fields, and carry `actor` where the acting identity can differ from `user`: the directory and the volunteer portal resolve aliases. While a super admin is in Spoof Mode (`docs/toolbar.md`) every record of theirs carries `as`, the person they are viewing as, beside their own `user`.
 
 Queries that answer the usual questions, in Logs Explorer with the service selected or with `gcloud logging read`:
 
@@ -169,7 +169,7 @@ Queries that answer the usual questions, in Logs Explorer with the service selec
     trace="projects/heliosian/traces/<trace id>"
     jsonPayload.message="csp violation"
 
-The last is a browser reporting what the content security policy (`policy` in `internal/app/csp.go`) blocked on a page: the page, the directive, the address and the source line. A run of them after a deploy is the first sign a change reached for something the policy does not name.
+The last is a browser reporting what the content security policy (`policy` in `internal/app/csp.go`) blocked on a page: the page's origin, the directive, the blocked origin, the source origin and line. The report leaves paths, queries and script samples out of the log. A run of them after a deploy is the first sign a change reached for something the policy does not name.
 
 Local development installs the same records over a text handler on stderr, so the dev server's output shows the same fields in `key=value` form.
 

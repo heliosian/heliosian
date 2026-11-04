@@ -125,3 +125,20 @@ func TestCancellationErrorsDependOnWhetherTheRequestEnded(t *testing.T) {
 		}
 	}
 }
+
+func TestEncodeErrorLogsRouteWithoutBearer(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	defer slog.SetDefault(previous)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /open/ext/{token}", func(w http.ResponseWriter, r *http.Request) {
+		Write(w, r, http.StatusOK, map[string]any{"bad": (chan int)(nil)})
+	})
+	r := httptest.NewRequest(http.MethodGet, "/open/ext/invitation-secret", nil)
+	mux.ServeHTTP(httptest.NewRecorder(), r)
+	if strings.Contains(logs.String(), "invitation-secret") || !strings.Contains(logs.String(), "GET /open/ext/{token}") {
+		t.Errorf("encode error log = %q", logs.String())
+	}
+}
