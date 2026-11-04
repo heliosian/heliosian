@@ -1,0 +1,29 @@
+# Skip excluded result types during search selection
+
+byre task tskA4b84JY4tO4, "Search selection cost", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskA4b84JY4tO4 in byre (read_task_events with task_id tskA4b84JY4tO4).
+
+## Summary
+
+Audited main at 7536aa6 across request handling, browser loading, query execution, storage rebuilds, search, workers, and retained histories. Kept one focused optimization in the shared search result selector: 11 added production lines and 3 replaced, plus 64 regression-test and benchmark lines.
+
+Before: searches restricted to groups still checked document permissions and replacement chains and sorted matching document objects.
+Now: result selection skips types whose requested limit is zero, preserving the requested results and their ordering, including objects shared across types.
+
+Five interleaved rounds in one process over a controlled fixture containing 10,013 matching documents measured median selection time 60.749 ms → 0.864 ms and 10,013 → 0 document policy checks. These isolate selection from network and embedding latency. Original/new outputs matched across 64 limit combinations. All 43 search tests passed in four groups under timeout 30; repository-wide vet and diff checks passed. The full database package run exceeded 30 seconds, so no full-package pass is claimed. Review finished without findings.
+
+Left document-table rebuilds alone because the profile points to a broader design change requiring stronger measurements. Left history pagination alone because production held only 219 messages across all lists. Production reads only, no deployment or data writes. Main merged into the task branch automatically without conflicts or manual resolution; the merge remains uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-opus-5-5: done
+
+`searchView.pick` (internal/db/search.go) picks the search results to return. It now skips work for tables whose limit is 0. Before, a group-only or person-only search still looked up the replacement for every matching document and ran the document read-policy check on it, then threw those results away. Now it drops objects that have no row in a table with a positive limit, and only computes document replacements and supersession when documents were requested. It also skips rows from zero-limit tables before running their readability check. A new test checks that a GROUP-only or PERSON-only pick runs no document policy check, and that each table's output is the same as picking over only the objects that have a row in that table. A new benchmark covers the group-only case.
+
+What I checked:
+- The new test fails on the pre-change code: both the GROUP and PERSON subtests report a document policy check.
+- On the scale fixture (about 10k documents), `BenchmarkSearchGroupsOnly` went from 59.0 ms to 1.35 ms per op.
+- `go test ./internal/db` passes, and `go vet` and `gofmt` are clean.
+- I read the change for behaviour differences. Objects that are dropped only ever contribute rows to zero-limit tables, so they produced no output before. Removing them doesn't change the relative sort order of the objects that remain. With documents at limit 0, supersession was always false for any object with a non-document row, which is the only kind that survives the filter. So the output is unchanged.
+
+No significant findings.
