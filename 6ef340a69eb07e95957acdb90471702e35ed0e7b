@@ -1,0 +1,23 @@
+# Reuse shared request handling for draft endpoints
+
+byre task tskrK1S0RtuTQT, "Simplify draft handlers", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskrK1S0RtuTQT in byre (read_task_events with task_id tskrK1S0RtuTQT).
+
+## Summary
+
+Simplicity audit of the codebase at 844fcad, with independent core/data-model and web/handler/tool inspection by sol and flash. Selected one focused refactor that reuses existing infrastructure.
+
+Before: internal/db/draft.go repeated caller checks, request decoding, error output and JSON responses in four handlers, with a readDraft decoding wrapper.
+Now: draft-members, describe-group, describe-activity and describe-charity use the existing modelAction helper in internal/db/http.go. readDraft and the serve import are removed, reducing the file by 66 lines while preserving user-visible behavior and keeping request handling on one shared path.
+
+Focused existing tests passed for draft membership, invitation state, outside-guest visibility, charity permissions and cancellation. Package vet and diff checks passed. Flash independently checked behavior preservation; automated review completed with no findings. The requested merge from main reported already up to date, with no conflicts or further changes.
+
+Serving-group metadata, birthday-setting parsing, thumbnail predicates and description error mappings were deliberately left alone because the value was smaller, scope spread through security-sensitive readers, or endpoint messages differ. No schema, production data, new tests, flags, fallbacks or abstractions changed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+The four draft endpoints in `internal/db/draft.go` (`draft-members`, `describe-group`, `describe-activity`, and `describe-charity`) no longer each authenticate, decode JSON, and write the response. They are registered through `modelAction`, which already does that for the other `/api/do` calls, and each handler returns its result or an error. The private `readDraft` helper is gone. The checks, Claude error mapping, logs, and JSON bodies are the same as before.
+
+No significant findings.
