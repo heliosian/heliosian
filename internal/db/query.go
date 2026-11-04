@@ -108,10 +108,9 @@ type cellKey struct {
 }
 
 type selectSpec struct {
-	inner   *scan
-	column  Column
-	exact   bool
-	guarded bool
+	inner  *scan
+	column Column
+	exact  bool
 }
 
 type operand struct {
@@ -147,7 +146,6 @@ type scan struct {
 	table    *Table
 	name     string
 	guarded  bool
-	constant bool
 	key      string
 	outer    []string
 	conds    []cond
@@ -334,7 +332,6 @@ func (cx *compiler) scan(s *sexp, at int, outer *scope, also func(*scope) error)
 
 func (cx *compiler) keyed(out *scan, s *sexp, mark int, inner *scope) {
 	out.outer = cx.outside(mark, inner)
-	out.constant = len(out.outer) == 0
 	out.key = guardKey(out.guarded) + cx.digest(s)
 }
 
@@ -384,7 +381,7 @@ func (cx *compiler) outside(mark int, inner *scope) []string {
 }
 
 func remembered[T any](f *frame, s *scan, work func() T) T {
-	if !s.constant && !s.guarded {
+	if len(s.outer) > 0 && !s.guarded {
 		return work()
 	}
 	key := f.memoKey(s.key, s.outer)
@@ -1094,12 +1091,11 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 	}
 	cx.keyed(inner, s, mark, within)
 	inner.pickProbe()
-	guarded := !cx.policy
 	ct := columnType(t.Name, c)
 	exact := x.kind == Order && ct.kind == Order
 	inner.key += fmt.Sprintf("\x00%t", exact)
-	spec := &selectSpec{inner: inner, column: c, exact: exact, guarded: guarded}
-	fused := inner.constant && guarded && len(inner.probes) == 0 && inner.probeSet == nil && inner.union == nil
+	spec := &selectSpec{inner: inner, column: c, exact: exact}
+	fused := len(inner.outer) == 0 && inner.guarded && len(inner.probes) == 0 && inner.probeSet == nil && inner.union == nil
 	if fused {
 		cx.selects = append(cx.selects, spec)
 	}
@@ -1115,12 +1111,12 @@ func (cx *compiler) selectSet(s *sexp, sc *scope, x typ) (func(f *frame) *valueS
 		return remembered(f, inner, func() *valueSet {
 			out := newValueSet(exact)
 			inner.each(f, func(g *frame) bool {
-				out.add(g.run.cell(guarded, t, g.row, c))
+				out.add(g.run.cell(inner.guarded, t, g.row, c))
 				return true
 			})
 			return out
 		})
-	}, ct, inner.constant, nil
+	}, ct, len(inner.outer) == 0, nil
 }
 
 // fuse fills, in one pass over the table, every whole-table select on it the run's queries hold, spec among them.
