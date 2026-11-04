@@ -1,0 +1,23 @@
+# Derive generated cache readiness from its index
+
+byre task tskxkNbXXPbRpt, "Simplify generated caches", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskxkNbXXPbRpt in byre (read_task_events with task_id tskxkNbXXPbRpt).
+
+## Summary
+
+Audited main at 7ce5c40 for structural complexity across server wiring, store transactions/queues, generated memberships, search indexing, document workers, share pages, tool responses and shared browser utilities. Selected one bounded cleanup.
+
+Before: internal/db/effective.go maintained generatedSet.ready separately from its built index map, with assignments in both the request builder and background warmer.
+Now: the presence of the index map determines readiness, removing redundant state and its update sites. The map is initialized even for empty generated tables; locking and nonblocking warming retain their behavior. Updated the existing warmer test to inspect that map directly.
+
+Focused existing tests for membership caching/invalidation, warming, generated birthdays and the search table passed, as did go vet ./... and git diff --check. Review completed with no findings. The requested merge from main reported already up to date and required no conflict resolution.
+
+Deliberately left per-app redirect/presentation contracts intact and avoided a shared picture/search queue abstraction because their scheduling and invalidation requirements differ. No schema changes or production writes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+The generated-table cache used a separate `ready` flag to mean the set had been built. `build` always assigns `by` to a non-nil index map when it finishes, so the flag duplicated that fact. Callers now treat a nil `by` as unbuilt, in both the on-demand path and the warmer, and the existing warmer test checks that same condition.
+
+No significant findings.
