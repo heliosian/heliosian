@@ -1,0 +1,68 @@
+# Fix security issues found in audit of 46e759d
+
+byre task tskMTpw3p24HDE, "Security audit 46e759d", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskMTpw3p24HDE in byre (read_task_events with task_id tskMTpw3p24HDE).
+
+## Summary
+
+Security audit of main at 46e759d across the whole codebase: sign-in, sessions, bearer tokens, Spoof Mode, every public path (hooks, `/open/`, `/ext/`, MCP OAuth), every `/api/do/` handler, uploads, blob serving, outbound fetches, mail in and out, the full policy source, Ask and MCP tools, and the browser's HTML and link sinks under the CSP.
+
+One real issue fixed: two Birthdays policy clauses let a Birthdays admin add or remove members of any group the Birthdays Viewers rules name, with no limit on the target's kind, and in production those rules name the `birthday-admins` admins group itself, so non-super-admin Birthdays admins could appoint or remove Birthdays admins. The app's docs described that reach while the data model's rule says only an admins group's managers (the super admins) change it; ian chose the model's rule. The clauses now exclude admins groups and role groups, `TestOnlySuperAdminsKeepTheBirthdaysAdmins` holds it (checked to fail against main's policy, after a review finding that its first version failed for the wrong reason), and the Birthdays sentences in `docs/datamodel.md` and `docs/birthday/birthday.md` match. Cost: Birthdays admins who are not super admins ask one to change the admin list; they keep the volunteers and the Comms Team as before.
+
+Deliberately left alone: Team admins' whole-address redirects (documented, admins doing their job); unsubscribe tokens signed with the raw session key (distinct payload shapes keep them apart, and re-keying breaks every link in sent mail); unbounded invitations by a host (the product's hosting model); Loop keeping unauthenticated posts before dropping them (documented); `GET /open/ext/{token}` recording "opened" (token holder only); dev tooling exposures (documented in the audit doc). An app admin re-pointing an event's managers at an unrelated group is already refused by `authorizeServingGroups` (issue #200).
+
+## Reviews
+
+### Snapshot #2, reviewer "",  : skipped
+
+### Snapshot #4, reviewer "Review", codex gpt-6.1-sol: done
+
+Restricts the Birthdays app's membership grants so Birthdays admins cannot add or remove members of admin groups or imported role groups. Adds regression coverage and updates the permission documentation. Review was by code inspection; no builds or tests were run, as requested.
+
+- The role-group regression test accepts a duplicate-membership error, so it does not verify the new authorization restriction.
+
+### Snapshot #5, reviewer "Review", grok grok-4.7: done
+
+Birthdays admins could add or remove members of any group named by a Birthdays Viewers rule, and those rules name the Birthdays Admins group. A Birthdays admin could therefore grant or revoke Birthdays admin, and the same grant would cover a role group (staff, parents, students, adults, or everyone) if a rule ever named one. The membership clauses now refuse an admins group and a role group. Super admins still keep Birthdays Admins, and a Birthdays admin can still keep the volunteers and the Comms Team. The docs match that, and a write test covers both refusals and the super-admin path.
+
+No significant findings.
+
+## Decisions
+
+### Should Birthdays admins who are not super admins be able to add and remove Birthdays admins, as they can today, or should only the super admins do that, as the data model's rule says for every other app?
+
+**Background.** This is the security audit of main at 46e759d. It found one real issue, in the permission policies (`internal/db/policy.go`, the `PolicySource` text every read and write is checked against). Two clauses in the "Everyone" section let a Birthdays admin add someone to, or take someone out of, *any group that a rule of the Birthdays Viewers group names*:
+
+```
+; a Birthdays admin adds someone to a group whose members the Birthdays app is open to
+(insert MEMBER (and (admin_of "birthday") (= @new.member "yes")
+  (in @new.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
+; a Birthdays admin takes someone out of a group whose members the Birthdays app is open to
+(delete MEMBER (and (admin_of "birthday")
+  (in @old.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
+```
+
+Terms: `APP` is the table of apps; its `visible_to` column names the group an app is open to, and for the Staff Birthdays app that is the group "Birthdays Viewers". `RULE` rows are the include rules that work out a group's members; each has a `target`, a group whose members it takes in. `MEMBER` rows are hand memberships. `admin_of "birthday"` holds for the members of the "Birthdays Admins" group and for every super admin.
+
+**The real rows in production right now.** Birthdays Viewers (`grpin0g5hCwV5i`) has three rules, naming:
+
+| Rule target | Kind | Managed by |
+|---|---|---|
+| Staff Birthdays, the Team activity `bday` (the volunteers) | `activity` | Staff Birthdays Managers |
+| Staff Birthdays Leads (the Comms Team) | `group` | nobody |
+| Birthdays Admins, slug `birthday-admins` | `admins` | Super Admins |
+
+Birthdays Admins holds Gayle McDowell, Ian Gulliver, Quan Nguyen and Caitlin Donhowe. Super Admins holds Gayle and Ian. So today Quan or Caitlin, who are Birthdays admins but not super admins, can insert a `MEMBER` row into Birthdays Admins for anyone in the directory, or delete the rows that make Gayle, Ian or each other Birthdays admins. (Gayle and Ian stay Birthdays admins either way, through being super admins.)
+
+**Why it came up.** `docs/datamodel.md` states the model's rule in one place: "The admins groups keep a kind of their own so that no app admin's grants over `group`s reach them. `super-admins` manages itself and every app's admins group is managed by `super-admins`, so a super admin adds and removes app admins and super admins." Every other app follows it: a When, Team, Celebrate, Who, Home or Wiki admin cannot touch their own admins group; only its managers, the super admins, can. But the same doc's Staff Birthdays section says a Birthdays admin "adds and takes out the members of the groups Birthdays Viewers' rules name: the volunteers, the Comms Team and the admins", and `docs/birthday/birthday.md` says admins "keep the volunteers, the Comms Team and the admins from `/admin`". The two statements contradict each other, so this is a decision about who should hold the right, not a plain bug.
+
+**One input, each option's result.** Quan opens Staff Birthdays › Admin Tools › Admins and adds a parent, then removes Caitlin:
+
+- (*) Follow the model's rule: only an admins group's managers change it
+  The two clauses gain `(!= @new.group.kind "admins")` (and `@old.group` on the delete), and also `(not (role_group ...))` so a rule naming students, parents, staff, adults or everyone could never hand those out either. Quan's add is refused with `403 you may not add to MEMBER`, and so is the removal; the Admins card in Admin Tools keeps drawing for her but its adds and removes fail, as they do for every other app's admins today. Ian and Gayle add and remove Birthdays admins as before. Quan still adds and removes volunteers (Staff Birthdays) and the Comms Team (its leads group). Who hits it: Quan and Caitlin, and any future Birthdays admin who is not a super admin; what they do instead: ask a super admin. The doc sentences are rewritten to match.
+- ( ) Keep the Birthdays exception, and say so
+  Quan's add and removal both succeed, as today. The clauses only gain `(not (role_group ...))`, which changes nothing on today's data, and the data model doc's general rule gets the Birthdays exception written into it so the two sentences stop contradicting each other.
+
+I recommend following the model's rule: it is the rule the audit doc checks against ("a regular admin cannot make themselves more"), every other app already works that way, and a Birthdays admin removing the other Birthdays admins is a takeover nobody intended; the cost is that Quan or Caitlin ask Ian or Gayle when the admin list changes.
+
+ian@fc.run chose: Follow the model's rule: only an admins group's managers change it
