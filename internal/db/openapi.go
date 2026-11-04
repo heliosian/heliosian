@@ -282,9 +282,10 @@ func spec() schema {
 			"exclude": schema{"type": "boolean"}, "target": schema{"type": "string"}, "person": schema{"type": "string"},
 			"search": schema{"type": "string"}, "replace_with": schema{"type": "string"}, "within": schema{"type": "string"},
 		}}},
-		"members": schema{"type": "array", "description": "People put on the draft or kept off it by hand.", "items": schema{"type": "object", "required": []string{"person", "member"}, "properties": schema{
-			"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)},
-			"member": schema{"type": "string", "enum": []string{"yes", "excluded"}},
+		"members": schema{"type": "array", "description": "People put on the draft or kept off it by hand.", "items": schema{"type": "object", "required": []string{"person"}, "properties": schema{
+			"person":  schema{"type": "string", "pattern": idPattern(PersonPrefix)},
+			"member":  schema{"type": "string", "enum": []string{"", "yes", "excluded", "cancelled"}, "description": "Their membership. Blank, yes, excluded or cancelled."},
+			"invited": schema{"type": "string", "enum": []string{"", "yes", "excluded"}, "description": "On an activity, their guest-list override. Blank, yes or excluded."},
 		}}},
 	}}
 	described := func(about string) schema {
@@ -561,13 +562,17 @@ func spec() schema {
 				"responses": refusals(schema{
 					"200": object("Who the draft holds.", []string{"members", "ruleCounts"}, schema{
 						"members": schema{"type": "array", "items": schema{"type": "object", "required": []string{"person", "reasons"}, "properties": schema{
-							"person":  schema{"type": "string"},
-							"name":    schema{"type": "string", "description": "Their name, when the caller may see them."},
-							"reasons": schema{"type": "array", "items": schema{"type": "object", "properties": schema{"rule": schema{"type": "integer", "description": "An index into the rules sent."}, "added": schema{"type": "boolean"}}}},
+							"person": schema{"type": "string"},
+							"name":   schema{"type": "string", "description": "Their name, when the caller may see them."},
+							"reasons": schema{"type": "array", "items": schema{"type": "object", "properties": schema{
+								"rule":    schema{"type": "integer", "description": "An index into the rules sent."},
+								"added":   schema{"type": "boolean"},
+								"invited": schema{"type": "boolean", "description": "On the draft as an activity guest, invited=yes."},
+							}}},
 						}}},
 						"ruleCounts": schema{"type": "array", "items": schema{"type": "integer"}, "description": "How many people each rule picks out, in the rules' order."},
 					}),
-					"400": failure("A member that is neither yes nor excluded, or a body that is not JSON."),
+					"400": failure("A membership other than blank, yes, excluded or cancelled, an activity invitation other than blank, yes or excluded, or a body that is not JSON."),
 				}),
 			},
 		},
@@ -625,7 +630,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Mail a guest list",
-				"description": "For the hosts (runs_list). reminder and message go to the people invited whose answer is in to (yes, no, or none for no answer) or who are named in people; update goes to everyone invited but those who said no; cancel sets the group's status to cancelled and, with notify, mails everyone invited.",
+				"description": "For the hosts (runs_list). reminder and message go to people who hold an invitation or skip copy, a queued copy included, whose answer is in to (yes, no, or none for no answer) or who are named in people, skipping anyone since kept off; update goes to everyone with such a copy but those who said no and those kept off; cancel sets the group's status to cancelled and, with notify, mails everyone with such a copy, kept off included. A copy that failed before it was sent does not count.",
 				"requestBody": jsonBody([]string{"group", "kind"}, schema{
 					"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
 					"kind":    schema{"type": "string", "enum": []string{"reminder", "message", "update", "cancel"}},
@@ -646,7 +651,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Add people to a guest list",
-				"description": "For the hosts (runs_list), or anyone when the group's join is others and they are eligible. Each person is someone the caller can see, by ID, or someone from outside, by name and address: the person already holding the address, else a new guest. With family, two or more new guests become one family. Anyone added who has an address and no invitation yet is sent one, always for someone not a host and with send for a host.",
+				"description": "For the hosts (runs_list). Otherwise invites_guests: on an activity whose guests_invited_by is set, an effective member of that group or an invited outside guest; on an event or party whose join is others, anyone eligible (the eligible group blank, or an effective member of it). Each person is someone the caller can see, by ID, or someone from outside, by name and address: the person already holding the address, else a new guest. With family, two or more new guests become one family. Anyone added who has an address and no invitation yet is sent one, always for someone not a host and with send for a host.",
 				"requestBody": jsonBody([]string{"group", "people"}, schema{
 					"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)},
 					"people": schema{"type": "array", "items": schema{"type": "object", "properties": schema{

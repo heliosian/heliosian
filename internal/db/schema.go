@@ -760,7 +760,7 @@ var Tables = []Table{
 	{
 		Name:        "EFFECTIVE_MEMBER",
 		Generated:   true,
-		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less its exclude rules, everyone with member=excluded, everyone with invited=excluded who is not member=yes, and everyone deactivated.",
+		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less its exclude rules, everyone with member=excluded, an activity's invited=excluded rows whose member is not yes, and everyone deactivated.",
 		Columns: []Column{
 			ident(EffectiveMemberPrefix),
 			ref("group", "GROUP").about("The group."),
