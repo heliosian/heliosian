@@ -493,7 +493,7 @@ var Tables = []Table{
 			enum("member",
 				v("yes", "in the group by name: a ticket on a party, a sign-up on an activity, on the guest list of an event, a place on a party's waitlist, in it for any other kind"),
 				v("cancelled", "gave it up, kept for the books: a ticket given back"),
-				v("excluded", "kept out even though a rule would put them in: someone a manager keeps off an email list, or someone taken off a group invite")).about("Whether they are in the group by name. Only yes makes an effective member."),
+				v("excluded", "kept out even though a rule would put them in: someone a manager keeps off an email list, or someone taken off a group invite")).about("Whether they are in the group by name. Of these values only yes makes an effective member; an activity's invited=yes does too."),
 			enum("invited",
 				v("yes", "on an activity's guest list without a volunteer commitment"),
 				v("excluded", "off an activity's guest list even when a rule includes them, unless they are signed up")).about("An activity's guest-list override, independent of member. Blank follows membership and rules; a volunteer remains on the list."),
@@ -533,7 +533,7 @@ var Tables = []Table{
 			col("order", Order).required().about("Its place among the group's rules."),
 			col("exclude", Bool).about("Keeps whoever it selects out, rather than taking them in."),
 			ref("target", "GROUP").about("Selects this group's effective members."),
-			col("under", Bool).about("Also selects the effective members of every group under target, but for the groups that serve one (its managers, waitlist, answer, unsubscribed, co-chair offers, leads and audience groups); target may then be the rule's own group."),
+			col("under", Bool).about("Also selects the effective members of every group under target, but for the groups that serve one (its managers, waitlist, answer, unsubscribed, co-chair offers, leads, audience and hidden groups); target may then be the rule's own group."),
 			ref("person", "PERSON").about("Selects this person."),
 			col("search", Text).about("Selects whoever's name or address holds these words. A guest matches only when target, person or within already names them."),
 			col("property", Text).about("Selects by a PERSON column holding value; the column must be readable by everyone who sees the person. A guest matches only when target, person or within already names them."),
@@ -759,7 +759,7 @@ var Tables = []Table{
 	{
 		Name:        "EFFECTIVE_MEMBER",
 		Generated:   true,
-		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less whoever is excluded or deactivated.",
+		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less its exclude rules, everyone with member=excluded, everyone with invited=excluded who is not member=yes, and everyone deactivated.",
 		Columns: []Column{
 			ident(EffectiveMemberPrefix),
 			ref("group", "GROUP").about("The group."),
