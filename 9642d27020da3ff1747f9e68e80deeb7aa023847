@@ -1,0 +1,38 @@
+# Fix security issues found in audit of 10a673b
+
+byre task tskaAcnJTE8R2v, "Security audit 10a673b", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskaAcnJTE8R2v in byre (read_task_events with task_id tskaAcnJTE8R2v).
+
+## Summary
+
+Security audit of main at 10a673b (workflow "Audit", stage "Security Audit"). The whole codebase was read against the trust model in docs/dev.md, docs/datamodel.md and docs/audits/security.md, after reading the 50 earlier security issues so nothing was refiled: sign-in and sessions, Spoof Mode, the MCP OAuth server and access tokens, every public path prefix, the Mailgun hooks and inbound mail vouching, invitation and outside-guest routes, the write API and every `/api/do/` call, blob serving, share cards, the browser's markdown renderer and link helpers, outgoing mail headers and the calendar attachment, sheet writes, server-side fetches, Claude and Places spend limits, and the request and change logs.
+
+**One real finding, fixed.** Writes made with an access token (laptop tools, `tools/q`, the iPhone app) reached the `CHANGES` tab with a blank `real_actor`, and the request log carried no `user` for any token request; a super admin's `go run ./tools/q --spoof <address> write …` left no record of who really did it. Cause: the sign-in gate passed bearer requests through unresolved, and `caller` in `internal/db/http.go`, the one place that verifies a token, kept the identity to itself.
+
+**Fix at the choke point:** the gate (`auth.Wrap`, `auth.Fixed`) gives a bearer request an open identity slot; `caller` fills it with `auth.Identify` as soon as the token verifies and narrows it only when a `Helios-Spoof` is accepted, so a refused spoof is still attributed to the token holder. A session's identity is closed as sign-in resolved it and cannot be rewritten by any handler. The logger reads the identity from the context at record time rather than copying it when the request starts. Verifying tokens in the gate itself was rejected: it would move the check away from the handlers' tests and leave two places that know how to verify. Tests pin a spoofed token write (parent as actor, super admin as real_actor), a refused spoof's attribution, and that `Identify` leaves a session untouched. docs/datamodel.md's `Helios-Spoof` paragraph describes the behavior.
+
+**Noticed and deliberately left alone:** the calendar attachment's unquoted `CN` parameter (a correctness bug, no attacker gain; suggested follow-up), the public upcoming-parties card listing open parties by status alone (within the settled share-card rule), server-side fetches of internal addresses (nothing reachable on Cloud Run), the spoof route's missing `Sec-Fetch-Site` check (the Lax cookie covers it), and the unauthenticated CSP report endpoint (bounded log noise).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+The change gives bearer-token API requests a request identity after token verification. This lets structured request logs name the token holder and spoofed person, and lets CHANGES entries retain the token holder as `real_actor` when a super admin writes while spoofing. Tests cover successful token requests and change-log attribution.
+
+- Verified token requests rejected by a spoof check have no user in the request log.
+
+### Snapshot #2, reviewer "Review", claude claude-opus-5-5: done
+
+Requests that carry a bearer token (`/api/q`, `/api/queues`, `/api/do/…`, `/api/blob/…`) skip the session sign-in gate. Before this change they reached the app with no identity in the request context. The data API's `caller` then verified the token, so writes ran as the right person, but anything that reads identity from the context saw nobody. As a result, the `CHANGES` tab's `real_actor` was blank for every token write, including a super admin's `Helios-Spoof` write that ran as a parent. The request log's `user`/`as` fields were also missing for token requests, so a spoofed token write could not be traced back to the admin who made it.
+
+The fix stores the identity in the context as a pointer. `Wrap`/`Fixed` now give passed requests an empty identity, and a new `auth.Identify` lets `caller` fill it in once it has verified the token: first with the token's person, then with the spoofed person if the spoof is allowed. The logging handler now reads `user`/`as` from the context each time it writes a record instead of copying them at the start of the request, so records written after verification carry them. Tests cover the empty identity being filled, a refused spoof still being logged with the token's person, `actor`/`real_actor` on token writes with and without a spoof, and the log tagging. The `datamodel.md` doc is updated.
+
+I checked that production wiring puts the auth gate outside `logging.Requests` (`internal/app/wiring.go:267`, then `:345`), so the request line sees the filled identity. The `workload` handler runs synchronously, so `Identify` doesn't race with readers. The auth and logging package tests pass, and so do the token-related `internal/db` tests: those named in this change, plus the blob, queue, OpenAPI, thumbnail, fetch and PDF-page tests, one of them under `-race`. The whole `internal/db` package doesn't finish within the 30-second limit, so I didn't run all of it.
+
+- `auth.Identify` can rewrite any request's identity, including a signed-in session's or a Spoof Mode identity the gate already checked; only the empty identity given to a token request should be writable
+
+### Snapshot #3, reviewer "Review", grok grok-4.7: done
+
+Token requests to the data API now carry the same request identity a session cookie does. After the bearer token is verified, `caller` writes the token holder and, when a super admin sends `Helios-Spoof`, the person they are acting as into a slot the sign-in gate opened for that request. The change log's `real_actor` and the request logs' `user` and `as` are read from that slot, so a token write is recorded as the token's person even when it runs as someone else. A session identity is closed and `auth.Identify` cannot rewrite it. A request that never passed the gate has no slot, so it cannot take an identity.
+
+No significant findings.
