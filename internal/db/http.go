@@ -141,24 +141,22 @@ func modelAction[In, Out any](s *Store, tokens auth.Tokens, run func(context.Con
 func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens) (Env, access.Actor, bool) {
 	mode, at := r.Header.Get(ModeHeader), tokens.Now()
 	token, bearer := auth.Bearer(r)
-	if !bearer {
-		email := auth.Email(r)
-		viewer := m.SignedIn(email)
-		if viewer == "" {
-			http.Error(w, "not in the directory", http.StatusForbidden)
+	real, email := auth.RealEmail(r), auth.Email(r)
+	if bearer {
+		verified, _, err := tokens.Verify(token)
+		if err != nil {
+			http.Error(w, "unusable token: "+err.Error(), http.StatusUnauthorized)
 			return Env{}, access.Actor{}, false
 		}
-		return Env{Viewer: viewer, Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
+		real, email = verified, verified
+		auth.Identify(r, real, email)
 	}
-	email, _, err := tokens.Verify(token)
-	if err != nil {
-		http.Error(w, "unusable token: "+err.Error(), http.StatusUnauthorized)
+	if mode == "import" && !m.SuperAdmin(real) {
+		http.Error(w, "only a super admin runs in import mode", http.StatusForbidden)
 		return Env{}, access.Actor{}, false
 	}
-	real := email
-	auth.Identify(r, real, email)
-	if target := r.Header.Get(SpoofHeader); target != "" {
-		if !m.SuperAdmin(email) {
+	if target := r.Header.Get(SpoofHeader); bearer && target != "" {
+		if !m.SuperAdmin(real) {
 			http.Error(w, "only a super admin may spoof", http.StatusForbidden)
 			return Env{}, access.Actor{}, false
 		}
@@ -167,11 +165,16 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 			http.Error(w, "nobody in the directory has the address "+target, http.StatusForbidden)
 			return Env{}, access.Actor{}, false
 		}
-		slog.InfoContext(r.Context(), "spoof", "admin", email, "as", address)
+		slog.InfoContext(r.Context(), "spoof", "admin", real, "as", address)
 		email = address
+		auth.Identify(r, real, email)
 	}
-	auth.Identify(r, real, email)
-	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
+	viewer := m.SignedIn(email)
+	if viewer == "" {
+		http.Error(w, "not in the directory", http.StatusForbidden)
+		return Env{}, access.Actor{}, false
+	}
+	return Env{Viewer: viewer, Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
 }
 
 func Register(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {

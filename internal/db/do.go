@@ -240,9 +240,16 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 			return
 		}
 		id := r.FormValue("document")
-		doc, found := s.Model().Table("DOCUMENT").Get(id)
+		m := s.Model()
+		doc, found := m.Table("DOCUMENT").Get(id)
 		if !found || doc["content"] == "" || (doc["thumbnailed"] != "" && doc["thumbnail"] != "") {
 			serve.Error(w, r, access.Invalid("%q is not a document still to thumbnail", id))
+			return
+		}
+		updated := maps.Clone(doc)
+		updated["thumbnail"], updated["thumbnailed"] = "upload", "upload"
+		if err := m.Authorize(env, Change{Table: "DOCUMENT", Old: doc, New: updated, uploaded: "upload"}); err != nil {
+			serve.Error(w, r, err)
 			return
 		}
 		if drawn := r.FormValue("content"); drawn != doc["content"] {
@@ -265,7 +272,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 			serve.Error(w, r, access.Invalid("the picture: %v", err))
 			return
 		}
-		if err := saveThumbnail(r.Context(), s, pics.bucket, actor, env, doc, thumb, s.Model().whole(env)); err != nil {
+		if err := saveThumbnail(r.Context(), s, pics.bucket, actor, env, doc, thumb, m.whole(env)); err != nil {
 			serve.Error(w, r, err)
 			return
 		}

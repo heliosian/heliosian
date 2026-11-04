@@ -128,6 +128,27 @@ func TestSpoof(t *testing.T) {
 	}
 }
 
+func TestImportModeIsASuperAdmins(t *testing.T) {
+	s := sample(t)
+	const parent = "rowan.ashdown@example.org"
+	query := `["from", "PERSON"]`
+	batch := `{"batch": [{"insert": "PERSON_SETTING", "row": {"person": "` + s.Model().PersonOf(parent) + `", "app": "when", "key": "quiet", "value": "yes"}}]}`
+	for _, as := range []string{"import:" + parent, parent} {
+		if rec := send(t, s, "QUERY", "application/json", as, query, ModeHeader, "import"); rec.Code != http.StatusForbidden {
+			t.Errorf("a parent reading in import mode as %q got %d %s", as, rec.Code, rec.Body.String())
+		}
+		if rec := send(t, s, http.MethodPost, "application/json", as, batch, ModeHeader, "import"); rec.Code != http.StatusForbidden {
+			t.Errorf("a parent writing in import mode as %q got %d %s", as, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := send(t, s, "QUERY", "application/json", superAdmin, query, ModeHeader, "import"); rec.Code != http.StatusOK {
+		t.Errorf("a super admin's session in import mode got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(t, s, http.MethodPost, "application/json", parent, batch); rec.Code != http.StatusOK {
+		t.Errorf("a parent writing outside import mode got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestARefusedSpoofStillNamesTheTokensPerson(t *testing.T) {
 	s := sample(t)
 	mux := http.NewServeMux()

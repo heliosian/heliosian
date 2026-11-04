@@ -2,6 +2,7 @@ package db
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -221,6 +222,13 @@ func TestAPDFsThumbnailIsPostedFromALaptop(t *testing.T) {
 	drawn := map[string]string{"document": calendar, "content": pdf["content"]}
 	if rec := postFile(t, s, pics, "rowan.ashdown@example.org", "thumbnail", drawn, "picture", page); rec.Code != http.StatusForbidden {
 		t.Fatalf("a parent set a thumbnail: %d %s", rec.Code, rec.Body.String())
+	}
+	refused, err := blob.Thumbnail(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := bucket.Get(t.Context(), contentFolder+blob.Hash(refused)); !errors.Is(err, blob.ErrNotFound) {
+		t.Fatalf("a parent's refused thumbnail reached the bucket: %v", err)
 	}
 	newer := apply(t, s, []Edit{{Insert: "CONTENT", Row: storedContent(t, bucket, pdfType, pdfOfPages(t, 3))}})[0]
 	apply(t, s, []Edit{{Set: calendar, Cells: map[string]any{"content": newer}}})
