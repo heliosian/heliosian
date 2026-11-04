@@ -1,0 +1,25 @@
+# Avoid quadratic formatting of query results
+
+byre task tskAoadApbNoXg, "Linear query formatting", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskAoadApbNoXg in byre (read_task_events with task_id tskAoadApbNoXg).
+
+## Summary
+
+Audited main at 46e759d for noticeable performance costs, surveying request handling, browser data loading, store rebuilding, background jobs, search, and MCP/Ask tools. One measured fix cleared the high-benefit, small-change bar.
+
+Before: query tools searched the complete result-ID list once per resource when separating result rows from included rows, making formatting quadratic.
+Now: the shared formatter uses a request-local ID set, preserving rows, counts, ordering, includes and access checks while formatting in linear time.
+
+Five-run local medians on an M2 Max over a read-only production snapshot fell from 5.49 s to 72.6 ms for 74,028 admin-visible documents and from 3.25 s to 277 ms for 53,538 parent-visible documents. Complete serialized responses were byte-identical. An isolated 50,000-row benchmark fell from 2.59 s to a 16.8 ms median, at about 3.5 MB extra temporary allocation. These are local snapshot measurements, not deployed timings. The production fix is three additions and one deletion, with a 70-line regression test and benchmark covering both query entry points and same-table includes.
+
+Tools, MCP and Ask tests, full-repository vet, and whitespace checks passed. Independent review found no significant issues. Main merged into the task branch automatically without conflicts; the merge was left uncommitted for byre to conclude. The private snapshot and saved response bodies were deleted.
+
+Left record-referrer loading alone because its measured improvement was modest and would add another query path. Retained useful image prefetching and existing background scheduling. No deployment, schema changes or new configuration.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Query tool answers (`helios_query`, `helios_query_json`, and other tools that call `shape`) used to drop result rows out of `included` with a linear scan of the result IDs for every resource of that table. On a large result that scan is quadratic. `shape` now records those IDs in a set while it builds `rows`, and the same-table include check is a map lookup. A sample query checks that an included parent stays in `included` and the result row does not, and a benchmark times the formatter at 1k, 10k, and 50k rows.
+
+No significant findings.
