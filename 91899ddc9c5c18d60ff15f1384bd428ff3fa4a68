@@ -1,0 +1,1526 @@
+# Separate activity guest lists from volunteer sign-ups
+
+byre task tsk6KmePpH9EHQ, "Activity guests vs sign-ups", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Separate activity guests from volunteer sign-ups".
+Full chats: the events of task tsk6KmePpH9EHQ in byre (read_task_events with task_id tsk6KmePpH9EHQ).
+
+## Summary
+
+Before: manually adding an activity guest also made them a volunteer, consumed capacity and could send volunteer cancellation mail on removal.
+Now: MEMBER.invited holds activity invitation/exclusion state separately from MEMBER.member=yes sign-ups across When, Team, outside invitations and Loop. Guest actions preserve commitments; removal clears RSVP answers transactionally, blocks obsolete invitation access and suppresses queued mail, with cancellation preserved for sent invitations.
+
+The design keeps one row per activity/person and preserves existing sign-ups without conversion. Ian explicitly chose the effective guest list for Loop mail, activity-targeting rules and derived access. Co-chair eligibility and capacity use actual volunteer commitments. Restoration authority is checked inside the transaction; historical invitation tokens, attribution and delivery accounting are preserved. Empty activities clean up inactive membership and serving groups atomically. Loop uses the existing add-guests action and supports partial-save retry; When shows restored unsent guests as pending.
+
+Production createtabs was run and the new header independently verified. A fresh production audit covered 904 sign-ups across 266 populated activities, including 389 current-year sign-ups. Both agents recommended no conversion: contestants and performers represent participation commitments; outside-directory memberships were historical volunteering. No membership data was changed.
+
+Focused database suites, vet, independent checks and actual Chrome workflows passed; the full database suite exceeded its required 30-second cap, so named relevant tests supplied coverage. Latest review was clear. Main was integrated by combining its Birthdays admin restrictions with this task's blank-invited insert restriction; the combined focused suite (including Birthdays) passed in 9.9 seconds and vet passed for db/app/tools/mcp. The completed original TODO is removed and docs are updated. Separating When's People can invite others setting from Team's volunteer eligibility is deliberately left in TODO.md.
+
+## Handoffs
+
+### Session sesTfjwMz6ZOoh, 2026-11-04T01:25:21Z
+
+You are sol, the primary task agent for a shared byre task with peer opus. Continue the task to a reviewed merge proposal; do not merge without Ian’s authorization.
+
+Workspace: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ`
+Task: `tsk6KmePpH9EHQ`, project `prjAPohz7r9P6C` (heliosian).
+Task title: “Activity guests vs sign-ups”.
+Merge title: “Separate activity guest lists from volunteer sign-ups”.
+Peer coordination uses byre’s shared board. Read current task details and board before acting.
+
+## Goal and scope
+
+Original TODO (already removed from TODO.md):
+“Separate activity guests from volunteer sign-ups”
+An activity’s guest list reused its volunteer membership, so manually invited people appeared as volunteers and consumed capacity; removing them could send volunteer cancellation mail. Rule-added guests avoided this.
+
+Before: activity guest additions created volunteer commitments; removal could cancel them.
+Now: activity invitation state is independent of volunteer commitments.
+
+Do not commit, push, switch branches, or run git maintenance: byre commits all shared work at turn end and handles merges/pushes. Peer turn ends have already committed shared changes several times. Don’t assume HEAD is the base. Base was `07828d2a1be4080cca5215cd62e3f699a604963c`.
+
+Read AGENTS.md; key rules: no new comments except subtle logic (max two lines), `go run` not build, all tests under `timeout 30`, captures under `timeout 20`, no test-only production mechanisms, one-off investigations in ignored `local/`. Production data via `go run ./tools/q read`. Schema changes require production createtabs before merge. Ask all human questions via byre ask_human, never prose. No question is currently necessary.
+
+## Model and decisions
+
+Existing MEMBER has unique `(group, person)`.
+- `MEMBER.member=yes` remains ordinary membership, therefore an activity’s volunteer commitment.
+- New stored `MEMBER.invited` enum: `yes`, `excluded`, or blank. Only counts for activities.
+- Effective membership includes member=yes, invited=yes, and rules.
+- `invited=excluded` excludes a guest unless `member=yes` (active volunteers always retain guest-list membership/access).
+- Existing `member=excluded` and exclusion rules keep their previous precedence.
+- Team volunteer lists, capacity, going/search predicates, and membership mail continue to use member=yes alone.
+
+Why: preserves all existing sign-ups without migration and lets one row hold both invitation and volunteering. Considered and rejected:
+1. New signup boolean/table: moves existing volunteer data and broadens reader changes.
+2. Referenced guest/signup group: many additional groups/backfill and write paths.
+3. RULE.person for hand-added guests: special generated rules, hiding them from editor, metadata complications.
+
+Activity guest additions through add-guests and outside invitation pages set invited=yes, not member=yes. Signing up over an invited/opened row merges into the existing MEMBER while preserving invited/opened and its ID; authorization checks the original requested insertion, before carrying existing metadata, to enforce ordinary joining/capacity permissions.
+
+Team cancellation deletes an ordinary sign-up row, or clears member if invited/opened metadata exists, preserving independent invitation state. Explicit empty notes on re-sign-up correctly clear old notes (`cellsOf` preserves empty strings); covered by regression.
+
+Active volunteers cannot be taken off in When: guest card links to HCA-Team to manage signup; household and Guest List Settings removal controls hide for volunteers; takeOff also has a guard.
+
+## Current implementation / important files
+
+- `internal/db/schema.go`: new MEMBER.invited enum; EFFECTIVE_MEMBER description/reasons updated.
+- `sampledata/datagroups/MEMBER.csv`: required invited column added (all lines changed because appended CSV column).
+- `internal/db/effective.go`: invited counted only for GROUP.kind=activity; volunteer precedence over invited exclusions.
+- `internal/db/policy.go`: invited readable; activity exclusion insert/set permissions; member clearing for activity cancellation; guest_of clearing permissions.
+  Every ordinary `(insert MEMBER ...)` clause explicitly requires blank invited; dedicated activity invited=excluded insert is exception; wildcard superadmin grant remains.
+- `internal/db/writes.go`: authorize original requested insert before merging existing blank-member invited/opened row.
+- `internal/db/invitations.go`: activity transformation in existing `guestMembership` helper, existing-row add/restore logic, onList honors explicit exclusions before mailed-copy history.
+- `internal/db/invitehooks.go`: outside add/remove, brought guests read effective membership, removed token gating, restoration reuses copies.
+- `internal/db/activityguests_test.go`: meaningful integration/regression tests.
+- `web/team/state.js`: volunteer state carries invited/opened for cancellation.
+- `web/team/writes.js`: cancellation preserves guest/opened row as above.
+- `web/when/guestlist.js`: reads invited/team_href, volunteer tagging, guest exclusion/removal behavior.
+- `web/when/guestpopups.js`: volunteer explanation + HCA-Team link instead of Take off.
+- `web/when/invites.js`: hide volunteer removal buttons and pass removal capability to common list.
+- `web/common/members.js`: general optional per-row `canRemove` predicate, default true, so When’s volunteer rows show no remove control.
+- `docs/datamodel.md`, `docs/team/data.md`, `docs/when/calendar.md`: updated model docs.
+- `TODO.md`: task item removed.
+
+## Production investigation / schema prerequisite COMPLETE
+
+Opus checked production through q, and I independently re-read the relevant rows:
+- Only two activities had ever sent guest-list mail.
+- Math Kangaroo Team Competition (`grpUsJOJaVE7V6`, slug mathkangnov): 7 real volunteer sign-ups, 6 self-added, 1 manager-added before invitations.
+- Outdoor Movie Night: Dogman (`grpVhb8MCy7gXt`, slug movie): Ian had invited and removed himself (causing the buggy Removed mail), and is now a real sign-up/co-chair.
+- No activity rules, guest_of memberships, excluded memberships, or other non-yes activity rows required migration.
+- Existing sign-ups must remain untouched.
+
+Opus ran `go run ./tools/createtabs` against production before snapshot 3.
+I independently verified afterward with:
+```
+eval "$(go run ./tools/devenv)"
+timeout 30 go run ./tools/sheets tabs --sheet "$DATA_GROUPS_SHEET"
+```
+Actual production MEMBER header:
+`[id group person member invited opened guest_of note added_by added]`.
+This is done; explicitly mention it in merge proposal. No further production writes needed.
+
+## Review status and findings
+
+Snapshot 3 review came back with three findings. All were answered through respond_to_finding before edits:
+- Reviewer `"Review"`, snapshot 3, finding 1: ignoring.
+  New schema column must exist before deploy. Already done and in overview, directly reverified. Merge proposal must explicitly state createtabs completed.
+- Finding 2: fixing.
+  Outside take-back deleted MEMBER, so retained RECIPIENT copy still made onList true; app excluded instead, and bringer couldn’t restore. Fixed in latest turn (details below).
+- Finding 3: fixing.
+  Existing-row addGuests branch accidentally promoted opened-only event/party rule memberships. Restricted to activities; nonactivity behavior restored.
+
+Latest turn ended after fixes and tests. Byre should have snapshotted/reviewed latest changes (probably snapshot 4; get actual current state). **Do not call ready_for_merge until latest review completes.** No merge offer yet. Need handle any fresh findings, or propose merge promptly when clean.
+
+The last known overview generation was 10. Read current details and use returned generation, never assume it stays 10. Plan marks all implementation, production, docs, tests, and peer checking done; only “Review final changes and offer the merge” in progress, assigned sol.
+
+## Latest review-fix behavior
+
+We chose one removal rule for **all activity guest-only removals**, including unsent:
+- Both When takeOff and outside extRemoveGuest set invited=excluded.
+- Volunteer member state remains untouched.
+- Bringer withdrawing their own guest retains guest_of and can restore them.
+- Removal by a host, the guest themselves, or their household clears guest_of, so the original inviter cannot undo that decision; only a host may restore.
+- In When takeOff:
+  ```
+  const cells = {invited: 'excluded'};
+  if (row.guestOf && (view.host || row.guestOf !== me().id)) {
+    cells.guest_of = '';
+  }
+  ```
+- `set MEMBER.guest_of` permits only blank new value, activity kind, and runs_list OR self_or_household(old.person).
+- addGuests only restores an excluded activity row for list runners or its original guest_of viewer; ordinary member=excluded cannot be bypassed by a bringer.
+- Outside extGuest similarly permits own guest restore but refuses host exclusions (guest_of cleared).
+- Restoring an existing sent guest reuses their RECIPIENT/token; no invitationEdits, no send, no extra invitation-limit count.
+- Existing addGuests sending branch already skips people with copies.
+- extCopy now checks onList for token holder. Explicitly excluded outside guests get 404 on invitation API/page data/flyer/answer/bring routes until restored.
+  This is an intentional restriction: merge proposal should plainly say excluded outside guests lose old-link access and need host/original-bringer restoration as applicable.
+- `guestMembership` transforms a Set to invited=yes **only when the edit actually sets member=yes**. Otherwise it would accidentally reverse ext removal’s invited=excluded! Fixed and tested.
+- Nonactivity existing-row branch now only reinstates member=excluded for hosts, preserving earlier behavior. Event/party opened-only rows remain rule-derived.
+
+Potential minor concern: addGuests still silently skips excluded rows when caller lacks restore authority, matching prior behavior. Regression checks state remains excluded. No outstanding user question.
+
+## Verification completed
+
+Targeted new tests passed after final self/household fix:
+```
+timeout 30 go test ./internal/db -run 'Test(Activity|OutsideActivity|OtherGuestLists|InvitationState)' -count=1
+```
+Latest result: pass ~1.7s.
+
+Broader focused suite passed after main review fixes, before final tiny self/household predicate/test:
+```
+timeout 30 go test ./internal/db -run 'Test(.*Invit.*|.*Guest.*|.*Join.*|.*Chair.*|.*SignUp.*|.*Membership.*|.*Effective.*|.*Policy.*|.*Group.*|SchemaHangsTogether)$' -count=1
+```
+Pass ~5.7s. Earlier ~5.3s. No need endlessly repeat unless review changes warrant it.
+
+Latest final checks passed:
+```
+timeout 30 go vet ./internal/db ./internal/app ./internal/tools
+git diff --check
+```
+
+Full `timeout 30 go test ./internal/db` exceeded its cap (exit 124); obeyed AGENTS and used relevant named tests. Disclose this limitation in merge overview, already there. Don’t rerun full suite casually.
+
+New tests cover:
+- guest additions don’t volunteer or consume capacity;
+- invited guest promotion preserves ID/invited/opened;
+- promotion cannot bypass capacity;
+- active volunteers retain access despite invited exclusion;
+- cancellation preserves invitation;
+- empty-note re-signup clears old note;
+- outside bring/remove/restore, onList actually false after removal;
+- old token blocked while excluded, revives after permitted restore;
+- no duplicate invitation/counter increment;
+- host-removal cannot be undone by original bringer;
+- app bringer restore;
+- self-removal clears bringer rights (final addition);
+- event/party opened rule member remains unchanged;
+- no invitation-state membership escalation / nonactivity invited inertness.
+
+Opus independently reproduced a serious development-stage security hole: arbitrary opened MEMBER insert with invited=yes could join roles/managers. Fixed by all ordinary insert guards and activity-only resolver; opus’s probe of 441 inserts across groups/shapes was clean afterward. Don’t present as a production vulnerability; never deployed. No leftover probe files (opus removed them).
+
+## Peer verification
+
+Opus independently checked source and ran:
+`go test ./internal/db -run 'Activity|Guest|Invit|Join|Policy'` under timeout; pass ~4.1s.
+
+Latest peer message (after main review patch): all paths correct, restores reuse copy/count zero, host removal protected, ext tokens gated. Suggested self/household clearing guest_of; I implemented it and told opus on board. No other issues.
+
+Byre may deliver peer follow-up messages. Read board. You do not need spawn agents; opus is already the shared peer.
+
+## End-to-end and visual evidence
+
+Opus ran sample server in task terminal named “Sample server”, port 18431, signed in as Rowan (sample parent and International Night co-chair), app addresses:
+- `https://when.heliosiandev.com:18431/g/international-night`
+- Team equivalent.
+
+Its in-memory sample modifications:
+- Added Maya + outside Coach as guests, invited=yes, no member, no Team messages.
+- Removed unsent and sent guests.
+- Promoted Maya to real volunteer, got normal thank-you/calendar mail.
+- Cancelled volunteer, retained invited=yes, normal real-cancellation mail.
+- Kept server running for review repro; may still run. Coordinate with opus before stopping/restarting.
+The server may run old Go code from before latest review fixes (JS/templates hot reload; Go requires restart). Don’t treat it as evidence of latest Go unless restarted. New integration tests cover latest fixes.
+
+Byre WebKit refuses local self-signed HTTPS. Repo headless Chrome capture tool works:
+```
+timeout 20 go run ./tools/screenshot \
+ --url 'https://when.heliosiandev.com:18431/g/international-night' \
+ --out local/screenshots/activity-volunteer-card.png \
+ --wait '.coming-grid .person-card' \
+ --click '.coming-grid .person-card|.form-tabs .tab-strip-item:nth-child(2)' \
+ --settle 300ms
+```
+Actual screenshot shows Rowan’s Answer tab and “Volunteers stay on the guest list. Manage the sign-up in HCA-Team.” link; no removal control.
+
+Task media image, already embedded in overview:
+`/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-1278351893.webp`
+This is the valid captured screenshot, 1280×900 with small white bottom margin.
+Local original:
+`local/screenshots/activity-volunteer-card.png`
+Other local screenshot `activity-guests.png` is just general event page, less useful.
+
+I showed original to Ian’s most active client murky using show_page. Client list last known:
+- murky, `clizibmd3oVik8`, most recently active.
+- iso, `clinExVUfmyoOu`, server Mac.
+- beast `cliMfCKYoE5WzR`, roc `cliFe3Fx6pnrEJ`.
+Refresh list if showing something new.
+
+To save screenshot into task media I loaded original PNG as a data URL in **server** byre browser and `capture save:true`; tool returned media path above. **Do not print large data URLs/base64**: I accidentally printed huge navigation response once, causing bloated context. Sanitize tool output. Server byre browser current tab is the screenshot as data URL, not live app. Client Page preview may be closed; capture on client requires visible Page tab and failed when it was closed. Server navigation to client’s `*.localhost:58795` preview address could not connect.
+
+No need new capture for latest data fixes; visible volunteer UI unchanged. Reuse existing evidence in final merge proposal.
+
+## Overview / schema diagram
+
+Current overview includes a validated byre ```diagram:
+```
+row
+  group "GROUP" "Activity"
+row
+  member "MEMBER" "One row per activity and person" blue
+    volunteer "member = yes" "Volunteer commitment" green
+    invitation "invited = yes / excluded" "Guest-list override" amber
+row
+  team "HCA-Team" "Volunteers, capacity and sign-up mail" green
+  guests "Effective guest list" "Membership + invitations + rules" amber
+group -> member
+volunteer -> team
+volunteer -> guests
+invitation -> guests
+```
+It was validated through render_diagram and visually inspected. Keep schema shape visible before merge, as project preference.
+
+Overview has goal/decisions, collapsed verification + screenshot, and “Review follow-through” paragraph describing latest fixes. At final proposal, rewrite around whole final implementation, not review history; include completed production createtabs and validation limit. Preserve plan and peer results. Use ready_for_merge only after latest review completes, never in a turn changing files.
+
+Task summary already updated with before/now pairs and latest fixes, though last saved summary said host/guest/household clearing (correct), latest review pending. Can refine when ready.
+
+## Tool mechanics / getting schemas
+
+Functions exec exposes byre core functions and shell tools. Catalog tools found and callable via byre__call_tool:
+- read_task_details `{task_id}`
+- read_task_events (not yet discovered this session; discover schema if needed to inspect latest reviews)
+- read_knowledge `{topic}` (diagrams already read; app-links/browser articles available as needed)
+- browser (schema discover if needed; supports navigate/capture/save)
+- list_clients
+- show_page `{client,path|url}`
+- start_terminal and terminal_type (opus has schemas; discover if manipulating server).
+
+Use functions exec to call:
+```
+tools.byre__call_tool({name:"read_task_details",arguments:{task_id:"tsk6KmePpH9EHQ"},timeout_ms:10000})
+```
+It returns JSON text, parse if needed.
+Read overview_generation then set_overview/ready_for_merge with exact returned generation and preserve peers’ claims. Last known generation 10, but don’t hardcode.
+
+Before any new edits, update overview if plan changed. Respond to new review findings before editing, snapshot/reviewer/finding number exact.
+
+## Next steps
+
+1. Read current task details, latest board and review events. Latest turn changes should now have a review pending/completed.
+2. Handle any latest findings against source. Existing snapshot 3 findings already responded.
+3. If latest review clean and peer no new concerns, **offer ready_for_merge promptly**, with whole-task overview, diagram, actual screenshot, production column already created, no migration, tests/vet, and full-suite timeout disclosure.
+4. Explicitly describe restriction: active volunteers manage signups in Team; excluded outside guests cannot use old invitation links until restored, and an inviter cannot undo host/guest/household removal.
+5. End concise final with before/now behavior pairs, review/merge readiness and screenshot in collapsed detail if useful. Don’t merge/push yourself.
+6. Consider record byre observe at merge-ready: paired source/probe checking caught real security and guest-restoration inconsistencies; distinguishes actual results from model assumptions.
+
+No human design question is open. The task is implemented and tested; only final review/merge proposal remains.
+
+### Session sesNdwZRTlO6eL, 2026-11-04T02:58:14Z
+
+You are **sol**, the primary task agent, continuing a shared byre task with peer **opus**. Finish at a reviewed merge proposal. **Do not merge or push without Ian’s authorization.**
+
+## Identity and workspace
+
+- Task: `tsk6KmePpH9EHQ`
+- Project: `prjAPohz7r9P6C` (heliosian)
+- Worktree: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ`
+- Task title: **Activity guests vs sign-ups**
+- Merge title: **Separate activity guest lists from volunteer sign-ups**
+- Original base: `07828d2a1be4080cca5215cd62e3f699a604963c`
+- Main was merged cleanly during the latest work. The main tip at that merge was `dad6facd` (“Keep policy expressions with their annotations”).
+
+Byre commits/snapshots the shared worktree at agents’ turn ends. **Do not commit, push, switch branches, or run git maintenance.** Peer turn ends have committed/snapshotted work while I was editing, so do not assume HEAD is the base or that a clean worktree means you did not change files this turn.
+
+Read current task details and recent board posts first. Last saved overview generation was **23**, but always read the current generation before updating it.
+
+## Goal
+
+The original TODO, already removed from this branch’s TODO.md:
+
+> Separate activity guests from volunteer sign-ups  
+> An activity's guest list is its sign-ups, so guests added to an activity by hand (Add Person, a guest's invite others) also become Volunteers in HCA-Team, and taking them off can send "You're no longer signed up" mail. Guests added by a rule avoid this. Separate guest-list membership from volunteer sign-up.
+
+Before: adding an activity guest made them a volunteer and consumed capacity; removal could send volunteer cancellation mail.
+Now: activity invitation state and volunteer commitments are independent.
+
+**All implementation is complete. Only the latest review and merge proposal remain.** No human question is open.
+
+## Critical human decisions — settled
+
+There was a final review finding alleging that invitation-only activity guests should not propagate through rules or receive activity Loop mail. **Ian explicitly chose to preserve that behavior. Do not reopen or implement a propagation filter.**
+
+Ian’s exact answers:
+
+1. To a combined mail/rules question:
+   > “loop mail should go to the effective guest list. is that the question?”
+
+2. To the separate, concrete question:
+   > “Should a rule targeting an activity include its effective guest list, or only its volunteer sign-ups?”
+
+   Ian chose:
+   > **Effective guest list**
+
+The question included the actual production example:
+
+- **Staff Birthdays** permits members to post/reply to its Loop list.
+- A rule in **Birthdays Viewers** targets Staff Birthdays.
+- The **Birthdays app** grants access to Birthdays Viewers.
+- Choosing effective guest list means an invitation-only guest enters Birthdays Viewers and gains Birthdays app access through that rule, even without volunteering.
+
+Ian saw that consequence and chose it. The documentation and a passing integration regression now preserve it. **Rules, Loop delivery and member posting/replying all intentionally use effective guest membership.** Volunteer commitment, capacity, Team mail, and co-chair-offer eligibility are separate.
+
+Snapshot **13**, reviewer **“Review”**, finding **1** was answered **ignoring** with Ian’s explicit decision. All other earlier findings were fixed or otherwise addressed.
+
+## Current model
+
+`MEMBER` remains unique by `(group, person)`.
+
+- `MEMBER.member=yes` is ordinary membership and, on an activity, a **volunteer commitment**.
+- New stored `MEMBER.invited`: `yes`, `excluded`, or blank. It affects membership only on activities.
+- An activity’s effective membership includes ordinary members, `invited=yes`, and rules.
+- `invited=excluded` excludes the person unless `member=yes`.
+- Existing `member=excluded` and excluding RULEs keep their previous precedence.
+- Invitation-only membership intentionally participates in activity-target/under/within rules, Loop delivery, member posting/replying, and access derived from those rules.
+- Team volunteer lists, counts, capacity, going/search predicates and membership mail use `member=yes`.
+- Co-chair offers specifically require an actual volunteer `member=yes`, even if the person is an effective member through an invitation or rule.
+
+This model preserves existing sign-ups without backfill and permits one person to be both invited and volunteering.
+
+Alternatives considered and rejected:
+
+- New signup boolean/table: moves existing volunteer data and broadens readers/migration.
+- Separate referenced guest/signup group: many extra groups/backfill/write paths.
+- Generated personal RULEs for hand guests: metadata and rule-editor hiding complications.
+
+## Current write behavior
+
+### Invitations and volunteering
+
+- Activity Add People / add-guests / outside invitation additions write `invited=yes`, never `member=yes`.
+- Signing up over an invited or opened-only MEMBER merges into that row, retaining its ID and invitation/opened metadata.
+- The original requested insertion is authorized **before** carrying old metadata into the merged row. This enforces normal join eligibility/capacity.
+- Team cancellation deletes an ordinary signup row, or clears `member` when invitation/opened metadata exists.
+- Team signUp explicitly supplies `note`, including empty strings. `cellsOf` retains explicit empty strings, so an empty-note re-signup clears the old note. No extra note-clearing mutation is needed.
+
+### Guest removal and restoration
+
+Both When and the outside page use **`invited=excluded` for activity guest-only removal**, including unsent guests. This is necessary because historical RECIPIENT copies otherwise keep `onList` true.
+
+- The original bringer withdrawing their own guest retains `guest_of` and may restore them.
+- Removal by a host, the guest themselves, or the guest’s household clears `guest_of`; only a host may restore that invitation afterward.
+- Restoring a sent guest reuses the existing invitation/token, sends no second copy, and costs no additional invitation-limit count.
+- `onList` checks explicit exclusions before historical invitation-copy membership.
+- `extCopy` checks `onList`, so explicitly excluded outside guests cannot use their old invitation page/API/flyer/answer/bring routes until restored.
+- Activity volunteers cannot be removed through guest-only actions. The When card links them to HCA-Team; household and settings removal controls are hidden.
+- Server raw-write policies enforce this too:
+  - A bringer cannot delete an activity membership.
+  - A bringer cannot set activity `member=cancelled`.
+  - Setting `invited=excluded` on an active volunteer requires `runs_list`.
+  - Clearing `guest_of` requires the resulting row to have `invited=excluded`, plus host/self/household authority.
+  - Legitimate self/household volunteer cancellation remains allowed.
+
+### Existing rows and other group kinds
+
+- Add People leaves an already-effective, nonexcluded, opened-only rule member untouched. It does not pin them onto the activity or attribute them to a bringer.
+- Existing-row outside restoration is restricted to **activities**.
+- Event/party behavior retains its earlier insertion path.
+- An integration test verifies that a cancelled paid-party ticket cannot be restored by an outside inviter, retains its original `guest_of`, and gets no invitation.
+
+A reviewer claimed this party path was an unchecked-payment bypass. **That specific claim was disproved:** party `guestMembership` carries `edit.viewer`, and `stageEdits` clears System when that is set. The new cancelled-party regression returned 403 **before** the activity-only guard too. The guard was still appropriate to preserve scope.
+
+### Empty activity deletion
+
+Inactive invitation metadata must not strand an empty activity.
+
+- Team state builds `inactiveMembers` from rows with neither `member=yes` nor `invited=yes`.
+- Delete is available when every remaining activity MEMBER is in that inactive set.
+- `deleteActivity` deletes inactive rows and the serving offers, leads, Going and Not Going groups in one batch.
+- A shared `deleteMemberGroup(node, column, rows)` handles all four serving groups:
+  1. Delete that group’s MEMBER rows.
+  2. Blank the activity’s reference.
+  3. Delete the serving group.
+- List runners may clear an activity’s `rsvp_yes` or `rsvp_no` reference only to blank and only when its old answer group contains no MEMBER rows.
+- Active guests/volunteers still hide Delete, and the server refuses independently.
+- Mail history still blocks deletion, with the entire batch rolled back.
+- Ordinary child activities and other existing constraints remain protected.
+
+**Important correction to a peer assumption:** references are checked after **each edit**, not only once at commit. `stageEdits` calls `checkModel` around writes.go:212–215. The ordering above matters.
+
+Pre-existing behavior outside scope:
+
+- An activity with mail history may still show Delete in Team and then be refused by the server; this was already true before this task.
+- `hidden_for` cleanup uses the existing server trigger.
+- Managers groups remain behind after deletion as before.
+- Do not expand this task into those lifecycle changes.
+
+## Main files
+
+- `internal/db/schema.go`
+  - MEMBER.invited enum; effective-membership reasons/description.
+- `sampledata/datagroups/MEMBER.csv`
+  - Added invited column. The whole CSV appears changed because every row gains a field (roughly 714 diff lines).
+- `internal/db/effective.go`
+  - Invitation membership only on activity kind; volunteer precedence over invited exclusion.
+  - **No rule propagation filter.**
+- `internal/db/policy.go`
+  - Read invited; activity guest exclusion/cancellation/guest_of grants.
+  - All ordinary MEMBER insert clauses require blank invited.
+  - Only the dedicated activity exclusion insert may set it directly.
+  - Co-chair eligibility requires activity `member=yes`.
+  - `invited_guest` requires effective membership as well as direct member/invitation state.
+  - Restricted clearing of empty activity RSVP-group references.
+- `internal/db/writes.go`
+  - Original insertion authorized before old invitation/opened metadata is merged.
+- `internal/db/invitations.go`
+  - Activity guestMembership transformation; add/restore; skip already-effective opened rule members; onList exclusions.
+- `internal/db/invitehooks.go`
+  - Outside add/remove/restore; token gating; invitation reuse; activity-only existing-row restoration.
+- `internal/db/activityguests_test.go`
+  - Approximately 491 lines of meaningful integration/security/regression tests.
+- `web/team/state.js`
+  - Volunteer metadata, inactiveMembers, answer rows, deletion eligibility.
+- `web/team/writes.js`
+  - Cancellation retains invitation/opened state; shared serving-group cleanup and deletion batch.
+- `web/when/guestlist.js`
+  - Reads invited/team_href; volunteer tag; exclusion/removal semantics.
+- `web/when/guestpopups.js`
+  - Volunteer explanation and HCA-Team link.
+- `web/when/invites.js`
+  - No invalid volunteer-removal controls.
+- `web/common/members.js`
+  - Optional general `canRemove` predicate, default true.
+- `docs/datamodel.md`
+  - Full model and explicit Ian decision about effective guests, rules, Loop and derived access.
+- `docs/team/data.md`
+  - Volunteer, offers and deletion behavior.
+- `docs/when/calendar.md`
+  - Activity guest lists include guests independently of volunteers.
+- `TODO.md`
+  - Original item removed.
+
+## Production prerequisite — COMPLETE
+
+**Production `createtabs` has already run. State this explicitly in the merge proposal.**
+
+Opus ran `go run ./tools/createtabs`; I independently verified the actual production header afterward:
+
+`[id group person member invited opened guest_of note added_by added]`
+
+No more production writes are needed.
+
+Production data was checked by both agents:
+
+- Only two activities had sent guest-list mail at the initial investigation.
+- Math Kangaroo Team Competition: 7 real sign-ups, 6 self-added and 1 manager-added before invitations.
+- Outdoor Movie Night: Dogman: Ian invited himself, removed himself (triggering the buggy Removed mail), and is now a real signup/co-chair.
+- No activity RULEs, guest_of memberships, excluded memberships, or other non-yes activity rows required conversion.
+- Existing sign-ups stay untouched; **no backfill**.
+
+For the final rule-reach decision, I directly re-ran production queries and confirmed:
+
+- Five plain groups target activities through rules:
+  - International Night
+  - Spelling Bee
+  - Spelling Bee Spellers
+  - MS Halloween
+  - Birthdays Viewers
+- Staff Birthdays: `posting=members`, `replying=members`.
+- Birthdays Viewers rule `rulqXwpHYLahD6` targets Staff Birthdays `grpqIIONjD6vvB`.
+- Birthday APP `app8koNUXy4eYl` has visible_to Birthdays Viewers `grpin0g5hCwV5i`.
+- There are 98 activity-target rules, many with parent replacement.
+
+These are evidence of intended membership reach after Ian’s answer, **not an open security issue**.
+
+## Validation
+
+Latest **focused suite passed in 8.052 seconds on the merged tree**, after fixing the new test fixture:
+
+```sh
+timeout 30 go test ./internal/db -run 'Test(.*Invit.*|.*Guest.*|.*Join.*|.*Chair.*|.*SignUp.*|.*Membership.*|.*Effective.*|.*Policy.*|.*Group.*|.*Bringer.*|ActivityDeletion.*|SchemaHangsTogether)$' -count=1
+```
+
+Latest `go vet` passed:
+
+```sh
+timeout 30 go vet ./internal/db ./internal/app ./internal/tools
+```
+
+`git diff --check` passed.
+
+The entire `timeout 30 go test ./internal/db` exceeded its cap earlier. Per AGENTS, verification then used the relevant named tests. **Disclose this limitation in the merge overview; do not casually rerun the full suite.**
+
+The focused coverage includes:
+
+- Guest additions do not volunteer or consume capacity.
+- Promotion retains row ID/invited/opened and cannot bypass capacity.
+- Volunteer guest-list protection.
+- Cancellation retains invitation state.
+- Empty-note re-signup clears old note.
+- Outside guest removal/restore, actual onList false while excluded.
+- Old token blocked while excluded and revived by permitted restore.
+- No duplicate mail/invitation count on restoration.
+- Host/self/household removal cannot be undone by the original bringer.
+- Opened rule members remain unchanged for event/party/activity.
+- Invitation state cannot escalate nonactivity membership.
+- Raw bringer delete/cancel/exclusion cannot control volunteer commitments.
+- guest_of cannot be cleared while still invited.
+- Invitation-only guest cannot offer to co-chair; signup+offer in the same batch works.
+- Excluded outside guest cannot add volunteers; restoration restores legitimate access.
+- Empty-activity deletion, restricted RSVP reference clearing, and mail-history rollback.
+- Cancelled paid-party ticket protection.
+- **Ian’s chosen effective-membership semantics**:
+  - Invitation-only student reaches a group through an activity-target rule.
+  - That group grants Birthdays APP visibility.
+  - Student has member posting and replying rights.
+  - Actual Loop delivery includes the student.
+  - Their activity MEMBER.member remains blank.
+
+### Latest test-fixture dead end
+
+The new effective-membership test initially failed its mail-recipient assertion because sample `student` has **no email address**. Logs showed `members=12 sent=11 failed=1`; a diagnostic confirmed `m.addressOf(student)==""`. The code correctly skipped an unaddressable recipient.
+
+The fixture now creates the student’s primary email through an ordinary PERSON_EMAIL write:
+
+`juni.ashdown@example.org`, source manual, primary true.
+
+The final focused suite passes. Do not remove this fixture or misread the earlier failure as a product bug. The diagnostic failure message remains useful.
+
+### Independent peer checks
+
+Opus checked all major paths, ran focused suites and vet, and tested actual sample requests.
+
+A development-stage invitation-state escalation was found and fixed before deployment:
+
+- Arbitrary opened MEMBER inserts could carry invited=yes.
+- All ordinary insert guards now require blank invited, and effective resolution ignores invited on nonactivities.
+- Opus’s **441-write probe across groups and row shapes** found no membership escalation afterward.
+- Probe files were removed.
+- This was never deployed; do not characterize it as a production vulnerability.
+
+## Review history relevant to continuation
+
+Reviewers are named **“Review”**. Read current events rather than assume snapshot numbers.
+
+- Snapshot 3:
+  - #1 schema prerequisite: ignoring; already completed and directly verified.
+  - #2 sent outside guest withdrawal/restoration: fixed.
+  - #3 opened event/party rows accidentally promoted: fixed.
+- Snapshot 5:
+  - #1 opened activity rule member rewritten/pinned: fixed.
+  - #2 raw bringer control of volunteers: fixed, including additional cancelled-member path.
+  - #3 guest_of clearing independent of removal: fixed.
+- Snapshot 6:
+  - #1 co-chair offers for invitation-only guests: fixed.
+  - #2 excluded outside guest retained joining authority: fixed.
+- Snapshot 7:
+  - #1 inactive rows prevented deletion: fixed, with actual RSVP-group blocker found and fixed too.
+- Snapshot 12:
+  - #1 nonactivity outside row reuse: restricted to activities; cancelled-paid-ticket regression.
+  - Claimed unchecked party payment bypass disproved by source and pre-change test (403).
+- Snapshot 13:
+  - #1 rules/Loop include invited-only guests: **ignoring, explicitly per Ian’s answers**.
+
+There have been many snapshots because peer turn ends snapshot shared in-progress work, not that many distinct review rounds.
+
+**Last observed merge_facts:** review running on snapshot **19**, 15 unmerged commits, 18 changed files, no current findings. This was before my final turn ended; another snapshot may now exist. **Read current details/events.**
+
+Do not call ready_for_merge until the review of the **latest files** has finished. No merge proposal has yet been offered.
+
+## Current overview / summary
+
+Overview generation last saved: **23**. All plan items are complete except:
+
+- **Review final changes and offer the merge**, in progress, assigned sol.
+
+Overview contains:
+
+- Goal and validated entity diagram.
+- All final decisions, including Ian’s explicit Loop/rule choice.
+- Production createtabs completion and no backfill.
+- Verification limits and both screenshots.
+- Status: implementation, main integration and checks complete; final review running.
+
+Task summary was also updated with the whole implementation, decisions, constraints and review status.
+
+When preparing ready_for_merge:
+
+- Rewrite status around the finished task, not the review chronology.
+- Keep the schema diagram visible.
+- Explicitly state production createtabs completed.
+- Preserve Ian’s Loop/rule choice.
+- Clearly mention restrictions:
+  - Volunteers manage signup in Team.
+  - Co-chair offers need an actual volunteer commitment.
+  - Excluded outside guests lose old invitation-link access until permitted restoration.
+  - Original bringer cannot undo host/self/household removal.
+- Include full-suite timeout disclosure.
+- Include actual preview images.
+- No further work or TODO is needed if final review is clear.
+- Do not call set_overview after ready_for_merge; that withdraws the proposal.
+
+## Visual / browser evidence
+
+Both media images are valid and already in the overview.
+
+### Volunteer guest card
+
+Shows the Answer tab with:
+
+> Volunteers stay on the guest list. Manage the sign-up in HCA-Team.
+
+No removal control.
+
+Task media:
+
+`/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-1278351893.webp`
+
+Original:
+
+`local/screenshots/activity-volunteer-card.png`
+
+### Empty activity deletion
+
+Shows Edit Activity for **Welcome table**, under International Night, with **Delete activity** visible after its only unsent guest was taken off.
+
+Task media:
+
+`/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-2201227682.webp`
+
+Original:
+
+`local/screenshots/activity-deletion.png`
+
+I visually inspected both. They are shown in the task preview; latest new screenshot was prepared on Ian’s then-most-active **roc** client (`cli5cClyFzBFe0`). Refresh clients if showing anything new.
+
+### Sample server
+
+Opus owns the task terminal named **Sample server**, port **18431**, signed in as sample Rowan Ashdown:
+
+- `https://team.heliosiandev.com:18431/`
+- `https://when.heliosiandev.com:18431/g/international-night`
+
+It was restarted for the deletion policy verification, **before** the final main integration. The latest Go suite tested the merged code. Do not assume the still-running sample server contains later Go changes without restarting it.
+
+The actual shipped-JS deletion checks passed five cases:
+
+1. Opened-only row: Delete visible and succeeds.
+2. Excluded unsent guest plus RSVP groups: Delete visible and succeeds.
+3. Active invited guest: Delete hidden; server refuses direct attempt.
+4. Active volunteer: Delete hidden; server refuses direct attempt.
+5. Inactive metadata with mail history: server rejects entire batch, metadata intact.
+
+Ignored one-off files remain under `local/activity-deletion/`:
+
+- `main.go`: headless Chrome runner, reads JS file argument; optional screenshot path.
+- `check.js`: initial opened-row repro.
+- `debug.js`: queried the RSVP-group blocker.
+- `cases.js`: five actual sample cases.
+- `preview.js`: creates/opens the empty Welcome table editor for screenshot.
+- Logs.
+
+These are ignored; do not move them into tracked tools/tests or accidentally snapshot probes.
+
+Byre WebKit refuses the self-signed dev HTTPS certificate. Use repo Chrome tools or the local runner:
+
+```sh
+timeout 20 go run ./local/activity-deletion local/activity-deletion/cases.js
+```
+
+For ordinary captures:
+
+```sh
+timeout 20 go run ./tools/screenshot \
+  --url 'https://when.heliosiandev.com:18431/g/international-night' \
+  --out local/screenshots/activity-volunteer-card.png \
+  --wait '.coming-grid .person-card' \
+  --click '.coming-grid .person-card|.form-tabs .tab-strip-item:nth-child(2)' \
+  --settle 300ms
+```
+
+Do not start a new server just for a screenshot. Use task terminal and expose_port if a new server is actually needed.
+
+To transfer a PNG into task media, I loaded it as a data URL in the **server** byre browser and captured with save:true. **Do not print browser navigation/capture responses containing huge data URLs/base64.** Extract just the `Saved /Users/...webp` path. The server browser currently displays the deletion screenshot as a data URL, not a live app.
+
+## Tool mechanics / workflow reminders
+
+Use core byre tools through functions or catalog discovery.
+
+Known catalog tools/schemas:
+
+- `read_task_details`: `{task_id}`
+- `read_task_events`: `{task_id, after?, limit?}`
+- `list_clients`
+- `show_page`: `{client, path|url}`
+- `browser`: navigate/js/capture/save etc.
+- terminal tools: discover current schemas if needed.
+
+For example:
+
+```js
+const d = JSON.parse(await tools.byre__call_tool({
+  name: "read_task_details",
+  arguments: {task_id: "tsk6KmePpH9EHQ"},
+  timeout_ms: 10000
+}));
+```
+
+Catalog returns JSON text for task reads. Read events and **filter to review/snapshot/user events before printing**; agent tool results may contain huge old screenshots/handoffs. Don’t dump entire history.
+
+Read overview_generation before set_overview/ready_for_merge and preserve peer work; reconcile accepted:false.
+
+Every human question uses **byre ask_human**, never prose, and a question turn has no final summary. **No question is currently needed.**
+
+Do not use discussion mode for pending review or merge approval.
+
+Before/now behavior changes in final messages and task summaries must use:
+
+`Before: ...`  
+`Now: ...`
+
+Finals are concise, contain actual risks/limitations and what is next. Include screenshots on the merge proposal for visible work.
+
+## AGENTS.md essentials
+
+Read the current file if needed; main did not change it.
+
+- No new code comments except genuinely subtle logic, max two lines.
+- No test-only production hooks/interfaces.
+- `go run`, never go build.
+- Tests always under `timeout 30`, captures under `timeout 20`.
+- One-off investigations under ignored `local/`.
+- Production data with tools/q.
+- No production deployment or other writes are needed now.
+- Query answers to Ian must be Admin Query links plus the query after testing it, if he asks for one.
+- Several agents share this worktree; re-read before editing.
+
+Opus suggested policy comment annotations as a nit, but I retained AGENTS’ no-new-comments rule and documented rationale in docs. Don’t add comment-only churn just for that.
+
+## Next actions
+
+1. Read task details, latest board, and filtered review events.
+2. If latest review has findings, evaluate against source and **Ian’s settled decision**, then respond before edits.
+3. If review is clear (or only repeats the intended effective guest-list behavior), **offer ready_for_merge promptly** with the full overview, diagram, screenshots and validation.
+4. Do not repeat tests/builds without a new reason; current focused suite/vet are complete.
+5. Do not merge/push yourself.
+6. End with a short final stating readiness and the principal before/now result.
+
+The implementation is done. Avoid restarting the design discussion or expanding scope.
+
+### Session ses41HwvMqGALr, 2026-11-04T04:13:18Z
+
+You are **sol**, the primary task agent, continuing a shared byre task with peer **opus**. Finish at a reviewed merge proposal. **Do not merge or push without Ian’s authorization.**
+
+## Identity and workspace
+
+- Task: `tsk6KmePpH9EHQ`
+- Project: `prjAPohz7r9P6C` — heliosian
+- Worktree: `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ`
+- Task title: **Activity guests vs sign-ups**
+- Merge title: **Separate activity guest lists from volunteer sign-ups**
+- Original base: `07828d2a1be4080cca5215cd62e3f699a604963c`
+- Current main was merged cleanly earlier; its tip then was `dad6facd` (“Keep policy expressions with their annotations”).
+
+Byre commits/snapshots the shared worktree at agents’ turn ends. **Do not commit, push, switch branches, or run git maintenance.** Peer turn ends have snapshotted shared in-progress work repeatedly; a clean worktree does not mean no work happened this turn.
+
+Read current task details and recent board posts first. Last saved overview generation should be **35** (the preceding read was 34, and the final save succeeded); always read the current generation.
+
+## Goal and current status
+
+Original TODO, already removed from this branch:
+
+> Separate activity guests from volunteer sign-ups  
+> An activity's guest list is its sign-ups, so guests added to an activity by hand (Add Person, a guest's invite others) also become Volunteers in HCA-Team, and taking them off can send "You're no longer signed up" mail. Guests added by a rule avoid this. Separate guest-list membership from volunteer sign-up.
+
+Before: adding an activity guest made them a volunteer and consumed capacity; removal could send volunteer cancellation mail.
+Now: activity invitation state and volunteer commitments are independent.
+
+**All implementation, documentation and verification are complete. The latest review remains before offering merge. No human question is open.**
+
+Last observed task facts before ending the turn:
+
+- Review running on snapshot **31**.
+- 27 unmerged commits, 27 changed files, approximately 1,648 additions and 452 deletions.
+- No current findings.
+- A later automatic snapshot may exist now; **read current details/events**.
+- No merge proposal has been offered yet.
+
+Do not call `ready_for_merge` until the review of the **latest files** has finished. Do not repeat tests/builds without a new reason. The next step is to evaluate latest findings, or promptly offer merge if clear.
+
+## Settled human decisions — do not reopen
+
+Ian explicitly chose that **Loop and rules use the effective activity guest list**, including invitation-only guests and any access derived from those rules.
+
+His exact answers:
+
+1. About Loop:
+   > “loop mail should go to the effective guest list. is that the question?”
+
+2. To:
+   > “Should a rule targeting an activity include its effective guest list, or only its volunteer sign-ups?”
+
+   He chose:
+   > **Effective guest list**
+
+He saw the concrete production example:
+
+- Staff Birthdays permits members to post/reply to Loop.
+- Birthdays Viewers has a rule targeting Staff Birthdays.
+- The Birthdays app is visible to Birthdays Viewers.
+- An invitation-only Staff Birthdays guest therefore reaches Birthdays Viewers and gains Birthdays app access without volunteering.
+
+**This is deliberate and tested. Do not add a propagation filter or reopen it as a security concern.**
+
+Snapshot 13, reviewer **“Review”**, finding 1 was answered **ignoring** with Ian’s decision.
+
+Rules targeting/under/within activities, Loop delivery, member posting/replying, and derived access all intentionally use effective guest membership. Volunteer commitments/capacity/Team mail/co-chair-offer eligibility are separate.
+
+## Final model
+
+`MEMBER` remains unique by `(group, person)`.
+
+- `MEMBER.member=yes` is ordinary membership and, on an activity, a **volunteer commitment**.
+- New stored `MEMBER.invited`: `yes`, `excluded`, or blank.
+- Invitation state contributes membership **only on activities**.
+- An activity’s effective membership includes ordinary members, `invited=yes`, and rules.
+- `invited=excluded` excludes the person unless `member=yes`.
+- Existing `member=excluded` and excluding RULE precedence remain unchanged.
+- Existing sign-ups are preserved without conversion/backfill.
+- One person can be both invited and volunteering.
+
+Rejected alternatives:
+
+- New signup boolean/table would move existing volunteer state and broaden migration/readers.
+- Separate referenced signup/guest groups would create many extra groups and write paths.
+- Generated personal RULEs would require metadata and hiding generated rules from editors.
+
+### Core writes
+
+- Activity Add People / add-guests / outside guest additions write `invited=yes`, never `member=yes`.
+- Signing up over an invited/opened-only MEMBER merges into the existing row, retaining ID/invitation/opened metadata.
+- The originally requested insertion is authorized **before** carrying old metadata into it; invitation state cannot bypass capacity or join eligibility.
+- Team cancellation deletes an ordinary row or clears `member` when invitation/opened metadata exists.
+- Team signUp explicitly supplies `note`, including empty strings. `cellsOf` preserves explicit empty values, so empty-note re-sign-up clears old notes; no extra cancellation note mutation was needed.
+- Ordinary MEMBER insert policies require blank `invited`; only the dedicated exclusion insertion accepts it directly. This prevents invitation state granting arbitrary group membership.
+
+### Guest removal/restoration
+
+- Activity guest-only removal records `invited=excluded`, including unsent guests. This is necessary because historical invitation copies otherwise keep them on the list.
+- Volunteers cannot be removed through guest-only UI; When and Loop direct them to HCA-Team.
+- Bringer withdrawing their own guest retains `guest_of` and can restore them.
+- Removal by host, self, or household clears `guest_of`; only a host can restore afterward.
+- Restoring reuses the existing invitation/token and sends no duplicate invitation or additional invitation-limit count.
+- `onList` checks explicit exclusions before historical copies.
+- `extCopy` checks `onList`, so old outside invitation page/API/flyer/answer/bring routes are unavailable until permitted restoration.
+- Host restoration clears earlier bringer attribution unless an explicit new `guest_of` is supplied; a bringer restoring their own withdrawal retains their link.
+- Host restoration can repair legacy `member=excluded` + `invited=yes`, clearing `member` without volunteering.
+- Already-effective, nonexcluded opened-only rule members are left untouched by Add People.
+- Existing-row outside restoration is activity-only. Event/party insertion behavior remains as before.
+- A cancelled paid-party regression verifies refusal and no changes to ticket state, bringer, invitations or count.
+
+### Raw-write protections
+
+- Bringers cannot delete activity memberships, cancel volunteer status, or exclude active volunteers.
+- `guest_of` can be cleared only while setting `invited=excluded`, with host/self/household authority.
+- Dedicated activity exclusion inserts require:
+  - blank member
+  - invited excluded
+  - blank guest_of, opened and note
+  - added_by exactly viewer
+  - runs_list, or visible+self/household.
+- Co-chair offers require an actual activity `MEMBER.member=yes`, including people invited or reached by rules.
+- `invited_guest` requires both effective membership and a direct member/invitation row.
+- For activity `join=others` with `eligible` pointing to itself, adding a person outside one’s household as a volunteer requires the viewer’s own `member=yes`.
+- Outside `invited_guest` no longer bypasses configured activity volunteer eligibility.
+- Ordinary open Team activities with blank eligible deliberately still let visible people sign up others without volunteering first.
+- Self/household signup still uses effective eligibility; invited people may volunteer themselves when eligible.
+
+### Cancellation permission — preserve the documented rule
+
+A reviewer found metadata-preserving cancellation was broader than deleting a plain row.
+
+I initially proposed broadening blank-join cancellation, but Opus checked the documented rule. We preserved it instead.
+
+New shared policy helper **`leaves @m`** contains the old delete condition verbatim:
+
+- group.join is nonblank
+- group.price is blank
+- viewer is the person, or household unless join=self.
+
+Both ordinary DELETE and activity member=yes→blank cancellation use this helper. Managers retain removal authority.
+
+Team’s ordinary `others`, `below`, and `none` settings are nonblank, so full/complete activities remain cancellable. Blank join leaves membership under manager control. **Do not broaden this again.**
+
+### Empty activity deletion
+
+- Team state builds `inactiveMembers` from rows with neither member=yes nor invited=yes.
+- Delete is available only when all remaining direct activity MEMBER rows are inactive.
+- `deleteActivity` deletes inactive rows and serving offers/leads/Going/Not Going groups in one batch.
+- Shared `deleteMemberGroup(node, column, rows)`:
+  1. deletes the serving group’s MEMBER rows,
+  2. blanks the activity reference,
+  3. deletes the serving group.
+- List runners may clear an activity’s rsvp_yes/no reference only to blank and only when the old answer group has no MEMBER rows.
+- Active guests/volunteers remain protected independently by server policy.
+- Mail history rejects the entire deletion batch and rolls it back.
+- Ordinary child activities and other constraints remain protected.
+
+**References are checked after each edit**, not just commit: `stageEdits` calls `checkModel` around writes.go:212–215. The ordering above matters.
+
+Pre-existing and deliberately outside scope:
+
+- An activity with mail history can still show Delete and then be refused by server.
+- hidden_for cleanup uses the existing server trigger.
+- Managers groups remain behind after deletion as before.
+
+## Loop editing — completed late-review integration
+
+Review snapshot 23 found the Loop activity editor still treated all hand rows as volunteer state. This is now fixed.
+
+Files: `web/loop/pages/group.js`, `web/common/rail.js`, `internal/db/draft.go`, `web/when/guestlist.js`.
+
+- Rail hand query reads member, invited, guest_of, opened, note, added.
+- Loop draft carries person/member/invited.
+- Activity `setHand` never changes member=yes rows.
+- Activity additions and Put back set desired invitation state.
+- Guest exclusions write invited=excluded and clear guest_of.
+- Activity MEMBER rows are never deleted by Loop.
+- Volunteers have no removal control and a HCA-Team link.
+- Existing unchanged metadata is not rewritten.
+- Directory and outside activity additions/restorations call existing **`/api/do/add-guests`**, rather than gaining a second raw invited=yes policy path.
+- Other fields/rules/exclusions save in the normal batch first, then guest additions use the action.
+- On guest-addition failure, UI names missing guests and reports any already-saved edits.
+- It refetches `ed.g`/`ed.original`/`ed.current`, retaining the draft for retry. This prevents deleting already-deleted RULE IDs on retry.
+- Actual browser fault injection verified a failed add-guests after RULE deletion: partial-save message shown, retry succeeded, no reapplying stale rule edits, no volunteer created.
+- Nonactivity behavior remains the original path.
+
+Draft API:
+
+- `draftMember` has `Invited`.
+- Blank, yes, excluded, cancelled member states are valid.
+- Invitation state is valid only for an actual activity list and yes/excluded values.
+- Blank/cancelled metadata-only rows contribute no membership.
+- Invitation and volunteer exclusion precedence matches `resolve`.
+- `draftReason.Invited` renders as **Invited**.
+- Loop and When preview payloads include only people the actual page resolved, preventing invisible MEMBER targets from breaking preview.
+- Full original Loop hand rows remain in the save draft, so filtering preview cannot delete invisible rows.
+- When now passes all visible raw membership/invitation states to its rule preview, including unsent exclusions.
+
+## Historical copies, active counts and guest mail
+
+Snapshot 25 findings are fixed.
+
+- New shared Go **`keptOff(g, person)`** checks:
+  - member=excluded, or
+  - invited=excluded without member=yes.
+- `onList` and guestMail use it.
+- guestMail skips explicitly removed recipients for **reminder, message and update**.
+- **Cancel intentionally still reaches everyone originally sent an invitation**, so their old calendar copies receive CANCEL. This is the documented pre-existing behavior, now tested. Do not “fix” that exception.
+- No O(n²) copiesOf rebuilding: guestMail candidates are already historical copy holders, so it checks keptOff directly.
+- Event/party historical copies without explicit exclusions retain old behavior.
+- When `rowFor` exposes its existing excluded boolean; active `listed_` filters that once.
+- All active host table/counts/coming/mine consumers use the filtered list.
+- Raw memberRows remain for previews/restoration.
+- Actual sample Chrome check verified removal disappears from table/counts, metadata persists, invited=excluded volunteer stays active, restore reuses the sent invitation.
+
+## Latest work: shared RSVP cleanup — COMPLETE
+
+Snapshot 27 finding 1, reviewer **Review**, was answered **fixing** and is now implemented and verified.
+
+Problem: Loop exclusion left RSVP rows, so removed guests still matched Going and calendar feeds. When/outside each had client cleanup, causing drift.
+
+Final implementation:
+
+1. **`clearAnswerEdits(g, person)`** in invitations.go extracts the existing shared answer-deletion loop.
+   - `answerEdits` uses it.
+   - Server trigger uses it.
+2. New staged MEMBER trigger **`activityGuestExcluded`** in trigger.go:
+   - ignores deleted rows,
+   - checks actual staged activity group and `keptOff`,
+   - deletes that person’s Going and Not Going MEMBER rows in the **same transaction**.
+   - runs for inserts/sets, including when a volunteer with invited=excluded cancels member=yes.
+   - active member=yes + invited=excluded preserves answers.
+3. **`oneAnswer`** rejects new yes/no membership for a person kept off an activity, using the same `keptOff`.
+4. Calendar replies hook checks `keptOff` before writing:
+   - logs an info message,
+   - acknowledges with HTTP 200,
+   - ignores obsolete ACCEPTED/DECLINED replies until restoration.
+   - This avoids Mailgun retrying a permanent model refusal as HTTP 500.
+5. When takeOff no longer deletes an activity answer row itself; nonactivities retain old cleanup.
+6. Outside extRemoveGuest writes only invited=excluded for activity; nonactivities retain Delete + answerEdits.
+
+New tests in **`internal/db/activityanswers_test.go`**:
+
+- `TestActivityExclusionsClearAnswersInTheTransaction`
+  - yes/no × invited exclusion / member exclusion / rule-only exclusion insertion / volunteer precedence then cancellation.
+  - eight cases all failed before trigger.
+  - rejected batch rolls back answer cleanup.
+  - active volunteer retains answers.
+  - later volunteer cancellation into keptOff clears answer.
+  - removed student no longer matches Going.
+  - raw RSVP reinsertion refused while excluded.
+  - answer succeeds after host restore.
+- `TestOutsideActivityRemovalClearsItsAnswerOnce`
+  - real outside HTTP endpoints,
+  - seeds an existing yes answer,
+  - takes back guest,
+  - no duplicate deletion failure,
+  - answer removed, invited exclusion and guest_of preserved.
+
+New test in activityexclusions_test.go:
+
+- `TestCalendarReplyFromSomeoneTakenOffRecordsNoAnswer`
+  - old ACCEPTED reply returns 200, no answer while excluded.
+  - after host restore, reply records yes.
+  - disabling endpoint guard produces 500 from the new model refusal; test catches that.
+
+**Fixture correction:** `TestActivityDeletionClearsInactiveInvitationsAndAnswerGroups` used an excluded student’s answer to test “cannot detach nonempty answer group.” Trigger correctly removed that answer. It now seeds the RSVP for the active parent after the student exclusion, so the nonempty-reference assertion remains meaningful.
+
+### Latest verification
+
+- Main combined focused database suite passed **7.122s**:
+  ```sh
+  timeout 30 go test ./internal/db -run 'Test(.*Invit.*|.*Guest.*|.*Join.*|.*Chair.*|.*SignUp.*|.*Membership.*|.*Effective.*|.*Policy.*|.*Group.*|.*Bringer.*|Activity.*|ADrafts.*|SchemaHangsTogether)$' -count=1
+  ```
+- Opus independently passed a broader related suite in **8.9s**:
+  ```
+  -run 'Activity|Guest|Invit|Join|Policy|Member|Chair|Offer|Party|List|Leave|Draft|Hosts|Calendar|Answer'
+  ```
+- Final targeted RSVP/calendar/outside set passed **1.076s**:
+  ```sh
+  timeout 30 go test ./internal/db -run 'Test(OutsideActivityRemovalClearsItsAnswerOnce|ActivityExclusionsClearAnswersInTheTransaction|CalendarReplyFromSomeoneTakenOffRecordsNoAnswer)$' -count=1
+  ```
+- `timeout 30 go vet ./internal/db ./internal/app ./internal/tools` passed.
+- gofmt/diff checks pass.
+- Independent Opus source critique found no issues.
+- Actual Chrome shipped Loop editor exclusion clears an existing yes RSVP.
+- Actual shipped When takeOff with an existing answer succeeds and clears it without duplicate deletion.
+- The parent’s own separate volunteer commitment legitimately keeps their Going calendar active.
+
+**Full database suite limitation:** Earlier `timeout 30 go test ./internal/db` exceeded the cap. Relevant named tests were used thereafter, per AGENTS. **Disclose this in merge overview; do not casually rerun full suite.**
+
+### Dead ends that must not become product fixes
+
+- The new effective-membership Loop delivery test initially used sample student with no email. Code correctly skipped them. Fixture supplies an ordinary primary PERSON_EMAIL (`juni.ashdown@example.org`); final test passes.
+- The draft test initially referenced nonexistent sample person `per00000000005`, causing legitimate 403. It now creates real opened/cancelled guest records; passes.
+- Outside browser probe could not read another person’s RECIPIENT token as Rowan host. **This is correct token privacy**, not a defect. We verified outside removal through the real HTTP integration harness with its actual recipient token, rather than bypassing privacy.
+- Browser Loop Going probe initially expected parent’s Going to disappear when child was removed. Parent was still an actual volunteer. Corrected the probe to assert RSVP removal and preserve parent’s legitimate Going. Database test views as the removed student and verifies Going false.
+- A reviewer’s earlier claimed cancelled-party payment bypass was disproved: party guestMembership sets edit.viewer, and stageEdits clears System when authorizing it. Pre-guard regression already returned 403. Still restricted row reuse to activities to preserve scope.
+- Do not add policy comments merely to satisfy peer nits: AGENTS prohibits new comments except genuinely subtle logic. Rationale is documented.
+
+## Production prerequisite — COMPLETE
+
+**Production createtabs already ran. State explicitly in merge proposal.**
+
+Opus ran `go run ./tools/createtabs`; Sol independently verified the production header:
+
+`[id group person member invited opened guest_of note added_by added]`
+
+No further production writes are needed.
+
+Production data checked by both agents:
+
+- Only two activities initially had sent guest-list mail.
+- Math Kangaroo Team Competition: 7 real sign-ups, 6 self-added and 1 manager-added before invitations.
+- Outdoor Movie Night: Dogman: Ian had invited/removed himself (triggering the bug), and is now a real signup/co-chair.
+- No activity RULEs, guest_of/excluded/other inactive activity memberships required conversion.
+- **No backfill; existing signups remain untouched.**
+- Five plain groups target activities through rules: International Night, Spelling Bee, Spelling Bee Spellers, MS Halloween, Birthdays Viewers.
+- There are 98 activity-target rules, many with parent replacement.
+- These are evidence for Ian’s intended effective-membership reach, not an open issue.
+
+## Remaining deliberately separate TODO
+
+Original requested TODO is removed. A new item is in TODO.md under Helios When:
+
+**Separate activity guest-invite settings from volunteer eligibility**
+
+Current When “People can invite others” switch writes GROUP.join/eligible, which are also Team volunteer settings:
+
+- on: join others, eligible the activity itself;
+- off: join blank, eligible blank, closing volunteer signup.
+
+This overlap predates this task. It needs its own settings-model decision. We recorded it rather than hiding/removing a requested guest capability or expanding the schema again.
+
+Production at Opus’s check had no activities with eligible set, and no blank-join activities holding volunteers.
+
+Make this scope/limitation clear in ready overview. Do not start that feature automatically.
+
+## Important files
+
+Model/server:
+
+- `internal/db/schema.go` — invited column.
+- `sampledata/datagroups/MEMBER.csv` — invited header/field; every CSV row changes, accounting for ~714 diff lines.
+- `internal/db/effective.go` — invitation effective membership, volunteer precedence; **no propagation filter**.
+- `internal/db/policy.go` — raw protections, eligible/co-chair rules, shared leaves helper, RSVP-reference clearing.
+- `internal/db/writes.go` — authorization before existing metadata merge.
+- `internal/db/invitations.go` — guest transforms/restores, keptOff/onList, mail filtering, clearAnswerEdits.
+- `internal/db/invitehooks.go` — outside removal/restoration/token gating, obsolete calendar reply guard.
+- `internal/db/draft.go` — invitation-aware draft validation/resolution.
+- `internal/db/trigger.go` — activityGuestExcluded and new-answer exclusion guard.
+- `internal/db/activityguests_test.go`
+- `internal/db/activityexclusions_test.go`
+- `internal/db/activitydraft_test.go`
+- `internal/db/activityanswers_test.go`
+
+UI:
+
+- `web/team/state.js`, `web/team/writes.js`
+- `web/when/guestlist.js`, `web/when/guestpopups.js`, `web/when/invites.js`
+- `web/common/members.js`, `web/common/rail.js`
+- `web/loop/state.js`, `web/loop/pages/group.js`
+
+Docs:
+
+- `docs/datamodel.md`
+- `docs/team/data.md`
+- `docs/when/calendar.md`
+- `docs/loop/data.md`
+- `TODO.md`
+
+## Review history
+
+Reviewer name is always **“Review”**.
+
+Earlier findings fixed:
+
+- Snapshot 3: outside withdrawal/restoration, opened event/party rows; schema prerequisite was already complete.
+- Snapshot 5: opened rule member pinning, bringer control of volunteer writes, guest_of clearing.
+- Snapshot 6: co-chair offers, excluded outside joining authority.
+- Snapshot 7: inactive-row deletion, then actual RSVP child-group blocker.
+- Snapshot 12: nonactivity outside restoration scope.
+- Snapshot 13: effective guest rule/Loop reach — **ignored per Ian’s explicit decision**.
+- Snapshot 20: invitation-only viewer signing up others on self-eligible activity.
+- Snapshot 21: Loop reason display; cancellation consistency.
+- Snapshot 23: Loop editor and forged exclusion metadata.
+- Snapshot 25: guest mail after removal and active host counts/table.
+- Snapshot 27: Loop RSVP cleanup — latest implemented work described above.
+
+There have been many snapshots because peer turn ends snapshot shared work, not that many distinct intentional review rounds.
+
+**Latest observed review: snapshot 31 running, no findings. Read fresh state.** A later automatic snapshot may now exist.
+
+## Visual evidence
+
+All paths below are task media, outside git, valid.
+
+Most useful for merge:
+
+1. Volunteer guest card, explanation and HCA-Team link:
+   `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-1278351893.webp`
+
+2. Empty Welcome table activity with Delete restored:
+   `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-2201227682.webp`
+
+3. **Loop activity editor**, invited guests and protected volunteer:
+   `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-441591446.webp`
+
+4. When active guest table after removal:
+   `/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk6KmePpH9EHQ-media/browser-1379324389.webp`
+
+Earlier Loop page (Invited hover title checked in DOM):
+`.../browser-2164168031.webp`
+
+Overview currently contains all these images and the entity diagram. For ready_for_merge, rewrite around the finished task and use a few relevant images rather than narrating review chronology.
+
+Diagram already validated in earlier session:
+
+```diagram
+row
+  group "GROUP" "Activity"
+row
+  member "MEMBER" "One row per activity and person" blue
+    volunteer "member = yes" "Volunteer commitment" green
+    invitation "invited = yes / excluded" "Guest-list override" amber
+row
+  team "HCA-Team" "Volunteers, capacity and sign-up mail" green
+  guests "Effective guest list" "Membership + invitations + rules" amber
+group -> member
+volunteer -> team
+volunteer -> guests
+invitation -> guests
+```
+
+### Sample server and ignored probes
+
+Opus owns task terminal **Sample server**, port **18431**, signed in as sample Rowan Ashdown:
+
+- `https://team.heliosiandev.com:18431/`
+- `https://when.heliosiandev.com:18431/g/international-night`
+- `https://loop.heliosiandev.com:18431/g/international-night`
+
+It was restarted after the final trigger and calendar-reply guards, so it has current production code. Subsequent changes were tests/fixture only.
+
+Ignored local tools:
+
+- `local/activity-deletion/` — actual Team deletion cases.
+- `local/activity-loop/`
+  - `main.go`: Chrome runner; navigates Loop.
+  - `editor.js`, `lifecycle.js`: real editor checks.
+  - `partial.js`: deliberate client network failure/retry check.
+  - `rsvp.js`: actual Loop exclusion with seeded yes answer.
+- `local/activity-removed/`
+  - `main.go`: Chrome runner navigates When.
+  - `check.js`: real When takeOff with answer, counts, restore.
+  - `outside.js`: failed token-privacy probe; **do not treat as product failure**.
+  - `regression.log`: latest combined passing run.
+- `local/screenshots/` — original PNG captures.
+
+Each browser runner:
+
+```sh
+timeout 20 go run ./local/activity-loop local/activity-loop/rsvp.js
+timeout 20 go run ./local/activity-removed local/activity-removed/check.js
+```
+
+No need to rerun now. Browser WebKit refuses the self-signed dev HTTPS cert; repository Chrome tools work. Do not start another server just for images.
+
+To transfer a PNG into task media, we encoded it as a data URL, loaded it in the **server** byre browser and captured save:true. **Never print full base64/tool responses. Extract only the `Saved /Users/...webp` path.**
+
+The server browser currently displays a screenshot as a data URL, not a live app. Client preview was prepared on Ian’s **roc**, then ID `cliAD6XXdIwO0L`. Refresh list_clients if showing anything new. Don’t move Ian’s pane unnecessarily.
+
+## byre mechanics
+
+Core tools through functions; catalog via find_tools/call_tool.
+
+Known catalog schemas:
+
+- `read_task_details`: `{task_id}`
+- `read_task_events`: `{task_id, after?, limit?}`
+- `list_clients`: `{}`
+- `show_page`: `{client, path|url}`
+- `browser`: use discovered schema if needed.
+
+Task reads are JSON strings. Example:
+
+```js
+const d = JSON.parse(await tools.byre__call_tool({
+  name: "read_task_details",
+  arguments: {task_id: "tsk6KmePpH9EHQ"},
+  timeout_ms: 10000
+}));
+```
+
+When reading events, **filter before printing**. Agent tool events and handoffs contain huge logs/base64. Print only review/snapshot events or concise facts.
+
+Read current overview_generation before set_overview/ready_for_merge. Preserve peer work; reconcile stale saves. Don’t call set_overview after ready_for_merge, which withdraws the proposal.
+
+Every human question uses **byre ask_human**, never prose. A question turn has no final summary. No question currently needed.
+
+Do not use discussion mode for pending review/merge approval.
+
+Final behavior summaries must use before/now pairs:
+
+`Before: ...`  
+`Now: ...`
+
+Use collapsed details for long supporting material and embed real images for visible work.
+
+## Next actions
+
+1. Read task details, latest board, and filtered review events.
+2. Evaluate any findings against source and Ian’s **settled effective-membership decision**.
+3. If latest review is clear, **offer ready_for_merge promptly**.
+4. Rewrite overview around finished behavior:
+   - lead with schema shape;
+   - production createtabs explicitly complete;
+   - no backfill;
+   - Ian’s Loop/rule choice;
+   - guest removal/restoration/RSVP invariants;
+   - Loop shared-action tradeoff and verified retry;
+   - test evidence and full-suite timeout;
+   - separate guest-switch TODO.
+5. Clearly disclose newly refused actions and alternatives:
+   - volunteers cancel in Team, not guest controls;
+   - invitation/rule-only members must volunteer before offering to co-chair;
+   - excluded outside guests cannot use old invitation links or answer until restored;
+   - original bringer cannot undo host/self/household removal;
+   - self-eligible adding-others requires a volunteer.
+6. Preserve cancellation’s historical-calendar recipient exception.
+7. Do not merge/push yourself.
+8. End with a concise readiness summary and meaningful before/now pair.
+
+The implementation is done. Avoid restarting design or expanding scope.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-fable-5-1: failed
+
+superseded by snapshot #2
+
+### Snapshot #2, reviewer "Review", claude claude-fable-5-1: failed
+
+superseded by snapshot #3
+
+### Snapshot #3, reviewer "Review", claude claude-fable-5-1: done
+
+Separates an activity's guest list on Helios When from its volunteer sign-ups on HCA-Team. A new `MEMBER.invited` column (`yes` / `excluded`) carries guest-list state on activities only: hand-added guests, guests brought by other guests and outside guests get `invited=yes` with `member` blank, so they are effective members of the activity (reason `invited`) but not volunteers; taking a rule-listed or already-sent person off sets `invited=excluded`, which never outweighs `member=yes`. Policies gain `(blank @new.invited)` guards on every MEMBER insert rule plus rules for writing `excluded` and for a volunteer blanking `member`; the insert path authorizes the requested row rather than the row merged with an existing invitation row. Team keeps a row with invitation state when a sign-up is removed, When hides take-off for volunteers and points at HCA-Team, and five new tests cover the paths.
+
+- `MEMBER.invited` is a new stored column, so the production MEMBER tab needs `createtabs` before this deploys or the new revision refuses to load
+- Taking back a brought guest on an activity behaves differently on the outside page (deletes, guest stays on the list via their copy) and in the app (sets `invited=excluded`, which the bringer can never undo)
+- `add-guests` on events now turns any existing non-member row into a hand addition, a behavior change outside the task
+
+### Snapshot #4, reviewer "Review", grok grok-4.7: failed
+
+superseded by snapshot #5
+
+### Snapshot #5, reviewer "Review", grok grok-4.7: done
+
+Activity guest lists are no longer the same thing as volunteer sign-ups. People added by hand (Add Person, a guest inviting others, or the outside invitation page) are stored as `MEMBER.invited` `yes` instead of `member` `yes`, so they are on the guest list and in its effective membership without becoming Volunteers in HCA-Team, taking a spot, or getting Team's sign-up or cancellation mail. Taking someone off an activity sets `invited` to `excluded`, which also beats a rule; a real sign-up (`member` `yes`) stays on the list until it is cancelled in Team. Events, parties, and rule-only guests keep the old behavior.
+
+- Adding someone who is already on an activity by a rule, once they have opened the page, rewrites that row into a hand invitation and can mark them as the adder's guest.
+- After that person signs up, the bringer can still delete the membership, which cancels the volunteer sign-up and sends "You're no longer signed up".
+- A guest or their household can clear `guest_of` without leaving, so the person who brought them can no longer take them off.
+
+### Snapshot #6, reviewer "Review", codex gpt-6-sol: done
+
+The change adds an independent invitation state to activity membership rows. Hand-added activity guests appear on the When guest list without becoming Team volunteers; sign-ups still use `member=yes`, and the UI preserves invitation state when a volunteer leaves.
+
+- Invited-only activity guests can offer to co-chair without volunteering.
+- An excluded outside guest can retain direct activity join permission.
+
+### Snapshot #7, reviewer "Review", grok grok-4.7: done
+
+Hand-added activity guests are stored as MEMBER.invited=yes rather than member=yes. They stay on the When guest list, are not HCA-Team volunteers, do not take a spot, and do not send sign-up or cancellation mail. A volunteer (member=yes) stays on the guest list until the sign-up is cancelled in Team. Taking someone off an activity guest list sets invited=excluded and keeps the row, so a later restore reuses the invitation and sends no second copy. Rules still add guests without making them volunteers, and offering to co-chair requires a real sign-up.
+
+- Taking a guest off an activity, or cancelling a volunteer who opened the invitation, leaves a MEMBER row that hides Delete activity and makes the server refuse the delete.
+
+### Snapshot #8, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #9
+
+### Snapshot #9, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #10
+
+### Snapshot #10, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #11
+
+### Snapshot #11, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #12
+
+### Snapshot #12, reviewer "Review", codex gpt-6-sol: done
+
+Activity guest-list additions now use MEMBER.invited instead of MEMBER.member, so those guests remain invitees without becoming Team volunteers. The change updates effective membership, invitation and removal paths, Team sign-up handling, policy rules, UI, sample data, documentation, and tests.
+
+- High: The outside guest handler can restore a cancelled party ticket without payment or capacity checks.
+
+### Snapshot #13, reviewer "Review", claude claude-fable-5-1: done
+
+Adds a `MEMBER.invited` column (`yes` / `excluded`) so that an activity's guest list on Helios When no longer rides on `member=yes`. Hand-added activity guests (Add People, a guest's invite-others, the outside invitation page) are written as `invited=yes`; taking a guest off sets `invited=excluded` instead of deleting the row. The effective-members resolver counts `invited=yes` as membership on activities only, and `invited=excluded` keeps a rule-included person off unless they are a volunteer. Policies gain `(blank @new.invited)` on every membership insert so nobody can smuggle an invitation in through a sign-up, plus rules for setting `invited`, clearing `guest_of`, a volunteer blanking their own `member`, and detaching an activity's answer groups. The write path authorizes the row as requested rather than the merged row when a sign-up lands on an existing opened/invited row. HCA-Team shows only `member=yes` as volunteers, blanks `member` rather than deleting a row that carries invitation state, and can delete an activity whose remaining rows are all inactive. When's guest list hides the remove action for volunteers and points to HCA-Team. Docs, schema descriptions and sample data are updated and the TODO item removed. The production Groups sheet already carries the `invited` header, and 450 lines of new tests cover the flows.
+
+- Invited activity guests are now effective members, so every rule that targets an activity, the activity's own Loop list mail, and its Who? listing take them in; production has five lists built this way, including Birthdays Viewers, which gates the Birthdays app.
+
+### Snapshot #18, reviewer "Review", grok grok-4.7: failed
+
+superseded by snapshot #19
+
+### Snapshot #19, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #20
+
+### Snapshot #20, reviewer "Review", codex gpt-6-sol: done
+
+This change gives activities a separate `MEMBER.invited` guest-list state, keeps volunteer sign-ups in `MEMBER.member`, and updates invitation, removal, Team, and When paths to use the split. It also adds database tests and updates the sample schema and documentation.
+
+- Invited-only activity guests can sign up other people as volunteers through a direct membership write.
+
+### Snapshot #21, reviewer "Review", claude claude-fable-5-1: done
+
+Splits an activity's guest list from its volunteer sign-ups. A new `MEMBER.invited` enum (`yes`/`excluded`) carries guest-list state on activities only: hand-added guests (host's Add People, a guest's invite-others, an outside guest's bring-a-guest) are written as `invited=yes` instead of `member=yes`, so they never become Volunteers on HCA-Team, count against capacity or get Team's sign-up mail. Taking an activity guest off sets `invited=excluded` (clearing `guest_of` unless the bringer did it), which outweighs rules but never a `member=yes` sign-up; the outside invitation page refuses excluded people and restores reuse the existing invitation. Effective membership treats `invited=yes` as a reason on activities, so invited guests are still the activity's Loop list and are reached by rules targeting it. Policies get `(blank @new.invited)` guards on every member insert, new set rules for `invited`/`guest_of`/blanking `member`, volunteer-only join-others on self-eligible activities and volunteer-only co-chair offers; the write path authorises the requested row rather than the merged opened-invitation row so a sign-up over an invited row passes. Team's remove keeps the row (blanking `member`) when it carries invitation state and its delete-activity also clears answer groups and inactive rows; When's page hides the remove affordance for volunteers and points at HCA-Team. Docs, schema, sample data and a 15-test file cover it, and the TODO item is replaced with a narrower follow-up about the invite-others switch.
+
+- Loop's list page shows invited-only activity guests with no reason text, because its reason parser does not know the new `invited` reason.
+- The new blank-`member` policy lets a volunteer leave an activity whose `join` is blank, where the delete-leave policy refuses.
+
+### Snapshot #22, reviewer "Review", codex gpt-6.1-sol: failed
+
+superseded by snapshot #23
+
+### Snapshot #23, reviewer "Review", grok grok-4.7: done
+
+An activity's guest list is no longer the same thing as its volunteer sign-ups. People added by hand in When (Add Person, a guest inviting others, or an outside guest) are stored as MEMBER.invited=yes with member left blank, so they are not HCA-Team volunteers, take no spots, and are not marked going. Taking them off sets invited=excluded and does not send the volunteer "no longer signed up" mail. member=yes is still the volunteer commitment and still keeps that person on the guest list. Invited guests count as effective members, so they receive the activity's Loop mail and are selected by rules that target the activity. Capacity, co-chair offers, the calendar, and Team mail still follow member=yes.
+
+- Loop's member editor still treats invitation-only activity guests as hand rows keyed on member, so Edit fails once a guest exists, Exclude wedges them off the guest list, and adding a person there signs them up as a volunteer.
+- Anyone who can see an activity can insert an off-list row for themselves with a forged guest_of, and that attribution survives a later host add or volunteer sign-up.
+
+### Snapshot #24, reviewer "Review", codex gpt-6.1-sol: failed
+
+superseded by snapshot #25
+
+### Snapshot #25, reviewer "Review", codex gpt-6.1-sol: done
+
+Separates activity guest invitations from volunteer sign-ups with a new `MEMBER.invited` field. Updates invitation handlers, permissions, effective membership, and the When, Loop, and Team interfaces so guest changes preserve volunteer commitments and cancellation preserves invitation state. Adds regression coverage and removes the original TODO item.
+
+- Removed activity guests still receive guest-list reminders and other mail.
+- Removed guests remain in the host's table and invitation counts.
+
+### Snapshot #26, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #27
+
+### Snapshot #27, reviewer "Review", grok grok-4.7: done
+
+An activity guest list is no longer the same thing as its volunteer sign-ups. People added by hand, or brought by a guest, are stored as MEMBER.invited=yes and are not HCA-Team volunteers, do not take a spot, and are not sent sign-up or cancellation mail. Taking someone off an activity guest list sets invited=excluded, which also beats a rule, unless they are actually signed up (member=yes); volunteers stay on the list and must be cancelled in Team. Team cancellation clears member but keeps an invitation or an opened stamp. Effective membership includes invited guests, so rules, list mail, and app access still see them. The old TODO item is replaced by a follow-up: When's "People can invite others" switch still writes join and eligible, which also govern volunteer sign-ups.
+
+- Loop's activity editor leaves a removed guest's Going or Not Going row in place, so they stay on the going calendar.
+
+### Snapshot #28, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #29
+
+### Snapshot #29, reviewer "Review", codex gpt-6.1-sol: failed
+
+superseded by snapshot #30
+
+### Snapshot #30, reviewer "Review", codex gpt-6-sol: failed
+
+superseded by snapshot #31
+
+### Snapshot #31, reviewer "Review", codex gpt-6.1-sol: done
+
+Separates activity guests from volunteer sign-ups using `MEMBER.invited`, while retaining `MEMBER.member=yes` for volunteer commitments. Updates When and Loop guest editing, Team cancellation, invitation handling, and RSVP cleanup, with regression tests and documentation.
+
+- Guest restoration can undo an intervening host removal because its permission check uses a stale snapshot.
+
+### Snapshot #32, reviewer "Review", grok grok-4.7: failed
+
+superseded by snapshot #33
+
+### Snapshot #33, reviewer "Review", grok grok-4.7: done
+
+An activity's guest list is now separate from its volunteer sign-ups. People added by hand, or brought by a guest, are stored as MEMBER.invited=yes. They stay on the guest list and in rules that target the activity, and they do not take a volunteer spot, appear as volunteers in HCA-Team, or get "You're no longer signed up" mail. Taking someone off sets invited=excluded; a real sign-up (member=yes) still keeps them on the list. The same transaction clears their RSVP, the outside-guest link stops opening, and Loop, When, and Team edit the two states separately. The old TODO item is removed. A new one records that "People can invite others" still writes the join and eligible fields Team uses for who may sign up.
+
+- Unsent invitations, reminders, and updates still go out after someone is taken off, and the link in that mail no longer opens.
+
+### Snapshot #34, reviewer "Review", codex gpt-6.1-sol: failed
+
+superseded by snapshot #35
+
+### Snapshot #35, reviewer "Review", codex gpt-6-sol: done
+
+Separates activity guest invitations from volunteer sign-ups by adding an invitation state to activity membership rows. The invitation flows, effective guest lists, RSVP handling, and When, Loop, and Team pages now use that state so adding or removing a guest does not create or cancel a volunteer commitment.
+
+- Restored guests with suppressed invitations still appear sent and cannot be manually invited from When.
+- Loop drops excluded outside guests from its draft preview and cannot identify them in Kept off.
+
+### Snapshot #36, reviewer "Review", grok grok-4.7: done
+
+An activity guest list is no longer the same thing as its volunteer sign-ups. `MEMBER.invited` puts someone on the list without a Team commitment (`invited=yes`), or keeps them off even when a rule would include them (`invited=excluded`), unless they are a volunteer (`member=yes`). Hand adds, a guest inviting others, and an outside “bring a guest” write `invited=yes` instead of `member=yes`, so those people are not HCA-Team volunteers, do not take a spot, and taking them off does not send “You're no longer signed up.” Take-off sets `invited=excluded` and clears their RSVP in the same transaction. A volunteer stays on the guest list until Team clears `member`. Invited guests are still effective members for Loop mail, rules, and app access. The old TODO item is replaced by a follow-up: When's “People can invite others” switch still writes `GROUP.join` and `GROUP.eligible`, which also control volunteer sign-up.
+
+No significant findings.
+
+## Decisions
+
+### Beyond an activity’s invitation, should invited-only guests receive its Loop mail and count in groups whose rules use that activity?
+
+The activity guest/volunteer separation is implemented and tested. The remaining review raises a broader membership choice. Previously, adding a guest also made them a volunteer, so guests already received the activity’s Loop mail and entered groups built from that activity. The new invitation state preserves that reach while removing the volunteer commitment. I initially planned to filter it, then checked the old code and found this was existing behavior; I have not changed propagation.
+
+**Real production example, verified with queries:**
+- **Staff Birthdays** permits its members to post and reply to its Loop mailing list.
+- **Birthdays Viewers** is a group whose rule includes Staff Birthdays’ effective members.
+- The **Birthdays app** grants access to Birthdays Viewers.
+
+**Same input for every choice:** a host invites a guest to the real Staff Birthdays activity without a volunteer sign-up. Assume this guest has no other route to Birthdays app access. All choices keep that guest out of HCA-Team’s volunteer count and capacity, and taking them off sends no volunteer-cancellation mail.
+
+- (*) Guest list and Loop
+  The guest gets the Staff Birthdays invitation and Loop messages, and may post/reply there. The invitation does **not** put them in Birthdays Viewers, so it grants no Birthdays app access. Signing up as a volunteer later makes them qualify for that rule. I recommend this because it keeps guests in the activity’s conversation while separating invitations from membership in other groups.
+- ( ) Guest list only
+  The guest gets invitations and reminders, but no Staff Birthdays Loop messages or member posting/replying rights. They do not enter Birthdays Viewers or gain Birthdays app access. A volunteer sign-up grants those memberships later; guests stay outside the activity’s general email conversation until then.
+- ( ) Keep existing membership reach
+  The guest gets invitations and Loop messages, may post/reply, enters Birthdays Viewers and can open the Birthdays app before volunteering. This preserves the existing mailing and group-membership model; inviting someone also grants the access carried by rules using that activity.
+
+<details><summary>Other affected production groups and verification</summary>
+Five plain groups derive membership from activities: International Night, Spelling Bee, Spelling Bee Spellers, MS Halloween and Birthdays Viewers. Some rules also include students’ parents, so the same decision determines whether an invited family enters those parent mailing lists.
+
+The core feature has focused database tests, vet, independent peer checks and browser checks. The production invitation column is already created. No existing volunteer sign-ups need migration. The full database suite exceeded its required 30-second cap; the focused suites pass.
+</details>
+
+ian@fc.run answered: loop mail should go to the effective guest list. is that the question?
+
+### Should a rule targeting an activity include its effective guest list, or only its volunteer sign-ups?
+
+Loop mail goes to the effective guest list. No mail change is needed.
+
+The separate question is what an activity contributes to another group’s rules. In production, **Birthdays Viewers** has a rule targeting **Staff Birthdays**, and membership in Birthdays Viewers grants access to the **Birthdays app**.
+
+For the same example—a host invites someone to Staff Birthdays who has not volunteered and has no other Birthdays app access:
+
+- (*) Effective guest list
+  The guest receives Staff Birthdays Loop mail **and** enters Birthdays Viewers, gaining Birthdays app access. This preserves the existing rule model: rules use a group’s effective members.
+- ( ) Volunteer sign-ups only
+  The guest receives Staff Birthdays Loop mail but does **not** enter Birthdays Viewers or gain app access through that invitation. A volunteer sign-up is required before an activity-target rule includes them.
+
+ian@fc.run chose: Effective guest list
