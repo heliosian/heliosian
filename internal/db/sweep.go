@@ -17,6 +17,21 @@ const (
 	orphanAge  = time.Hour
 )
 
+var contentReferences = func() map[string][]string {
+	out := map[string][]string{}
+	for _, t := range Tables {
+		if t.Generated {
+			continue
+		}
+		for _, c := range t.Columns {
+			if c.Kind == Ref && !c.Generated && (c.Target == "" || c.Target == "CONTENT") {
+				out[t.Name] = append(out[t.Name], c.Name)
+			}
+		}
+	}
+	return out
+}()
+
 type sweeper struct {
 	s      *Store
 	bucket *blob.Bucket
@@ -95,15 +110,9 @@ func (x *sweeper) run() {
 func (m *Model) unreferencedContent() []store.Row {
 	contents := m.Table("CONTENT")
 	held := make([]bool, contents.Len())
-	for _, t := range Tables {
-		if t.Generated {
-			continue
-		}
-		for _, c := range t.Columns {
-			if c.Kind != Ref || c.Generated || (c.Target != "" && c.Target != "CONTENT") {
-				continue
-			}
-			for id := range m.Table(t.Name).by[c.Name] {
+	for table, columns := range contentReferences {
+		for _, column := range columns {
+			for id := range m.Table(table).by[column] {
 				if i, ok := contents.byID[id]; ok {
 					held[i] = true
 				}

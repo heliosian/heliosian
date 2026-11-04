@@ -76,15 +76,6 @@ var committedTriggers = []committedTrigger{
 	{table: "CONTENT", to: thumbnailInbox},
 	{table: "GROUP", to: geocodeInbox},
 	{table: "GEOCODE", to: geocodeInbox},
-	{table: "CONTENT", to: sweepInbox},
-	{table: "DOCUMENT", to: sweepInbox},
-	{table: "MESSAGE", to: sweepInbox},
-	{table: "REPORT", to: sweepInbox},
-	{table: "ALIAS", to: sweepInbox},
-	{table: "PHOTO", to: sweepInbox},
-	{table: "PERSON", to: sweepInbox},
-	{table: "GROUP", to: sweepInbox},
-	{table: "STOCK", to: sweepInbox},
 	{table: "PERSON", to: warmInbox},
 	{table: "PERSON_EMAIL", to: warmInbox},
 	{table: "PHOTO", to: warmInbox},
@@ -113,6 +104,9 @@ func committedInboxes(s *Store, table string) []*inbox {
 		if t.table == table {
 			out = append(out, s.Model().services.inbox(t.to))
 		}
+	}
+	if table == "CONTENT" || len(contentReferences[table]) > 0 {
+		out = append(out, s.Model().services.inbox(sweepInbox))
 	}
 	return out
 }
