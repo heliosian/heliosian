@@ -1,0 +1,23 @@
+# Keep document fetch batches in shared records
+
+byre task tskgZB8WMB4svL, "Simplify fetch batches", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskgZB8WMB4svL in byre (read_task_events with task_id tskgZB8WMB4svL).
+
+## Summary
+
+Audited 9642d27 for structural simplicity, reading project guidance, existing cleanup findings, and code across the model, store, worker services, mail, auth, shared clients, ops, and tooling. One focused simplification landed in internal/db/fetch.go.
+
+Before: document fetch deduplication stored numeric offsets into separate per-host batch slices, coupling the maps to slice positions.
+Now: both deduplication and host scheduling reference a shared fetchGroup containing its documents, so batch reordering cannot attach duplicate documents to the wrong fetch through a stale offset.
+
+Kept grouping by relation and URL, first-seen order within each host, eight-host concurrency, retries, and write behavior. Deliberately left the host scheduler intact because its sequential per-host work does not fit the result-producing parallel runner without extra plumbing. Existing geocoder and query-expression cleanup findings were already addressed in the audited commit. No schema changes or intended visible behavior changes.
+
+Affected fetch tests, a race-enabled shared-URL fetch test, repository-wide go vet, and diff checks passed. Automatic review returned no findings. The requested merge from main reported already up to date, with no conflicts or further edits.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Documents waiting to be fetched are still grouped by host, and documents that share a relation and URL still share one HTTP fetch. The batch used to be found by storing a numeric index in a second map and indexing into that host's slice. Both maps now point at one `fetchGroup`, so adding another document updates the batch that host will fetch.
+
+No significant findings.
