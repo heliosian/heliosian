@@ -17,6 +17,7 @@ import (
 
 	"heliosian/internal/blob"
 	"heliosian/internal/intercept"
+	"heliosian/internal/store"
 )
 
 func TestOnlyALastingFailureIsUnreachable(t *testing.T) {
@@ -40,6 +41,7 @@ func TestOnlyALastingFailureIsUnreachable(t *testing.T) {
 }
 
 func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
+	allowLocalFetch(t)
 	logo := pngOf(t, 3)
 	asked := atomic.Int32{}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +78,7 @@ func TestOneFetchFillsEveryDocumentOfAnAddress(t *testing.T) {
 }
 
 func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
+	allowLocalFetch(t)
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><div>Could not load network resources</div><button>Retry</button></body></html>`))
 	}))
@@ -98,6 +101,7 @@ func TestALinkedPageWithNoTextIsRefused(t *testing.T) {
 }
 
 func TestALinkedPageSayingItsSignUpIsGoneIsRefused(t *testing.T) {
+	allowLocalFetch(t)
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`<html><body><nav>Create a Sign Up Find a Sign Up Plans Pricing Resources Help Sign In Register</nav><h1>The Sign Up Was Not Found</h1><p>The web address you entered is not a valid sign up. It may have been wrapped by your email program, or the sign up may have been deleted by its creator.</p><footer>About Us Careers Press Contact Blog Terms Privacy</footer></body></html>`))
 	}))
@@ -117,6 +121,70 @@ func TestALinkedPageSayingItsSignUpIsGoneIsRefused(t *testing.T) {
 			t.Fatalf("the not-found page was not refused: %v", row)
 		}
 	}
+}
+
+func allowLocalFetch(t *testing.T) {
+	t.Helper()
+	previous := fetchClient
+	fetchClient = &http.Client{}
+	t.Cleanup(func() { fetchClient = previous })
+}
+
+func TestFetchRefusesPrivateDestinations(t *testing.T) {
+	for _, address := range []string{
+		"http://localhost/secret", "http://127.0.0.1/secret", "http://10.0.0.1/secret", "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+		"http://[::1]/secret", "http://[fc00::1]/secret", "http://100.64.0.1/secret",
+	} {
+		req, err := http.NewRequest(http.MethodGet, address, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = (publicFetchTransport{}).RoundTrip(req)
+		if !errors.Is(err, errPrivateFetch) {
+			t.Errorf("%s: got %v, want private network refusal", address, err)
+		}
+	}
+}
+
+func TestShortSourceOmitsCapabilityData(t *testing.T) {
+	got := ShortSource("https://user:password@calendar.example.org/open/feed/private-token?key=other-token#fragment")
+	if got != "https://calendar.example.org" {
+		t.Fatalf("source in logs: %q", got)
+	}
+}
+
+func TestFetchRefusesRedirectToPrivateDestination(t *testing.T) {
+	previous := fetchClient
+	fetchClient = &http.Client{Transport: fetchRedirect{}}
+	t.Cleanup(func() { fetchClient = previous })
+	got, err := fetchFrom(t.Context(), store.Row{"relation": "linked", "url": "https://public.example/page"}, "https://public.example/page", false)
+	if err != nil || got.stop != "refused" || got.why != errPrivateFetch.Error() {
+		t.Fatalf("redirect result: %+v, %v", got, err)
+	}
+}
+
+func TestMalformedRedirectDoesNotExposeLocation(t *testing.T) {
+	intercept.Install("malformed-fetch.example.org", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "https://calendar.example.org/open/feed/%zz?key=private-token")
+		w.WriteHeader(http.StatusFound)
+	}))
+	previous := fetchClient
+	fetchClient = &http.Client{Transport: publicFetchTransport{}}
+	t.Cleanup(func() { fetchClient = previous })
+	address := "https://malformed-fetch.example.org/page"
+	_, err := fetchFrom(t.Context(), store.Row{"relation": "linked", "url": address}, address, false)
+	if !errors.Is(err, errInvalidRedirect) || err.Error() != errInvalidRedirect.Error() {
+		t.Fatalf("malformed redirect error: %v", err)
+	}
+}
+
+type fetchRedirect struct{}
+
+func (fetchRedirect) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Hostname() == "public.example" {
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": {"http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token"}}, Body: http.NoBody, Request: req}, nil
+	}
+	return (publicFetchTransport{}).RoundTrip(req)
 }
 
 func TestALinkLandingOnAGoogleEditorFetchesItsExport(t *testing.T) {

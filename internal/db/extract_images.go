@@ -26,7 +26,7 @@ func htmlImages(raw []byte) ([]extracted, error) {
 	for _, src := range srcs {
 		if !strings.HasPrefix(strings.ToLower(src), "data:") {
 			if err := cells.URL(src, false); err != nil {
-				slog.Warn("extract: skipped image", "src", ShortSource(src), "error", err)
+				slog.Warn("extract: skipped image", "src", ShortSource(src), "reason", "invalid url")
 				continue
 			}
 			out = append(out, extracted{relation: "image", url: src})
@@ -106,8 +106,12 @@ func dataBytes(data string) ([]byte, error) {
 }
 
 func ShortSource(src string) string {
-	if len(src) > 200 {
-		return src[:200] + "…"
+	u, err := url.Parse(src)
+	if err != nil {
+		return "invalid:"
 	}
-	return src
+	if u.Host == "" {
+		return u.Scheme + ":"
+	}
+	return u.Scheme + "://" + u.Hostname()
 }

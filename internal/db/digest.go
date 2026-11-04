@@ -323,7 +323,7 @@ func (d *Digest) read(id string) error {
 	prompt := fmt.Sprintf("Already on the list:\n%s\n\nSubject: %s\nFrom: %s\nSent to: %s\nSent: %s\n\n%s",
 		strings.Join(lines, "\n"), root["name"], from, m.sentToNames(id), sent, markdown)
 	var out digestAnswer
-	raw, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
+	_, err = claude.JSON(ctx, d.client, anthropic.MessageNewParams{
 		Model:        claude.DigestModel,
 		MaxTokens:    4000,
 		System:       []anthropic.TextBlockParam{{Text: digestSystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
@@ -339,10 +339,7 @@ func (d *Digest) read(id string) error {
 	points := digestPoints(out.Points)
 	repeated := digestRepeats(out.Repeats, len(points), listed)
 	toDos := digestUnrepeated(digestClean(out.ToDos, markdown, len(points)), repeated)
-	slog.Info("digest: read an email", "document", id, "title", root["name"], "summary", tidy(out.Summary), "points", len(points), "asks", out.Asks, "asked", len(out.ToDos), "kept", len(toDos), "repeats", len(repeated))
-	if len(toDos) < len(out.ToDos) {
-		slog.Info("digest: claude's whole answer, some of it left out", "document", id, "answer", raw)
-	}
+	slog.Info("digest: read an email", "document", id, "points", len(points), "asked", len(out.ToDos), "kept", len(toDos), "repeats", len(repeated))
 	return d.write(id, tidy(out.Summary), points, repeated, toDos)
 }
 
@@ -406,7 +403,7 @@ func digestUnrepeated(toDos []digestToDo, repeated map[int]string) []digestToDo 
 	out := []digestToDo{}
 	for _, t := range toDos {
 		if _, ok := repeated[t.Point]; ok {
-			slog.Info("digest: a to-do on a point that repeats another email's, dropped", "title", t.Title, "point", t.Point)
+			slog.Info("digest: a to-do on a point that repeats another email's, dropped", "point", t.Point)
 			continue
 		}
 		out = append(out, t)
@@ -436,21 +433,21 @@ func digestClean(answers []digestToDo, markdown string, points int) []digestToDo
 	for _, a := range answers {
 		t := digestToDo{Title: strings.TrimRight(tidy(a.Title), "."), Summary: tidy(a.Summary), Details: tidy(a.Details), Link: tidy(a.Link), Due: tidy(a.Due), Point: a.Point}
 		if t.Link != "" && (!strings.Contains(markdown, t.Link) || !strings.HasPrefix(t.Link, "http")) {
-			slog.Info("digest: a link the email does not hold, dropped", "title", t.Title, "link", t.Link)
+			slog.Info("digest: a link the email does not hold, dropped")
 			t.Link = ""
 		}
 		if t.Due != "" {
 			if _, err := time.ParseInLocation(DateLayout, t.Due, School); err != nil {
-				slog.Info("digest: a due day that is not a date, dropped", "title", t.Title, "due", t.Due)
+				slog.Info("digest: a due day that is not a date, dropped")
 				t.Due = ""
 			}
 		}
 		if t.Point < 0 || t.Point > points {
-			slog.Info("digest: a point the email's points do not have, dropped", "title", t.Title, "point", t.Point)
+			slog.Info("digest: a point the email's points do not have, dropped", "point", t.Point)
 			t.Point = 0
 		}
 		if t.Title == "" || t.Summary == "" || t.Details == "" {
-			slog.Info("digest: a to-do with no title, summary or details left out", "title", t.Title)
+			slog.Info("digest: a to-do with no title, summary or details left out")
 			continue
 		}
 		if slices.Contains(titles, strings.ToLower(t.Title)) {

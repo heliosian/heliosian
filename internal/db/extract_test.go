@@ -1,8 +1,10 @@
 package db
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -144,6 +146,7 @@ func TestMailIsReadIntoATree(t *testing.T) {
 }
 
 func TestHTMLImagesAreFetched(t *testing.T) {
+	allowLocalFetch(t)
 	logo, pixel, inline, later := pngOf(t, 3), pngOf(t, 1), pngOf(t, 2), pngOf(t, 4)
 	asked := map[string]int{}
 	mu := sync.Mutex{}
@@ -271,6 +274,25 @@ func TestHTMLImagesAreFetched(t *testing.T) {
 	}
 	if asked["/broken.png"] != fetchTries {
 		t.Fatalf("a failing image was asked for %d times, want %d", asked["/broken.png"], fetchTries)
+	}
+}
+
+func TestInvalidImageURLDoesNotReachLogs(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	_, err := htmlImages([]byte(`<img src="https://user:password@calendar.example.org/open/feed/%zz?key=private-token">`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(logs.String(), "extract: skipped image") {
+		t.Fatalf("expected invalid image log, got %q", logs.String())
+	}
+	for _, secret := range []string{"user", "password", "private-token", "key=private-token"} {
+		if strings.Contains(logs.String(), secret) {
+			t.Fatalf("image validation leaked %q in %q", secret, logs.String())
+		}
 	}
 }
 

@@ -9,11 +9,13 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"heliosian/internal/access"
@@ -35,7 +37,69 @@ const (
 	googleSignIn  = "accounts.google.com"
 )
 
-var fetchClient = &http.Client{}
+var fetchClient = &http.Client{Transport: publicFetchTransport{}}
+
+var errPrivateFetch = errors.New("private network address")
+var errInvalidRedirect = errors.New("invalid redirect address")
+
+type publicFetchTransport struct{}
+
+func (publicFetchTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableKeepAlives = true
+	direct := true
+	if ip, err := netip.ParseAddr(req.URL.Hostname()); err == nil && !publicFetchAddress(ip) {
+		return nil, errPrivateFetch
+	}
+	if transport.Proxy != nil {
+		proxy, err := transport.Proxy(req)
+		if err != nil {
+			return nil, err
+		}
+		if proxy != nil {
+			ip, err := netip.ParseAddr(proxy.Hostname())
+			if err != nil || !ip.IsLoopback() {
+				return nil, errPrivateFetch
+			}
+			direct = false
+		}
+	}
+	if direct {
+		transport.Proxy = nil
+		transport.DialContext = (&net.Dialer{ControlContext: publicFetchControl}).DialContext
+	}
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+	switch resp.StatusCode {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		if location := resp.Header.Get("Location"); location != "" {
+			if _, err := req.URL.Parse(location); err != nil {
+				resp.Body.Close()
+				return nil, errInvalidRedirect
+			}
+		}
+	}
+	return resp, nil
+}
+
+func publicFetchControl(_ context.Context, _ string, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !publicFetchAddress(ip) {
+		return errPrivateFetch
+	}
+	return nil
+}
+
+func publicFetchAddress(address netip.Addr) bool {
+	ip := address.Unmap()
+	return ip.IsGlobalUnicast() && !ip.IsPrivate() && !netip.MustParsePrefix("100.64.0.0/10").Contains(ip) && !netip.MustParsePrefix("198.18.0.0/15").Contains(ip)
+}
 
 var keptPages = []string{"application/pdf", "text/html"}
 
@@ -190,11 +254,14 @@ func fetchFrom(ctx context.Context, doc store.Row, address string, follow bool) 
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
 	resp, err := fetchClient.Do(req)
+	if errors.Is(err, errPrivateFetch) {
+		return fetched{stop: "refused", why: errPrivateFetch.Error()}, nil
+	}
 	if Unreachable(err) {
-		return fetched{stop: "gone", why: err.Error()}, nil
+		return fetched{stop: "gone", why: fetchError(err).Error()}, nil
 	}
 	if err != nil {
-		return fetched{}, err
+		return fetched{}, fetchError(err)
 	}
 	defer resp.Body.Close()
 	code := resp.StatusCode
@@ -227,6 +294,14 @@ func fetchFrom(ctx context.Context, doc store.Row, address string, follow bool) 
 		return fetched{stop: "refused", why: err.Error()}, nil
 	}
 	return fetched{body: body, mime: mimeType}, nil
+}
+
+func fetchError(err error) error {
+	var u *url.Error
+	if errors.As(err, &u) {
+		return u.Err
+	}
+	return err
 }
 
 func keptBody(relation string, body []byte) (string, error) {
