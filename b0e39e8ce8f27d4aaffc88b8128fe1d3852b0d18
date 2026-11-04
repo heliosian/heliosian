@@ -1,0 +1,25 @@
+# Reuse thumbnails for identical document images
+
+byre task tskS3cusfA0Byl, "Reuse image thumbnails", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskS3cusfA0Byl in byre (read_task_events with task_id tskS3cusfA0Byl).
+
+## Summary
+
+Audited the full codebase at 10a673b for user-visible latency, repeated work and growth. Inspected request handling, browser loading, queries, store transactions, search and document workers. Selected one measured, small fix.
+
+Before: each document over identical image content downloaded the source and encoded its thumbnail again.
+Now: identical image documents reuse a completed thumbnail through existing CONTENT references and the shared thumbnail transaction, preserving the resulting image.
+
+Production read-only data showed 21,265 image documents over 8,728 distinct image contents: 12,537 redundant encodes (59%) and 5.91 GB of repeated source reads when processing that corpus. All completed thumbnails for shared image content matched. A real 1.35 MB PNG repeated 68 times took a median 46.7 ms per local encode; reuse avoids 67 encodes (~3.13 seconds of encoding work) and 90.25 MB of reads for that set. Existing thumbnails were already complete; savings apply to new duplicates.
+
+The change costs 17 net production lines and 66 test lines. Regression coverage proves reuse without reading the source and preserves separate picture resolution for identical HTML at different page addresses. Full database tests passed under timeout 30, focused thumbnail/PDF tests and go vet ./... passed, and review found no code defect. Its only finding concerned byre's intermediate snapshot title; the final merge title describes the change.
+
+Larger query-engine/model-rebuild refactors were deliberately excluded because local scale benchmarks (~16 ms sidebar batch, ~72 ms document edit) did not justify their scope. No production writes or deployment were performed. The requested git merge --no-ff --no-commit main reported Already up to date; no conflicts or additional edits were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-opus-5-5: done
+
+When the thumbnailer reaches an image document, it now looks for another DOCUMENT row with the same `content` that already has a finished thumbnail (`thumbnail` and `thumbnailed` both set). If it finds one, it points this document at that thumbnail's CONTENT row and doesn't download, decode or re-encode the source. The transaction that writes a thumbnail moves out of `saveThumbnail` into a new `setThumbnail`, which takes a `madeBytes` and is used by both paths. The shortcut covers images only: an HTML page's og:image resolves against the document's own `url`, and PDF page children share content but differ by page, so both still go through the full draw. One test deletes the source blob after the first thumbnail, which proves the second document reuses it without reading the source. Another test shows that two documents with identical HTML at different URLs each fetch their own picture.
+
+- Commit 34e48019's title ("Before: Identical image documents downloaded and encoded thumbnails repeatedly.") describes the old behavior instead of the change
