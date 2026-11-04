@@ -2,9 +2,13 @@ package db
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"slices"
 	"testing"
 
 	"heliosian/internal/access"
+	"heliosian/internal/store"
 )
 
 const birthdayAdmin = "per00000020001"
@@ -123,6 +127,47 @@ func TestBirthdaysAdminsKeepTheTeam(t *testing.T) {
 	}
 	if _, err := write(birthdayAdmin, Edit{Delete: made[0]}); err != nil {
 		t.Errorf("a Birthdays admin can't take a person off the comms team: %v", err)
+	}
+}
+
+func TestOnlySuperAdminsKeepTheBirthdaysAdmins(t *testing.T) {
+	s, write := birthdaySample(t)
+	admins := "grp00000000700"
+	rules := s.Model().Table("RULE").Referencing("group", "grp00000000703")
+	if !slices.ContainsFunc(rules, func(r store.Row) bool { return r["target"] == admins }) {
+		t.Fatal("the sample's Birthdays Viewers rules no longer name the Birthdays Admins group")
+	}
+	apply(t, s, []Edit{{Insert: "RULE", Row: map[string]any{"group": "grp00000000703", "order": "z", "target": "grp00000000003"}}})
+	forbidden := func(err error, verb string) bool {
+		var refusal *access.Refusal
+		return errors.As(err, &refusal) && refusal.Status == http.StatusForbidden && refusal.Message == "you may not "+verb+" MEMBER"
+	}
+	join := func(group, person string) Edit {
+		return Edit{Insert: "MEMBER", Row: map[string]any{"group": group, "person": person, "member": "yes", "added_by": birthdayAdmin}}
+	}
+	if _, err := write(birthdayAdmin, join(admins, "per00000020006")); !forbidden(err, "add to") {
+		t.Errorf("a Birthdays admin making someone a Birthdays admin got %v, want a refusal", err)
+	}
+	if _, err := write(birthdayAdmin, join("grp00000000003", parent)); !forbidden(err, "add to") {
+		t.Errorf("a Birthdays admin making a parent staff through a rule naming the role group got %v, want a refusal", err)
+	}
+	if _, err := write(birthdayAdmin, Edit{Delete: "mem00000020011"}); !forbidden(err, "remove from") {
+		t.Errorf("a Birthdays admin taking someone out of staff got %v, want a refusal", err)
+	}
+	mine, ok := s.Model().Table("MEMBER").Find(admins, birthdayAdmin)
+	if !ok {
+		t.Fatal("the Birthdays admin's own membership is missing")
+	}
+	if _, err := write(birthdayAdmin, Edit{Delete: mine["id"]}); !forbidden(err, "remove from") {
+		t.Errorf("a Birthdays admin taking a Birthdays admin out got %v, want a refusal", err)
+	}
+	super := s.Model().PersonOf(superAdmin)
+	made, err := write(super, Edit{Insert: "MEMBER", Row: map[string]any{"group": admins, "person": "per00000020006", "member": "yes"}})
+	if err != nil {
+		t.Fatalf("a super admin can't make someone a Birthdays admin: %v", err)
+	}
+	if _, err := write(super, Edit{Delete: made[0]}); err != nil {
+		t.Errorf("a super admin can't take a Birthdays admin out: %v", err)
 	}
 }
 

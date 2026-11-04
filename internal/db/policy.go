@@ -747,13 +747,13 @@ const PolicySource = `
 (set SETTING.value (and (admin_of "birthday") (= @old.app "birthday")))
 ; a Birthdays admin adds a Staff Birthdays setting
 (insert SETTING (and (admin_of "birthday") (= @new.app "birthday")))
-; a Birthdays admin adds someone to a group whose members the Birthdays app is open to
+; a Birthdays admin adds someone to a group whose members the Birthdays app is open to, but never an admins group, whose managers alone change it, or a role group the import keeps
 (insert MEMBER
-  (and (admin_of "birthday") (= @new.member "yes")
+  (and (admin_of "birthday") (= @new.member "yes") (!= @new.group.kind "admins") (not (role_group @new.group))
        (in @new.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
-; a Birthdays admin takes someone out of a group whose members the Birthdays app is open to
+; a Birthdays admin takes someone out of a group whose members the Birthdays app is open to, but never an admins group or a role group
 (delete MEMBER
-  (and (admin_of "birthday")
+  (and (admin_of "birthday") (!= @old.group.kind "admins") (not (role_group @old.group))
        (in @old.group (select RULE.target (in group (select APP.visible_to (= key "birthday")))))))
 ; apps open to a group the viewer is in
 (read APP (exists EFFECTIVE_MEMBER (= group @row.visible_to) (= person @viewer)))
