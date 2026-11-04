@@ -1,0 +1,22 @@
+# Fix security issues found in audit of 7536aa6
+
+byre task tsktiQcXdQsGfE, "Security audit 7536aa6", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsktiQcXdQsGfE in byre (read_task_events with task_id tsktiQcXdQsGfE).
+
+## Summary
+
+Security audit of main at 7536aa6 (workflow Audit, stage Security Audit). It set out to read the trust model from the docs and prior audit commits, then inspect every real boundary: sign-in and sessions, bearer tokens and the MCP OAuth server, Spoof Mode, the query and write policies, blob reads, uploads, the `/open/`, `/ext/` and `/hooks/` routes, Ask's tools, mail in and out, outbound fetches and sheet writes, and fix at the root what fell short.
+
+Built: one choke-point fix. `canonical` in `internal/app/server.go` answers 404 to any request whose path is not already clean (a `.` or `..` segment, a doubled slash; a trailing slash is kept) before anything reads it. Before, `GET /open/../app.js` (also `%2e%2e` and `/brand/../`) matched `auth.Public`'s `/open/` prefix, passed the sign-in gate signed out, and the file tree then served `web/who/app.js`, a signed-in-only file, after `path.Clean`. Only public-repo files were reachable, so no community data leaked, but every prefix check (`auth.Public`, `auth.Bearer`, `withAPI`, the cache headers, the `Moved` redirects) was reading an uncanonical path. One handler at the top of the chain was chosen over a clean inside each check, which would have been a check per call site. Browsers normalize such paths before sending, so pages are unaffected. Regression test `TestAnUncleanPathIsRefusedBeforeAnythingReadsIt` fails without the guard and passes with it; one sentence added to `docs/dev.md`, Hosts and files. The dev server shares the same `Server` chain.
+
+Everything else inspected held: Google credential validation and session checks, the MCP OAuth flow (PKCE, redirect binding, sign-out cut-off), spoofing bound to super admins, policy-checked reads and writes with content attestation on uploads, hook signature checks, mail header and ICS text escaping, link-preview escaping, browser sinks using textContent, and sheet writes with RAW input (no formula injection).
+
+Noticed and deliberately left: `/api/do/thumbnail` stores bytes in the bucket before the policy refuses a non-admin (the sweeper reclaims them; storage cost only); the fetcher and thumbnailer fetch any address a vouched school email links to with no private-address rule (Cloud Run has no internal network and the metadata server needs its header); an ICS `ORGANIZER;CN=` parameter is unquoted, so a host name with `:` or `"` breaks the line (a bug, not a leak); the session cookie, spoof cookie and Loop unsubscribe tokens share the raw session key with distinct payload shapes (no cross-use found); wiki share cards showing a page's title, first sentence and outline publicly are documented as deliberate. No GitHub issues were filed, per docs/audits (only when Ian asks).
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Adds a server-wide check that returns 404 for paths containing dot segments or repeated slashes before authentication, API routing, or static file lookup. Includes regression coverage for encoded traversal paths and normal requests, and documents the path rule. Review was by code inspection; no builds or tests were run.
+
+No significant findings.
