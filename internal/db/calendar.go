@@ -313,8 +313,8 @@ func (v *Vocabulary) Classify(ctx context.Context, client anthropic.Client, item
 	for start := 0; start < len(items); start += classifyBatch {
 		batches = append(batches, items[start:min(start+classifyBatch, len(items))])
 	}
-	results := parallel.Run(len(batches), len(batches), func(i int) (map[string]Classification, error) {
-		return v.classifyBatch(ctx, client, batches[i])
+	results := parallel.Run(batches, len(batches), func(batch []CalendarItem) (map[string]Classification, error) {
+		return v.classifyBatch(ctx, client, batch)
 	})
 	for i, result := range results {
 		if result.Err != nil {
@@ -473,8 +473,8 @@ func (v *Vocabulary) MatchPDF(ctx context.Context, client anthropic.Client, rows
 	for start := 0; start < len(asks); start += matchBatch {
 		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
 	}
-	results := parallel.Run(len(batches), len(batches), func(i int) (map[string][]string, error) {
-		return v.matchBatch(ctx, client, batches[i])
+	results := parallel.Run(batches, len(batches), func(batch []matchAsk) (map[string][]string, error) {
+		return v.matchBatch(ctx, client, batch)
 	})
 	out := map[string][]string{}
 	for i, result := range results {
@@ -553,8 +553,8 @@ func (v *Vocabulary) MatchGoogle(ctx context.Context, client anthropic.Client, r
 	for start := 0; start < len(asks); start += matchBatch {
 		batches = append(batches, asks[start:min(start+matchBatch, len(asks))])
 	}
-	results := parallel.Run(len(batches), len(batches), func(i int) (map[string]string, error) {
-		return v.matchGoogleBatch(ctx, client, batches[i])
+	results := parallel.Run(batches, len(batches), func(batch []googleAsk) (map[string]string, error) {
+		return v.matchGoogleBatch(ctx, client, batch)
 	})
 	for i, result := range results {
 		if result.Err != nil {

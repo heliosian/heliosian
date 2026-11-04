@@ -125,17 +125,16 @@ func (c *Claude) Respond(ctx context.Context, req Request, emit Emitter) (Reply,
 			}
 			calls = append(calls, use)
 		}
-		answers := parallel.Run(len(calls), len(calls), func(i int) (string, error) {
-			use := calls[i]
+		answers := parallel.Run(calls, len(calls), func(use anthropic.BetaToolUseBlock) (string, error) {
 			return req.Run(ctx, use.Name, json.RawMessage(use.JSON.Input.Raw()))
 		})
 		results := []anthropic.BetaContentBlockParamUnion{}
-		for i, answer := range answers {
+		for _, answer := range answers {
 			if answer.Err != nil {
-				results = append(results, anthropic.NewBetaToolResultBlock(calls[i].ID, answer.Err.Error(), true))
+				results = append(results, anthropic.NewBetaToolResultBlock(answer.Input.ID, answer.Err.Error(), true))
 				continue
 			}
-			results = append(results, anthropic.NewBetaToolResultBlock(calls[i].ID, answer.Value, false))
+			results = append(results, anthropic.NewBetaToolResultBlock(answer.Input.ID, answer.Value, false))
 		}
 		reply.Messages = append(reply.Messages, anthropic.NewBetaUserMessage(results...))
 	}

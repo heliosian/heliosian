@@ -28,11 +28,6 @@ type geocoder struct {
 	in     *inbox
 }
 
-type geocodeLookup struct {
-	address string
-	point   geocode.Point
-}
-
 func StartGeocoder(s *Store, client *geocode.Client) {
 	g := &geocoder{s: s, client: client, failed: map[string]bool{}, in: s.Model().services.inbox(geocodeInbox)}
 	go g.run()
@@ -74,19 +69,16 @@ func (g *geocoder) run() {
 			continue
 		}
 		start := time.Now()
-		lookups := parallel.Run(len(addresses), geocodeLookups, func(i int) (geocodeLookup, error) {
-			point, err := g.client.Lookup(addresses[i])
-			return geocodeLookup{address: addresses[i], point: point}, err
-		})
+		lookups := parallel.Run(addresses, geocodeLookups, g.client.Lookup)
 		edits := []Edit{}
 		for _, result := range lookups {
-			lookup := result.Value
+			address, point := result.Input, result.Value
 			if result.Err != nil {
-				slog.Error("geocode: look up, left until a restart", "address", lookup.address, "error", result.Err)
-				g.failed[lookup.address] = true
+				slog.Error("geocode: look up, left until a restart", "address", address, "error", result.Err)
+				g.failed[address] = true
 				continue
 			}
-			edits = append(edits, Edit{Insert: "GEOCODE", Row: map[string]any{"address": lookup.address, "lat": strconv.FormatFloat(lookup.point.Lat, 'f', -1, 64), "lng": strconv.FormatFloat(lookup.point.Lng, 'f', -1, 64)}})
+			edits = append(edits, Edit{Insert: "GEOCODE", Row: map[string]any{"address": address, "lat": strconv.FormatFloat(point.Lat, 'f', -1, 64), "lng": strconv.FormatFloat(point.Lng, 'f', -1, 64)}})
 		}
 		placed := len(edits)
 		for _, id := range gone {

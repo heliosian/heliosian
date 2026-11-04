@@ -57,16 +57,17 @@ func main() {
 		objects = append(objects, object)
 	}
 	slices.Sort(objects)
-	held := parallel.Run(len(objects), existsParallels, func(i int) (bool, error) {
-		return bucket.Exists(context.Background(), objects[i])
+	held := parallel.Run(objects, existsParallels, func(object string) (bool, error) {
+		return bucket.Exists(context.Background(), object)
 	})
 	missing, chars := 0, 0
 	byTable := map[string]int{}
-	for i, object := range objects {
-		if held[i].Err != nil {
-			log.Fatalf("look for %s: %v", object, held[i].Err)
+	for _, result := range held {
+		object := result.Input
+		if result.Err != nil {
+			log.Fatalf("look for %s: %v", object, result.Err)
 		}
-		if held[i].Value {
+		if result.Value {
 			continue
 		}
 		missing++

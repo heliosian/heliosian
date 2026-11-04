@@ -182,7 +182,7 @@ func extractMonth(ctx context.Context, client anthropic.Client, crop anthropic.C
 		}
 		return fills, nil
 	}
-	results := parallel.Run(2, 2, func(int) (map[int]string, error) { return read() })
+	results := parallel.Run([]struct{}{{}, {}}, 2, func(struct{}) (map[int]string, error) { return read() })
 	readings := []map[int]string{}
 	for _, result := range results {
 		if result.Err != nil {
@@ -294,8 +294,16 @@ func extractPDF(ctx context.Context, client anthropic.Client, pdf []byte, v *db.
 		return out, err
 	}
 	startYear, _ := strconv.Atoi(schoolYearForm.FindStringSubmatch(out.Year)[1])
-	months := parallel.Run(12, 12, func(i int) ([]db.ShadedDay, error) {
-		return extractMonth(ctx, client, crops[i], time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, db.School), legend)
+	type monthInput struct {
+		crop anthropic.ContentBlockParamUnion
+		date time.Time
+	}
+	inputs := []monthInput{}
+	for i, crop := range crops {
+		inputs = append(inputs, monthInput{crop: crop, date: time.Date(startYear, time.July+time.Month(i), 1, 0, 0, 0, 0, db.School)})
+	}
+	months := parallel.Run(inputs, len(inputs), func(month monthInput) ([]db.ShadedDay, error) {
+		return extractMonth(ctx, client, month.crop, month.date, legend)
 	})
 	for _, month := range months {
 		if month.Err != nil {

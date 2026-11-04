@@ -497,15 +497,15 @@ func SearchTexts(ctx context.Context, m *Model, bucket *blob.Bucket, held map[st
 		out[id] = ""
 		missing = append(missing, c)
 	}
-	texts := parallel.Run(len(missing), searchLoaders, func(i int) (string, error) {
-		raw, _, err := bucket.Get(ctx, missing[i]["blob"])
+	texts := parallel.Run(missing, searchLoaders, func(c store.Row) (string, error) {
+		raw, _, err := bucket.Get(ctx, c["blob"])
 		return string(raw), err
 	})
-	for i, c := range missing {
-		if texts[i].Err != nil {
-			return nil, fmt.Errorf("read %s: %w", c["blob"], texts[i].Err)
+	for _, text := range texts {
+		if text.Err != nil {
+			return nil, fmt.Errorf("read %s: %w", text.Input["blob"], text.Err)
 		}
-		out[c["id"]] = texts[i].Value
+		out[text.Input["id"]] = text.Value
 	}
 	return out, nil
 }
@@ -681,15 +681,16 @@ func (x *Searcher) followChanges() {
 		}
 	}
 	toLoad := slices.Sorted(maps.Keys(unknown))
-	loaded := parallel.Run(len(toLoad), searchLoaders, func(i int) (*SearchEntry, error) { return x.load(toLoad[i]) })
+	loaded := parallel.Run(toLoad, searchLoaders, x.load)
 	x.mu.Lock()
-	for i, hash := range toLoad {
-		if loaded[i].Err != nil {
-			slog.Error("search: load", "object", hash, "error", loaded[i].Err)
+	for _, result := range loaded {
+		hash := result.Input
+		if result.Err != nil {
+			slog.Error("search: load", "object", hash, "error", result.Err)
 			continue
 		}
-		if loaded[i].Value != nil {
-			x.entries[hash] = loaded[i].Value
+		if result.Value != nil {
+			x.entries[hash] = result.Value
 			x.version++
 			continue
 		}

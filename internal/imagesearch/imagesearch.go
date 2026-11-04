@@ -142,8 +142,8 @@ func (s Search) search(r *http.Request, _ serve.None) ([]Hit, error) {
 }
 
 func gather(ctx context.Context, q string, searches []func(context.Context, string) ([]result, error)) ([]result, error) {
-	lists := parallel.Run(len(searches), len(searches), func(i int) ([]result, error) {
-		return searches[i](ctx, q)
+	lists := parallel.Run(searches, len(searches), func(search func(context.Context, string) ([]result, error)) ([]result, error) {
+		return search(ctx, q)
 	})
 	answered := [][]result{}
 	errs := []error{}

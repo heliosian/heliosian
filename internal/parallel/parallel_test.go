@@ -14,11 +14,13 @@ func TestRunKeepsResultsAndFailuresInOrderWithinTheWorkerLimit(t *testing.T) {
 			width := min(n, workers)
 			entered := make(chan struct{}, width)
 			release := make(chan struct{})
-			done := make(chan []Result[int])
+			done := make(chan []Result[string, int])
 			failed := errors.New("failed task")
 			var active, peak atomic.Int32
 			go func() {
-				done <- Run(n, workers, func(i int) (int, error) {
+				inputs := []string{"0", "1", "2", "3", "4", "5"}
+				done <- Run(inputs, workers, func(input string) (int, error) {
+					i, _ := strconv.Atoi(input)
 					current := active.Add(1)
 					defer active.Add(-1)
 					for previous := peak.Load(); current > previous; previous = peak.Load() {
@@ -45,7 +47,7 @@ func TestRunKeepsResultsAndFailuresInOrderWithinTheWorkerLimit(t *testing.T) {
 				t.Fatalf("got %d results with %d concurrent tasks, want %d and %d", len(results), peak.Load(), n, width)
 			}
 			for i, result := range results {
-				if result.Value != i || errors.Is(result.Err, failed) != (i%2 == 1) {
+				if result.Input != strconv.Itoa(i) || result.Value != i || errors.Is(result.Err, failed) != (i%2 == 1) {
 					t.Fatalf("task %d: %+v", i, result)
 				}
 			}
@@ -54,7 +56,7 @@ func TestRunKeepsResultsAndFailuresInOrderWithinTheWorkerLimit(t *testing.T) {
 }
 
 func TestRunWithNoTasks(t *testing.T) {
-	results := Run(0, 0, func(int) (int, error) {
+	results := Run([]int{}, 0, func(int) (int, error) {
 		t.Error("ran a task")
 		return 0, nil
 	})
