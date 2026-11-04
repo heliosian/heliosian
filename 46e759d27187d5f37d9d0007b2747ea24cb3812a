@@ -1,0 +1,25 @@
+# Fix security issues found in audit of 4877234
+
+byre task tski3uyUd3jkQ9, "Security audit 4877234", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tski3uyUd3jkQ9 in byre (read_task_events with task_id tski3uyUd3jkQ9).
+
+## Summary
+
+Security audit of main at 4877234 (docs/audits/security.md). The whole server was read: sign-in and sessions, Spoof Mode, the public prefixes, every route, the policies, the write layer, uploads, the mail hooks and outgoing mail, the fetcher's bounds, Helios Ask and MCP, the browser's HTML sinks and markdown renderer. Two things fell short and were fixed at the API's one entry point; the review found nothing, and main was merged in cleanly before landing.
+
+- `caller` in `internal/db/http.go` now refuses `Helios-Mode: import` with a 403 unless the request's own sign-in (token or session, not the spoofed person) is a super admin's, as it already refuses `Helios-Spoof`. Before, any member could send the header; it revealed nothing, but it silenced the membership mail and the invitation notices their own writes send (`placeChanges`, `Invitations.react`), so a parent could join or RSVP unheard. Refusing rather than ignoring was chosen so the mode's side effects stay unreachable through any future path that reads it. Who hits the refusal: only a non-super-admin running a laptop tool with `--import`. Test: `TestImportModeIsASuperAdmins`; `docs/datamodel.md` updated.
+- `POST /api/do/thumbnail` in `internal/db/do.go` authorizes the `DOCUMENT` thumbnail change before reading the picture, as the flyer, pronunciation and PDF page uploads do. Before, it decoded the image and wrote the JPEG into the media bucket, then the policies refused the caller. A `whole(env)` gate like the PDF page upload's was rejected because it would narrow a super admin's existing ability outside import mode. Test extended: `TestAPDFsThumbnailIsPostedFromALaptop` checks the bucket holds nothing after the parent's refusal.
+
+Left alone, by design: Loop keeps every inbound post before deciding whether to forward it (managers see dropped posts in History); share cards and link previews are public by ID (settled in AGENTS.md and the wiki spec); `/api/do/person-at` answers a person ID for a guest's or a deactivated person's address to any member (the Celebrate and Loop pages need it; the row stays policy-gated); request logs carry `/open/` and `/ext/` token URLs, as Cloud Run's own request log does.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: failed
+
+the reviewer's turn ended with an error (failed): Selected model is at capacity. Please try a different model.
+
+### Snapshot #2, reviewer "Review", codex gpt-6.1-sol: done
+
+Restricts import mode to requests authenticated as a super admin, using the original identity before spoofing for both sessions and bearer tokens. Adds authorization before thumbnail decoding and blob storage, with regression tests for rejected import requests and unauthorized thumbnail uploads, and updates the API documentation.
+
+No significant findings.
