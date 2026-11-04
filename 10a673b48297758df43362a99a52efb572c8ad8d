@@ -1,0 +1,24 @@
+# Remove sender attribution and empty host lines from invitations
+
+byre task tskfuvVTqoTkmc, "Fix invitation wording", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskfuvVTqoTkmc in byre (read_task_events with task_id tskfuvVTqoTkmc).
+
+## Summary
+
+Fixed When invitation wording after reproducing the hostless output in both email formats.
+
+Before: Hostless invitation and detail-update emails included a bare “Hosted by” line.
+Now: Text and HTML include the host line only when hosts exist, preserving names for hosted events.
+
+Before: Invitation and detail-update bodies named the person who sent them.
+Now: Per Ian’s explicit request, invitations say “You're invited to” and detail updates say “The details have been updated for”, without sender attribution, including when a member invites a guest.
+
+Focused regression tests cover hosted and hostless invitations and updates in both formats; queued-delivery tests pass. A sample rendered email was previewed. Review’s scope finding was dismissed based on Ian’s explicit instruction. Main was already up to date when the final merge was requested. Other message types, mail headers, and calendar organizer behavior were outside scope.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", claude claude-opus-5-5: done
+
+For a hostless event, invitation and update emails now leave out the "Hosted by" line in both the text and HTML bodies. Before, they printed a bare "Hosted by". The change also rewrites the opening line of both bodies. It used to name a person ("<sender> sent <name> an invitation for", "<sender> has updated the details of"). It now says "You're invited to" or "The details have been updated for", and the unused `from` parameter is gone from `invitation`. A new table test covers invitation and update, with and without hosts. It passes.
+
+- The rewrite of the opening line goes beyond the brief and drops who invited a guest when a member, not a host, sends the invitation
