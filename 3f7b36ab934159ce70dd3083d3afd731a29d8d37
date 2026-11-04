@@ -1,0 +1,25 @@
+# Read only enough document text to fill the requested page
+
+byre task tskFLVYK4T4zLz, "Document reading performance", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskFLVYK4T4zLz in byre (read_task_events with task_id tskFLVYK4T4zLz).
+
+## Summary
+
+Performance audit of main at 7ce5c40 inspected shared serving, query execution and memberships, storage/rebuilds, document workers, search, browser loading, and Ask/MCP readers. Selected one small fix in internal/tools/data.go.
+
+Before: paginated document reading downloaded every Markdown extract before returning the requested 30 KB page.
+Now: it stops downloading once the requested page is covered, preserving the complete outline, permissions, replacement notices and Unicode continuation access.
+
+Measured through the real bucket client against intercepted storage, using the extract sizes of a production 76-page PDF: first-page downloads 4 → 1 and bytes 233,740 → 59,463 (75% fewer reads, 74.6% fewer bytes). Production diff: 29 additions / 8 deletions; regression: 119 lines. No cache, worker or schema changes. Regression checks exact complete text reconstruction, Unicode offsets, first-page outline, invalid offsets and zero downloads for an outline-only page.
+
+Full tools and Ask tests and repository-wide go vet passed; review returned no findings. Main merged without conflicts or manual resolutions, followed by passing tools tests and the Ask Unicode document integration test. The merge was left uncommitted for byre to conclude.
+
+Broader model-rebuild and search redesigns were deliberately excluded: existing scale probes showed sidebar ~17 ms and document rename ~79 ms, without a demonstrated small high-value fix there. Later continuations still read earlier text to interpret Unicode offsets. No production writes or deployment; production latency was not measured.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+helios_read_document still renders the full outline, then returns one UTF-8 page of at most documentText bytes. It used to download every markdown extract before slicing that page. It now downloads an extract only when the characters still to show on this page have not already filled that byte budget, and the new test checks the first page, pagination through the whole text, and a page that the outline alone fills.
+
+No significant findings.
