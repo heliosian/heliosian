@@ -1,0 +1,25 @@
+# Prevent Home widgets from granting unrelated group permissions
+
+byre task tsk4qmlAZdCne2, "Home section permissions", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tsk4qmlAZdCne2 in byre (read_task_events with task_id tsk4qmlAZdCne2).
+
+## Summary
+
+Security audit of adee718 fixed a high-severity Home permission bypass, reproduced through the ordinary batch API by registering a calendar category and the caller’s family as widgets, moving Fall Picnic beneath that family, and joining its hosts.
+
+Before: arbitrary widget references conferred editing and reparenting rights over unrelated groups, enabling event and host takeover.
+Now: shared Home-group predicates limit section, link, audience, picture and cleanup permissions to dedicated unmanaged plain groups. Unauthorized batches return HTTP 403 and roll back. Home admins use dedicated front-page groups or an unrelated group’s existing managers.
+
+Regression tests reproduce the original successful takeover and verify refusal and rollback. Normal Home editing tests, the full data-model suite (28 seconds), auth/MCP/app/tool tests, repository-wide vet and diff checks passed. An initial full-suite run exceeded the required 30-second limit; the diagnostic rerun passed.
+
+The review’s Birthday-team escalation finding was rejected: documented team membership is open to every directory member. A sample-data probe verified ordinary activity self-join and the reported Home route grant the same seven birthday-year records and charity edits. No Birthday policy changes were made.
+
+Public share previews, trusted super-admin powers and short-lived OAuth code reuse were retained. No schema changes, production writes or independent live cloud ACL/IAM/vendor checks. The requested merge of main reported Already up to date; no conflicts, manual commits or substantive integration edits were needed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-sol: done
+
+The change narrows which groups Home admins can treat as front-page sections, links, and audiences. It excludes groups that manage other groups, serve as hidden lists or app admin groups, and adds security tests for borrowing unrelated groups.
+
+- Home audience grants let a Home admin join Birthdays Viewers and acquire Birthday team read and write permissions.
