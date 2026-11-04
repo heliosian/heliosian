@@ -1,0 +1,23 @@
+# Unify search vector placement
+
+byre task tskdqJIbwY9hjx, "Unify vector placement", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskdqJIbwY9hjx in byre (read_task_events with task_id tskdqJIbwY9hjx).
+
+## Summary
+
+Audited the supplied main revision for structural simplicity, using project guidance, architecture docs, prior audit findings and broad sampling of shared client, store, worker, mail, tools and query/search code. Selected one complete, behavior-preserving simplification in internal/db/searchindex.go.
+
+Before: initial training and incremental updates constructed search-vector placements separately; training paired flat chunk references and cell indices by offset across a second traversal of entries.
+Now: trainCentroids computes centroids only, and vectorIndex.update places vectors through the same entry-based loop for initial training, retraining and incremental updates. Removed duplicate placement and offset bookkeeping, preserving deterministic ordering, training thresholds and placement reuse (3 insertions, 19 deletions).
+
+Ten existing search tests passed under timeout 30, repository-wide go vet ./... and diff checks passed, and the completed review had no significant findings. The requested git merge --no-ff --no-commit main reported already up to date; no conflict resolution or additional changes were needed.
+
+Deliberately excluded schema, UI, permission, production-data and deployment changes. Worker scheduling and app-specific formatting were left alone because the inspection found no equally clear consolidation to justify expanding the patch.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Search index training and incremental updates now share one placement path. `train` used to both fit centroids and assign every chunk to a cell, in parallel with the assignment loop in `vectorIndex.update`. Training now only returns centroids. A retrain replaces the index with those centroids and an empty placement map, then the existing update loop assigns every chunk.
+
+No significant findings.
