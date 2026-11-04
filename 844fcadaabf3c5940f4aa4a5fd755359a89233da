@@ -1,0 +1,35 @@
+# Keep bearer URLs out of application logs
+
+byre task tskFtOUmxynXlu, "Bearer URL logging", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskFtOUmxynXlu in byre (read_task_events with task_id tskFtOUmxynXlu).
+
+## Summary
+
+Audited Heliosian at de983eb for reachable security problems. Found that application logs copied bearer URLs for personal calendar feeds, outside invitations, and unsubscribe links. Anyone with application-log access could reuse a logged URL for the access it grants.
+
+Before: request summaries, shared response-error logs, and CSP reports recorded full paths or URLs, including bearer tokens.
+Now: request summaries and response-error logs record matched route patterns; CSP reports record URL origins and omit script samples.
+
+API logging sits inside the workload middleware so it observes the mux's matched route after the middleware clones the request. This preserves endpoint diagnostics while preventing token paths and query values from entering application-controlled logs. Tests cover a failing feed, an encoding failure, API routing through the workload wrapper, and CSP reports. Focused tests and `go vet ./...` passed, including after merging main.
+
+The audit did not change background document fetching because no concrete privileged GET target or exfiltration path was established. Cloud Run's infrastructure-generated request logs remain outside this repository and were not verified.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-sol: done
+
+Request logs now record the matched route instead of the raw URL, keeping bearer path tokens and query values out of those records. CSP reports log URL origins and omit script samples. The change adds regression tests and updates the logging documentation.
+
+- API request logs lose their matched route because workload middleware copies the request before routing.
+
+### Snapshot #2, reviewer "Review", grok grok-4.7: done
+
+Request logs no longer store the raw URL. Each application request record now keeps the matched route pattern, so a calendar feed token or a query string is not in that line, and API logging sits inside the workload wrapper so the pattern is set before it is read. Content-Security-Policy reports log only an origin for the document, blocked address, and source, and they drop the script sample.
+
+- A failing calendar feed, invitation, or unsubscribe request still writes the bearer path into the application log.
+
+### Snapshot #3, reviewer "Review", codex gpt-6-astra: done
+
+Replaces raw request URLs and error paths in application logs with matched route patterns, keeping bearer tokens and query values out of those records. CSP reports retain URL origins while dropping paths, queries, and script samples. Adjusts middleware ordering to preserve API route logging and adds regression tests and documentation. Reviewed by reading code; no builds or tests were run as requested.
+
+No significant findings.
