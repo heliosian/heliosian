@@ -1,0 +1,24 @@
+# Align effective-membership descriptions with the code
+
+byre task tskIZfjXs9Wtu2, "Consistency audit", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskIZfjXs9Wtu2 in byre (read_task_events with task_id tskIZfjXs9Wtu2).
+
+## Summary
+
+Consistency audit of main at de983eb. The only trip-up that cleared the bar was how effective membership is described.
+
+The code counts an activity's invited=yes, keeps a volunteer when invited=excluded, and a rule's under walk skips hidden groups (servingColumns in internal/db/effective.go). MEMBER.member still said only yes makes an effective member. EFFECTIVE_MEMBER said it drops whoever is excluded. RULE.under and docs/datamodel.md left hidden groups out of that skip list, and the data model omitted invited from the reasons. Loop's member tooltip docs omitted Invited, which reasonWords shows.
+
+Those sentences now match the code, in internal/db/schema.go, docs/datamodel.md, docs/loop/loop.md and docs/dev.md. timeout 30 go test ./internal/db -count=1 -run 'TestSchemaHangsTogether|TestTheSpecCarriesEveryDescription|TestTheSpecDescribesTheQueryAPI' passed. Review of that wording found nothing.
+
+Left alone: Team screen copy that says organizers, the three Helios Who open-link phrases, separate date formatters, and accurate docs that could be shorter.
+
+Main (Keep parallel inputs and results together) merged in with no conflicts. The merge was left uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", antigravity gemini-3.8-flash: done
+
+This change updates documentation and schema descriptions in `docs/datamodel.md`, `docs/dev.md`, `docs/loop/loop.md`, and `internal/db/schema.go` to match the effective membership and rule resolution logic. It documents `invited` as a recognized reason in `EFFECTIVE_MEMBER` and `reasonWords`, clarifies the exclusion conditions for activity invitations versus direct members, includes hidden groups among the serving groups omitted by `under` rules, and updates Loop's member tooltip documentation.
+
+No significant findings.
