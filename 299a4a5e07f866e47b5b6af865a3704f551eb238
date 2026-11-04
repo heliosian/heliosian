@@ -1,0 +1,25 @@
+# Keep staged content reuse inside each write batch
+
+byre task tskxAOq4gfEH3z, "Own staged content", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskxAOq4gfEH3z in byre (read_task_events with task_id tskxAOq4gfEH3z).
+
+## Summary
+
+Simplicity audit of main at 46e759d, surveying shared store transactions, worker delivery, generated tables, HTTP and client routing, app wiring, page handlers, and previous cleanup findings. Selected one structural simplification.
+
+Before: `stageContent` in `internal/db/extract.go` required callers to pair a pending write batch with a separately managed content reuse map keyed by a concatenated hash and MIME type.
+Now: `pendingWrites.content` in `internal/db/writes.go` owns reuse tracking keyed directly by the hash/type pair. All 13 call sites use the batch method, including the existing sweep test; wiki, extraction, and photo generation no longer manage companion maps.
+
+This makes the batch own its staging state and prevents callers accidentally supplying a fresh or unrelated reuse map. Visible behavior, content uniqueness, sweep protection, and schema remain unchanged. No migration, production write, compatibility path, or test seam was needed.
+
+Fourteen focused existing tests passed in two timeout-30 runs, covering wiki cards, extraction, photo processing, concurrent reuse, sweep races, PDF page uploads, fetched content reuse, stock images, and thumbnails. Repository-wide go vet, gofmt, and git diff --check passed. Review finished with no findings. The requested merge of main reported already up to date; the worktree was clean, with no conflicts or further edits.
+
+Left generated-cache readiness cleanup alone as lower value and confined to its existing builder; avoided broad rewrites.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Content rows for one write batch are now reused by the batch itself. `stageContent` used to take a separate map, keyed by hash and MIME type, that each caller had to keep next to a `pendingWrites` so the same bytes became one `CONTENT` insert. That map is now `pendingWrites.contents`, filled by `pendingWrites.content`. Every caller, including the sweep race in `sweep_test.go`, goes through that method. Lookup, the error when a row was swept before its bytes were stored again, and the server-side insert are the same.
+
+No significant findings.
