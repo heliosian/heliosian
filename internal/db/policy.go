@@ -1428,15 +1428,16 @@ func init() {
 }
 
 func compilePolicies(src string) (*policySet, map[string]*define, error) {
-	forms, notes, err := readForms(src)
+	forms, err := readForms(src)
 	if err != nil {
 		return nil, nil, err
 	}
 	cx := &compiler{policy: true, defines: map[string]*define{}}
 	out := &policySet{read: map[string][]grant{}, open: map[string]bool{}, insert: map[string][]grant{}, set: map[string][]grant{}, delete: map[string][]grant{}, show: map[string]cond{}, reveal: []grant{}, clauses: []Clause{}}
-	for i, form := range forms {
+	for _, parsed := range forms {
+		form := parsed.expression
 		head := form.head()
-		described := Clause{Section: notes[i].section, Comment: notes[i].comment, Kind: head, Form: form.render(0)}
+		described := Clause{Section: parsed.section, Comment: parsed.comment, Kind: head, Form: form.render(0)}
 		if head == "define" {
 			if err := cx.define(form); err != nil {
 				return nil, nil, err
@@ -1461,7 +1462,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 			continue
 		}
 		if head == "read" && len(form.list) == 4 {
-			c, err := cx.columnGrant(form, notes[i].comment, out)
+			c, err := cx.columnGrant(form, parsed.comment, out)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -1523,7 +1524,7 @@ func compilePolicies(src string) (*policySet, map[string]*define, error) {
 		}
 		actor, _ := splitActor(form.list[2])
 		free := !form.list[2].isList() && form.list[2].kind == atomName && form.list[2].text == "true"
-		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: notes[i].comment, gated: head == "read" && actor != nil, free: free})
+		into[form.list[1].text] = append(into[form.list[1].text], grant{cond: c, comment: parsed.comment, gated: head == "read" && actor != nil, free: free})
 		described.Table, described.Column, described.Condition, described.cond = tableName, column, form.list[2].render(0), c
 		if err := cx.parts(&described, form.list[2], sc); err != nil {
 			return nil, nil, err

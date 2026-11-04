@@ -65,21 +65,21 @@ func readSexp(src string) (*sexp, error) {
 	return s, nil
 }
 
-type note struct {
-	section string
-	comment string
+type annotatedForm struct {
+	expression *sexp
+	section    string
+	comment    string
 }
 
-func readForms(src string) ([]*sexp, []note, error) {
+func readForms(src string) ([]annotatedForm, error) {
 	p := &reader{src: []rune(src)}
-	out := []*sexp{}
-	notes := []note{}
+	out := []annotatedForm{}
 	section := ""
 	for {
 		p.comments = nil
 		p.space()
 		if p.done() {
-			return out, notes, nil
+			return out, nil
 		}
 		comment := []string{}
 		for _, line := range p.comments {
@@ -91,13 +91,12 @@ func readForms(src string) ([]*sexp, []note, error) {
 		}
 		s, err := p.read()
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if !s.isList() {
-			return nil, nil, s.errorf("%s stands outside a bracket", s.flat())
+			return nil, s.errorf("%s stands outside a bracket", s.flat())
 		}
-		out = append(out, s)
-		notes = append(notes, note{section: section, comment: strings.Join(comment, " ")})
+		out = append(out, annotatedForm{expression: s, section: section, comment: strings.Join(comment, " ")})
 	}
 }
 
