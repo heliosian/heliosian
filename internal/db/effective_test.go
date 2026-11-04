@@ -167,7 +167,7 @@ func TestWarmerDoesNotWaitForAnotherCacheBuilder(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("warmer waited for the active cache builder")
 		}
-		if set.ready {
+		if set.by != nil {
 			t.Fatal("warmer modified a cache owned by another builder")
 		}
 	}()

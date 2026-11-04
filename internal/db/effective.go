@@ -158,7 +158,6 @@ func viewChanges(a, b *View, each func(old, new store.Row)) {
 
 type generatedSet struct {
 	mu      sync.Mutex
-	ready   bool
 	version int
 	rows    []store.Row
 	by      map[string]map[string][]store.Row
@@ -238,9 +237,8 @@ func (m *Model) generated(t *Table) *generatedSet {
 	set := m.generatedCache(t)
 	set.mu.Lock()
 	defer set.mu.Unlock()
-	if !set.ready {
+	if set.by == nil {
 		set.build(m, t)
-		set.ready = true
 	}
 	return set
 }
@@ -264,9 +262,8 @@ func (m *Model) warmGenerated(t *Table, s *Store) {
 			return nil
 		}
 		defer set.mu.Unlock()
-		if !set.ready {
+		if set.by == nil {
 			set.build(m, t)
-			set.ready = true
 		}
 		return nil
 	}); err != nil {
