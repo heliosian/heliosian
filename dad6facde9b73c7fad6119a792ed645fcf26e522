@@ -1,0 +1,23 @@
+# Keep policy expressions with their annotations
+
+byre task tskBWdCRodcSkM, "Pair policy annotations", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskBWdCRodcSkM in byre (read_task_events with task_id tskBWdCRodcSkM).
+
+## Summary
+
+Simplicity audit of main at 0b425c1328f8bff6361ab8bd8f8b6561dc08cca0. Read project guidance, architecture, audit history and representative code across server, client and tooling layers; selected one bounded structural simplification.
+
+Before: internal/db/sexp.go returned separate expression and annotation slices, and internal/db/policy.go paired them by index.
+Now: readForms returns one annotatedForm record containing its expression, section and comment, and compilePolicies consumes each record directly. This removes positional coupling while preserving permission rules and policy descriptions.
+
+Six existing focused policy tests passed under timeout 30. Repository-wide go vet, gofmt and diff checks passed; review completed with no findings. The requested git merge --no-ff --no-commit main reported already up to date, with a clean worktree and no conflicts.
+
+Left stock reservation indexes, worker scheduling and model view caches intact because they serve distinct lookup, concurrency or performance requirements. Left description generators separate because extracting their brief request setup would add a layer for little benefit. No production writes, compatibility paths, new comments or tests as fixes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Policy source used to come back from the reader as two slices, expressions and their section/comment notes, kept in step only by sharing an index. `readForms` now returns one `annotatedForm` per expression, with the section and comment on that value, and `compilePolicies` reads them from the form it is compiling. Parsing and the grants those comments label are otherwise unchanged.
+
+No significant findings.
