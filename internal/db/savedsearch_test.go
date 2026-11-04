@@ -153,6 +153,28 @@ func TestASavedSearchsFeedIsItsEvents(t *testing.T) {
 	}
 }
 
+func TestSavedSearchFeedStopsWhenOwnerLeaves(t *testing.T) {
+	s := sample(t)
+	apply(t, s, []Edit{
+		{Set: "sav00000000001", Cells: map[string]any{"search": "[]"}},
+		{Set: "grp00000000040", Cells: map[string]any{"status": "pending", "added_by": parent}},
+	})
+	mux := http.NewServeMux()
+	RegisterFeeds(mux, s, func() time.Time { return testNow })
+	fetch := func() *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "https://when.test/open/feed/fed00000000002.ics", nil))
+		return rec
+	}
+	if rec := fetch(); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "SUMMARY:Fall Picnic") {
+		t.Fatalf("active owner's feed answered %d %s", rec.Code, rec.Body.String())
+	}
+	apply(t, s, []Edit{{Set: parent, Cells: map[string]any{"deactivated": "2026-10-01 00:00:00"}}})
+	if rec := fetch(); rec.Code != http.StatusNotFound {
+		t.Fatalf("deactivated owner's feed answered %d %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestASavedSearchsWordsAreChecked(t *testing.T) {
 	s := sample(t)
 	save := func(search string) error {

@@ -68,7 +68,7 @@ func RegisterFeeds(mux *http.ServeMux, s *Store, now func() time.Time) {
 
 func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now time.Time) ([]byte, bool, error) {
 	row, ok := m.byToken("SAVED_SEARCH", token)
-	if !ok {
+	if !ok || m.SignedIn(m.addressOf(row["person"])) != row["person"] {
 		return nil, false, nil
 	}
 	lists, err := searchWords(row["search"])
