@@ -1,0 +1,23 @@
+# Keep parallel inputs and results together
+
+byre task tskzlfOVoGtSzj, "Parallel task pairing", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskzlfOVoGtSzj in byre (read_task_events with task_id tskzlfOVoGtSzj).
+
+## Summary
+
+Simplicity audit of de983eb selected one structural refactor across nine files.
+
+Before: `internal/parallel.Run` accepted an integer task count and index callback; callers paired input and result slices by position, and geocoding carried its own pairing record.
+Now: the shared helper accepts typed inputs and returns each input with its value and error. Workers receive pointers to those records. All 11 call sites use it, covering search, Ask tool calls, geocoding, calendar classification and matching, image searches, PDF calendar reading and search planning. The geocoder's local pairing type is removed.
+
+The design keeps worker limits, output order and failure handling while removing caller-maintained alignment. No intended user-visible behavior or schema changes. Existing helper tests cover input identity, failures, order, worker limits and empty input. Focused data-model and Ask tests, image-search and import package tests, helper race checks, repository-wide vet and diff checks passed. Workflow review reported no findings.
+
+Earlier query-state and geocoder findings were already fixed at the baseline. Broader worker lifecycle and per-app client model redesigns were left out because no clear simplification preserving their distinct semantics was established. No production writes or new issues. The requested merge of main reported already up to date; no conflicts or additional edits were necessary.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+`parallel.Run` now takes the work items and returns each one on its result, so a caller no longer pairs an answer back to its input by index. The geocoder drops its `geocodeLookup` wrapper and passes addresses straight to `Lookup`. Calendar classification, search loads, image search, tool calls, and the bucket-exists check pass their slices through the same way. PDF month reading carries each crop with its date, and the second reading of a month is two empty inputs. Result order and the worker cap stay as they were.
+
+No significant findings.
