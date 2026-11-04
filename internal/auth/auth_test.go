@@ -60,7 +60,7 @@ func TestLogoutClearsTheDomain(t *testing.T) {
 	a := New("heliosiandev.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, ended)
 	req := httptest.NewRequest(http.MethodPost, "https://hca.heliosiandev.com/auth/logout", nil)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "admin@heliosschool.org", effective: "parent@heliosschool.org"}))
+	req = req.WithContext(slot(req.Context(), identity{real: "admin@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
 	if rec.Code != http.StatusSeeOther {
@@ -94,7 +94,7 @@ func TestSignInAndOutRefuseOtherSites(t *testing.T) {
 				req.Header.Set("Sec-Fetch-Site", site)
 			}
 			req.AddCookie(&http.Cookie{Name: "g_csrf_token", Value: "t"})
-			req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
+			req = req.WithContext(slot(req.Context(), identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
 			rec := httptest.NewRecorder()
 			if path == "/auth/login" {
 				a.login(rec, req)
@@ -153,6 +153,48 @@ func TestBearerPassesOnlyToTheDataAPI(t *testing.T) {
 			t.Errorf("a bearer request to %s reached the app: %v", path, reached == path)
 		}
 	}
+}
+
+func TestABearerRequestGetsASlotTheTokenCheckFills(t *testing.T) {
+	a := New("heliosian.com", "client", []byte("key"), Login{Title: "Helios Who?"}, everyone, nil, noSessions())
+	for name, handler := range map[string]func(http.Handler) http.Handler{"wrapped": a.Wrap, "fixed": func(next http.Handler) http.Handler { return a.Fixed("sample@heliosschool.org", next) }} {
+		var got identity
+		h := handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if RealEmail(r) != "" || Email(r) != "" {
+				t.Errorf("%s: a bearer request reached the app as %q", name, RealEmail(r))
+			}
+			Identify(r, "admin@heliosschool.org", "parent@heliosschool.org")
+			got = identity{real: RealEmail(r), effective: Email(r)}
+			if Spoofing(r) != "parent@heliosschool.org" {
+				t.Errorf("%s: spoofing = %q", name, Spoofing(r))
+			}
+		}))
+		req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/q", nil)
+		req.Header.Set("Authorization", "Bearer anything")
+		h.ServeHTTP(httptest.NewRecorder(), req)
+		if got.real != "admin@heliosschool.org" || got.effective != "parent@heliosschool.org" {
+			t.Errorf("%s: after Identify, real %q as %q", name, got.real, got.effective)
+		}
+	}
+	bare := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/q", nil)
+	Identify(bare, "admin@heliosschool.org", "admin@heliosschool.org")
+	if RealEmail(bare) != "" {
+		t.Errorf("a request that never passed the gate took an identity: %q", RealEmail(bare))
+	}
+	var session identity
+	a.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		Identify(r, "admin@heliosschool.org", "other@heliosschool.org")
+		session = identity{real: RealEmail(r), effective: Email(r)}
+	})).ServeHTTP(httptest.NewRecorder(), signedIn("parent@heliosschool.org"))
+	if session.real != "parent@heliosschool.org" || session.effective != "parent@heliosschool.org" {
+		t.Errorf("a session's identity was rewritten to real %q as %q", session.real, session.effective)
+	}
+}
+
+func signedIn(email string) *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/q", nil)
+	req.AddCookie(&http.Cookie{Name: cookieName, Value: Token([]byte("key"), email, time.Now())})
+	return req
 }
 
 func TestSignedOutGetsTheLoginPageOnlyForAPage(t *testing.T) {
@@ -298,7 +340,7 @@ func TestSessionEndsAtSignOut(t *testing.T) {
 	s.refuse = context.Canceled
 	req := httptest.NewRequest(http.MethodPost, "https://who.heliosian.com/auth/logout", nil)
 	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
+	req = req.WithContext(slot(req.Context(), identity{real: "parent@heliosschool.org", effective: "parent@heliosschool.org"}))
 	rec := httptest.NewRecorder()
 	a.logout(rec, req)
 	if rec.Code != http.StatusInternalServerError || len(rec.Result().Cookies()) != 0 {
@@ -441,7 +483,7 @@ func TestSetSpoofKeepsTheRecentFive(t *testing.T) {
 	}
 	post := func(as, body, recent string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodPost, "https://who.heliosiandev.com/auth/spoof", strings.NewReader(body))
-		req = req.WithContext(context.WithValue(req.Context(), contextKey{}, identity{real: as, effective: as}))
+		req = req.WithContext(slot(req.Context(), identity{real: as, effective: as}))
 		if recent != "" {
 			req.AddCookie(&http.Cookie{Name: recentCookie, Value: recent})
 		}

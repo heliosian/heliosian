@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"heliosian/internal/auth"
 	"heliosian/internal/testkit/authtest"
 )
 
@@ -79,6 +80,47 @@ func TestRequestsTagsRecords(t *testing.T) {
 	summary, _ := request["httpRequest"].(map[string]any)
 	if summary["requestMethod"] != "GET" || summary["requestUrl"] != "/people?x=1" || summary["status"] != float64(418) {
 		t.Errorf("httpRequest = %v", summary)
+	}
+}
+
+func TestRequestsTagATokensRecordsOnceItIsVerified(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(handler{slog.NewJSONHandler(&out, &slog.HandlerOptions{ReplaceAttr: cloudKeys})})
+	previous := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(previous)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slog.InfoContext(r.Context(), "before")
+		auth.Identify(r, "Admin@heliosschool.org", "parent@heliosschool.org")
+		slog.WarnContext(r.Context(), "after")
+	})
+	r := httptest.NewRequest("POST", "/api/q", nil)
+	r.Header.Set("Authorization", "Bearer a-token")
+	authtest.Fixed("", Requests("who", inner)).ServeHTTP(httptest.NewRecorder(), r)
+
+	lines := bytes.Split(bytes.TrimSpace(out.Bytes()), []byte("\n"))
+	if len(lines) != 3 {
+		t.Fatalf("got %d records: %s", len(lines), out.String())
+	}
+	records := []map[string]any{}
+	for _, line := range lines {
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, record)
+	}
+	if _, ok := records[0]["user"]; ok || records[0]["message"] != "before" {
+		t.Errorf("before the token check = %v, want no user", records[0])
+	}
+	for _, record := range records[1:] {
+		if record["user"] != "admin@heliosschool.org" || record["as"] != "parent@heliosschool.org" {
+			t.Errorf("%v: user/as = %v/%v, want the token's person and whom it ran as", record["message"], record["user"], record["as"])
+		}
+	}
+	if records[2]["message"] != "request" {
+		t.Errorf("last record = %v, want the request line", records[2])
 	}
 }
 

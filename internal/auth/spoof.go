@@ -36,11 +36,28 @@ type Person struct {
 type identity struct {
 	real      string
 	effective string
+	open      bool
+}
+
+func identityOf(ctx context.Context) identity {
+	if id, ok := ctx.Value(contextKey{}).(*identity); ok {
+		return *id
+	}
+	return identity{}
+}
+
+func slot(ctx context.Context, id identity) context.Context {
+	return context.WithValue(ctx, contextKey{}, &id)
+}
+
+func Identify(r *http.Request, real, effective string) {
+	if id, ok := r.Context().Value(contextKey{}).(*identity); ok && id.open {
+		id.real, id.effective = real, effective
+	}
 }
 
 func Email(r *http.Request) string {
-	id, _ := r.Context().Value(contextKey{}).(identity)
-	return id.effective
+	return identityOf(r.Context()).effective
 }
 
 func RealEmail(r *http.Request) string {
@@ -48,12 +65,15 @@ func RealEmail(r *http.Request) string {
 }
 
 func RealEmailFrom(ctx context.Context) string {
-	id, _ := ctx.Value(contextKey{}).(identity)
-	return id.real
+	return identityOf(ctx).real
 }
 
 func Spoofing(r *http.Request) string {
-	id, _ := r.Context().Value(contextKey{}).(identity)
+	return SpoofingFrom(r.Context())
+}
+
+func SpoofingFrom(ctx context.Context) string {
+	id := identityOf(ctx)
 	if id.effective == id.real {
 		return ""
 	}

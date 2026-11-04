@@ -59,7 +59,7 @@ func New(domain, clientID string, key []byte, login Login, member func(email str
 func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if passed(r) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(slot(r.Context(), identity{open: true})))
 			return
 		}
 		a.admit(w, r, a.resolve(r, email), next)
@@ -73,7 +73,7 @@ func (a *Auth) admit(w http.ResponseWriter, r *http.Request, id identity, next h
 		a.deny(w, r)
 		return
 	}
-	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), contextKey{}, id)))
+	next.ServeHTTP(w, r.WithContext(slot(r.Context(), id)))
 }
 
 func fetched(path string) bool {
@@ -164,7 +164,7 @@ func (a *Auth) client(r *http.Request, _ serve.None) (map[string]string, error) 
 func (a *Auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if passed(r) {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(slot(r.Context(), identity{open: true})))
 			return
 		}
 		email := a.sessionEmail(r)

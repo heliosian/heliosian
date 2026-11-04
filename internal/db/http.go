@@ -155,6 +155,8 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 		http.Error(w, "unusable token: "+err.Error(), http.StatusUnauthorized)
 		return Env{}, access.Actor{}, false
 	}
+	real := email
+	auth.Identify(r, real, email)
 	if target := r.Header.Get(SpoofHeader); target != "" {
 		if !m.SuperAdmin(email) {
 			http.Error(w, "only a super admin may spoof", http.StatusForbidden)
@@ -168,6 +170,7 @@ func caller(w http.ResponseWriter, r *http.Request, m *Model, tokens auth.Tokens
 		slog.InfoContext(r.Context(), "spoof", "admin", email, "as", address)
 		email = address
 	}
+	auth.Identify(r, real, email)
 	return Env{Viewer: m.SignedIn(email), Mode: mode, Now: at}, access.Actor{Email: email, Background: mode == "import"}, true
 }
 

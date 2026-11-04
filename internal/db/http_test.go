@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"heliosian/internal/access"
+	"heliosian/internal/auth"
+	"heliosian/internal/data"
 	"heliosian/internal/testkit"
 	"heliosian/internal/testkit/authtest"
 	"heliosian/internal/trace"
@@ -28,13 +30,10 @@ func serveAs(mux http.Handler, rec *httptest.ResponseRecorder, r *http.Request, 
 	if email, ok := strings.CutPrefix(as, "import:"); ok {
 		r.Header.Set("Authorization", "Bearer "+testTokens.Issue(email, time.Now()))
 		r.Header.Set(ModeHeader, "import")
-		mux.ServeHTTP(rec, r)
-		return
-	}
-	if token, ok := strings.CutPrefix(as, "bearer:"); ok {
+		as = ""
+	} else if token, ok := strings.CutPrefix(as, "bearer:"); ok {
 		r.Header.Set("Authorization", "Bearer "+token)
-		mux.ServeHTTP(rec, r)
-		return
+		as = ""
 	}
 	authtest.Fixed(as, mux).ServeHTTP(rec, r)
 }
@@ -126,6 +125,61 @@ func TestSpoof(t *testing.T) {
 	}
 	if rec := send(t, s, "QUERY", "application/json", importing, query, SpoofHeader, "nobody@example.org"); rec.Code != http.StatusForbidden {
 		t.Fatalf("spoofing an address nobody has got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestARefusedSpoofStillNamesTheTokensPerson(t *testing.T) {
+	s := sample(t)
+	mux := http.NewServeMux()
+	Register(mux, s, newPictures(s), testTokens)
+	for _, c := range []struct{ as, target string }{{"bearer:" + testTokens.Issue("rowan.ashdown@example.org", time.Now()), superAdmin}, {importing, "nobody@example.org"}} {
+		real, as := "", ""
+		seen := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mux.ServeHTTP(w, r)
+			real, as = auth.RealEmail(r), auth.Spoofing(r)
+		})
+		r := httptest.NewRequest("QUERY", "/api/q", strings.NewReader(`["from", "PERSON"]`))
+		r.Header.Set("Content-Type", "application/json")
+		r.Header.Set(SpoofHeader, c.target)
+		rec := httptest.NewRecorder()
+		serveAs(seen, rec, r, c.as)
+		if rec.Code != http.StatusForbidden || as != "" {
+			t.Errorf("spoofing %s got %d as %q, want a refusal as nobody", c.target, rec.Code, as)
+		}
+		if real == "" {
+			t.Errorf("spoofing %s: the refused request names no one", c.target)
+		}
+	}
+}
+
+func TestATokensWriteNamesWhoHeldIt(t *testing.T) {
+	dir := &data.Dir{Root: "../../sampledata"}
+	s, err := NewStore(dir, dir, NewSearchIndex(), testOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const parent = "rowan.ashdown@example.org"
+	batch := func(key string) string {
+		return `{"batch": [{"insert": "PERSON_SETTING", "row": {"person": "` + s.Model().PersonOf(parent) + `", "app": "when", "key": "` + key + `", "value": "yes"}}]}`
+	}
+	if rec := send(t, s, http.MethodPost, "application/json", importing, batch("spoofed"), SpoofHeader, parent); rec.Code != http.StatusOK {
+		t.Fatalf("a super admin's token writing as a parent got %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := send(t, s, http.MethodPost, "application/json", importing, batch("own")); rec.Code != http.StatusOK {
+		t.Fatalf("a super admin's token writing got %d %s", rec.Code, rec.Body.String())
+	}
+	actors := map[string][2]string{}
+	for _, row := range testkit.Rows(t, dir, s, PeopleSheet, ChangesTab) {
+		if row["table"] == "PERSON_SETTING" && row["action"] == "insert" {
+			setting, _ := s.Model().Table("PERSON_SETTING").Get(row["row"])
+			actors[setting["key"]] = [2]string{row["actor"], row["real_actor"]}
+		}
+	}
+	if actors["spoofed"] != [2]string{parent, superAdmin} {
+		t.Errorf("a spoofed token write was recorded as %v, want the parent as actor and the super admin as real_actor", actors["spoofed"])
+	}
+	if actors["own"] != [2]string{superAdmin, superAdmin} {
+		t.Errorf("a token write was recorded as %v, want the super admin as both", actors["own"])
 	}
 }
 

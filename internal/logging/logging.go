@@ -23,8 +23,6 @@ type contextKey struct{}
 
 type request struct {
 	app   string
-	user  string
-	as    string
 	trace string
 	span  string
 }
@@ -44,13 +42,14 @@ func (h handler) Enabled(ctx context.Context, level slog.Level) bool {
 
 func (h handler) Handle(ctx context.Context, record slog.Record) error {
 	req, ok := ctx.Value(contextKey{}).(request)
+	user, as := strings.ToLower(auth.RealEmailFrom(ctx)), strings.ToLower(auth.SpoofingFrom(ctx))
 	if record.Level >= slog.LevelError {
 		attrs := map[string]string{}
 		record.Attrs(func(a slog.Attr) bool {
 			attrs[a.Key] = a.Value.String()
 			return true
 		})
-		for key, value := range map[string]string{"app": req.app, "user": req.user, "as": req.as, "trace": req.trace} {
+		for key, value := range map[string]string{"app": req.app, "user": user, "as": as, "trace": req.trace} {
 			if value != "" {
 				attrs[key] = value
 			}
@@ -62,11 +61,11 @@ func (h handler) Handle(ctx context.Context, record slog.Record) error {
 	}
 	record = record.Clone()
 	record.AddAttrs(slog.String("app", req.app))
-	if req.user != "" {
-		record.AddAttrs(slog.String("user", req.user))
+	if user != "" {
+		record.AddAttrs(slog.String("user", user))
 	}
-	if req.as != "" {
-		record.AddAttrs(slog.String("as", req.as))
+	if as != "" {
+		record.AddAttrs(slog.String("as", as))
 	}
 	if req.trace != "" {
 		record.AddAttrs(
@@ -154,7 +153,7 @@ func (r *recorder) Unwrap() http.ResponseWriter {
 func Requests(app string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		req := request{app: app, user: strings.ToLower(auth.RealEmail(r)), as: strings.ToLower(auth.Spoofing(r))}
+		req := request{app: app}
 		req.trace, req.span = traceOf(r.Header.Get("X-Cloud-Trace-Context"))
 		ctx := context.WithValue(r.Context(), contextKey{}, req)
 		r = r.WithContext(ctx)
