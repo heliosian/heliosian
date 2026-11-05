@@ -1,0 +1,37 @@
+# Fix image lookup failure
+
+byre task tsk9DZGKlU5iBw, "Image lookup error", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tsk9DZGKlU5iBw in byre (read_task_events with task_id tsk9DZGKlU5iBw).
+
+## Summary
+
+Investigated Gayle’s broken event image using production logs and her screenshot. Image searches and import succeeded; the page requested the newly saved photo before the background worker had produced its display image and received 404.
+
+Before: saving a selected photo could reload the page before processing finished, leaving a broken image.
+Now: shared photo saves await a completion event on the existing image route before returning; calendar and Team pages retain pending photo IDs but construct display URLs only for ready photos.
+
+Processing stays in the existing background worker. Completion uses an event stream rather than polling or slowing the upload handler. Waiting respects photo permissions and ends on processing failure, deletion, loss of visibility, or client cancellation. No schema or production data changes were needed.
+
+Verified with focused photo, blob, calendar-query and image-search tests, race checks, repository-wide go vet, and a real Chrome upload that displayed the saved event image without failed HTTP responses. The requested merge from main reported already up to date, with no conflicts or additional edits.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review", codex gpt-6-astra: done
+
+Photo uploads now wait for a server-sent completion event before callers reload their data. The server checks photo visibility while waiting and reports processing failures; calendar and Team pages retain pending photo IDs but only display images marked ready. Tests cover completion, deletion, lost visibility, processing failure, cancellation, and already completed photos.
+
+No significant findings.
+
+## Decisions
+
+### What exact error did Gayle see while finding an image, or can you share a screenshot?
+
+I checked production logs for Gayle McDowell. At 11:43–11:44 a.m. Pacific today, her five image searches in Helios When and her selected-image import all succeeded. She was using Spoof Mode to view as Elizabeth Ridgeway on [Halcons Winter Skate](https://when.heliosian.com/g/halcons-winter-skate).
+
+Immediately after saving the selected photo, the page requested its full image and received “not found.” That saved photo now has a processed image and thumbnail. There are no logged search-provider errors or search refusals, so the logs do not establish whether this brief missing photo is the error she reported.
+
+Please share the exact wording or a screenshot, and whether it appeared while searching, selecting a result, or after saving. I recommend matching that visible error before changing code. No files or production data have been changed.
+
+ian@fc.run answered: General answer: images 1–1
