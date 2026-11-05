@@ -1,0 +1,21 @@
+# Add image search to When
+
+byre task tskv1gk7RFWX1m, "When image search", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskv1gk7RFWX1m in byre (read_task_events with task_id tskv1gk7RFWX1m).
+
+## Summary
+
+Make image search available in When as it is in Team.
+
+Before: When explicitly disabled image search, hiding it from event and category picture controls.
+Now: When enables its existing shared image picker, offering Find an image in both places.
+
+The change switches the existing page-model setting on; the shared picker and registered search/import routes already provide the behavior. Verified the event host’s menu, the prefilled search dialog, and category controls in sample mode. `timeout 30 go test ./internal/imagesearch` passed. The local preview lacks stock-library credentials, so live provider results were not checked there; existing tests cover searching and importing. No new routes, schema changes, or search implementation were needed. Main was already up to date when the requested merge command ran.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Helios When already had the same picture search as HCA-Team: the event banner and category admin call `/api/when/images/search` and `/api/when/images/import`, and the server already registers those routes. The picker stayed hidden because `loadModel` set `imageSearch` to false. This turns that flag on, so Find an image shows wherever When already checks it, the same way Team does.
+
+No significant findings.
