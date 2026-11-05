@@ -1,0 +1,24 @@
+# Remove redundant picture-tool state
+
+byre task tskP2p7eVEtMPi, "Picture tooling cleanup", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskP2p7eVEtMPi in byre (read_task_events with task_id tskP2p7eVEtMPi).
+
+## Summary
+
+Audited the codebase at ac7de7d for structural complexity and selected a bounded cleanup of shared picture tooling across Home, When, Celebrate, HCA-Team and Wiki.
+
+Before: imageTools required app state for an always-true image-search flag, repeated in four app models and fabricated by Wiki; controls threaded the flag through their tool objects.
+Now: imageTools takes only its API prefix, and every caller and the development documentation use that shape. Search controls retain their existing visible behavior, including the plain picker's hidden search button.
+
+Before: uploaded files and preview URLs occupied parallel maps keyed by the same upload name.
+Now: a single map holds each upload's {file, url} record, keeping its preview and multipart upload paired by construction.
+
+Validation passed: 39 browser checks compared baseline and current functions with real DOM, File, FormData and blob URLs and stubbed network dependencies; all five app module graphs linked; all 14 changed JavaScript modules passed syntax checks; focused image-search tests, go vet ./..., and diff checks passed. Full signed-in app flows were not exercised. Mail and redirect paths were left alone because their differences encode distinct behavior. No schema, production-data or visible UI changes. The requested final merge from main reported already up to date, with no conflicts or additional edits.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+The shared picture tools no longer take an app state object or an `imageSearch` flag. Every app had hardcoded that flag to true, and the Find-an-image control only consulted it. Upload files and their object URLs now live in one map instead of two parallel maps, and the docs signature for `imageTools` matches.
+
+No significant findings.
