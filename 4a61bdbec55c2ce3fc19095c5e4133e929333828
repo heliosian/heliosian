@@ -1,0 +1,340 @@
+# Fix guest removal and restoration races
+
+byre task tsk1TPkgqEluCS, "Dogman membership removal", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tsk1TPkgqEluCS in byre (read_task_events with task_id tsk1TPkgqEluCS).
+
+## Summary
+
+Fixed the duplicate-membership error Ian encountered when removing himself from Outdoor Movie Night: Dogman. The root cause was a stale guest snapshot racing an invitation-open insert. Client-side lookups and waiting for the local open write proved insufficient for other sessions, private invitation copies, and ordinary-user permissions.
+
+Before: guest removal could race invitation opens, fail with duplicate memberships, or leave someone on the list through an invitation copy or rule.
+Now: signed-in and outside-token removal share transactional membership handling; opened-only inserts reuse the current membership and preserve the first-open timestamp. RSVP clearing and membership removal commit together, including for outside invitees without ordinary event visibility.
+
+Before: retaining departures could prevent remove/re-add and ticket purchases, while deleting a retained departure could bypass restoration checks.
+Now: voluntary event/party departures use the existing cancelled state, manager exclusions use excluded, and both stay off effective membership, invitation lists and previews. Authorized additions and ticket purchases reuse retained memberships under current joining, payment, eligibility and capacity rules. Ordinary users cannot delete retained departures or downgrade or restore manager exclusions; excluded guests need a list manager to restore them.
+
+Activity invitation exclusions remain separate from volunteer commitments; active volunteers cancel in HCA-Team. No stored columns or enum values were introduced. Regression coverage includes transaction orderings, first-open preservation, ordinary self/household/bringer permissions, outside RSVP removal, restoration and payment rollback, manager exclusions, capacity checks across batches, and consistency across effective membership and previews. Related Go suites, vet, JavaScript syntax checks and diff checks passed; the latest review was clean.
+
+Deliberately excluded deployment and production membership edits. The requested merge from main was already up to date, with no conflicts or generated files to resolve.
+
+## Handoffs
+
+### Session sesGBBur2I2Qse, 2026-11-05T07:28:12Z
+
+You are continuing the Heliosian task **“Dogman membership removal”** in byre.
+
+## Goal and initial evidence
+
+Ian reported failure removing himself from **Outdoor Movie Night: Dogman**. Screenshot error:
+
+`batch[0]: MEMBER: two rows have the same group=grpVhb8MCy7gXt; person=perWPWxQkmB98q`
+
+Production identifiers:
+
+- Dogman activity: `grpVhb8MCy7gXt`, slug `movie`
+- Ian: `perWPWxQkmB98q`
+- Existing membership: `memDEBmkZJ8hy4`, initially only an `opened` timestamp
+- Page: `https://when.heliosian.com/g/movie`
+
+The initial cause: When fetched guest data, started an invitation-open write asynchronously, then removal used the stale guest snapshot and tried inserting another membership.
+
+The work has expanded, through legitimate review findings, to cover transactional removal, permissions, invitation-copy visibility, concurrency, and removal/restoration for ordinary and outside guests.
+
+## Environment and essential instructions
+
+Worktree:
+
+`/Users/flamingcow/Library/Application Support/byre/worktrees/prjAPohz7r9P6C/tsk1TPkgqEluCS`
+
+Task `tsk1TPkgqEluCS`, project `prjAPohz7r9P6C`.
+
+- Follow root `AGENTS.md` (provided by user, also on disk).
+- **Do not commit, push, switch branches, or run git maintenance.** Byre commits at turn end and handles merging.
+- Every question must use `byre__ask_human`, never prose.
+- End turns with short finals; describe behavior changes using consecutive `Before:` / `Now:` lines.
+- Update byre overview before file changes and before ending a changed turn. Latest overview generation was **12**; read task details before updating.
+- Tests always run under `timeout 30`, one package or selected tests. Page captures under `timeout 20`.
+- Use `go run`, not `go build`; use `go vet` for compilation checks.
+- No comments in new code except truly subtle two-line explanations.
+- Do not spawn subagents unless user or applicable instructions explicitly request them.
+- Review findings require a `respond_to_finding` response **before editing**.
+- Never suggest ready until the latest review has returned. Do not call ready in the same turn as file changes.
+- No deployment or production data repair has been performed or explicitly requested.
+- This compaction was requested by byre at its context threshold.
+
+Tools are accessible via `functions.exec` and `tools.*`; find catalog tools using `byre__find_tools`, invoke them through `byre__call_tool`. Existing useful catalog names: `read_task_details`, `bash`, `read_knowledge`, `list_clients`.
+
+## Current state
+
+The last coding turn finished and requested compaction. **The next automatic review (probably snapshot #5) is pending.** Await/reconcile its actual message and task state. The task has not reached a clean review or ready-for-merge.
+
+All latest relevant tests/checks passed. The overview says implementation and verification completed, review pending.
+
+No open human questions.
+
+## Current implementation and decisions
+
+### 1. Atomic server guest removal
+
+New `internal/db/guest_writes.go`:
+
+- `removeGuestAsk{Group, Person}`
+- `(*Invitations).removeGuest(...)`, registered at `POST /api/do/remove-guest`
+- `stageGuestRemoval(...)`
+
+The signed-in handler starts a store transaction, gets the **current** group/model, checks group visibility, and performs membership lookup, authorization, mutation, and RSVP clearing under the same transaction.
+
+The client’s `takeOff` is now just a POST to this operation. All three client callers were updated to its simpler signature.
+
+The outside invitation DELETE path in `invitehooks.go` uses the same staging helper, within its own transaction that revalidates the current invitation token and brought-guest ownership.
+
+Activity removal refuses an active volunteer and directs them to cancel their sign-up in HCA-Team. Activity invitation exclusions remain `invited=excluded`, independent of volunteer commitments.
+
+### 2. Atomic invitation-open inserts
+
+`internal/db/writes.go` extends the ordinary insert path:
+
+- An opened-only MEMBER insert (`opened` nonblank, `member` and `invited` blank) checks the current membership **under the write lock**.
+- If one exists, authorize the original opened-only request, reuse the existing ID, preserve all membership state, and set `opened` only if it was blank.
+- Existing first-open timestamps survive duplicate/concurrent opens.
+- Forged metadata in such requests remains rejected.
+- This handles either ordering of cross-session open/removal.
+
+The earlier client-side `await noteOpened` was removed. Page rendering need not wait for this small background write now that server writes coordinate correctly.
+
+### 3. Voluntary departure versus manager exclusion
+
+This was necessary to solve restoration without allowing manager exclusions to be bypassed.
+
+For **events and parties**:
+
+- Ordinary self/household/bringer removal stores existing enum value `member=cancelled`.
+- Manager removal stores `member=excluded`.
+- Existing manager exclusions are not downgraded to cancelled by ordinary users.
+- Both states keep people off effective membership, rule previews, and invitation lists.
+- Activity cancellation semantics remain unchanged: a cancelled volunteer can still be invited or selected by rules.
+
+`keptOffState` now takes group kind and handles cancelled event/party memberships. Its consumers in effective membership, invitation lists, and draft previews were updated. The shared client `keptOff(row, kind)` and its callers in When and Loop were updated too.
+
+**Production check:** both ordinary and `--import` reads found **zero** existing cancelled event/party memberships. No stored columns or enum values were added, so no schema migration/createtabs is needed. Schema description strings were updated to describe the existing enum’s resulting behavior.
+
+### 4. Restoration reuses joining rules
+
+`internal/db/policy.go` factors the existing free joining condition into `(joins @m)`:
+
+- Original MEMBER insert permission still separately requires `added_by=@viewer`.
+- Restoration from cancelled to yes for events/parties requires self/household or matching bringer ownership and `(joins @new)`.
+- Therefore current visibility/invitation access, eligibility, capacity, and free-place restrictions apply.
+- Manager exclusions cannot be restored, downgraded to cancelled, or deleted by ordinary users. Managers must restore them. This is a deliberate restriction and should be plainly mentioned in the final merge overview.
+
+`addGuests` handles cancelled event/party membership restoration for the appropriate person/household/bringer/manager.
+
+`extGuest` handles restoring an existing cancelled membership owned by that token holder instead of inserting a duplicate. Excluded rows and cancelled rows owned by another bringer remain blocked.
+
+`guestMembership` now sets `edit.viewer` for **all non-activity membership writes**, not only parties. This makes each event/party membership insertion or restoration authorize against the current staged model. It avoids a batch restoring multiple memberships past capacity. Activity logic keeps its prior specialized invitation rules.
+
+### 5. Outside-token RSVP clearing
+
+Outside invitees need not be members of the event’s `visible_to` group.
+
+After revalidating current token ownership and `guest_of` inside the transaction, `extRemoveGuest` clears **only that guest’s** answers using invitations-system authority, then stages the membership change using ordinary viewer permissions.
+
+This fixes outside removal of a brought guest who answered yes/no. A later refusal rolls back the entire transaction, including RSVP clearing.
+
+## Files that matter
+
+Implementation:
+
+- `internal/db/guest_writes.go` — atomic removal and departure-state choice
+- `internal/db/invitations.go` — new route; restoration planning; `guestMembership` viewer authorization; invitation-list state
+- `internal/db/invitehooks.go` — outside removal transaction, token-authorized RSVP clearing, outside restoration
+- `internal/db/writes.go` — opened-only insert reuse under lock
+- `internal/db/policy.go` — shared joining rule, cancelled restoration, manager-exclusion protection
+- `internal/db/effective.go` — kind-aware kept-off state
+- `internal/db/draft.go` — consistent cancelled preview membership
+- `internal/db/schema.go` — descriptions only, no storage shape change
+- `web/when/guestlist.js` — simple server removal; kind-aware membership display
+- `web/when/invites.js`, `web/when/guestpopups.js` — updated removal calls
+- `web/common/members.js` — kind-aware `keptOff`
+- `web/loop/pages/group.js` — updated `keptOff` callers
+- `docs/api.md`, `docs/datamodel.md` — operation and semantics documentation
+
+Tests:
+
+- `internal/db/guestremoval_test.go` — committed comprehensive regressions
+- `internal/db/invitations_test.go` — one old outside-removal assertion now checks actual list membership instead of requiring physical deletion of a retained membership row
+
+Temporary/ignored diagnostics:
+
+- `local/dogman-removal/check.mjs` — one-off client-to-local-server regression script using actual exported client functions and actual HTTP API; VM imports supply HTTP bridge dependencies
+- `local/dogman-removal/*.log`
+- `local/heliosian-server.log`
+
+No server is intentionally left running. Test servers used `tools/startserver --run` and exited.
+
+## Verification completed
+
+Latest relevant suite passed in ~7 seconds:
+
+```sh
+timeout 30 go test ./internal/db --run 'TestActivity|TestOutside|TestGuest|TestAnInvitation|TestPartyInvitations|TestAuthorize|TestBroughtGuests|TestAnOpenedInsert|TestAChair|TestJoining|TestFreeParty|TestCancelledGuestMembership' --count=1
+```
+
+Also passed:
+
+```sh
+timeout 30 go vet ./internal/db
+timeout 30 go test ./internal/access --run TestRowsAreBuiltBesideTheirRules --count=1
+node --check web/common/members.js
+node --check web/loop/pages/group.js
+node --check web/when/guestlist.js
+git diff --check
+```
+
+Earlier syntax checks also covered `invites.js` and `guestpopups.js`.
+
+New Go tests cover:
+
+- Ordinary guest self, household, and brought-guest removal across event/party/activity
+- Brought guest whose invitation copy is unreadable by the bringer
+- No-row rule membership removal
+- Unauthorized other-person removal, paid-place refusal, volunteer protection
+- Both serialized cross-session open/removal orderings with real store transactions
+- Repeated opens preserving identity/timestamp and rejecting forged metadata
+- Clearing RSVP before leaving a group that becomes unreadable after departure
+- Outside-token removal of brought guests with yes/no RSVPs, then re-add
+- Signed-in and outside remove/re-add for events/free parties
+- Manager exclusions remaining blocked through both entrypoints and direct batch writes
+- Restoration refusing changed price/eligibility and over-capacity batches; failed batches roll back
+- Cancelled membership consistency across effective membership, invitation lists, and previews, while activity semantics remain unchanged
+
+Eight earlier client-to-local-server checks passed after the atomic API was introduced:
+
+```sh
+NODE_TLS_REJECT_UNAUTHORIZED=0 PORT=8497 timeout 30 go run ./tools/startserver \
+  --email maya.lindqvist@example.org \
+  --run node --experimental-vm-modules local/dogman-removal/check.mjs
+```
+
+That script uses the sample superadmin host; ordinary-user coverage is in the Go tests. It was last run before the latest cancellation/restoration changes. No need to rerun blindly; targeted checks above cover those changes better.
+
+Production data read:
+
+```sh
+go run ./tools/q --import read \
+  '(from MEMBER (where (= member "cancelled") (in group.kind "event" "party")) (columns group member))'
+```
+
+Result: no rows.
+
+## Review history and dead ends
+
+All findings have been answered “fixing” before edits.
+
+1. **Snapshot #1:** current-row lookup initially deleted opened-only event rows while invitation copies kept them on the list. Fixed exclusion handling.
+2. **Snapshot #2:** lookup could still race this viewer’s pending open write. Added an await temporarily.
+3. **Snapshot #3:** ordinary self-removal could not authorize exclusion; bringers cannot always read invitation copies; cross-session opens still race. Replaced the client-only approach with the atomic server operation and opened-insert reuse.
+4. **Snapshot #4 (latest reviewed):**
+   - Finding 1: outside-token removal fails clearing an RSVP when token holder lacks group visibility.
+   - Finding 2: retaining excluded rows breaks remove/re-add and ordinary bringer restoration.
+   Both are fixed in the latest changed turn, with reproductions and regressions.
+
+Do **not** return to client lookups, copy visibility inference, or awaiting only the local open. Those cannot solve cross-session concurrency or authorization correctly.
+
+An early attempt to retain `member=excluded` for every removal was insufficient: it could not distinguish voluntary departure from manager exclusion. The latest implementation intentionally uses the existing cancelled/excluded distinction.
+
+## Byre overview and next steps
+
+Latest saved overview generation: **12**. It summarizes all final decisions, verification, and deliberate manager-exclusion restrictions. Read current task details before writing it again.
+
+Plan currently:
+
+1. Inspect production membership and trace failing removal — completed
+2. Implement atomic removal and coordinate opens — completed
+3. Complete outside-token removal/restoration — completed
+4. Verify permissions/concurrency/restoration/ticket rules — completed
+5. Complete review — pending
+
+Next:
+
+1. Receive/check the review of latest work (likely snapshot #5).
+2. Assess each finding against real code; reply with `respond_to_finding` before changing files.
+3. Run relevant targeted tests for any fixes and continue review until clean.
+4. Once clean, with no changes in that turn and no review pending, call `ready_for_merge` using current overview generation and a whole-task overview.
+5. Include the deliberate restriction: ordinary users cannot erase/downgrade manager exclusions and must ask a manager to put that person back.
+6. No deployment is authorized by this task yet. Byre/lead handles merge; do not git commit/push.
+
+## Browser/tool details if needed
+
+AGENTS asks production page checks through **byre-hands Chrome on iso**.
+
+Available clients observed:
+
+- roc: Ian, `cli21GGFTFEwwU`
+- iso: Ian, `cliJcjNR6wR8Co`
+- beast: Ian
+- dachshund: Oliver
+
+Discover fresh client state before showing anything to a human.
+
+`byre-hands` is an MCP stdio executable, not a conventional flags CLI. Use byre catalog `bash` on `client:"iso"` and keep stdin open while reading its JSON-RPC response:
+
+```python
+import subprocess, json
+p = subprocess.Popen(
+    ["byre-hands"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+)
+p.stdin.write(json.dumps({
+    "jsonrpc":"2.0", "id":1, "method":"tools/call",
+    "params":{"name":"chrome", "arguments":{"op":"tabs"}}
+}) + "\n")
+p.stdin.flush()
+print(p.stdout.readline())
+p.terminate()
+```
+
+Chrome operations include `tabs`, `navigate`, `js`, `capture` through its arguments. A Dogman production tab was opened with ID `224A8485139CFDA96D6D1B5B235661B8`; verify fresh tabs before using it. Async JS oddly returned `{}` in one call; do not claim browser verification from that. No final visual changes were made to layout, and no screenshot of the fix has been captured.
+
+The original production revision served the base commit `a704eb8ef44362c5427e48fd6b46cc7d55375184` and no builds were pending when first investigated. That may now be stale; check current Cloud Run/build state if needed. No production removal was performed.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Removing someone from a When guest list now looks up their current MEMBER row before writing. Opening an invitation can insert a membership row that only records the open time; the page still had no row and tried to insert another, which the unique group-and-person check rejected. The lookup updates or deletes that row instead of inserting a second one.
+
+- For a non-activity, an open-stamp membership with no rule is deleted, so a person who still has an invitation copy stays on the list.
+
+### Snapshot #2, reviewer "Review", codex gpt-6-sol: done
+
+The guest-list removal path now reloads the current MEMBER row and invitation copies before deciding whether to delete a hand membership or set an exclusion. It also uses the current membership state to block removal of activity volunteers. The prior open-stamp case is fixed: a blank-member row is set to excluded rather than deleted.
+
+- [medium] Removal can still race the invitation-open insert and fail with a duplicate MEMBER row.
+
+### Snapshot #3, reviewer "Review", codex gpt-6.1-terra: done
+
+Refreshes the target person's membership before removing them, preserving invitation-open rows and accounting for sent invitation copies. It also waits for the viewer's invitation-open stamp before displaying the guest list.
+
+- Sent invitations make self-removal fail authorization.
+- A guest's host may not be able to see their invitation copy.
+- Concurrent invitation opens can still race removal.
+
+### Snapshot #4, reviewer "Review", codex gpt-6-astra: done
+
+Moves guest removal into a server transaction, retains membership exclusions and invitation-open stamps, and makes duplicate open-stamp inserts reuse the existing membership. Updates the signed-in and outside invitation removal paths, permissions, documentation, and regression tests.
+
+- Outside invitation removal fails for brought guests with an RSVP when the invitee lacks ordinary event visibility.
+- Retained event and party exclusions prevent ordinary bringers from restoring their removed guests.
+
+### Snapshot #5, reviewer "Review", grok grok-4.7: done
+
+Removing someone from an event, party, or activity guest list is now one server operation, `POST /api/do/remove-guest`, instead of a client batch that could insert a second membership. Events and parties keep the membership row: `cancelled` when the person, their household, or their bringer leaves, and `excluded` when a list runner removes them. Both stay off the list even if a rule or a sent invitation would still include them. The opened stamp is kept, answers are cleared, and an invitation-open insert updates the existing row. Bringing that guest back is supported from add-guests and the outside invitation page, including after an RSVP, and a manager exclusion cannot be undone by the bringer.
+
+- **High:** Buying or giving a party ticket after removal inserts a second membership and fails with the original duplicate-row error.
+- **Medium:** Deleting a cancelled event or party membership puts that person back on the list without the joining checks.
+
+### Snapshot #6, reviewer "Review", codex gpt-6.1-terra: done
+
+Moves guest removal into a server transaction that retains a departure state and preserves invitation-open stamps. Event and party departures now keep guests off lists despite rules or invitation copies, with corresponding restoration and authorization checks; the guest-list interfaces use the new removal action.
+
+No significant findings.
