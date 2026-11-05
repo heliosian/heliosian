@@ -1,0 +1,21 @@
+# Fix guest invites for Jayven's cafe
+
+byre task tskJyiFItwCF7i, "Cafe guest invites", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskJyiFItwCF7i in byre (read_task_events with task_id tskJyiFItwCF7i).
+
+## Summary
+
+Fixed Ian’s failed attempt to add himself to CAFE Jayvens. Reproduced the exact production dialog error and traced it to the shared invitation lookup: the cafe has no ordinary visibility audience, while Ian can read and manage it as a super admin.
+
+Before: guest-list actions imposed the narrower visible predicate and rejected Ian despite his existing read permissions.
+Now: adding guests, sending invitations, and guest mail use GROUP’s existing read policy, matching page access.
+
+Verified the exact search/select/Add 1 person flow on a disconnected production snapshot as Ian’s school account. Ian appeared under Pending with invited=yes and no volunteer commitment. Regression tests cover events, parties, activities, all three endpoints, and rejection of unrelated parents. Focused invitation/activity tests, the write-location check, go vet, and review passed. The requested merge from main was already up to date, with no conflicts or additional changes. Production deployment and sending invitations were deliberately excluded.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Adding a guest, sending an invitation, or mailing a guest list failed with “no event, party or activity” when the caller could read the group but `(visible @row)` was false. That is a super admin or app admin who does not manage the group and is not in its `visible_to`, which is how Ian could open Jayven's cafe and still be rejected. `guestList` now keeps the row when a normal group read succeeds. The new test hides an event, party, and activity (`visible_to` and `managed_by` cleared) and checks that an unrelated parent still gets 404 while a super admin can add someone, skip-send, and mail an update.
+
+No significant findings.
