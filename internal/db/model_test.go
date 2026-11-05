@@ -225,8 +225,20 @@ func TestARefreshRefusesAHandEditThatLeavesADanglingReference(t *testing.T) {
 		"a person still named deleted": func(dir *data.Dir) error {
 			return dir.Delete(PeopleSheet, "PERSON", map[string]string{"id": "per00000000004"})
 		},
+		"content still named deleted": func(dir *data.Dir) error {
+			return dir.Delete(DocumentsSheet, "CONTENT", map[string]string{"id": "cnt00000000101"})
+		},
 		"a membership naming nobody added": func(dir *data.Dir) error {
 			return dir.Insert(GroupsSheet, "MEMBER", []map[string]string{{"id": "mem00000000999", "group": "grp00000000040", "person": "per99999999999", "member": "yes"}})
+		},
+		"an existing membership retargeted to nobody": func(dir *data.Dir) error {
+			return dir.Update(GroupsSheet, "MEMBER", map[string]string{"group": "grp00000000040", "person": "per00000000002"}, map[string]string{"person": "per99999999999"})
+		},
+		"a person removed beside an edit to their membership": func(dir *data.Dir) error {
+			if err := dir.Update(GroupsSheet, "MEMBER", map[string]string{"person": "per00000000004"}, map[string]string{"note": "edited without changing the reference"}); err != nil {
+				return err
+			}
+			return dir.Delete(PeopleSheet, "PERSON", map[string]string{"id": "per00000000004"})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
