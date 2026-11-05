@@ -9,6 +9,9 @@ const dayRoles = {'Regular': 'regular', 'No School': 'no-school', 'Early Dismiss
 export function by(rows, key) {
   const out = {};
   for (const row of rows) {
+    if (!row[key]) {
+      continue;
+    }
     (out[row[key]] = out[row[key]] || []).push(row);
   }
   return out;
