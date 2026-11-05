@@ -39,13 +39,12 @@ func (c Column) check(raw string) error {
 	case Text:
 		return nil
 	case Enum:
-		names := c.ValueNames()
-		for _, value := range names {
-			if strings.EqualFold(v, value) {
+		for _, value := range c.Values {
+			if strings.EqualFold(v, value.Name) {
 				return nil
 			}
 		}
-		return fmt.Errorf("%q is not one of %s", raw, strings.Join(names, ", "))
+		return fmt.Errorf("%q is not one of %s", raw, strings.Join(c.ValueNames(), ", "))
 	case ID:
 		prefix, ok := ParseID(raw)
 		if !ok || prefix != c.Prefix {
