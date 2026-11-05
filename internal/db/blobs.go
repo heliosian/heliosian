@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -46,10 +47,11 @@ func (m *Model) BlobCell(span *trace.Span, env Env, id, column string) (name, mi
 
 func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
 	mux.HandleFunc("GET "+blobPath+"{id}/{column}", func(w http.ResponseWriter, r *http.Request) {
+		stream := r.Header.Get("Accept") == "text/event-stream"
 		root := trace.New("request")
 		defer func() {
 			root.End()
-			if root.Dur > 250 {
+			if !stream && root.Dur > 250 {
 				slog.WarnContext(r.Context(), "slow blob", "path", r.URL.Path, "ms", root.Dur, "trace", root.Header())
 			}
 		}()
@@ -60,6 +62,34 @@ func registerBlobs(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tok
 		env, _, ok := caller(w, r, m, tokens)
 		signing.End()
 		if !ok {
+			return
+		}
+		w.Header().Add("Vary", "Accept")
+		if stream {
+			id := r.PathValue("id")
+			table, _ := TableOf(id)
+			read := m.newRun(env)
+			photo, exists := read.table("PHOTO").Get(id)
+			t, _ := Lookup("PHOTO")
+			if table != "PHOTO" || r.PathValue("column") != "image" || !exists || !read.readable(t, photo) {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusOK)
+			http.NewResponseController(w).Flush()
+			err := pics.waitPhoto(r.Context(), env, id)
+			if r.Context().Err() != nil {
+				return
+			}
+			message := map[string]string{}
+			if err != nil {
+				message["error"] = err.Error()
+			}
+			w.Write([]byte("data: "))
+			json.NewEncoder(w).Encode(message)
+			w.Write([]byte("\n"))
 			return
 		}
 		name, mimeType, ok := m.BlobCell(root.Start("cell"), env, r.PathValue("id"), r.PathValue("column"))

@@ -27,7 +27,24 @@ export async function postPhoto(of, name) {
     form.append(field, id);
   }
   appendPicture(form, 'photo', name);
-  return api('POST', '/api/do/photo', form);
+  const stored = await api('POST', '/api/do/photo', form);
+  await new Promise((resolve, reject) => {
+    const events = new EventSource(`/api/blob/${stored.result[0]}/image`);
+    events.onmessage = event => {
+      events.close();
+      const {error} = JSON.parse(event.data);
+      if (error) {
+        reject(new Error(error));
+        return;
+      }
+      resolve();
+    };
+    events.onerror = () => {
+      events.close();
+      reject(new Error('Could not finish saving that picture.'));
+    };
+  });
+  return stored;
 }
 
 export async function postFlyer(group, name) {

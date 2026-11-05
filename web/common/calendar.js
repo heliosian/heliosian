@@ -108,7 +108,7 @@ export function buildCalendar(a) {
   const classrooms = classroomRows.map(c => ({id: c.id, name: c.name, slug: c.slug, gradeband: c.parent ? a.classrooms.resources.GROUP[c.parent].name : '', grades: [], crews: []}));
   const classroomName = Object.fromEntries(classrooms.map(c => [c.id, c.name]));
   const photos = by(rowsOf(a.photos, 'PHOTO'), 'group');
-  const imageOf = id => photos[id] ? `/api/blob/${photos[id][0].id}/image` : '';
+  const imageOf = id => photos[id]?.[0].ready === 'Yes' ? `/api/blob/${photos[id][0].id}/image` : '';
   const tags = rowsOf(a.categories, 'GROUP').map(c => ({id: c.id, name: c.name, slug: c.slug, description: c.description || '', group: '', default: c.default === 'Yes', role: c.slug, image: imageOf(c.id), imageUrl: imageOf(c.id), photo: photos[c.id] ? photos[c.id][0].id : ''}));
   tags.push({id: 'going', name: 'Going', slug: 'going', description: 'Events you said yes to, parties your household holds tickets to, and activities someone in it signed up for.', group: '', default: true, builtIn: true, role: 'going', image: '', imageUrl: ''});
   tags.push({id: 'waitlisted', name: 'Waitlisted', slug: 'waitlisted', description: 'Parties your household is on the waitlist for.', group: '', default: true, builtIn: true, role: 'waitlisted', image: '', imageUrl: ''});

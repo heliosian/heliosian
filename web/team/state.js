@@ -103,7 +103,7 @@ export async function loadModel() {
     const owner = groups[g.parent];
     const h = {
       id: g.id, title: g.name, description: g.description || '', eventId: isYear(owner) ? '' : owner.id, year: isYear(owner) ? owner.name : '',
-      image: picture[g.id] ? picture[g.id].id : '', imageUrl: picture[g.id] ? `/api/blob/${picture[g.id].id}/image` : '',
+      image: picture[g.id] ? picture[g.id].id : '', imageUrl: picture[g.id]?.ready === 'Yes' ? `/api/blob/${picture[g.id].id}/image` : '',
       allowAdding: addingWords[g.adding] || ADDING.no, allowAddingOwn: addingWords[g.adding] || ADDING.no,
       showOnMain: g.listed !== 'No', hidden: !g.visible_to, volunteersHidden: !g.members_visible_to, order: g.order,
       can: {add: runs.has(g.id) || g.adding === 'anyone' || g.adding === 'approval', delete: runs.has(g.id)}, row: g,
@@ -153,7 +153,7 @@ export async function loadModel() {
     const node = {
       id: g.id, title: g.name, description: g.description || '', status, row: g,
       parent: where.parent, category: where.category, year: where.year || '',
-      image: picture[g.id] ? picture[g.id].id : '', imageUrl: picture[g.id] ? `/api/blob/${picture[g.id].id}/image` : '',
+      image: picture[g.id] ? picture[g.id].id : '', imageUrl: picture[g.id]?.ready === 'Yes' ? `/api/blob/${picture[g.id].id}/image` : '',
       flyer: g.flyer || '', flyerUrl: g.flyer ? `/api/blob/${g.id}/flyer` : '',
       timing: g.timing || '', start: g.start || '', end: g.end || '', location: g.location || '',
       spots, taken, volunteersComplete: g.join === 'none', full: g.join === 'none' || (spots > 0 && taken >= spots),

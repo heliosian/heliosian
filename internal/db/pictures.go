@@ -51,11 +51,13 @@ type Pictures struct {
 	mu      sync.Mutex
 	pending []string
 	waiting map[string]bool
+	changed chan struct{}
+	failed  map[string]error
 	wake    wake
 }
 
 func NewPictures(s *Store, bucket *blob.Bucket) *Pictures {
-	p := &Pictures{s: s, bucket: bucket, waiting: map[string]bool{}, wake: newWake()}
+	p := &Pictures{s: s, bucket: bucket, waiting: map[string]bool{}, changed: make(chan struct{}), failed: map[string]error{}, wake: newWake()}
 	in := s.Model().services.inbox(picturesInbox)
 	go func() {
 		for range in.wake {
@@ -64,6 +66,9 @@ func NewPictures(s *Store, bucket *blob.Bucket) *Pictures {
 					p.enqueue(d.change.New["id"])
 				}
 			}
+			p.mu.Lock()
+			p.notify()
+			p.mu.Unlock()
 		}
 	}()
 	return p
@@ -108,12 +113,44 @@ func remade(c Change) bool {
 
 func (p *Pictures) enqueue(id string) {
 	p.mu.Lock()
+	delete(p.failed, id)
 	if !p.waiting[id] {
 		p.waiting[id] = true
 		p.pending = append(p.pending, id)
 	}
 	p.mu.Unlock()
 	p.wake.poke()
+}
+
+func (p *Pictures) notify() {
+	close(p.changed)
+	p.changed = make(chan struct{})
+}
+
+func (p *Pictures) waitPhoto(ctx context.Context, env Env, id string) error {
+	for {
+		p.mu.Lock()
+		changed, failed := p.changed, p.failed[id]
+		p.mu.Unlock()
+		m := p.s.Model()
+		r := m.newRun(env)
+		row, ok := r.table("PHOTO").Get(id)
+		table, _ := Lookup("PHOTO")
+		if !ok || !r.readable(table, row) {
+			return access.Missing("no such picture")
+		}
+		if row["ready"] == "Yes" {
+			return nil
+		}
+		if failed != nil {
+			return errors.New("could not process that picture")
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
 func (p *Pictures) next() (string, bool) {
@@ -132,7 +169,14 @@ func (p *Pictures) run() {
 	for range p.wake {
 		for id, ok := p.next(); ok; id, ok = p.next() {
 			start := time.Now()
-			if err := p.make(id); err != nil {
+			err := p.make(id)
+			p.mu.Lock()
+			if err != nil && !p.waiting[id] {
+				p.failed[id] = err
+			}
+			p.notify()
+			p.mu.Unlock()
+			if err != nil {
 				slog.Error("pictures: make", "row", id, "error", err)
 				continue
 			}
