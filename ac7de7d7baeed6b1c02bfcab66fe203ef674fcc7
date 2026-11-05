@@ -1,0 +1,58 @@
+# Fix activity membership summaries on When
+
+byre task tskB93dJqfCe9X, "Jayven event visibility", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskB93dJqfCe9X in byre (read_task_events with task_id tskB93dJqfCe9X).
+
+## Summary
+
+Investigated why a Jayvens parent could not see CAFE Jayvens using production membership queries and the live When page. Bert Chan already belonged to Jayvens Parents and the activity; spoofing correctly used his permissions. The activity's visibility setting was blank. Ian chose Current activity members, and an ordinary production write set the activity's visibility group to itself.
+
+Before: CAFE Jayvens was hidden from ordinary activity members, including Jayvens parent Bert Chan.
+Now: CAFE Jayvens is visible to its effective members through the existing general group policy; a parent outside that membership still cannot read it.
+
+The same page exposed a shared calendar grouping defect: memberships whose group reference was unreadable were grouped under a missing key, matching an activity's absent waitlist or RSVP reference. Fixed web/common/calendar.js with a three-line check at the shared grouping helper rather than a special case in the activity badge.
+
+Before: Memberships with unreadable group references could produce false waitlist or RSVP summaries, including “waitlisted · undefined.”
+Now: Calendar grouping omits rows without their grouping key, so summaries use identified group memberships.
+
+Verified the corrected page as Bert using an isolated production-data snapshot. Six browser regression cases passed, covering hidden references, valid signup, RSVP, tickets and waitlists; relevant Go query tests and diff checks passed. Review completed without findings. Main merged cleanly with no conflict resolution or substantive merge edits. The production snapshot was deleted and the preview server stopped afterward.
+
+This task did not edit membership or invitation rules, send invitations, or apply the sibling-removal work managed in the separate task. The visibility correction is already live; the display code correction ships through the normal merge/deploy pipeline.
+
+## Reviews
+
+### Snapshot #1, reviewer "",  : skipped
+
+### Snapshot #3, reviewer "Review", codex gpt-6-astra: done
+
+The shared calendar grouping helper now skips rows whose grouping field is empty or unavailable. This prevents unrelated rows with missing group references from being treated as an event’s waitlist or RSVP members, avoiding false calendar attendance labels.
+
+No significant findings.
+
+## Decisions
+
+### Should CAFE Jayvens be visible to its current members, or to the whole school community?
+
+I reproduced Gayle’s report on production for **CAFE Jayvens, November 6, 8–10am**. Ian’s admin view opens it; spoofing as **Bert Chan**, a Ravens parent, shows **“Not here.”** Bert already belongs to both Jayvens Parents and CAFE Jayvens. Spoofing correctly applies his permissions.
+
+The cause is the activity’s **visibility setting**: `GROUP.visible_to` names the group whose effective members may read the activity. It is currently blank, which keeps this activity to managers and admins. Effective membership means direct members plus people selected by its rules. Its existing rules take Jays and Ravens members and their households, including siblings. The parallel invitation investigation found 11 extra siblings already sent invitations.
+
+I’m asking because choosing who may see a currently hidden production item is an audience policy decision; your task instructions explicitly require that decision from you. No production data or code has changed, and Spoof Mode is restored to Ian.
+
+- (*) Current activity members
+  Set the visibility group to CAFE Jayvens itself, using the existing general membership rule. Bert Chan can open it. Jasmine Bicoy, a Grade 7 sibling already included through her Ravens household, can also open it while that membership remains. A parent outside the activity’s membership cannot open it. Managers and admins retain access. This is my recommendation because visibility follows the group’s actual membership; it requires one production field update and no special-case code.
+- ( ) Whole school community
+  Set the visibility group to Everyone, the existing group containing the school community. Bert Chan and Jasmine Bicoy can open it, and so can a parent outside the activity’s membership. Managers and admins retain access. This makes the page available beyond its current guest membership.
+
+<details><summary>Current production pages: admin and parent</summary>
+
+| Ian’s admin view | Bert Chan’s parent view |
+|---|---|
+| ![Admin opens CAFE Jayvens](/tmp/jayven-admin.png) | ![Bert sees Not here](/tmp/jayven-parent.png) |
+
+The item is stored as an activity shared by When and Team. Its page calls it “Invite only,” although its blank visibility field currently prevents ordinary invitees from reading it.
+
+The serving image’s digest matches the successful build of the task’s base commit, and no builds are queued or running.
+</details>
+
+ian@fc.run chose: Current activity members
