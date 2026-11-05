@@ -1,0 +1,25 @@
+# Skip unchanged reference checks when validating model updates
+
+byre task tskymLN5lJBJBU, "Reference validation", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tskymLN5lJBJBU in byre (read_task_events with task_id tskymLN5lJBJBU).
+
+## Summary
+
+Performance audit of d92191d across shared request handling, query execution and permissions, store transactions, membership derivation, search, image loading, dashboard streams and browser model loading. Kept one small fix in reference validation.
+
+Before: validating a changed table compared complete row maps, including tables with no outgoing references.
+Now: validation compares reference columns and checks new or changed targets, while retaining initial-load and deleted-row integrity checks.
+
+On a read-only production snapshot with 74,223 documents and 55,782 content rows, ten alternating rounds in one process measured one validation pass at 38.7 → 26.6 ms for document metadata and 11.75 → 2.32 ms for content metadata. Separate full in-memory write runs measured approximately 397 → 374 ms and 72 → 53 ms respectively. These are local measurements, not deployed HTTP latency. The fix costs 10 net production lines and 12 regression-test lines, with no persistent cache or new API.
+
+Repository-wide vet, store tests and focused reference, refresh, commit and content tests passed. Regression cases cover a changed reference naming a missing person, deletion of referenced content, and deletion of a person alongside an unrelated membership edit. A broader selection hit the existing TestDocumentsGetThumbnails failure caused by its loopback image URL being refused as private; reproduced with the original code. Production received no writes; temporary snapshot and investigation files were removed.
+
+Full document rebuilding was deliberately left alone because it needs a broader design. Calendar-history trimming would change results; cancellation and preview-prefetch changes did not establish a measured benefit. The requested git merge --no-ff --no-commit main reported already up to date, with no conflicts or additional changes.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6-astra: done
+
+Reference validation now compares only reference columns with their previous values, avoiding full-row comparisons and repeated validation of unchanged references. Deleted rows still undergo reverse-reference checks. Three refresh regression cases cover deleted content, retargeted memberships, and deletion alongside an unrelated membership edit. Review was by code inspection; no builds or tests were run, as requested.
+
+No significant findings.
