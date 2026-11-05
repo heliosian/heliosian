@@ -11,7 +11,7 @@ export async function saveFeed(f, {name, emoji, classrooms, tags}) {
   }
   const feeds = state.model.feeds;
   const last = feeds.length ? feeds[feeds.length - 1].order : '';
-  const [id] = await write([{insert: 'SAVED_SEARCH', row: {person: me().id, name, emoji, order: keyBetween(last || undefined, undefined), default: false, search}}]);
+  const {result: [id]} = await write([{insert: 'SAVED_SEARCH', row: {person: me().id, name, emoji, order: keyBetween(last || undefined, undefined), default: false, search}}]);
   return {id};
 }
 
@@ -99,7 +99,7 @@ export async function addEvent(body) {
   if (body.sharing === 'Public') {
     batch.push(...audienceEdits('@event', body.title, body.classrooms, ''));
   }
-  const [id] = await write(batch);
+  const {result: [id]} = await write(batch);
   return {id};
 }
 

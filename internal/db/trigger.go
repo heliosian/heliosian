@@ -325,7 +325,11 @@ func beforeDelete(s *Store, tx *store.Tx[Model], c Change, where string) ([]Chan
 		if t.table != "" && t.table != c.Table {
 			continue
 		}
-		writes, err := t.fire(s.In(tx), c)
+		m, err := s.Built(tx)
+		if err != nil {
+			return nil, err
+		}
+		writes, err := t.fire(m, c)
 		if err != nil {
 			return nil, access.Invalid("%s: %v", where, err)
 		}
@@ -497,7 +501,11 @@ func fire(s *Store, tx *store.Tx[Model], c Change, env Env, where string) error 
 			if t.table != next.Table {
 				continue
 			}
-			writes, err := t.fire(s.In(tx), next)
+			m, err := s.Built(tx)
+			if err != nil {
+				return err
+			}
+			writes, err := t.fire(m, next)
 			if err != nil {
 				return access.Invalid("%s: %v", where, err)
 			}

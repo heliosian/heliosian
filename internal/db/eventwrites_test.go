@@ -2,10 +2,49 @@ package db
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"strings"
 	"testing"
 
 	"heliosian/internal/access"
 )
+
+func TestEventCreationReportsDuplicateAddress(t *testing.T) {
+	s := sample(t)
+	before := s.Model()
+	row := map[string]any{"kind": "event", "parent": "grp00000000060", "name": "Winter Party", "slug": "hummingbirds", "status": "open", "start": "2027-01-16 13:00", "added_by": parent}
+	batch := Batch{Batch: []Edit{
+		{Insert: "GROUP", As: "event", Row: row},
+		{Insert: "GROUP", As: "hosts", Row: map[string]any{"kind": "group", "name": "Winter Party Managers", "status": "open", "added_by": parent}},
+		{Set: "@hosts", Cells: map[string]any{"managed_by": "@hosts"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": "@hosts", "person": parent, "member": "yes"}},
+		{Set: "@event", Cells: map[string]any{"managed_by": "@hosts"}},
+	}}
+	write := func() ([]string, error) {
+		return Write(t.Context(), s, access.Actor{Email: "rowan.ashdown@example.org"}, Env{Viewer: parent, Now: testNow}, batch)
+	}
+	_, err := write()
+	if err == nil || !strings.Contains(err.Error(), `two rows have the slug "hummingbirds"`) {
+		t.Fatalf("duplicate address answered %v", err)
+	}
+	var refusal *access.Refusal
+	if !errors.As(err, &refusal) || refusal.Status != http.StatusBadRequest {
+		t.Fatalf("duplicate address is not a bad request: %v", err)
+	}
+	if s.Model() != before {
+		t.Fatal("refused creation changed the model")
+	}
+	row["slug"] = "winter-party"
+	ids, err := write()
+	if err != nil {
+		t.Fatalf("retry with a different address: %v", err)
+	}
+	g, _ := s.Model().Table("GROUP").Get(ids[0])
+	if g["slug"] != "winter-party" || g["managed_by"] != ids[1] || g["rsvp_yes"] == "" || g["rsvp_no"] == "" || g["hidden_for"] == "" {
+		t.Fatalf("retry did not create the hosted event and its groups: %v", g)
+	}
+}
 
 func TestEventsAreAddedAnsweredAndApproved(t *testing.T) {
 	const community = "grp00000000060"

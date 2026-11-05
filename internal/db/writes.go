@@ -244,7 +244,10 @@ func stageEdits(s *Store, tx *store.Tx[Model], env Env, edits []Edit, label stri
 }
 
 func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[string]string, whole bool, authorize func(*Model, Change) error) (string, Change, error) {
-	m := s.In(tx)
+	m, err := s.Built(tx)
+	if err != nil {
+		return "", Change{}, err
+	}
 	uploaded, err := resolve(w.uploaded, names)
 	if err != nil {
 		return "", Change{}, err
