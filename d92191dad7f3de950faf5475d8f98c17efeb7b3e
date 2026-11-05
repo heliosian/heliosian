@@ -1,0 +1,25 @@
+# Avoid allocating enum names during successful validation
+
+byre task tsksnLSsmqRy4g, "Enum validation waste", created by ian@fc.run, merged by ian@fc.run (lead).
+Full chats: the events of task tsksnLSsmqRy4g in byre (read_task_events with task_id tsksnLSsmqRy4g).
+
+## Summary
+
+Performance audit of main at `43ebc84` examined shared request, query, store, worker and browser paths and profiled the existing scale benchmarks. The retained fix is a smaller validation path in `internal/db/cell.go` (3 insertions, 4 deletions).
+
+Before: every successful enum check constructed and discarded a list of allowed names.
+Now: validation compares the schema's existing names directly and builds the same list only when formatting a rejection.
+
+Five alternating rounds of 10 whole writes on the synthetic school (1,701 people, 2,966 groups, 10,013 documents) measured event-name allocation at 58.82 → 49.54 MB per write (15.8% less, 88,237 fewer allocations) and RSVP allocation at 4.26 → 3.77 MB (11.7% less, 6,364 fewer allocations). Median event-name timing was 196.6 → 185.3 ms; timing varied, so allocation reduction is the stronger evidence. These were local measurements, with no production latency claim or deployment.
+
+All 42 stored enum columns retained identical acceptance and exact error text across 954 inputs. Focused schema, loading, membership, trigger, answer and incremental-refresh tests passed under timeout 30; repository-wide go vet, formatting and diff checks passed. No new cache, queue, configuration or schema was needed. Broader changes to repeated model rebuilds inside event triggers were deliberately excluded because they would affect staged transaction and validation ordering.
+
+At merge preparation, the requested `git merge --no-ff --no-commit main` reported already up to date. No conflicts or additional edits were necessary.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-terra: done
+
+Enum validation now scans the configured values directly and only constructs the list of value names when reporting an invalid value. This removes allocations from successful validation while preserving the existing error message.
+
+No significant findings.
