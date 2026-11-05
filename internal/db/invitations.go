@@ -175,7 +175,7 @@ func (m *Model) guestList(ctx context.Context, env Env, id string) (store.Row, e
 	if !ok || !slices.Contains(guestListKinds, g["kind"]) {
 		return nil, access.Missing("no event, party or activity %s", id)
 	}
-	visible, err := m.passes(ctx, env, "GROUP", id, "(visible @row)")
+	visible, err := m.passes(ctx, env, "GROUP", id, "true")
 	if err != nil {
 		return nil, err
 	}

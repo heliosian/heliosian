@@ -130,6 +130,37 @@ func (h *inviteHarness) reply(to, from, uid, standing string) int {
 	return h.do("", http.MethodPost, "/hooks/replies/mime", map[string]string{"recipient": to, "from": from, "body-mime": raw, "timestamp": stamp, "token": token, "signature": sig}).Code
 }
 
+func TestGuestListActionsUseGroupReadPermissions(t *testing.T) {
+	for _, kind := range guestListKinds {
+		t.Run(kind, func(t *testing.T) {
+			h := newInviteHarness(t)
+			h.setup([]Edit{{Set: h.event, Cells: map[string]any{"kind": kind, "visible_to": "", "managed_by": ""}}})
+			for _, action := range []struct {
+				path string
+				body any
+			}{
+				{"/api/do/add-guests", addGuestsAsk{Group: h.event, People: []guestAsk{{Person: staff}}}},
+				{"/api/do/invite", inviteAsk{Group: h.event, Skip: true}},
+				{"/api/do/guest-mail", guestMailAsk{Group: h.event, Kind: "update"}},
+			} {
+				if rec := h.do(rowan, http.MethodPost, action.path, action.body); rec.Code != http.StatusNotFound {
+					t.Fatalf("hidden %s accepted an unrelated parent at %s: %d %s", kind, action.path, rec.Code, rec.Body)
+				}
+				if rec := h.do(maya, http.MethodPost, action.path, action.body); rec.Code != http.StatusOK {
+					t.Fatalf("super admin on hidden %s at %s: %d %s; group=%v", kind, action.path, rec.Code, rec.Body, h.group())
+				}
+			}
+			member, ok := h.s.Model().Table("MEMBER").Find(h.event, staff)
+			if !ok || !h.s.Model().effectivelyIn(h.event, staff) {
+				t.Fatalf("super admin was not added to the guest list: %v", member)
+			}
+			if kind == "activity" && (member["member"] != "" || member["invited"] != "yes") {
+				t.Fatalf("activity invitation became a volunteer sign-up: %v", member)
+			}
+		})
+	}
+}
+
 func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	h := newInviteHarness(t)
 	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "people": []map[string]string{{"person": parent}}}); rec.Code != http.StatusOK {
