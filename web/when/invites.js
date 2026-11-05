@@ -40,7 +40,7 @@ function removeGuestButton(e, view, r, className, refresh) {
   remove.append(svg('close'));
   remove.addEventListener('click', async () => {
     try {
-      await guests.takeOff(e, view, r);
+      await guests.takeOff(e, r);
       toast(`${r.name} removed`);
       refresh();
     } catch (err) {
@@ -616,7 +616,7 @@ function paintGuests(e, view, panel, again) {
   const takeOff = async m => {
     const row = view.list.find(r => r.key === m.person);
     try {
-      await guests.takeOff(e, view, row);
+      await guests.takeOff(e, row);
       toast(`${m.name || m.email} taken off the list`);
       again();
     } catch (err) {

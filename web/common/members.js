@@ -7,8 +7,8 @@ import {popup} from '/modal.js';
 
 const throughWords = {Parents: 'Parent', Children: 'Child', Siblings: 'Sibling'};
 
-export function keptOff(row) {
-  return Boolean(row && (row.member === 'excluded' || row.invited === 'excluded' && row.member !== 'yes'));
+export function keptOff(row, kind) {
+  return Boolean(row && (row.member === 'excluded' || row.member === 'cancelled' && (kind === 'event' || kind === 'party') || row.invited === 'excluded' && row.member !== 'yes'));
 }
 
 export function reasonWords(member, rules, phrase) {

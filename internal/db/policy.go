@@ -131,6 +131,21 @@ const PolicySource = `
 (define (self_or_household @p)
   (or (= @p @viewer) (in @p (household @viewer))))
 
+(define (joins @m)
+  (and (blank @m.invited) (or (visible @m.group) (invited_guest @m.group))
+       (in @m.group.join "direct" "others") (blank @m.group.price)
+       (= @m.member "yes")
+       (or (and (self_or_household @m.person) (eligible_for @m.group @m.person))
+           (and (= @m.group.join "others")
+                (or (eligible_for @m.group @viewer)
+                    (and (!= @m.group.kind "activity") (invited_guest @m.group)))
+                (or (!= @m.group.kind "activity") (!= @m.group.eligible @m.group)
+                    (exists MEMBER (= group @m.group) (= person @viewer) (= member "yes")))
+                (or (person_visible @m.person)
+                    (and (= @m.person.source "guest") (self_or_household @m.guest_of)))))
+       (or (blank @m.group.capacity)
+           (< (count MEMBER (= group @m.group) (= member "yes")) @m.group.capacity))))
+
 (define (leaves @m)
   (and (not (blank @m.group.join)) (blank @m.group.price)
        (or (= @m.person @viewer) (and (!= @m.group.join "self") (self_or_household @m.person)))))
@@ -538,20 +553,11 @@ const PolicySource = `
 ; take back someone's answer about coming to a group the viewer may see, for whoever the viewer may answer for
 (delete MEMBER (and (answers_visible @old.group) (answers_for @old)))
 ; join a group that takes joining and no payment and has room: oneself or one's household when eligible, or with join others, anyone the viewer sees or an outside guest brought by their household
-(insert MEMBER
-  (and (blank @new.invited) (or (visible @new.group) (invited_guest @new.group))
-       (in @new.group.join "direct" "others") (blank @new.group.price)
-       (= @new.member "yes") (= @new.added_by @viewer)
-       (or (and (self_or_household @new.person) (eligible_for @new.group @new.person))
-           (and (= @new.group.join "others")
-                (or (eligible_for @new.group @viewer)
-                    (and (!= @new.group.kind "activity") (invited_guest @new.group)))
-                (or (!= @new.group.kind "activity") (!= @new.group.eligible @new.group)
-                    (exists MEMBER (= group @new.group) (= person @viewer) (= member "yes")))
-                (or (person_visible @new.person)
-                    (and (= @new.person.source "guest") (self_or_household @new.guest_of)))))
-       (or (blank @new.group.capacity)
-           (< (count MEMBER (= group @new.group) (= member "yes")) @new.group.capacity))))
+(insert MEMBER (and (= @new.added_by @viewer) (joins @new)))
+(set MEMBER.member
+  (and (in @old.group.kind "event" "party") (= @old.member "cancelled") (= @new.member "yes")
+       (or (self_or_household @old.person) (= @old.guest_of @viewer))
+       (joins @new)))
 ; note that the viewer or someone in their family opened the invitation to a group the viewer sees, on a row that puts nobody in it
 (insert MEMBER
   (and (blank @new.invited) (visible @new.group) (self_or_household @new.person) (blank @new.member) (not (blank @new.opened))
@@ -577,20 +583,27 @@ const PolicySource = `
 ; take back a guest the viewer brought to a group that takes joining and no payment
 (delete MEMBER
   (and (!= @old.group.kind "activity") (= @old.guest_of @viewer)
+       (or (not (in @old.group.kind "event" "party")) (not (in @old.member "cancelled" "excluded")))
        (not (blank @old.group.join)) (blank @old.group.price)))
 ; hide something the viewer sees from themselves: join its hidden group, oneself alone
 (insert MEMBER
   (and (blank @new.invited) (= @new.group.join "self") (= @new.person @viewer) (= @new.member "yes") (= @new.added_by @viewer)
        (exists GROUP @t (= hidden_for @new.group) (visible @t))))
 ; leave a group that takes joining and no payment, or take someone in one's family out of it unless each joins it alone, even once it is closed or full
-(delete MEMBER (leaves @old))
+(delete MEMBER
+  (and (leaves @old) (or (not (in @old.group.kind "event" "party")) (not (in @old.member "cancelled" "excluded")))))
+(insert MEMBER
+  (and (in @new.group.kind "event" "party") (= @new.member "cancelled")
+       (blank @new.invited) (blank @new.guest_of) (blank @new.opened) (blank @new.note)
+       (= @new.added_by @viewer) (visible @new.group) (leaves @new)))
 ; a person, someone in their family unless each joins alone, or their host gives up a place; the group's managers set anyone's but who hid something; never in a family, which only super admins change
 (set MEMBER.member
   (and (!= @old.group.kind "family")
        (or (and (or (= @old.person @viewer)
                     (and (!= @old.group.join "self") (self_or_household @old.person))
                     (and (!= @old.group.kind "activity") (= @old.guest_of @viewer)))
-                (= @new.member "cancelled"))
+                (= @new.member "cancelled")
+                (or (not (in @old.group.kind "event" "party")) (!= @old.member "excluded")))
            (and (manages @old.group) (not (hides @old.group))))))
 ; what the viewer, their household or a ticket of theirs was billed, and what was billed for a group they manage
 (read PAYMENT

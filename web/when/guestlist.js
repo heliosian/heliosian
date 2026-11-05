@@ -85,7 +85,7 @@ export async function fetchInvites(e) {
     const family = familyOf(pid) || (m && m.guest_of ? familyOf(m.guest_of) : null);
     const copy = copies[pid];
     const answer = answers[pid];
-    const excluded = keptOff(m);
+    const excluded = keptOff(m, g.kind);
     const onList = !excluded && (effective.has(pid) || Boolean(copy));
     const outside = p.source === 'guest';
     const email = emailOfId[pid] || (d ? emailOf(d) : '');
@@ -191,30 +191,8 @@ export function bringGuest(e, body) {
   return api('POST', '/api/do/add-guests', {group: e.id, people: [guest], guest_of: body.of, answer: body.answer, send: Boolean(body.invite)});
 }
 
-export async function takeOff(e, view, row) {
-  const batch = [];
-  if (row.volunteer) {
-    throw new Error('Cancel the sign-up in HCA-Team to leave the guest list.');
-  }
-  if (view.group.kind === 'activity') {
-    const cells = {invited: 'excluded'};
-    if (row.guestOf && (view.host || row.guestOf !== me().id)) {
-      cells.guest_of = '';
-    }
-    batch.push(row.memberRow
-      ? {set: row.memberRow.id, cells}
-      : {insert: 'MEMBER', row: {group: e.id, person: row.key, invited: 'excluded', added_by: me().id, added: stamp()}});
-  } else if (row.memberRow && !row.byRule) {
-    batch.push({delete: row.memberRow.id});
-  } else if (row.memberRow) {
-    batch.push({set: row.memberRow.id, cells: {member: 'excluded'}});
-  } else {
-    batch.push({insert: 'MEMBER', row: {group: e.id, person: row.key, member: 'excluded', added_by: me().id, added: stamp()}});
-  }
-  if (row.answerRow && view.group.kind !== 'activity') {
-    batch.push({delete: row.answerRow});
-  }
-  await write(batch);
+export function takeOff(e, row) {
+  return api('POST', '/api/do/remove-guest', {group: e.id, person: row.key});
 }
 
 export function setPublicList(e, on) {

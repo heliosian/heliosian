@@ -443,7 +443,7 @@ function keptOffCard(ed) {
   card.append(rows);
   ed.keptOff = () => {
     rows.replaceChildren();
-    const off = ed.draft.hand.filter(keptOff);
+    const off = ed.draft.hand.filter(m => keptOff(m, ed.g.row?.kind));
     card.hidden = !off.length;
     for (const m of off) {
       const shown = personView(m.person);
@@ -1015,7 +1015,7 @@ function rulesSummary(g, rules) {
   }
   card.append(lines);
   const added = g.hand.filter(m => m.member === 'yes').length;
-  const off = g.hand.filter(keptOff).length;
+  const off = g.hand.filter(m => keptOff(m, g.row.kind)).length;
   if (added) {
     card.append(el('div', 'subject-note', `${added} ${added === 1 ? 'person is' : 'people are'} on the email list by hand.`));
   }

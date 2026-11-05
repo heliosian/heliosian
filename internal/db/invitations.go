@@ -47,6 +47,7 @@ func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, toke
 	api.HandleFunc("POST /api/do/invite", modelAction(s, tokens, iv.invite))
 	api.HandleFunc("POST /api/do/guest-mail", modelAction(s, tokens, iv.guestMail))
 	api.HandleFunc("POST /api/do/add-guests", modelAction(s, tokens, iv.addGuests))
+	api.HandleFunc("POST /api/do/remove-guest", modelAction(s, tokens, iv.removeGuest))
 	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
 	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
 	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)
@@ -145,7 +146,7 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 }
 
 func guestMembership(g store.Row, viewer string, edit Edit) Edit {
-	if g["kind"] == "party" {
+	if g["kind"] != "activity" {
 		edit.viewer = viewer
 	}
 	if g["kind"] == "activity" {
@@ -242,7 +243,7 @@ func (m *Model) hostsOf(g store.Row) []string {
 
 func (m *Model) keptOff(g store.Row, person string) bool {
 	row, ok := m.Table("MEMBER").Find(g["id"], person)
-	return ok && keptOffState(memberAs(row), row["invited"])
+	return ok && keptOffState(memberAs(row), row["invited"], g["kind"])
 }
 
 func (m *Model) onList(g store.Row, person string) bool {
@@ -602,6 +603,13 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 				excluded := memberAs(row) == "excluded" || row["invited"] == "excluded"
 				restore := memberAs(row) == "excluded" && runs
 				ownGuest := memberAs(row) != "excluded" && row["guest_of"] == env.Viewer
+				if g["kind"] != "activity" && memberAs(row) == "cancelled" {
+					own, err := m.passes(ctx, env, "PERSON", p, "(self_or_household @row)")
+					if err != nil {
+						return sentAnswer{}, err
+					}
+					restore = runs || ownGuest || own
+				}
 				if g["kind"] == "activity" {
 					if !excluded && m.effectivelyIn(g["id"], p) {
 						continue

@@ -132,10 +132,11 @@ func (m *Model) checkDraft(ctx context.Context, env Env, d groupDraft) error {
 }
 
 func (m *Model) draftMembers(ctx context.Context, env Env, d groupDraft) (draftAnswer, error) {
+	g, _ := m.Table("GROUP").Get(d.List)
 	reasons := map[string][]draftReason{}
 	excluded := map[string]bool{}
 	for _, mem := range d.Members {
-		if keptOffState(mem.Member, mem.Invited) {
+		if keptOffState(mem.Member, mem.Invited, g["kind"]) {
 			excluded[mem.Person] = true
 			continue
 		}

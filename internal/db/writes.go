@@ -271,14 +271,17 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 			}
 		}
 		requested := row
-		var invitation store.Row
+		var membership store.Row
 		if t.Name == "MEMBER" && row["member"] == "yes" {
-			if old, ok := m.Table("MEMBER").Find(row["group"], row["person"]); ok && old["member"] == "" {
-				invitation = old
-				joined := maps.Clone(old)
-				maps.Copy(joined, row)
-				joined["id"], joined["opened"] = old["id"], old["opened"]
-				row = joined
+			if old, ok := m.Table("MEMBER").Find(row["group"], row["person"]); ok {
+				g, _ := m.Table("GROUP").Get(row["group"])
+				if old["member"] == "" || (g["kind"] == "event" || g["kind"] == "party") && (old["member"] == "cancelled" || old["member"] == "excluded") {
+					membership = old
+					joined := maps.Clone(old)
+					maps.Copy(joined, row)
+					joined["id"], joined["opened"] = old["id"], old["opened"]
+					row = joined
+				}
 			}
 		}
 		id := row["id"]
@@ -289,13 +292,33 @@ func stageWrite(s *Store, tx *store.Tx[Model], w Edit, where string, names map[s
 			return "", Change{}, err
 		}
 		c := Change{Table: t.Name, New: row, uploaded: uploaded}
+		if t.Name == "MEMBER" && row["opened"] != "" && row["member"] == "" && row["invited"] == "" {
+			if old, ok := m.Table("MEMBER").Find(row["group"], row["person"]); ok {
+				if err := authorize(m, c); err != nil {
+					return "", Change{}, err
+				}
+				updated := maps.Clone(old)
+				if updated["opened"] == "" {
+					updated["opened"] = row["opened"]
+				}
+				c.Old, c.New = old, updated
+				return old["id"], c, s.Stage(tx, t.Sheet, store.Update(t.Name, store.Row{"id": old["id"]}, updated))
+			}
+		}
 		request := c
 		request.New = requested
 		if err := authorize(m, request); err != nil {
 			return "", Change{}, err
 		}
-		if invitation != nil {
-			c.Old = invitation
+		if membership != nil {
+			if membership["member"] == "excluded" {
+				restored := maps.Clone(membership)
+				restored["member"] = "yes"
+				if err := authorize(m, Change{Table: t.Name, Old: membership, New: restored}); err != nil {
+					return "", Change{}, err
+				}
+			}
+			c.Old = membership
 			return id, c, s.Stage(tx, t.Sheet, store.Update(t.Name, store.Row{"id": id}, row))
 		}
 		return id, c, s.Stage(tx, t.Sheet, store.Insert(t.Name, row))

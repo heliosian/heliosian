@@ -167,8 +167,8 @@ func memberAs(row store.Row) string {
 	return strings.ToLower(strings.TrimSpace(row["member"]))
 }
 
-func keptOffState(member, invited string) bool {
-	return member == "excluded" || invited == "excluded" && member != "yes"
+func keptOffState(member, invited, kind string) bool {
+	return member == "excluded" || member == "cancelled" && (kind == "event" || kind == "party") || invited == "excluded" && member != "yes"
 }
 
 func (m *Model) directMemberCount(group string) int {
@@ -364,7 +364,7 @@ func (r *membershipResolver) resolve(group string) map[string][]string {
 		if activity {
 			invited = row["invited"]
 		}
-		if keptOffState(memberAs(row), invited) {
+		if keptOffState(memberAs(row), invited, g["kind"]) {
 			excluded[row["person"]] = true
 		}
 		if memberAs(row) == "yes" {

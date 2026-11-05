@@ -9,7 +9,7 @@ Every app's pages read and write the data model, and nothing else, through the s
 - the data model's API (`db.Register` in `internal/db/http.go`): `QUERY` and `POST /api/q`, the `/api/do/` calls that act on any data (`photo`, `pronunciation`, `file`, `fetched`, `person-at`, `subscription`, `wiki`), `GET /api/blob/{id}/{column}`, `GET /api/openapi.json`, `GET /api/policies` and `GET /api/explain/{id}`;
 - search, `POST /api/do/search` (`db.RegisterSearch`);
 - the drafting calls (`db.RegisterDrafts` in `internal/db/draft.go`): `POST /api/do/draft-members`, the rule editor's preview of whom a draft holds, and `describe-group`, `describe-activity` and `describe-charity`, Claude's descriptions;
-- the guest-list calls, `POST /api/do/invite`, `/api/do/add-guests` and `/api/do/guest-mail` (`RegisterInvitations`, `docs/datamodel.md`, Guest lists);
+- the guest-list calls, `POST /api/do/invite`, `/api/do/add-guests`, `/api/do/remove-guest` and `/api/do/guest-mail` (`RegisterInvitations`, `docs/datamodel.md`, Guest lists);
 - Report a problem or idea, `POST /api/feedback`, and its triage, `POST /api/do/report-draft` and `POST /api/do/file-report` (`docs/feedback.md`);
 - the address suggestions, `GET /api/address/suggest` (`internal/geocode/suggest.go`);
 - image search, one prefix per app's image folder: `/api/home`, `/api/when`, `/api/team`, `/api/celebrate`, `/api/wiki` (`internal/imagesearch`, behind the shared sign-in gate);

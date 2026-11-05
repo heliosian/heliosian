@@ -157,7 +157,7 @@ export function openGuestCard(e, p, view, refresh) {
         return;
       }
       try {
-        await takeOff(e, view, p);
+        await takeOff(e, p);
         closeModal();
         refresh();
       } catch (err) {

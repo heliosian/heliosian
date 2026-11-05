@@ -493,7 +493,7 @@ var Tables = []Table{
 			ref("person", "PERSON").required().about("The person."),
 			enum("member",
 				v("yes", "in the group by name: a ticket on a party, a sign-up on an activity, on the guest list of an event, a place on a party's waitlist, in it for any other kind"),
-				v("cancelled", "gave it up, kept for the books: a ticket given back"),
+				v("cancelled", "gave up a place, kept for the books; on events and parties, off the guest list until restored"),
 				v("excluded", "kept out even though a rule would put them in: someone a manager keeps off an email list, or someone taken off a group invite")).about("Whether they are in the group by name. Of these values only yes makes an effective member; an activity's invited=yes does too."),
 			enum("invited",
 				v("yes", "on an activity's guest list without a volunteer commitment"),
@@ -760,7 +760,7 @@ var Tables = []Table{
 	{
 		Name:        "EFFECTIVE_MEMBER",
 		Generated:   true,
-		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less its exclude rules, everyone with member=excluded, an activity's invited=excluded rows whose member is not yes, and everyone deactivated.",
+		Description: "Who is in a group, and why: its member=yes rows, an activity's invited=yes rows, plus everyone its rules take in, less its exclude rules, everyone with member=excluded, cancelled event or party memberships, an activity's invited=excluded rows whose member is not yes, and everyone deactivated.",
 		Columns: []Column{
 			ident(EffectiveMemberPrefix),
 			ref("group", "GROUP").about("The group."),

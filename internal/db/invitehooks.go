@@ -265,6 +265,15 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		delete(join.Cells, "group")
 		delete(join.Cells, "person")
 	}
+	if row, ok := m.Table("MEMBER").Find(c.group["id"], guest); ok && c.group["kind"] != "activity" {
+		if memberAs(row) == "excluded" || memberAs(row) == "cancelled" && row["guest_of"] != c.person {
+			serve.Error(w, r, access.Forbidden("the hosts kept this person off the guest list"))
+			return
+		}
+		if memberAs(row) == "cancelled" {
+			join = guestMembership(c.group, c.person, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}})
+		}
+	}
 	edits = append(edits, join)
 	actor := access.Actor{Email: m.addressOf(c.person)}
 	sending := []string{}
@@ -294,21 +303,23 @@ func (iv *Invitations) extRemoveGuest(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, access.Invalid("send {\"key\": \"…\"}: %v", err))
 		return
 	}
-	m := iv.s.Model()
-	row, ok := m.Table("MEMBER").Find(c.group["id"], body.Key)
-	if !ok || row["guest_of"] != c.person {
-		serve.Error(w, r, access.Missing("no guest of yours %s", body.Key))
-		return
-	}
-	if c.group["kind"] == "activity" && memberAs(row) == "yes" {
-		serve.Error(w, r, access.Forbidden("this guest is a volunteer; cancel their sign-up in hca-team to leave"))
-		return
-	}
-	edits := append([]Edit{guestMembership(c.group, c.person, Edit{Delete: row["id"]})}, m.answerEdits(c.group, body.Key, "", "", time.Now())...)
-	if c.group["kind"] == "activity" {
-		edits = []Edit{{Set: row["id"], Cells: map[string]any{"invited": "excluded"}}}
-	}
-	if _, err := iv.writeGuests(r.Context(), access.Actor{Email: m.addressOf(c.person)}, edits, c.group["id"], c.person, nil, 0); err != nil {
+	_, err = iv.s.Transact(r.Context(), access.Actor{Email: iv.s.Model().addressOf(c.person)}, func(tx *store.Tx[Model]) error {
+		m := iv.s.In(tx)
+		recipient, g, ok := m.invitedGroup(r.PathValue("token"))
+		if !ok {
+			return access.Missing("no invitation")
+		}
+		row, ok := m.Table("MEMBER").Find(g["id"], body.Key)
+		if !ok || row["guest_of"] != recipient["person"] {
+			return access.Missing("no guest of yours %s", body.Key)
+		}
+		if _, err := stageEdits(iv.s, tx, Env{System: invitationsJob, Now: time.Now()}, m.clearAnswerEdits(g, body.Key), "remove guest answers", true); err != nil {
+			return err
+		}
+		_, err := stageGuestRemoval(iv.s, tx, Env{Viewer: recipient["person"], Now: time.Now()}, g, body.Key)
+		return err
+	})
+	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}

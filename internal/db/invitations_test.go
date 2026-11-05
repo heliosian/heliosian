@@ -657,7 +657,7 @@ func TestOutsideFreePartyGuestsCanBringAndRemoveGuests(t *testing.T) {
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("removing their free-party guest answered %d: %s", rec.Code, rec.Body)
 		}
-		if _, ok := h.s.Model().Table("MEMBER").Find(tacoNight, guests[0]); ok {
+		if h.s.Model().onList(h.group(), guests[0]) {
 			t.Fatal("the removed guest is still on the list")
 		}
 	}
