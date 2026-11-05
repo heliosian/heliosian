@@ -210,7 +210,6 @@ export async function loadModel() {
     rules: rowsOf(answers.rules, 'RULE'),
     yearGroups: Object.values(groups).filter(isYear),
     gradeColors: {},
-    imageSearch: true,
     categories: yearHeadings,
     headings,
     activities: roots,

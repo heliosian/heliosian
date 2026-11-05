@@ -1,8 +1,7 @@
-import {state} from './state.js';
 import {el, svg, button, toast} from '/elements.js';
 import {imageTools} from '/images.js';
 
-export const {uploadImage, imageSearchOn, openImageSearch} = imageTools('/api/when', {state});
+export const {uploadImage, openImageSearch} = imageTools('/api/when');
 
 export function imageControl(t, onChange) {
   const wrap = el('span', 'admin-image');
@@ -42,9 +41,7 @@ export function imageControl(t, onChange) {
   }));
   find.setAttribute('aria-label', 'Find an image');
   find.title = 'Find an image';
-  if (imageSearchOn()) {
-    wrap.append(find);
-  }
+  wrap.append(find);
   if (t.imageUrl) {
     const remove = button('', 'close', 'icon-button admin-image-remove', () => {
       t.image = '';

@@ -21,7 +21,7 @@ const appModal = document.querySelector('#app-modal');
 const widgetModal = document.querySelector('#widget-modal');
 const appForm = document.querySelector('#app-form');
 const categoryForm = document.querySelector('#category-form');
-const {imagePicker} = imageTools('/api/home', {state});
+const {imagePicker} = imageTools('/api/home');
 
 let editingLink = null;
 let editingCategory = null;

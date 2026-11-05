@@ -227,7 +227,6 @@ export async function loadModel() {
     settingRows: rowsOf(a.settings, 'SETTING'),
     current,
     banner: settings['Banner'] || '',
-    imageSearch: true,
     billable: [user, ...user.adults].filter(x => !x.isStudent && x.email).map(x => x.email),
     celebrations,
     categories,

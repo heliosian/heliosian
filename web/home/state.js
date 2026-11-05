@@ -306,7 +306,6 @@ export async function loadModel() {
     user: {id: cal.me.id, email: cal.email, name, initial: (name || '?')[0].toUpperCase(), photoUrl: photo ? `/api/blob/${photo.id}/thumbnail` : ''},
     admin: data.homeAdmin.result.length > 0,
     superAdmin: data.superAdmin.result.length > 0,
-    imageSearch: true,
     everyone: cal.everyone,
     layout: home.layout,
     layoutSetting: home.layoutSetting,

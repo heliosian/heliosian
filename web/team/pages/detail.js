@@ -14,7 +14,7 @@ import {andList} from '/andlist.js';
 import {personTile, peopleRow, offerTile} from '/people.js';
 import {personRow} from '/personrow.js';
 import {reorder, setChair, setOffers, signUp} from '../writes.js';
-import {openSignUp, openActivity, saveActivityFields, openPerson, openImageSearch, imageSearchOn, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid} from '../edit.js';
+import {openSignUp, openActivity, saveActivityFields, openPerson, openImageSearch, uploadAndSave, uploadImage, openVolunteerSettings, openVolunteerGrid} from '../edit.js';
 
 const phone = window.matchMedia('(max-width: 900px)');
 phone.addEventListener('change', render);
@@ -693,7 +693,7 @@ export function activityPage(node) {
 
   page.append(detailHero({
     imageUrl: node.imageUrl || root.imageUrl, title: node.title, path: node.path, className: categoryClass(root.category), stamp: heroStamp(node),
-    edit: node.canEdit ? {image: node.image, tools: {uploadImage, imageSearchOn, openImageSearch}, save: image => save({image})} : null,
+    edit: node.canEdit ? {image: node.image, tools: {uploadImage, openImageSearch}, save: image => save({image})} : null,
   }));
 
   const cols = el('div', 'detail-cols');

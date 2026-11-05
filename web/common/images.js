@@ -5,7 +5,6 @@ import {write} from '/rail.js';
 import {el, svg, toast} from '/elements.js';
 
 const held = new Map();
-const previews = new Map();
 
 export const pickedPattern = /upload:\d+|stock:stk[0-9A-Za-z]{11}/g;
 
@@ -18,7 +17,7 @@ function appendPicture(form, field, name) {
     form.append('stock', name.slice('stock:'.length));
     return;
   }
-  const file = held.get(name);
+  const {file} = held.get(name);
   form.append(field, file, file.name || 'picture');
 }
 
@@ -45,19 +44,19 @@ export async function setPicture(groupId, name, old) {
   }
 }
 
-export function imageTools(apiBase, {state}) {
+export function imageTools(apiBase) {
   async function uploadImage(file) {
     const name = `upload:${held.size + 1}`;
-    held.set(name, file);
-    previews.set(name, URL.createObjectURL(file));
-    return {name, url: previews.get(name)};
+    const url = URL.createObjectURL(file);
+    held.set(name, {file, url});
+    return {name, url};
   }
 
   function urlOf(name) {
     if (name.startsWith('stock:')) {
       return `${apiBase}/images/thumb?id=${name.slice('stock:'.length)}`;
     }
-    return previews.get(name) || name;
+    return held.get(name)?.url || name;
   }
 
   async function uploadAndSave(save, file) {
@@ -67,10 +66,6 @@ export function imageTools(apiBase, {state}) {
     } catch (err) {
       toast(err.message);
     }
-  }
-
-  function imageSearchOn() {
-    return Boolean(state.model && state.model.imageSearch);
   }
 
   function openImageSearch(initial, onPicked) {
@@ -221,7 +216,7 @@ export function imageTools(apiBase, {state}) {
     crop.addEventListener('click', () => openImageCrop(preview.src, upload));
     const find = el('button', 'button button-secondary button-small image-find', 'Find an image');
     find.type = 'button';
-    find.hidden = plain || !imageSearchOn();
+    find.hidden = plain;
     find.addEventListener('click', e => {
       e.stopPropagation();
       openImageSearch(options.query ? options.query() : '', picked => {
@@ -259,5 +254,5 @@ export function imageTools(apiBase, {state}) {
     }};
   }
 
-  return {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker, urlOf};
+  return {uploadImage, uploadAndSave, openImageSearch, imagePicker, urlOf};
 }

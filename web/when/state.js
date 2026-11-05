@@ -31,7 +31,6 @@ export async function loadModel() {
   applyModel({
     user: {id: cal.me.id, email: cal.email, name: cal.me.name_show, initial: (cal.me.name_show || '?')[0].toUpperCase(), photoUrl: photo ? `/api/blob/${photo.id}/thumbnail` : '', classrooms: cal.mineRooms, saved: cal.home.id ? {classrooms: cal.home.classrooms, tags: cal.home.tags} : null, home: cal.home, staff: cal.staff},
     settingsId: '',
-    imageSearch: true,
     today: formatDate(new Date()),
     classrooms: cal.classrooms,
     colors: Object.fromEntries(cal.classroomRows.map(c => [c.name, c.color || ''])),

@@ -16,7 +16,7 @@ import {load, navigate, render} from '/router.js';
 import {field, text, textarea, select, fillSelect, checkbox, segmented} from '/form.js';
 import {tabbedFields} from '/tabs.js';
 
-export const {uploadImage, uploadAndSave, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/team', {state});
+export const {uploadImage, uploadAndSave, openImageSearch, imagePicker} = imageTools('/api/team');
 
 export async function saveActivity(body) {
   const before = body.id && activity(body.id) ? activity(body.id).path : null;

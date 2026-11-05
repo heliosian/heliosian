@@ -90,7 +90,7 @@ export function listPage() {
   return out;
 }
 
-const tools = imageTools('/api/wiki', {state: {model: {imageSearch: true}}});
+const tools = imageTools('/api/wiki');
 
 function headerSaver(p, hero) {
   return async name => {

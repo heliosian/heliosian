@@ -16,7 +16,7 @@ import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/
 import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
 
-export const {uploadImage, imageSearchOn, openImageSearch, imagePicker} = imageTools('/api/celebrate', {state});
+export const {uploadImage, openImageSearch, imagePicker} = imageTools('/api/celebrate');
 
 function stamp() {
   const d = new Date();

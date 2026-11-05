@@ -79,9 +79,7 @@ export function heroImageBar({image, imageUrl, query, tools, save}) {
     menu.append(b);
   };
   item('up', 'Upload image', () => file.click());
-  if (tools.imageSearchOn()) {
-    item('search', 'Find an image', () => tools.openImageSearch(query, picked => save(picked.name)));
-  }
+  item('search', 'Find an image', () => tools.openImageSearch(query, picked => save(picked.name)));
   if (image) {
     item('crop', 'Crop', () => openImageCrop(imageUrl, put));
     item('trash', 'Remove', () => save(''));

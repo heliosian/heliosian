@@ -3,7 +3,7 @@ import {dayTypeClass} from '/daytype.js';
 import {render as markdown} from '/markdown.js';
 import {el, svg, button, toast, copyText} from '/elements.js';
 import {dateCard, googleCalendarLink} from '/datecard.js';
-import {uploadImage, openImageSearch, imageSearchOn} from '../imagecontrol.js';
+import {uploadImage, openImageSearch} from '../imagecontrol.js';
 import {heroImageBar, detailHero} from '/heroimage.js';
 import {openPersonCard} from '/personcard.js';
 import {setTitle} from '/shell.js';
@@ -40,7 +40,7 @@ function imageEdit(e) {
     toast(image ? 'Picture saved' : 'Picture removed');
     await load();
   };
-  return {image: e.image, tools: {uploadImage, imageSearchOn, openImageSearch}, save};
+  return {image: e.image, tools: {uploadImage, openImageSearch}, save};
 }
 
 function imageBar(e) {
