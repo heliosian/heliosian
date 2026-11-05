@@ -1,0 +1,28 @@
+# Fix event creation responses and preserve validation errors
+
+byre task tskSYBTZulHrkW, "Winter invite sharing", created by ian@fc.run, merged by ian@fc.run.
+Full chats: the events of task tskSYBTZulHrkW in byre (read_task_events with task_id tskSYBTZulHrkW).
+
+## Summary
+
+Investigated Eliza’s winter party sharing error with production data, request logs and Chrome. Her existing Hawks/Falcons Winter Party at https://when.heliosian.com/g/halcons-winter-skate had working host controls and guest rules for Hawks, Hawks parents, Falcons and Falcons parents. No production repair was needed, and 126 pending invitations were left unsent.
+
+Before: event and saved-calendar creation misread the write API response as an array and reported failure after saving.
+Now: both callers read the response’s result array and complete with the saved row’s ID.
+
+Before: retrying creation with an existing event address could mask duplicate-address validation with a missing-group error because writes and triggers used an earlier model after validation failed.
+Now: ordinary writes and staged triggers preserve model validation errors and roll back refused creation.
+
+Kept the shared API contract and corrected the two calendar callers. Regression tests cover duplicate-address HTTP 400, atomic rollback and successful full creation retry. Chrome verified event creation, duplicate-address handling and saved-calendar creation. Focused database/store tests and repository-wide go vet passed; the full database suite reached its required 30-second limit. Review returned no findings.
+
+Checked Ian’s alternative explanation of invite-group rule editing. The screenshot’s Share the event label is exclusive to creation, and production request sizes matched creation; failed request bodies were not logged. Local rule preview found 22 people, and adding and saving the rule both succeeded. No additional rule-path defect was found.
+
+No schema edits, production writes or invitation sends. Merged main into the task branch without conflicts or substantive resolutions, leaving the merge uncommitted for byre to conclude.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", codex gpt-6.1-terra: done
+
+The change reports model-building errors during staged writes and triggers instead of continuing with a stale model. It also fixes how the calendar reads IDs returned when creating an event or saved feed, and adds a regression test for a duplicate event address.
+
+No significant findings.
