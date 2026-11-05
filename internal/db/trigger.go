@@ -23,6 +23,7 @@ type committedTrigger struct {
 
 var stagedTriggers = []stagedTrigger{
 	{table: "PERSON", fire: schoolGroups},
+	{table: "MEMBER", fire: studentSchoolGroups},
 	{table: "PERSON", fire: personFamilyNames},
 	{table: "MEMBER", fire: memberFamilyName},
 	{table: "PHOTO", fire: photoNotReady},
@@ -564,18 +565,47 @@ func schoolGroups(m *Model, c Change) ([]Edit, error) {
 	return writes, nil
 }
 
+func studentSchoolGroups(m *Model, c Change) ([]Edit, error) {
+	people := map[string]bool{}
+	for _, row := range []store.Row{c.Old, c.New} {
+		if row == nil {
+			continue
+		}
+		g, _ := m.Table("GROUP").Get(row["group"])
+		if g["kind"] == "group" && g["slug"] == "students" {
+			people[row["person"]] = true
+		}
+	}
+	writes := []Edit{}
+	for _, id := range slices.Sorted(maps.Keys(people)) {
+		p, ok := m.Table("PERSON").Get(id)
+		if !ok {
+			continue
+		}
+		edits, err := schoolGroups(m, Change{New: p})
+		if err != nil {
+			return nil, err
+		}
+		writes = append(writes, edits...)
+	}
+	return writes, nil
+}
+
 func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	out := map[string]bool{}
 	if p["deactivated"] != "" {
 		return out, nil
 	}
+	student := m.students()[p["id"]]
 	for _, column := range []string{"classroom", "crew", "department"} {
 		if g := overrideOr(p, column); g != "" {
 			group, ok := m.Table("GROUP").Get(g)
 			if !ok || group["kind"] != column {
 				return nil, fmt.Errorf("%s's %s must name a %s group", p["id"], column, column)
 			}
-			out[g] = true
+			if column == "department" || student {
+				out[g] = true
+			}
 		}
 	}
 	grade := overrideOr(p, "grade")
@@ -588,7 +618,9 @@ func (m *Model) schoolGroupsOf(p store.Row) (map[string]bool, error) {
 	if i < 0 {
 		return nil, fmt.Errorf("%s is in grade %s, and no grade group has the slug %s", p["id"], grade, slug)
 	}
-	out[groups.All()[i]["id"]] = true
+	if student {
+		out[groups.All()[i]["id"]] = true
+	}
 	return out, nil
 }
 

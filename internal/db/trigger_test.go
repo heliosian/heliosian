@@ -71,7 +71,8 @@ func TestSchoolGroupsFollowThePerson(t *testing.T) {
 
 	if err := write(`{"batch": [
 		{"insert": "GROUP", "as": "oak", "row": {"kind": "classroom", "name": "Oak"}},
-		{"insert": "PERSON", "row": {"source": "veracross", "vc_name": "Wren Ashdown", "vc_classroom": "@oak"}}]}`); err != nil {
+		{"insert": "PERSON", "as": "wren", "row": {"source": "veracross", "vc_name": "Wren Ashdown", "vc_classroom": "@oak"}},
+		{"insert": "MEMBER", "row": {"group": "grp00000000001", "person": "@wren", "member": "yes"}}]}`); err != nil {
 		t.Fatal(err)
 	}
 	if got := schoolGroupsHeld(s, written[1]); !slices.Equal(got, []string{written[0]}) {

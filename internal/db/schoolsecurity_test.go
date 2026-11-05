@@ -50,7 +50,8 @@ func TestDirectoryAdminsCannotJoinPrivilegedGroupsThroughSchoolAssignments(t *te
 				t.Fatalf("assigning a real %s got %d: %s", kind, rec.Code, rec.Body)
 			}
 			member, ok := s.Model().Table("MEMBER").Find(target, parent)
-			if !ok || member["member"] != "yes" || s.Model().SuperAdmin("rowan.ashdown@example.org") {
+			wantMember := column == "department_override"
+			if ok != wantMember || ok && member["member"] != "yes" || s.Model().SuperAdmin("rowan.ashdown@example.org") {
 				t.Fatal("the school assignment did not create only the expected membership")
 			}
 		})

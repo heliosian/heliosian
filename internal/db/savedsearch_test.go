@@ -45,7 +45,7 @@ func TestAWordIsForAnEventsAudience(t *testing.T) {
 		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "j", "target": "grp00000020015", "replace_with": "household"}},
 	})
 	for search, want := range map[string][]string{
-		`[["hummingbirds"]]`:         {"grp00000000521"},
+		`[["hummingbirds"]]`:         {"grp00000000040", "grp00000000521"},
 		`[["hummingbirds-parents"]]`: {"grp00000000040", "grp00000000521"},
 		`[["community"]]`:            {"grp00000000040"},
 	} {

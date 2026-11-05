@@ -296,8 +296,12 @@ func (m *Model) teaches(person string) []string {
 	}
 	groups := m.Table("GROUP")
 	out := []string{}
-	for _, member := range m.Table("MEMBER").Referencing("person", person) {
-		g, _ := groups.Get(member["group"])
+	p, ok := m.Table("PERSON").Get(person)
+	if !ok || p["deactivated"] != "" {
+		return nil
+	}
+	for _, column := range []string{"classroom", "crew"} {
+		g, _ := groups.Get(p[column])
 		if g["kind"] == "crew" {
 			g, _ = groups.Get(g["parent"])
 		}
