@@ -14,9 +14,6 @@ Last verified: bff8f634
 
 # Issues
 
-- Wiki: comments on specific passages of a page
-  Readers can't respond to a wiki page. Let them comment on a selected passage or the whole page, with replies, resolving, and notifications to the author and the people in a thread.
-  Issue: https://github.com/heliosian/heliosian/issues/185
 - Wiki: keep each page's edit history
   Wiki saves overwrite the page's content and the old version is swept away. Record every save as a revision, with a History view, diffs between revisions, and restore.
   Issue: https://github.com/heliosian/heliosian/issues/184
