@@ -1,0 +1,34 @@
+# Remove completed wiki comments TODO
+
+byre task tskHrlc1bLqayn, "Remove completed wiki TODO", created by ian@fc.run, merged by ian@fc.run.
+Started from the TODO item "Wiki: comments on specific passages of a page".
+Full chats: the events of task tskHrlc1bLqayn in byre (read_task_events with task_id tskHrlc1bLqayn).
+
+## Summary
+
+Removed the completed wiki passage comments item, its description, and its issue link from TODO.md at Ian's direction. The change was limited to that bookkeeping; review returned no findings. Merging main required no conflict resolution.
+
+## Reviews
+
+### Snapshot #1, reviewer "Review", grok grok-4.7: done
+
+Removes the completed "Wiki: comments on specific passages of a page" item (issue 185) from the Issues section of TODO.md. The rest of the file is unchanged.
+
+No significant findings.
+
+### Snapshot #1, reviewer "Analysis", codex gpt-6.1-terra: done
+
+### Change
+The completed wiki comments item is removed from the project work list, including its description and issue link.
+
+### Goal
+The change matches the requested removal and leaves the remaining work items intact.
+
+### Integration
+The surrounding wiki issues remain in their existing order, so the list continues to read as before.
+
+### Complexity
+Deleting the obsolete entry makes the work list slightly simpler without introducing any new behavior or maintenance paths.
+
+### Risk
+The change affects planning documentation only, so its operational risk is minimal; the review relies on the task brief’s statement that the work is complete.
