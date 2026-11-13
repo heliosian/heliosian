@@ -1558,6 +1558,35 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .picker-rule { margin-top: 6px; }
 
+.picker-search { box-sizing: border-box; width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--ink); font: inherit; font-size: 15px; }
+
+/* Search hits sorted into sections, each a row that picks or unpicks its group. */
+.picker-results:not(:empty) { max-height: 280px; margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; }
+
+.picker-result-head { padding: 6px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); background: var(--page); }
+
+.picker-result { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; padding: 8px 14px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+
+.picker-result:hover { background: var(--teal-wash, #eef6f5); }
+
+.picker-result.is-on { color: var(--brand); font-weight: 600; }
+
+.picker-result small { color: var(--muted); font-weight: 400; white-space: nowrap; }
+
+.picker-result-none { padding: 8px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+.picker-picked { margin-top: 10px; }
+
+.picker-unpick { margin-left: 2px; font-size: 15px; line-height: 1; }
+
+.picker-label { margin: 14px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+
+.picker-who { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.picker-who-choice { padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
+
+.picker-who-choice.is-on { background: var(--teal-wash, #eef6f5); border-color: var(--accent); color: var(--brand); font-weight: 600; }
+
 .picker-preview { font-size: 13.5px; color: var(--brand); margin: 10px 0 4px; min-height: 1.2em; }
 
 .picker-auto { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }

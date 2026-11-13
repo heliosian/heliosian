@@ -21,7 +21,7 @@ export async function ruleChoices() {
     return choices;
   }
   const answers = await queries({
-    groups: `(from GROUP @g (where (sees_members @g) (!= status "closed") (in kind ${Object.keys(kindWords).map(k => JSON.stringify(k)).join(' ')})) (order name asc) (columns name kind slug))`,
+    groups: `(from GROUP @g (where (sees_members @g) (!= status "closed") (in kind ${Object.keys(kindWords).map(k => JSON.stringify(k)).join(' ')}) (not (implementation_only @g))) (order name asc) (columns name kind slug parent start color))`,
     roles: `(from GROUP (where (= kind "group") (in slug ${roleSlugs.map(s => JSON.stringify(s)).join(' ')})) (columns name slug))`,
   });
   const groups = rowsOf(answers.groups, 'GROUP');
@@ -137,22 +137,6 @@ function ruleLine(rule, {onChange, onRemove, count}) {
   const line = el('div', 'rule-edit');
   line.append(row, chip);
   return line;
-}
-
-export function ruleEditor(rule, onChange) {
-  const holder = el('div', 'rule-edit-rows');
-  const paint = () => {
-    holder.replaceChildren(ruleLine(rule, {onChange, onRemove: null, count: () => undefined}));
-  };
-  if (choices) {
-    paint();
-  } else {
-    holder.append(el('div', 'save-status', 'Loading the groups…'));
-    ruleChoices().then(paint, err => {
-      holder.replaceChildren(el('div', 'save-status error', err.message));
-    });
-  }
-  return holder;
 }
 
 export function rulesCard({list, onChange, onRemove, onAdd, count, empty = 'No rules yet: only the people added by hand are on the email list.', hint = 'Each rule takes in a group\'s members, or their parents, children or households, and can keep to one role. A Leave out rule keeps whoever it picks off the list.'}) {

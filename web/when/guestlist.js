@@ -249,9 +249,14 @@ export async function saveRules(e, view, rules) {
   }
 }
 
-export async function addRule(e, view, rule) {
-  const last = view.rules.length ? view.rules[view.rules.length - 1].order : '';
-  await write([{insert: 'RULE', row: ruleRow(e.id, rule, keyBetween(last || '', null))}]);
+export async function addRules(e, view, rules) {
+  let last = view.rules.length ? view.rules[view.rules.length - 1].order || '' : '';
+  const batch = [];
+  for (const rule of rules) {
+    last = keyBetween(last, null);
+    batch.push({insert: 'RULE', row: ruleRow(e.id, rule, last)});
+  }
+  await write(batch);
 }
 
 export function previewRules(e, view, rules) {
