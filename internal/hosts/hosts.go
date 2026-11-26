@@ -17,6 +17,7 @@ var Apps = []App{
 	{Key: "admin", Hosts: []string{"admin"}},
 	{Key: "wiki", Hosts: []string{"wiki"}},
 	{Key: "mcp", Hosts: []string{"mcp"}},
+	{Key: "gather", Hosts: []string{"gather"}},
 }
 
 func Qualify(label, domain string) string {
