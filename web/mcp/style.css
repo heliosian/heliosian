@@ -94,6 +94,10 @@ body {
   gap: 0.75rem;
 }
 
+.buttons[hidden] {
+  display: none;
+}
+
 .buttons button {
   flex: 1;
   padding: 0.75rem 1rem;
@@ -105,7 +109,13 @@ body {
   cursor: pointer;
 }
 
-#allow {
+.panel h2 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+#allow, #create {
   background: white;
   color: var(--brand);
 }
@@ -117,4 +127,8 @@ body {
 
 #error {
   color: #ffd2cc;
+}
+
+.buttons + #made, .buttons + #error {
+  margin-top: 1.25rem;
 }

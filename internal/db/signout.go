@@ -34,7 +34,11 @@ func (ss *Sessions) SignedOut(email string) (time.Time, bool) {
 	if err != nil {
 		return time.Time{}, false
 	}
-	return time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), at.Second(), 0, School), true
+	out := time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), at.Second(), 0, School)
+	if later := out.Add(time.Hour); later.Hour() == out.Hour() && later.Minute() == out.Minute() {
+		return later, true
+	}
+	return out, true
 }
 
 func (ss *Sessions) SignOut(ctx context.Context, email string) error {

@@ -17,7 +17,7 @@ import (
 	"heliosian/internal/trace"
 )
 
-var testTokens = testkit.Tokens(func(string) bool { return true }, func() time.Time { return testNow })
+var testTokens = testkit.Tokens(func(string) string { return "per1" }, func() time.Time { return testNow })
 
 const (
 	superAdmin = "maya.lindqvist@example.org"

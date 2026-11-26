@@ -94,7 +94,7 @@ func sampleServerWithBucket(t *testing.T) (client, *db.Store, *blob.Bucket) {
 	if _, err := db.Write(context.Background(), s, access.System("test"), db.Env{System: "test"}, runner); err != nil {
 		t.Fatal(err)
 	}
-	tokens := testkit.Tokens(func(email string) bool { return s.Model().SignedIn(email) != "" }, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
+	tokens := testkit.Tokens(func(email string) string { return s.Model().SignedIn(email) }, func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) })
 	mux := http.NewServeMux()
 	db.Register(mux, s, pics, tokens)
 	srv := httptest.NewServer(mux)

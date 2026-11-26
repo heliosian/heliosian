@@ -292,7 +292,7 @@ func TestSignInSetsOneCookie(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "https://who.heliosian.com/api/people", nil)
 	req.AddCookie(&http.Cookie{Name: cookieName, Value: got["heliosian.com"].Value})
-	if email := a.sessionEmail(req); email != "parent@heliosschool.org" {
+	if email, _ := a.sessionEmail(req); email != "parent@heliosschool.org" {
 		t.Errorf("who: the set cookie reads as %q", email)
 	}
 	got = set("who.heliosiandev.com:8080")

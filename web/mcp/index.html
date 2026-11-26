@@ -24,6 +24,14 @@
 <p class="copyable"><code id="address"></code></p>
 <p>In Claude Code, run:</p>
 <p class="copyable"><code id="command"></code></p>
+<h2>A token for a program</h2>
+<p>A program that can't sign in itself, such as a server running AI agents, can use a token instead. It acts as you, never expires, and stops working when you sign out of any Heliosian app, which also signs you out everywhere else.</p>
+<div class="buttons"><button id="create" type="button">Create a token</button></div>
+<div id="made" hidden>
+<p>Your token for <strong id="who"></strong>. Copy it now; it isn't shown again. Send it in an Authorization header, after the word Bearer.</p>
+<p class="copyable"><code id="token"></code></p>
+</div>
+<p id="error" hidden></p>
 </div>
 </body>
 </html>

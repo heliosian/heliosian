@@ -62,7 +62,9 @@ func (a *Auth) Fixed(email string, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(slot(r.Context(), identity{open: true})))
 			return
 		}
-		a.admit(w, r, a.resolve(r, email), next)
+		id := a.resolve(r, email)
+		id.since = time.Now()
+		a.admit(w, r, id, next)
 	})
 }
 
@@ -167,7 +169,7 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(slot(r.Context(), identity{open: true})))
 			return
 		}
-		email := a.sessionEmail(r)
+		email, since := a.sessionEmail(r)
 		if email == "" {
 			w.Header().Set("Cache-Control", "no-store")
 			slog.InfoContext(r.Context(), "signed out", "path", r.URL.Path, "page", page(r),
@@ -179,7 +181,9 @@ func (a *Auth) Wrap(next http.Handler) http.Handler {
 			a.splash(w, r)
 			return
 		}
-		a.admit(w, r, a.resolve(r, email), next)
+		id := a.resolve(r, email)
+		id.since = since
+		a.admit(w, r, id, next)
 	})
 }
 
@@ -314,34 +318,34 @@ func (a *Auth) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-func (a *Auth) sessionEmail(r *http.Request) string {
+func (a *Auth) sessionEmail(r *http.Request) (string, time.Time) {
 	cookie, err := r.Cookie(cookieName)
 	if err != nil {
-		return ""
+		return "", time.Time{}
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(cookie.Value)
 	if err != nil {
-		return ""
+		return "", time.Time{}
 	}
 	var t token
 	if err := json.Unmarshal(decoded, &t); err != nil {
-		return ""
+		return "", time.Time{}
 	}
 	if !verify(a.key, string(t.Session), t.Signature) {
-		return ""
+		return "", time.Time{}
 	}
 	var s session
 	if err := json.Unmarshal(t.Session, &s); err != nil {
-		return ""
+		return "", time.Time{}
 	}
 	if time.Now().Unix() > s.Issued+int64(sessionLength.Seconds()) {
-		return ""
+		return "", time.Time{}
 	}
 	if !strings.HasSuffix(s.Email, "@"+Domain) {
-		return ""
+		return "", time.Time{}
 	}
 	if out, ok := a.sessions.SignedOut(s.Email); ok && s.Issued <= out.Unix() {
-		return ""
+		return "", time.Time{}
 	}
-	return s.Email
+	return s.Email, time.Unix(s.Issued, 0)
 }

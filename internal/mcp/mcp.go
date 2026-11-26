@@ -55,13 +55,14 @@ func Register(mux, api *http.ServeMux, deps Deps) {
 	api.HandleFunc("POST /api/mcp/request", serve.JSON(s.describe))
 	api.HandleFunc("POST /api/mcp/approve", serve.JSON(s.approve))
 	api.HandleFunc("POST /api/mcp/deny", serve.JSON(s.deny))
+	api.HandleFunc("POST /api/mcp/durable", serve.JSON(s.durable))
 	mux.HandleFunc("POST /{$}", s.guarded(""))
 	mux.HandleFunc("/mcp", s.guarded("/mcp"))
 }
 
 func (s *Server) guarded(suffix string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		guard := sdkauth.RequireBearerToken(s.verify, &sdkauth.RequireBearerTokenOptions{ResourceMetadataURL: origin(r) + resourcePath + suffix})
+		guard := sdkauth.RequireBearerToken(s.verify, &sdkauth.RequireBearerTokenOptions{ResourceMetadataURL: origin(r) + resourcePath + suffix, AllowMissingExpiration: true})
 		guard(s.handler).ServeHTTP(w, r)
 	}
 }

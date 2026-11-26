@@ -194,7 +194,7 @@ func NewCore(cfg Config) *Core {
 	tokens := auth.Tokens{
 		Key:      cfg.AccessKey,
 		Sessions: sessions,
-		SignedIn: func(email string) bool { return dataStore.Model().SignedIn(email) != "" },
+		Person:   func(email string) string { return dataStore.Model().SignedIn(email) },
 		Now:      schoolNow,
 	}
 	db.RegisterFeeds(calendarMux, dataStore, schoolNow)

@@ -87,7 +87,7 @@ func setup(t *testing.T) fixture {
 	tokens := auth.Tokens{
 		Key:      []byte("test"),
 		Sessions: signed,
-		SignedIn: func(email string) bool { return s.Model().SignedIn(email) != "" },
+		Person:   func(email string) string { return s.Model().SignedIn(email) },
 		Now:      time.Now,
 	}
 	db.Register(mux, s, db.NewPictures(s, bucket), tokens)
@@ -560,5 +560,133 @@ func TestDescribeTableLeavesOutPrivateColumns(t *testing.T) {
 	text, _ := callTool(t, f.connect(t, f.token(t)), "helios_describe_table", map[string]any{"table": "PERSON"})
 	if strings.Contains(text, "- vc_phone (") || strings.Contains(text, "- consent (") {
 		t.Fatalf("a private column is described: %s", text)
+	}
+}
+
+func (f fixture) refresh(t *testing.T, client, refreshToken string) (int, map[string]any) {
+	t.Helper()
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshToken}, "client_id": {client}}
+	return f.post(t, "/oauth/token", "application/x-www-form-urlencoded", form.Encode(), nil)
+}
+
+func TestARefreshTokenKeepsTheConnectionAndStaysTheSame(t *testing.T) {
+	f := setup(t)
+	client := f.register(t)
+	status, out := f.exchange(t, client, f.approve(t, client), verifier)
+	if status != http.StatusOK {
+		t.Fatalf("exchange answered %d: %v", status, out)
+	}
+	first, _ := out["refresh_token"].(string)
+	if first == "" {
+		t.Fatalf("the exchange gave no refresh token: %v", out)
+	}
+	for range 3 {
+		status, out = f.refresh(t, client, first)
+		if status != http.StatusOK {
+			t.Fatalf("refresh answered %d: %v", status, out)
+		}
+		if out["refresh_token"] != first {
+			t.Fatalf("refresh changed the refresh token")
+		}
+		if text, failed := callTool(t, f.connect(t, out["access_token"].(string)), "helios_whoami", nil); failed || !strings.Contains(text, rowanID) {
+			t.Fatalf("a refreshed token reads as %s", text)
+		}
+	}
+}
+
+func TestARefreshTokenIsRefusedToAnotherClientAndAfterSignOut(t *testing.T) {
+	f := setup(t)
+	client := f.register(t)
+	_, out := f.exchange(t, client, f.approve(t, client), verifier)
+	refreshToken := out["refresh_token"].(string)
+	if status, out := f.refresh(t, f.register(t), refreshToken); status != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("another client's refresh answered %d: %v", status, out)
+	}
+	f.sessions.mu.Lock()
+	f.sessions.out[rowan] = time.Now()
+	f.sessions.mu.Unlock()
+	if status, out := f.refresh(t, client, refreshToken); status != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("a refresh from before sign-out answered %d: %v", status, out)
+	}
+}
+
+func (f fixture) durable(t *testing.T) string {
+	t.Helper()
+	status, out := f.post(t, "/api/mcp/durable", "application/json", `{}`, map[string]string{"Sec-Fetch-Site": "same-origin"})
+	if status != http.StatusOK {
+		t.Fatalf("durable answered %d: %v", status, out)
+	}
+	return out["token"].(string)
+}
+
+func TestADurableTokenReadsAsItsMakerLongAfterAnAccessTokenWouldExpire(t *testing.T) {
+	f := setup(t)
+	var made struct {
+		Email  string `json:"e"`
+		Issued int64  `json:"i"`
+		Person string `json:"p"`
+	}
+	token := f.durable(t)
+	if !auth.Unseal([]byte("test"), "read and write durable access", token, &made) {
+		t.Fatal("the durable token is not sealed as one")
+	}
+	made.Issued -= int64(2 * auth.AccessLength.Seconds())
+	old := auth.Seal([]byte("test"), "read and write durable access", made)
+	if text, failed := callTool(t, f.connect(t, old), "helios_whoami", nil); failed || !strings.Contains(text, rowanID) {
+		t.Fatalf("an old durable token reads as %s", text)
+	}
+}
+
+func TestADurableTokenNeedsASameOriginRequestAndEndsAtSignOut(t *testing.T) {
+	f := setup(t)
+	if status, _ := f.post(t, "/api/mcp/durable", "application/json", `{}`, nil); status != http.StatusForbidden {
+		t.Fatalf("a cross-site durable request answered %d", status)
+	}
+	token := f.durable(t)
+	f.sessions.SignOut(context.Background(), rowan)
+	req, _ := http.NewRequest(http.MethodPost, f.server.URL+"/mcp", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("a durable token from before sign-out answered %d", res.StatusCode)
+	}
+}
+
+func TestLongLivedTokensBelongToThePersonNotTheAddress(t *testing.T) {
+	f := setup(t)
+	durable := auth.Seal([]byte("test"), "read and write durable access", map[string]any{"e": rowan, "i": time.Now().Unix(), "p": "perSomeoneElse"})
+	req, _ := http.NewRequest(http.MethodPost, f.server.URL+"/mcp", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+durable)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("a durable token made by the address's former owner answered %d", res.StatusCode)
+	}
+	client := f.register(t)
+	stale := auth.Seal([]byte("test"), refreshPurpose, refresh{Client: client, Email: rowan, Person: "perSomeoneElse", Issued: time.Now().Unix()})
+	if status, out := f.refresh(t, client, stale); status != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("a refresh approved by the address's former owner answered %d: %v", status, out)
+	}
+}
+
+func TestACodeBelongsToThePersonWhoApprovedIt(t *testing.T) {
+	f := setup(t)
+	client := f.register(t)
+	var g grant
+	if !auth.Unseal([]byte("test"), approvalPurpose, f.approve(t, client), &g) || g.Person == "" || g.Since == 0 {
+		t.Fatalf("the approval does not carry its person and session: %+v", g)
+	}
+	g.Person = "perSomeoneElse"
+	if status, out := f.exchange(t, client, auth.Seal([]byte("test"), approvalPurpose, g), verifier); status != http.StatusBadRequest || out["error"] != "invalid_grant" {
+		t.Fatalf("a code approved by the address's former owner answered %d: %v", status, out)
 	}
 }

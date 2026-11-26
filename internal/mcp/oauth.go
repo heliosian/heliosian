@@ -30,6 +30,7 @@ const (
 	maxClientName   = 200
 	registerLimit   = 64 << 10
 	approvalPurpose = "read and write approval"
+	refreshPurpose  = "read and write refresh"
 	resourcePath    = "/.well-known/oauth-protected-resource"
 	authServerPath  = "/.well-known/oauth-authorization-server"
 )
@@ -44,11 +45,20 @@ type client struct {
 	Nonce     string   `json:"i"`
 }
 
+type refresh struct {
+	Client string `json:"c"`
+	Email  string `json:"e"`
+	Person string `json:"p"`
+	Issued int64  `json:"i"`
+}
+
 type grant struct {
 	Client    string `json:"c"`
 	Redirect  string `json:"r"`
 	Challenge string `json:"p"`
 	Email     string `json:"e"`
+	Person    string `json:"o"`
+	Since     int64  `json:"s"`
 	Issued    int64  `json:"i"`
 	Expires   int64  `json:"x"`
 }
@@ -76,7 +86,7 @@ func (s *Server) authServer(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint":                                 base + "/oauth/token",
 		"registration_endpoint":                          base + "/oauth/register",
 		"response_types_supported":                       []string{"code"},
-		"grant_types_supported":                          []string{"authorization_code"},
+		"grant_types_supported":                          []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported":               []string{"S256"},
 		"token_endpoint_auth_methods_supported":          []string{"none"},
 		"authorization_response_iss_parameter_supported": true,
@@ -144,7 +154,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		"client_name":                name,
 		"redirect_uris":              asked.Redirects,
 		"token_endpoint_auth_method": "none",
-		"grant_types":                []string{"authorization_code"},
+		"grant_types":                []string{"authorization_code", "refresh_token"},
 		"response_types":             []string{"code"},
 	})
 }
@@ -242,11 +252,12 @@ func (s *Server) approve(r *http.Request, in pending) (onward, error) {
 		return onward{}, err
 	}
 	email := auth.RealEmail(r)
-	if s.deps.Data.Model().SignedIn(email) == "" {
+	person := s.deps.Tokens.Person(email)
+	if person == "" {
 		return onward{}, access.Forbidden("%s is not in the directory", email)
 	}
 	now := s.deps.Tokens.Now()
-	code := auth.Seal(s.deps.Tokens.Key, approvalPurpose, grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
+	code := auth.Seal(s.deps.Tokens.Key, approvalPurpose, grant{Client: a.clientID, Redirect: a.redirect, Challenge: a.pkce, Email: email, Person: person, Since: auth.Since(r).Unix(), Issued: now.Unix(), Expires: now.Add(codeLength).Unix()})
 	slog.InfoContext(r.Context(), "mcp: approved", "client", a.client.Name, "email", email)
 	return onward{Redirect: a.back(url.Values{"code": {code}, "iss": {origin(r)}})}, nil
 }
@@ -262,6 +273,24 @@ func (s *Server) deny(r *http.Request, in pending) (onward, error) {
 	return onward{Redirect: a.back(url.Values{"error": {"access_denied"}, "iss": {origin(r)}})}, nil
 }
 
+type created struct {
+	Token string `json:"token"`
+	Email string `json:"email"`
+}
+
+func (s *Server) durable(r *http.Request, _ serve.None) (created, error) {
+	if err := sameOrigin(r); err != nil {
+		return created{}, err
+	}
+	email := auth.RealEmail(r)
+	person := s.deps.Tokens.Person(email)
+	if person == "" {
+		return created{}, access.Forbidden("%s is not in the directory", email)
+	}
+	slog.InfoContext(r.Context(), "mcp: durable token issued", "email", email)
+	return created{Token: s.deps.Tokens.Durable(email, person, auth.Since(r)), Email: email}, nil
+}
+
 func challenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
@@ -272,10 +301,17 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_request", "send the token request as a form")
 		return
 	}
-	if r.PostForm.Get("grant_type") != "authorization_code" {
-		oauthError(w, r, http.StatusBadRequest, "unsupported_grant_type", "only authorization_code is supported")
-		return
+	switch r.PostForm.Get("grant_type") {
+	case "authorization_code":
+		s.exchange(w, r)
+	case "refresh_token":
+		s.refresh(w, r)
+	default:
+		oauthError(w, r, http.StatusBadRequest, "unsupported_grant_type", "only authorization_code and refresh_token are supported")
 	}
+}
+
+func (s *Server) exchange(w http.ResponseWriter, r *http.Request) {
 	var g grant
 	if !auth.Unseal(s.deps.Tokens.Key, approvalPurpose, r.PostForm.Get("code"), &g) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code is not one this server issued")
@@ -283,7 +319,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.deps.Tokens.Now()
 	switch {
-	case g.Issued == 0 || now.Unix() > g.Expires:
+	case g.Issued == 0 || g.Since == 0 || now.Unix() > g.Expires:
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code has expired")
 		return
 	case r.PostForm.Get("client_id") != g.Client:
@@ -296,17 +332,50 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the code_verifier does not match the challenge")
 		return
 	}
-	if out, ok := s.deps.Tokens.Sessions.SignedOut(g.Email); ok && g.Issued <= out.Unix() {
+	if out, ok := s.deps.Tokens.Sessions.SignedOut(g.Email); ok && g.Since <= out.Unix() {
 		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "signed out since this code was approved")
 		return
 	}
-	token := s.deps.Tokens.Issue(g.Email, time.Unix(g.Issued, 0))
+	if g.Person == "" || s.deps.Tokens.Person(g.Email) != g.Person {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", g.Email+" no longer belongs to the person who approved this connection")
+		return
+	}
 	slog.InfoContext(r.Context(), "mcp: token issued", "email", g.Email)
+	f := refresh{Client: g.Client, Email: g.Email, Person: g.Person, Issued: g.Since}
+	s.issue(w, r, f, time.Unix(g.Issued, 0), auth.Seal(s.deps.Tokens.Key, refreshPurpose, f))
+}
+
+func (s *Server) refresh(w http.ResponseWriter, r *http.Request) {
+	sealed := r.PostForm.Get("refresh_token")
+	var f refresh
+	if !auth.Unseal(s.deps.Tokens.Key, refreshPurpose, sealed, &f) {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the refresh token is not one this server issued")
+		return
+	}
+	if r.PostForm.Get("client_id") != f.Client {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "the refresh token was issued to another client")
+		return
+	}
+	now := s.deps.Tokens.Now()
+	if out, ok := s.deps.Tokens.Sessions.SignedOut(f.Email); ok && f.Issued <= out.Unix() {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", "signed out since this connection was approved")
+		return
+	}
+	if f.Person == "" || s.deps.Tokens.Person(f.Email) != f.Person {
+		oauthError(w, r, http.StatusBadRequest, "invalid_grant", f.Email+" no longer belongs to the person who approved this connection")
+		return
+	}
+	slog.InfoContext(r.Context(), "mcp: token refreshed", "email", f.Email)
+	s.issue(w, r, f, now, sealed)
+}
+
+func (s *Server) issue(w http.ResponseWriter, r *http.Request, f refresh, issued time.Time, refreshToken string) {
 	w.Header().Set("Cache-Control", "no-store")
 	serve.Write(w, r, http.StatusOK, map[string]any{
-		"access_token": token,
-		"token_type":   "Bearer",
-		"expires_in":   g.Issued + int64(auth.AccessLength.Seconds()) - now.Unix(),
+		"access_token":  s.deps.Tokens.IssueFor(f.Email, f.Person, issued, time.Unix(f.Issued, 0)),
+		"token_type":    "Bearer",
+		"expires_in":    issued.Add(auth.AccessLength).Unix() - s.deps.Tokens.Now().Unix(),
+		"refresh_token": refreshToken,
 	})
 }
 

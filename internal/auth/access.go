@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	AccessLength  = 30 * 24 * time.Hour
-	accessPurpose = "read and write access"
+	AccessLength   = 30 * 24 * time.Hour
+	accessPurpose  = "read and write access"
+	durablePurpose = "read and write durable access"
 )
 
 var (
@@ -25,6 +26,8 @@ var (
 type accessToken struct {
 	Email  string `json:"e"`
 	Issued int64  `json:"i"`
+	Person string `json:"p,omitempty"`
+	Since  int64  `json:"s,omitempty"`
 }
 
 func sealMAC(key []byte, purpose, body string) string {
@@ -65,27 +68,47 @@ type Tokens struct {
 	Sessions interface {
 		SignedOut(email string) (time.Time, bool)
 	}
-	SignedIn func(email string) bool
-	Now      func() time.Time
+	Person func(email string) string
+	Now    func() time.Time
 }
 
 func (t Tokens) Issue(email string, issued time.Time) string {
 	return Seal(t.Key, accessPurpose, accessToken{Email: email, Issued: issued.Unix()})
 }
 
+func (t Tokens) IssueFor(email, person string, issued, since time.Time) string {
+	return Seal(t.Key, accessPurpose, accessToken{Email: email, Issued: issued.Unix(), Person: person, Since: since.Unix()})
+}
+
+func (t Tokens) Durable(email, person string, issued time.Time) string {
+	return Seal(t.Key, durablePurpose, accessToken{Email: email, Issued: issued.Unix(), Person: person})
+}
+
 func (t Tokens) Verify(token string) (string, time.Time, error) {
 	var a accessToken
-	if len(t.Key) == 0 || !Unseal(t.Key, accessPurpose, token, &a) {
+	var expires time.Time
+	switch {
+	case len(t.Key) == 0:
+		return "", time.Time{}, ErrToken
+	case Unseal(t.Key, accessPurpose, token, &a):
+		expires = time.Unix(a.Issued, 0).Add(AccessLength)
+		if t.Now().After(expires) {
+			return "", time.Time{}, ErrExpired
+		}
+	case !Unseal(t.Key, durablePurpose, token, &a):
+		return "", time.Time{}, ErrToken
+	case a.Person == "":
 		return "", time.Time{}, ErrToken
 	}
-	expires := time.Unix(a.Issued, 0).Add(AccessLength)
-	if t.Now().After(expires) {
-		return "", time.Time{}, ErrExpired
+	since := a.Issued
+	if a.Since != 0 {
+		since = a.Since
 	}
-	if out, ok := t.Sessions.SignedOut(a.Email); ok && a.Issued <= out.Unix() {
+	if out, ok := t.Sessions.SignedOut(a.Email); ok && since <= out.Unix() {
 		return "", time.Time{}, ErrSignedOut
 	}
-	if !t.SignedIn(a.Email) {
+	person := t.Person(a.Email)
+	if person == "" || a.Person != "" && a.Person != person {
 		return "", time.Time{}, fmt.Errorf("%w: %s", ErrSignedOut, a.Email)
 	}
 	return a.Email, expires, nil

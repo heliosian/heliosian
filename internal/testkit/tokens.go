@@ -10,6 +10,6 @@ type neverSignedOut struct{}
 
 func (neverSignedOut) SignedOut(string) (time.Time, bool) { return time.Time{}, false }
 
-func Tokens(signedIn func(email string) bool, now func() time.Time) auth.Tokens {
-	return auth.Tokens{Key: []byte("test"), Sessions: neverSignedOut{}, SignedIn: signedIn, Now: now}
+func Tokens(person func(email string) string, now func() time.Time) auth.Tokens {
+	return auth.Tokens{Key: []byte("test"), Sessions: neverSignedOut{}, Person: person, Now: now}
 }

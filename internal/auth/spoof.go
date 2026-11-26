@@ -37,6 +37,7 @@ type identity struct {
 	real      string
 	effective string
 	open      bool
+	since     time.Time
 }
 
 func identityOf(ctx context.Context) identity {
@@ -58,6 +59,10 @@ func Identify(r *http.Request, real, effective string) {
 
 func Email(r *http.Request) string {
 	return identityOf(r.Context()).effective
+}
+
+func Since(r *http.Request) time.Time {
+	return identityOf(r.Context()).since
 }
 
 func RealEmail(r *http.Request) string {
