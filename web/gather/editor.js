@@ -1,11 +1,12 @@
 import {el, button, svg, toast} from '/elements.js';
-import {openModal} from '/modal.js';
+import {openModal, closeLayers} from '/modal.js';
 import {field, text, textarea, whenPickers} from '/form.js';
 import {navigate} from '/router.js';
 import {themes, lookTheme, themed, wrapped, sealMark, fontChoices} from '/themes.js';
 import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture, clearDesignPicture, uploadTheme, removeTheme, me, state} from './state.js';
-import {offerUpdate, hostsRow} from '/invites.js';
-import {fetchInvites as fetchGuestList} from '/guestlist.js';
+import {offerUpdate, hostsRow, menuButton} from '/invites.js';
+import {fetchInvites as fetchGuestList, cancelEvent} from '/guestlist.js';
+import {deleteInvitation} from '/guestpopups.js';
 import {miniEnvelope, sealedEnvelope, inviteCard, andList} from '/envelope.js';
 
 function sidePages(panels) {
@@ -100,7 +101,19 @@ function removeButton(t, onRemove) {
   return remove;
 }
 
-function picker(label, drawTile, onPick, blurbs = true, lead = [], onRemove = null) {
+function previewButton(t, onPreview) {
+  const preview = el('span', 'theme-tile-preview');
+  preview.setAttribute('role', 'button');
+  preview.setAttribute('aria-label', `Preview ${t.name}: its background, card, envelope, seal, fonts and colors`);
+  preview.append(svg('eye'), el('span', '', 'Preview'));
+  preview.addEventListener('click', ev => {
+    ev.stopPropagation();
+    onPreview(t);
+  });
+  return preview;
+}
+
+function picker(label, drawTile, onPick, blurbs = true, lead = [], onRemove = null, onPreview = null) {
   let chosen = '';
   const grid = el('div', 'theme-picker' + (blurbs ? '' : ' is-compact'));
   grid.setAttribute('role', 'radiogroup');
@@ -125,6 +138,9 @@ function picker(label, drawTile, onPick, blurbs = true, lead = [], onRemove = nu
       }
       if (onRemove && removableTheme(t)) {
         tile.append(removeButton(t, onRemove));
+      }
+      if (onPreview) {
+        tile.append(previewButton(t, onPreview));
       }
       tile.addEventListener('click', () => onPick(t.id));
       grid.append(tile);
@@ -235,6 +251,55 @@ function themeScene(words) {
   envelopes.append(sealed, open);
   scene.append(card, envelopes);
   return scene;
+}
+
+function cardOnBackdrop(words) {
+  const backdrop = themed(el('div', 'theme-tile-backdrop'), words.look);
+  backdrop.append(cardPreview(words));
+  return backdrop;
+}
+
+function specSection(label, ...nodes) {
+  const section = el('div', 'theme-spec-section');
+  section.append(el('span', 'theme-spec-label', label), ...nodes);
+  return section;
+}
+
+function fontSample(role, stack) {
+  const row = el('div', 'theme-spec-font');
+  const sample = el('span', 'theme-spec-font-sample', 'Your invitation');
+  sample.style.fontFamily = stack;
+  row.append(el('span', 'theme-spec-font-role', role), sample, el('span', 'theme-spec-font-name', stack.split(',')[0].replaceAll('\'', '').trim()));
+  return row;
+}
+
+function colorSwatch(name, value) {
+  const swatch = el('div', 'theme-spec-color');
+  const chip = el('span', 'theme-spec-chip');
+  chip.style.background = value;
+  chip.style.backgroundAttachment = 'scroll';
+  swatch.append(chip, el('span', '', name));
+  return swatch;
+}
+
+function themeSpec(t, words, onUse) {
+  const look = {theme: t.id};
+  const th = lookTheme(look);
+  const seal = wrapped(el('span', 'theme-spec-seal', sealMark(look, words.name)), look);
+  const fonts = el('div', 'theme-spec-fonts');
+  fonts.append(fontSample('Title', th.fonts.display), fontSample('Text', th.fonts.body));
+  const colors = el('div', 'theme-spec-colors');
+  for (const [name, value] of [['Card', th.card.background], ['Writing', th.card.ink], ['Accent', th.card.accent], ['Background', th.page.backdrop], ['Envelope', th.envelope.body], ['Flap', th.envelope.flap], ['Liner', th.envelope.liner], ['Seal', th.seal.color]]) {
+    colors.append(colorSwatch(name, value));
+  }
+  const details = el('div', 'theme-spec');
+  details.append(specSection('Seal', seal), specSection('Fonts', fonts), specSection('Colors', colors));
+  openModal(t.name, [el('p', 'theme-hint', t.blurb || ''), themeScene({...words, look}), details], {
+    wide: true,
+    saveLabel: 'Use this theme',
+    submit: () => t.id,
+    afterSave: onUse,
+  });
 }
 
 function cardPreview(words) {
@@ -460,6 +525,60 @@ function linerSwatch(t) {
   return wrapped(el('span', 'liner-swatch'), {theme: t.id});
 }
 
+function cancelWithNotice(inv, sent) {
+  const e = asEvent(inv);
+  const subject = text(`${inv.name} is cancelled`, {required: true});
+  const message = textarea(`We’re sorry: ${inv.name} on ${dayWords(inv)} is cancelled.`, 6);
+  openModal('Cancel and notify guests', [
+    el('p', 'theme-hint', `${sent} ${sent === 1 ? 'person has' : 'people have'} been sent the invitation. They each get this email, and the invitation comes off their calendars and lists; its page stays, saying it was cancelled.`),
+    field('Subject', subject, '', true),
+    field('Message', message, 'The email’s words under the heading saying it’s cancelled.', true),
+  ], {
+    saveLabel: 'Cancel and send',
+    submit: async () => {
+      if (!message.value.trim()) {
+        throw new Error('Write a message to go in the email.');
+      }
+      await cancelEvent(e, true, message.value.trim(), subject.value.trim());
+      return '';
+    },
+    afterSave: () => {
+      closeLayers();
+      location.reload();
+    },
+  });
+}
+
+async function cancelQuietly(inv) {
+  if (!confirm(`Cancel ${inv.name} without telling anyone? It comes off guests’ calendars and lists; its page stays, saying it was cancelled.`)) {
+    return;
+  }
+  try {
+    await cancelEvent(asEvent(inv), false);
+    closeLayers();
+    location.reload();
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+function endControls(inv) {
+  const wrap = el('div', 'editor-end');
+  const e = asEvent(inv);
+  fetchGuestList(e).then(view => {
+    if (!view.sent) {
+      wrap.append(button('Delete invitation', 'trash', 'link-button danger', () => deleteInvitation(e)));
+      return;
+    }
+    const sent = view.list.filter(r => r.invited && r.sent && r.email).length;
+    wrap.append(menuButton('Cancel invitation', 'close', [
+      {icon: 'mail', words: 'Cancel and notify guests…', run: () => cancelWithNotice(inv, sent)},
+      {icon: 'close', words: 'Cancel without notifying', run: () => cancelQuietly(inv)},
+    ]));
+  }).catch(err => toast(err.message));
+  return wrap;
+}
+
 export function openEditor(inv) {
   if (!inv && !defaultTheme()) {
     toast('Gather has no themes yet, so there is nothing to draw an invitation in. A Gather admin needs to add one.');
@@ -521,7 +640,7 @@ export function openEditor(inv) {
     marks();
     paintTheme();
   };
-  pickers.theme = picker('Theme', t => cardPreview({...sample(), look: {theme: t.id}, name: title()}), pick, true, plainTheme() ? [own, upload] : [upload], id => {
+  pickers.theme = picker('Theme', t => cardOnBackdrop({...sample(), look: {theme: t.id}, name: title()}), pick, true, plainTheme() ? [own, upload] : [upload], id => {
     for (const part of ['theme', 'envelope', 'seal', 'liner']) {
       if (chosen[part] === id) {
         chosen[part] = part === 'theme' ? defaultTheme() : '';
@@ -531,7 +650,7 @@ export function openEditor(inv) {
       p.refresh();
     }
     marks();
-  });
+  }, t => themeSpec(t, {...sample(), name: title()}, pick));
   own.addEventListener('click', () => pick(plainTheme().id));
   upload.addEventListener('click', () => themeUpload(id => {
     for (const p of Object.values(pickers)) {
@@ -627,6 +746,9 @@ export function openEditor(inv) {
   ]);
   revealSubs();
   marks();
+  if (inv && inv.host && inv.status !== 'cancelled') {
+    pages.wrap.querySelector('.editor-pages-nav').append(endControls(inv));
+  }
   openModal(inv ? 'Edit invitation' : 'New invitation', [pages.wrap], {
     wide: true,
     saveLabel: inv ? 'Save' : 'Create invitation',

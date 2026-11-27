@@ -27,10 +27,11 @@ const (
 var guestListKinds = []string{"event", "party", "activity"}
 
 type InvitationConfig struct {
-	Sender     *mail.Mailgun
-	ReplyTo    string
-	SigningKey string
-	Origin     func(app string) string
+	Sender       *mail.Mailgun
+	GatherSender *mail.Mailgun
+	ReplyTo      string
+	SigningKey   string
+	Origin       func(app string) string
 }
 
 type Invitations struct {

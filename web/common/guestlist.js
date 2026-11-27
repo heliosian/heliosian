@@ -302,8 +302,8 @@ export function mailList(e, body) {
   return api('POST', '/api/do/guest-mail', {group: e.id, ...body});
 }
 
-export function cancelEvent(e, notify, note) {
-  return mailList(e, {kind: 'cancel', notify, text: note || ''});
+export function cancelEvent(e, notify, note, subject) {
+  return mailList(e, {kind: 'cancel', notify, text: note || '', subject: subject || ''});
 }
 
 export function sendUpdate(e) {

@@ -165,7 +165,7 @@ func localCore(dir *data.Dir, bucket *blob.Bucket) *app.Core {
 		Describer:     describe.New("sample", claude.NewLimiter()),
 		Mail:          mail.NewMailgun("sample", "HCA-Team <hca@example.org>"),
 		CelebrateMail: mail.NewMailgun("sample", "Helios Celebrate <celebrate@example.org>"),
-		CalendarMail:  app.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>"},
+		CalendarMail:  app.CalendarMail{Sender: mail.NewMailgun("sample", "Helios When <when@example.org>"), GatherSender: mail.NewMailgun("sample", "Helios Gather <gather@example.org>"), ReplyTo: "Helios When <rsvp@reply.example.org>"},
 		BirthdayMail:  mail.NewMailgun("sample", "Helios Staff Birthdays <birthday@example.org>"),
 		FeedbackBase:  "https://home.heliosiandev.com:" + app.Port(),
 		ListMail:      db.ListMailConfig{Sender: mail.NewMailgun("sample", ""), Key: []byte("sample"), Base: "https://loop.heliosiandev.com:" + app.Port()},

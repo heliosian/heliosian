@@ -457,6 +457,10 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .rsvps-pending-send { margin-left: auto; }
 
+.guests-unsent { margin: 14px 0 6px; }
+
+.guests-unsent.is-nothing-sent { border-color: color-mix(in srgb, var(--amber) 65%, transparent); }
+
 .guest-card-ask { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 
 .guest-card-ask:first-child { margin-top: 6px; padding-top: 0; border-top: 0; }

@@ -24,7 +24,7 @@ func queuedInvitations(t *testing.T, people ...string) (*Invitations, *data.Dir,
 	group := ids[0]
 	apply(t, s, invitationEdits(group, staff, "invitation", people, time.Now()))
 	recorder := mailtest.NewRecorder(mailtest.From)
-	iv := &Invitations{s: s, pics: newPictures(s), config: InvitationConfig{Sender: recorder.Mailgun, ReplyTo: whenReply, Origin: testOrigin}}
+	iv := &Invitations{s: s, pics: newPictures(s), config: InvitationConfig{Sender: recorder.Mailgun, GatherSender: mailtest.NewRecorder(gatherFrom).Mailgun, ReplyTo: whenReply, Origin: testOrigin}}
 	return iv, dir, recorder, group
 }
 

@@ -208,6 +208,48 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .theme-tile { position: relative; }
 
+.editor-end { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.editor-end:empty { display: none; }
+
+.theme-tile-backdrop { margin-bottom: 8px; padding: 16px 0; border-radius: 6px; background: var(--backdrop); background-attachment: scroll; overflow: hidden; }
+
+.theme-tile-backdrop .theme-card-preview { width: 76%; margin: 0 auto; box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25); }
+
+.theme-tile-preview { position: absolute; top: 10px; left: 10px; z-index: 1; display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.94); color: var(--ink); font-size: 12px; font-weight: 600; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); cursor: pointer; }
+
+.theme-tile-preview svg { width: 14px; height: 14px; }
+
+.theme-tile-preview:hover { background: #ffffff; color: var(--brand); }
+
+.theme-spec { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 28px 40px; margin: 20px 0 16px; }
+
+.theme-spec-section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+.theme-spec-label { color: var(--muted); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+
+.theme-spec-seal { display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; border-radius: var(--seal-radius); outline: var(--seal-outline); outline-offset: -9px; background: var(--seal-picture), var(--seal); color: var(--seal-ink); font-family: var(--display); font-size: 32px; font-weight: 700; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25); }
+
+.theme-spec-fonts { display: flex; flex-direction: column; gap: 10px; }
+
+.theme-spec-font { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: baseline; column-gap: 12px; }
+
+.theme-spec-font-role { color: var(--muted); font-size: 13px; }
+
+.theme-spec-font-sample { font-size: 24px; line-height: 1.2; }
+
+.theme-spec-font-name { grid-column: 2; color: var(--muted); font-size: 12px; }
+
+.theme-spec-colors { display: grid; grid-template-columns: repeat(4, 84px); gap: 12px; }
+
+.theme-spec-color { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+
+.theme-spec-chip { height: 40px; border: 1px solid var(--line); border-radius: 8px; }
+
+@media (max-width: 720px) {
+  .theme-spec-colors { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
 .theme-tile-remove { position: absolute; top: 6px; right: 6px; z-index: 1; display: none; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--card); color: var(--muted); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2); cursor: pointer; }
 
 .theme-tile:hover .theme-tile-remove, .theme-tile:focus-within .theme-tile-remove { display: flex; }
@@ -225,6 +267,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 @media (max-width: 720px) {
   .theme-manage-head { flex-direction: column; }
 }
+
+.theme-manage-search { width: 100%; margin-top: 14px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--input); color: var(--ink); font: inherit; }
 
 .theme-manage-list { display: flex; flex-direction: column; gap: 10px; margin: 14px 0 16px; padding: 0; list-style: none; }
 
@@ -304,7 +348,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .theme-hint { margin: 0; color: var(--muted); font-size: 14px; }
 
-.theme-scene { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 200px); justify-content: center; align-items: center; gap: 32px; padding: 32px 28px; border-radius: 14px; background: var(--backdrop); overflow: hidden; }
+.theme-scene { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 200px); justify-content: center; align-items: center; gap: 32px; padding: 32px 28px; border-radius: 14px; background: var(--backdrop); background-attachment: scroll; overflow: hidden; }
 
 .theme-scene-envelopes { display: flex; flex-direction: column; gap: 18px; }
 

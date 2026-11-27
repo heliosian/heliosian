@@ -62,14 +62,33 @@ function themeRow(t, redraw) {
   return row;
 }
 
+function matches(t, words) {
+  const text = [t.name, t.blurb, t.key, t.owner || 'public'].join(' ').toLowerCase();
+  return words.every(w => text.includes(w));
+}
+
 export function openThemeManager() {
   const list = el('ul', 'theme-manage-list');
-  const redraw = () => allThemes().then(rows => {
-    list.replaceChildren(...rows.map(t => themeRow(t, redraw)));
+  const search = el('input', 'theme-manage-search');
+  search.type = 'search';
+  search.placeholder = 'Search themes by name, blurb or owner…';
+  search.setAttribute('aria-label', 'Search themes');
+  let rows = [];
+  const show = () => {
+    const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    const shown = rows.filter(t => matches(t, words));
+    list.replaceChildren(...shown.map(t => themeRow(t, redraw)));
     if (!rows.length) {
-      list.append(el('li', 'theme-manage-empty', 'Gather has no themes yet. Upload one from an invitation’s editor: Theme, Upload a theme.'));
+      list.append(el('li', 'theme-manage-empty', 'Gather has no themes yet. Upload one with Upload a theme.'));
+    } else if (!shown.length) {
+      list.append(el('li', 'theme-manage-empty', `No theme matches “${search.value.trim()}”.`));
     }
+  };
+  const redraw = () => allThemes().then(all => {
+    rows = all;
+    show();
   }).catch(err => toast(err.message));
+  search.addEventListener('input', show);
   const head = el('div', 'theme-manage-head');
   head.append(
     el('p', 'theme-hint', 'Every theme on Gather: the site’s own, which every host picks from, and the ones hosts uploaded for themselves. A theme you upload starts private to you; make it public here. Plain is what Create Your Own starts from, so it stays public.'),
@@ -78,6 +97,6 @@ export function openThemeManager() {
       redraw().then(() => list.querySelector(`[data-theme="${id}"]`)?.scrollIntoView({block: 'nearest'}));
     })),
   );
-  openModal('Manage themes', [head, list], {wide: true});
+  openModal('Manage themes', [head, search, list], {wide: true});
   redraw();
 }

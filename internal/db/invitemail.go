@@ -215,7 +215,7 @@ func (iv *Invitations) calendarEvent(m *Model, g store.Row, person, token, link 
 	if original, ok := m.copiesOf(g["id"])[person]; ok {
 		token = original["token"]
 	}
-	organizer := mail.AddressOf(iv.config.Sender.From())
+	organizer := mail.AddressOf(iv.senderFor(g).From())
 	if token != "" {
 		organizer = mail.AddressOf(iv.organizer(token))
 	}
@@ -261,7 +261,7 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 	method := mail.MethodRequest
 	switch {
 	case msg["kind"] == "update" && g["status"] == "cancelled":
-		out = iv.cancellation(m, g, from, person, words, link)
+		out = iv.cancellation(m, g, msg, from, person, words, link)
 		method = mail.MethodCancel
 	case msg["kind"] == "invitation" || msg["kind"] == "resend" || msg["kind"] == "update":
 		if out, err = iv.invitation(m, g, msg["kind"], person, link, len(cc) == 0); err != nil {
@@ -274,13 +274,17 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 	out.CC = cc
 	out.ReplyTo = replyTo
 	out.FromName = joinNames(m.namesOf(hosts))
-	out.Headers = map[string]string{"Message-Id": mail.MessageID(r["id"], iv.config.Sender.From())}
+	if out.FromName != "" && g["theme"] != "" {
+		out.FromName += " via Gather"
+	}
+	out.Headers = map[string]string{"Message-Id": mail.MessageID(r["id"], iv.senderFor(g).From())}
 	attach := len(cc) == 0 && msg["kind"] != "post" && msg["kind"] != "thanks"
 	if e, ok := iv.calendarEvent(m, g, person, r["token"], link); ok && attach {
 		out.Attachments = []mail.Attachment{mail.Calendar{Product: whenBrand.Name, Method: method, Stamp: time.Now(), Events: []mail.Event{e}}.Attachment()}
 	}
-	sender := iv.config.Sender.From()
-	if err := iv.config.Sender.SendCopy(ctx, sender, append([]string{address}, cc...), []byte(mail.Compose(sender, out)), r["id"]); err != nil {
+	mailer := iv.senderFor(g)
+	sender := mailer.From()
+	if err := mailer.SendCopy(ctx, sender, append([]string{address}, cc...), []byte(mail.Compose(sender, out)), r["id"]); err != nil {
 		return nil, err
 	}
 	slog.InfoContext(ctx, "invitations: mailed", "recipient", r["id"], "group", g["id"], "kind", msg["kind"])
@@ -493,13 +497,19 @@ func (iv *Invitations) note(m *Model, g, msg store.Row, from, person, words, lin
 	return l.Message("["+g["name"]+"] "+msg["subject"], nil, nil, nil)
 }
 
-func (iv *Invitations) cancellation(m *Model, g store.Row, from, person, words, link string) mail.Message {
+func (iv *Invitations) cancellation(m *Model, g, msg store.Row, from, person, words, link string) mail.Message {
 	l := iv.letter(g, link)
 	l.Heading = g["name"] + " is cancelled"
 	l.Intro = fmt.Sprintf("%s called off %s.", m.nameOf(from), g["name"])
-	l.Note = words
+	if words != "" {
+		l.Intro = words
+	}
 	l.Button = "See the event"
-	return l.Message("["+g["name"]+"] Cancelled", nil, nil, nil)
+	subject := "[" + g["name"] + "] Cancelled"
+	if msg["subject"] != "" {
+		subject = msg["subject"]
+	}
+	return l.Message(subject, nil, nil, nil)
 }
 
 func (iv *Invitations) react(ctx context.Context, d delivery) {
@@ -582,13 +592,20 @@ func (m *Model) invitedWithCalendar(g store.Row, person string) bool {
 	return ok && r["sent"] != "" && len(m.addresses(m.studentCC(person, msg))) == 0
 }
 
+func (iv *Invitations) senderFor(g store.Row) *mail.Mailgun {
+	if g["theme"] != "" {
+		return iv.config.GatherSender
+	}
+	return iv.config.Sender
+}
+
 func (iv *Invitations) sendNow(ctx context.Context, m *Model, g store.Row, kind string, to []string, msg mail.Message) {
 	msg.To = m.addresses(to)
 	if len(msg.To) == 0 {
 		return
 	}
 	log := slog.With("group", g["id"], "kind", kind, "subject", msg.Subject)
-	if err := m.sendShared(ctx, iv.s, iv.config.Sender, invitationsJob, g["id"], kind, to, msg); err != nil {
+	if err := m.sendShared(ctx, iv.s, iv.senderFor(g), invitationsJob, g["id"], kind, to, msg); err != nil {
 		log.Error("invitations: mail not sent", "error", err)
 		return
 	}

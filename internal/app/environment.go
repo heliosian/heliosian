@@ -23,6 +23,7 @@ const (
 	feedbackBase      = "https://heliosian.com"
 	calendarMailFrom  = "Helios When <when@reply.heliosian.com>"
 	calendarReplyTo   = "Helios When <when@reply.heliosian.com>"
+	gatherMailFrom    = "Helios Gather <gather@reply.heliosian.com>"
 	celebrateMailFrom = "Helios Celebrate <celebrate@reply.heliosian.com>"
 )
 
@@ -49,13 +50,14 @@ func OpsDeps(github *feedback.GitHubApp, adminKey string) ops.Deps {
 }
 
 type CalendarMail struct {
-	Sender     *mail.Mailgun
-	ReplyTo    string
-	SigningKey string
+	Sender       *mail.Mailgun
+	GatherSender *mail.Mailgun
+	ReplyTo      string
+	SigningKey   string
 }
 
 func calendarMail() CalendarMail {
-	return CalendarMail{Sender: newMailer(calendarMailFrom), ReplyTo: calendarReplyTo, SigningKey: mailgunSigningKey()}
+	return CalendarMail{Sender: newMailer(calendarMailFrom), GatherSender: newMailer(gatherMailFrom), ReplyTo: calendarReplyTo, SigningKey: mailgunSigningKey()}
 }
 
 func mailgunKey() string {

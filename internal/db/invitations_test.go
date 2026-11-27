@@ -31,15 +31,18 @@ type inviteHarness struct {
 	s      *Store
 	mux    *http.ServeMux
 	sender *mailtest.Recorder
+	gather *mailtest.Recorder
 	event  string
 }
+
+const gatherFrom = "Helios Gather <gather@example.org>"
 
 func newInviteHarness(t *testing.T) *inviteHarness {
 	t.Helper()
 	s := sample(t)
-	h := &inviteHarness{t: t, s: s, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From)}
+	h := &inviteHarness{t: t, s: s, mux: http.NewServeMux(), sender: mailtest.NewRecorder(mailtest.From), gather: mailtest.NewRecorder(gatherFrom)}
 	iv := RegisterInvitations(h.mux, h.mux, s, newPictures(s), testTokens, InvitationConfig{
-		Sender: h.sender.Mailgun, ReplyTo: whenReply, SigningKey: loopSigningKey, Origin: func(app string) string { return "https://" + app + ".test" },
+		Sender: h.sender.Mailgun, GatherSender: h.gather.Mailgun, ReplyTo: whenReply, SigningKey: loopSigningKey, Origin: func(app string) string { return "https://" + app + ".test" },
 	})
 	iv.Start()
 	start := time.Now().In(School).AddDate(0, 0, 30).Format("2006-01-02") + " 18:00"
@@ -201,6 +204,38 @@ func TestAnInvitationGoesOutWhenTheHostSendsIt(t *testing.T) {
 	}
 	if code := h.reply(organizer, maya, h.event+whenUID, "ACCEPTED"); code != http.StatusOK || h.s.Model().answerOf(h.group(), staff) != "" {
 		t.Errorf("someone else's reply to rowan's address was taken")
+	}
+}
+
+func TestAGatherInvitationComesFromGather(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"theme": larpTheme}}})
+	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "people": []map[string]string{{"person": parent}}}); rec.Code != http.StatusOK {
+		t.Fatalf("the host adds a guest: %d %s", rec.Code, rec.Body)
+	}
+	if rec := h.do(maya, http.MethodPost, "/api/do/invite", map[string]any{"group": h.event}); rec.Code != http.StatusOK {
+		t.Fatalf("the host sends: %d %s", rec.Code, rec.Body)
+	}
+	var got mail.Message
+	h.waitFor("the invitation through Gather's sender", func() bool {
+		for _, m := range h.gather.Messages() {
+			if slices.Contains(m.To, rowan) {
+				got = m
+				return true
+			}
+		}
+		return false
+	})
+	if m := h.copyOf(parent); got.Headers["Message-Id"] != mail.MessageID(m["id"], gatherFrom) || !slices.ContainsFunc(got.ReplyTo, func(a string) bool { return strings.Contains(a, "when+") }) {
+		t.Errorf("the Gather invitation: id %q, reply-to %v", got.Headers["Message-Id"], got.ReplyTo)
+	}
+	if strings.Trim(got.FromName, `"`) != "Maya Lindqvist via Gather" {
+		t.Errorf("the Gather invitation is from %q, want the hosts via Gather", got.FromName)
+	}
+	for _, m := range h.sender.Messages() {
+		if slices.Contains(m.To, rowan) {
+			t.Errorf("a Gather invitation went out from When's address: %q", m.Subject)
+		}
 	}
 }
 
@@ -511,12 +546,12 @@ func TestHostsMailTheListByWhereEachStands(t *testing.T) {
 	if rec := h.do(rowan, http.MethodPost, "/api/do/guest-mail", ask); rec.Code != http.StatusForbidden {
 		t.Errorf("a guest mailing the list: %d", rec.Code)
 	}
-	if rec := h.do(maya, http.MethodPost, "/api/do/guest-mail", map[string]any{"group": h.event, "kind": "cancel", "notify": true, "text": "Snowed in."}); rec.Code != http.StatusOK {
+	if rec := h.do(maya, http.MethodPost, "/api/do/guest-mail", map[string]any{"group": h.event, "kind": "cancel", "notify": true, "subject": "Fondue Night is off", "text": "Snowed in."}); rec.Code != http.StatusOK {
 		t.Fatalf("a cancellation: %d %s", rec.Code, rec.Body)
 	}
-	cancelled := h.mailTo("coach@example.net", "Cancelled")
-	if h.group()["status"] != "cancelled" || !strings.Contains(cancelled.Text, "Snowed in.") || len(cancelled.Attachments) != 1 || !strings.Contains(string(cancelled.Attachments[0].Content), "METHOD:CANCEL") {
-		t.Errorf("the cancellation: status %q, %q", h.group()["status"], cancelled.Text)
+	cancelled := h.mailTo("coach@example.net", "Fondue Night is off")
+	if h.group()["status"] != "cancelled" || cancelled.Subject != "Fondue Night is off" || !strings.Contains(cancelled.Text, "Snowed in.") || strings.Contains(cancelled.Text, "called off") || len(cancelled.Attachments) != 1 || !strings.Contains(string(cancelled.Attachments[0].Content), "METHOD:CANCEL") {
+		t.Errorf("the cancellation: status %q, subject %q, %q", h.group()["status"], cancelled.Subject, cancelled.Text)
 	}
 	for _, m := range h.sender.Messages() {
 		if slices.Contains(m.To, "coach@example.net") && strings.Contains(m.Subject, "Still hoping") {

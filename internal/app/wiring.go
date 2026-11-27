@@ -204,7 +204,7 @@ func NewCore(cfg Config) *Core {
 	serve.Pages(gatherMux, "web/gather/index.html", "/{$}", "/g/{key}", "/g/{key}/{section...}")
 	whenPages.RegisterGather(gatherMux)
 	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, db.InvitationConfig{
-		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
+		Sender: cfg.CalendarMail.Sender, GatherSender: cfg.CalendarMail.GatherSender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
 	invitations.RegisterGuestPages(gatherMux)
 	birthdays := db.NewBirthdayMailer(dataStore, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})

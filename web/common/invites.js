@@ -440,7 +440,7 @@ function openAddHost(e, view, refresh) {
   picker.input.focus();
 }
 
-function menuButton(label, icon, items) {
+export function menuButton(label, icon, items) {
   const toggle = el('button', 'button button-secondary button-small');
   toggle.type = 'button';
   toggle.append(svg(icon), el('span', '', label), svg('chevron-down'));
@@ -548,9 +548,34 @@ export function addFlyerLink(e, view, refresh) {
   return link;
 }
 
+function unsentBanner(e, view, refresh) {
+  const unsent = view.list.filter(r => r.pending && r.email);
+  if (!view.host || !unsent.length) {
+    return null;
+  }
+  const people = `${unsent.length} ${unsent.length === 1 ? 'person' : 'people'}`;
+  const banner = el('div', 'rsvps-pending guests-unsent' + (view.sent ? '' : ' is-nothing-sent'));
+  const mark = el('span', 'rsvps-pending-mark');
+  mark.append(svg('clock'));
+  const words = el('div', 'rsvps-pending-words');
+  const sub = el('div', 'rsvps-pending-sub');
+  sub.append(el('span', '', view.sent
+    ? `${people} added since the invites went out ${unsent.length === 1 ? 'hasn’t' : 'haven’t'} been sent the invitation.`
+    : `Nobody has been sent this invitation. ${people} on the list will get it when you send it.`));
+  words.append(el('div', 'rsvps-pending-title', view.sent ? `${unsent.length} not sent yet` : 'Invitations not sent yet'), sub);
+  const send = button(view.sent ? 'Send to them' : 'Send invitations', 'mail', 'button rsvps-pending-send', () => sendInvites(e, unsent.length, `Send the invitation to ${people} who ${unsent.length === 1 ? 'has' : 'have'} not had it yet? Each gets an email with the calendar invite; a student's goes to them and their parents.`, refresh));
+  banner.append(mark, words, send);
+  return banner;
+}
+
 export function guestListSection(e, view, refresh) {
   const section = el('section', 'side-card guests-section');
-  section.append(guestsHead(e, view, refresh), guestCounts(e, view, refresh));
+  section.append(guestsHead(e, view, refresh));
+  const banner = unsentBanner(e, view, refresh);
+  if (banner) {
+    section.append(banner);
+  }
+  section.append(guestCounts(e, view, refresh));
   if (!view.list.length) {
     section.append(el('p', 'guests-note', 'Add people from the directory, a classroom, one of your lists, or by email - then send the invitation.'));
     return section;
@@ -769,7 +794,7 @@ function guestsHead(e, view, refresh) {
   const headWords = el('div', 'guests-head-words');
   headWords.append(el('div', 'guests-title', 'Guest list'));
   const subtitle = !view.sent
-    ? (view.list.length ? '' : 'Nobody on the list yet.')
+    ? (view.list.length ? 'Not sent yet.' : 'Nobody on the list yet.')
     : unsent ? `${unsent} added since the invites went out, not sent yet.` : 'Invites are out.';
   if (subtitle) {
     headWords.append(el('div', 'guests-subtitle', subtitle));
@@ -828,7 +853,7 @@ function guestCounts(e, view, refresh) {
   const sent = r => !unsent(r);
   const waiting = r => !r.answer && sent(r);
   const items = [
-    {icon: 'mail', label: 'Invited', count: view.list.filter(sent).length, tone: 'all', expand: listOf(sent)},
+    {icon: 'mail', label: view.sent ? 'Invited' : 'On the list', count: view.list.filter(view.sent ? sent : () => true).length, tone: 'all', expand: listOf(view.sent ? sent : () => true)},
     {icon: 'check', label: 'Yes', count: c.yes, tone: 'yes', expand: listOf(r => r.answer === 'yes')},
     ...(view.maybe || c.maybe ? [{icon: 'clock', label: 'Maybe', count: c.maybe, tone: 'maybe', expand: listOf(r => r.answer === 'maybe')}] : []),
     {icon: 'ban', label: 'No', count: c.no, tone: 'no', expand: listOf(r => r.answer === 'no')},
