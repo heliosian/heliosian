@@ -5,7 +5,7 @@ import {miniEnvelope, andList} from '/envelope.js';
 import {openEditor} from '../editor.js';
 
 function wordsOf(inv) {
-  return [inv.name, inv.subtitle, inv.description, inv.location, inv.hostedBy, ...inv.hostNames, dayWords(inv), hourWords(inv), inv.pageWords].join(' ').toLowerCase();
+  return [inv.name, inv.subtitle, inv.description, inv.place, inv.location, inv.hostedBy, ...inv.hostNames, dayWords(inv), hourWords(inv), inv.pageWords].join(' ').toLowerCase();
 }
 
 const tiles = new WeakMap();
@@ -51,7 +51,7 @@ function tile(inv) {
   match.hidden = true;
   words.append(match);
   a.append(miniEnvelope(inv.look, inv.name), words);
-  const elsewhere = [inv.subtitle, inv.description, inv.location, hourWords(inv), dayWords(inv), inv.hostedBy, ...inv.hostNames, inv.pageWords].filter(Boolean);
+  const elsewhere = [inv.subtitle, inv.description, inv.place, inv.location, hourWords(inv), dayWords(inv), inv.hostedBy, ...inv.hostNames, inv.pageWords].filter(Boolean);
   tiles.set(a, {lines, match, elsewhere});
   return a;
 }

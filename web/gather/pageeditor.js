@@ -4,6 +4,7 @@ import {field, text, textarea} from '/form.js';
 import {navigate, load} from '/router.js';
 import {lookTheme} from '/themes.js';
 import {textTools, indentLists} from '/texttools.js';
+import {writeGuestWords} from '/aiwrite.js';
 import {savePage, removePage, setPagePicture, clearPagePicture} from './state.js';
 import {pictureInput, firstHex} from './editor.js';
 
@@ -44,7 +45,7 @@ export function openPageEditor(inv, page, key) {
   body.placeholder = 'What guests see on this page.';
   indentLists(body);
   const bodyBox = el('div', 'text-box');
-  bodyBox.append(textTools(body), body);
+  bodyBox.append(textTools(body), body, writeGuestWords(body, inv.id, 'page', () => title.value.trim()));
   const background = backgroundField(inv, page ? page.background : '');
   const base = `/g/${encodeURIComponent(key)}`;
   let id = '';

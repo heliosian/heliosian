@@ -154,6 +154,10 @@ func TestADesignTakesOnlyColorsFontsAndWords(t *testing.T) {
 		{`{"card": {"art": "none"}}`, false},
 		{`{"card": "red"}`, false},
 		{`not json`, false},
+		{`{"text": {"kicker": {"words": "Craft a little fun with us"}}}`, true},
+		{`{"text": {"kicker": {"words": "  "}}}`, false},
+		{`{"text": {"kicker": {"words": "Hi", "color": "#ff0000"}}}`, false},
+		{`{"text": {"title": {"words": "Hi"}}}`, false},
 	} {
 		_, err := checkedDesign(m, c.design)
 		if (err == nil) != c.ok {

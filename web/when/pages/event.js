@@ -22,7 +22,7 @@ import {fetchInvites, familyBand, familyAnswered, householdQuestions, comingCard
 function hero(e) {
   return detailHero({
     imageUrl: eventImage(e), title: e.title, path: e.path,
-    stamp: dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.location, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location || '', details: [e.description, location.origin + e.path].filter(Boolean).join('\n\n')})}),
+    stamp: dateCard({start: e.start, end: e.end, allDay: e.allDay, location: e.where, add: googleCalendarLink({title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.where || '', details: [e.description, location.origin + e.path].filter(Boolean).join('\n\n')})}),
     extras: e.link ? [linkedBadge(e)] : [],
     edit: e.can.edit || e.can.image ? imageEdit(e) : null,
   });

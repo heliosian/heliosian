@@ -87,7 +87,7 @@ export const calendarQueries = {
   parts: '(from GROUP (where (= kind "day_part")) (columns name start end parent))',
   dayRules: '(from RULE (where (in group (select GROUP.id (= kind "day")))) (columns group target))',
   tree: '(from GROUP (where (in kind "category" "activity" "celebration" "event")) (columns kind parent slug))',
-  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location description parent status visible_to listed audience rsvp_yes rsvp_no rsvp_maybe maybe waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
+  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location place description parent status visible_to listed audience rsvp_yes rsvp_no rsvp_maybe maybe waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
   audiences: `(from RULE (where (in group (select GROUP.audience ${eventKinds}))) (columns group target))`,
   sources: `(from GROUP_SOURCE (where (in group (select GROUP.id ${eventKinds}))) (columns group calendar_event document name))`,
   photos: `(from PHOTO (where (in group (select GROUP.id (in kind "event" "party" "activity" "category")))) (order order asc) (columns group ready))`,
@@ -171,7 +171,7 @@ export function buildCalendar(a) {
     const availability = g.kind === 'party' ? (!full ? 'available' : g.waitlist ? 'waitlist' : 'sold-out') : g.kind === 'activity' ? (g.status === 'done' ? 'done' : g.join === 'none' || full ? 'full' : 'open') : '';
     const e = {
       id: g.id, address: g.slug || '', path: g.path, whenHref: g.when_href, title: g.name, start: g.start, end: g.end || g.start, allDay: g.all_day === 'Yes', dates: datesBetween(g.start, g.end),
-      location: g.location || '', description: g.description || '', source, sourceTitle: ((sources[g.id] || [])[0] || {}).name || '', sourceUrl: '',
+      location: g.location || '', place: g.place || '', where: [g.place, g.location].filter(Boolean).join(', '), description: g.description || '', source, sourceTitle: ((sources[g.id] || [])[0] || {}).name || '', sourceUrl: '',
       classrooms: rooms, tags: [top, ...(audiences[g.audience] || []).map(r => r.target).filter(t => classroomName[t])].filter(Boolean),
       sharing: g.visible_to === everyone ? (g.listed === 'Yes' || g.kind !== 'event' ? 'Public' : 'Link') : 'Invite Only',
       status: g.status, pending: g.status === 'pending', cancelled: g.status === 'cancelled', declined: false,

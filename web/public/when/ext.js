@@ -28,8 +28,8 @@ function paint() {
   body.append(el('div', 'kicker', view.cancelled ? 'This event is cancelled' : view.past ? 'This event has passed' : 'You’re invited'));
   body.append(el('h1', '', view.title));
   body.append(el('div', 'when', view.day + (view.hours ? ' · ' + view.hours : '')));
-  if (view.location) {
-    body.append(el('div', 'where', view.location));
+  if (view.place || view.location) {
+    body.append(el('div', 'where', [view.place, view.location].filter(Boolean).join(', ')));
   }
   if (view.hosts.length) {
     body.append(el('div', 'hosts', 'Invited by ' + view.hosts.join(' and ') + (view.name ? ' · for ' + view.name : '')));

@@ -3,12 +3,12 @@ import {openModal, closeLayers} from '/modal.js';
 import {field, text, textarea, whenPickers} from '/form.js';
 import {navigate} from '/router.js';
 import {themes, lookTheme, themed, wrapped, sealMark, fontChoices, kickerWords} from '/themes.js';
-import {api} from '/api.js';
+import {writeWithAI, writeGuestWords} from '/aiwrite.js';
 import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture, clearDesignPicture, uploadTheme, removeTheme, me, state} from './state.js';
 import {offerUpdate, hostsRow, menuButton} from '/invites.js';
 import {fetchInvites as fetchGuestList, cancelEvent} from '/guestlist.js';
 import {deleteInvitation} from '/guestpopups.js';
-import {miniEnvelope, sealedEnvelope, inviteCard, andList} from '/envelope.js';
+import {miniEnvelope, sealedEnvelope, inviteCard, andList, whereWords} from '/envelope.js';
 
 function sidePages(panels) {
   const wrap = el('div', 'editor-pages');
@@ -294,7 +294,7 @@ function themeScene(words) {
   return scene;
 }
 
-function cardOnBackdrop(words) {
+export function cardOnBackdrop(words) {
   const backdrop = themed(el('div', 'theme-tile-backdrop'), words.look);
   backdrop.append(cardPreview(words));
   return backdrop;
@@ -396,29 +396,14 @@ function hostedByField(current) {
   };
 }
 
-function writeWithAI(summary, facts) {
-  const status = el('small', 'describe-status');
-  const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', async () => {
-    generate.disabled = true;
-    status.classList.remove('error');
-    status.textContent = 'Writing…';
-    try {
-      const {description} = await api('POST', '/api/do/describe-event', {...facts(), notes: summary.value});
-      summary.value = description;
-      status.textContent = '';
-      summary.focus();
-    } catch (err) {
-      status.classList.add('error');
-      status.textContent = err.message;
-    } finally {
-      generate.disabled = false;
-    }
-  });
-  const line = el('div', 'describe-line');
-  line.append(generate, status);
+function withLine(input, line) {
   const box = el('div');
-  box.append(summary, line);
+  box.append(input, line);
   return box;
+}
+
+function summaryWithAI(summary, facts) {
+  return withLine(summary, writeWithAI(summary, '/api/do/describe-event', facts));
 }
 
 export function firstHex(value) {
@@ -516,7 +501,7 @@ export function pictureInput(label, current, upload, clear, changed) {
       }
     });
     row.append(file, button(url ? 'Change picture' : 'Upload a picture', 'upload', 'button button-secondary', () => file.click()));
-    wrap.replaceChildren(el('span', '', label), row, status);
+    wrap.replaceChildren(el('span', '', label), row, el('small', '', 'A photo or drawing. An animated GIF keeps moving.'), status);
   };
   paint();
   return wrap;
@@ -599,7 +584,7 @@ function cancelWithNotice(inv, sent) {
   openModal('Cancel and notify guests', [
     el('p', 'theme-hint', `${sent} ${sent === 1 ? 'person has' : 'people have'} been sent the invitation. They each get this email, and the invitation comes off their calendars and lists; its page stays, saying it was cancelled.`),
     field('Subject', subject, '', true),
-    field('Message', message, 'The email’s words under the heading saying it’s cancelled.', true),
+    field('Message', withLine(message, writeGuestWords(message, inv.id, 'mail', () => 'A cancellation: ' + subject.value.trim())), 'The email’s words under the heading saying it’s cancelled.', true),
   ], {
     saveLabel: 'Cancel and send',
     submit: async () => {
@@ -657,11 +642,19 @@ export function openEditor(inv) {
   }
   const look = inv ? inv.look : {theme: '', envelope: '', seal: '', liner: '', design: {}};
   const chosen = {theme: look.theme || defaultTheme(), envelope: look.envelope, seal: look.seal, liner: look.liner};
-  const changes = {card: {}, page: {}, fonts: {}};
+  const changes = {card: {}, page: {}, fonts: {}, text: {}};
   for (const section of Object.keys(changes)) {
     Object.assign(changes[section], look.design?.[section] || {});
   }
   const pictures = {card: inv ? look.cardPicture : '', backdrop: inv ? look.backdrop : ''};
+  const kicker = text(changes.text.kicker?.words || '', {maxLength: 100, placeholder: kickerWords({theme: chosen.theme})});
+  kicker.addEventListener('input', () => {
+    if (kicker.value.trim()) {
+      changes.text.kicker = {words: kicker.value.trim()};
+      return;
+    }
+    delete changes.text.kicker;
+  });
   const name = text(inv ? inv.name : '', {required: true, placeholder: 'Maya’s 8th Birthday'});
   const subtitle = text(inv ? inv.subtitle : '', {placeholder: 'An afternoon of bouncing and cake'});
   const title = () => name.value.trim() || 'Your invitation';
@@ -736,7 +729,8 @@ export function openEditor(inv) {
   const customize = customizePage(inv, changes, pictures, template, lookNow, () => ({...sample(), name: title()}), () => {});
   const starts = whenPickers('Starts', inv ? inv.start : '', null, 'Clear');
   const ends = whenPickers('Ends', inv ? inv.end : '', null, 'Clear');
-  const location = text(inv ? inv.location : '', {placeholder: 'Where it happens'});
+  const place = text(inv ? inv.place : '', {placeholder: 'Palo Alto Elks Lodge'});
+  const location = text(inv ? inv.location : '', {placeholder: '4249 El Camino Real, Palo Alto, CA 94306'});
   const summary = textarea(inv ? inv.description : '', 4);
   summary.placeholder = 'A few words to your guests';
   const showEnds = Boolean(inv && inv.end && inv.end.slice(0, 10) !== inv.start.slice(0, 10));
@@ -763,7 +757,7 @@ export function openEditor(inv) {
       throw new Error('The end is before the start.');
     }
     return {
-      name: name.value.trim(), subtitle: subtitle.value.trim(), start, end, location: location.value.trim(), description: summary.value.trim(),
+      name: name.value.trim(), subtitle: subtitle.value.trim(), start, end, place: place.value.trim(), location: location.value.trim(), description: summary.value.trim(),
       theme: chosen.theme, envelope: chosen.envelope, seal: chosen.seal, liner: chosen.liner, design: designOf(), hostedBy: hostedBy.value(),
     };
   };
@@ -789,6 +783,7 @@ export function openEditor(inv) {
     subs.forEach((_, j) => pages.reveal(3 + j, themeChosen && subsOpen));
   };
   function paintTheme() {
+    kicker.placeholder = kickerWords({theme: chosen.theme});
     revealSubs();
     if (!themeChosen) {
       themeArea.replaceChildren(pickers.theme.wrap);
@@ -806,11 +801,11 @@ export function openEditor(inv) {
     themeArea.replaceChildren(head, el('p', 'theme-hint', 'Change its card, background, colors, fonts and envelope from the pages under Theme.'), preview);
   }
   pages = sidePages([
-    {label: 'Details', icon: 'list', fields: [field('Title', name, '', true), field('Subtitle', subtitle, 'A line under the title on the card. Leave it blank for none.'), when, field('Where', location), field('Summary', writeWithAI(summary, () => {
+    {label: 'Details', icon: 'list', fields: [field('Above the title', kicker, 'The small line over the title on the card. Leave it blank for the theme’s own.'), field('Title', name, '', true), field('Subtitle', subtitle, 'A line under the title on the card. Leave it blank for none.'), when, field('Place', place, 'The name of the place, if it has one.'), field('Address', location, 'Where guests go. Maps and calendars use it.'), field('Summary', summaryWithAI(summary, () => {
       const when = {start: starts.value(), end: !ends.wrap.hidden ? ends.value() : until.value && starts.value() ? `${starts.value().slice(0, 10)} ${until.value}` : ''};
       return {
         title: name.value.trim(), subtitle: subtitle.value.trim(), when: when.start ? [dayWords(when), hourWords(when)].filter(Boolean).join(', ') : '',
-        where: location.value.trim(), hosts: hostedBy.words(), kicker: kickerWords(lookNow()),
+        where: whereWords({place: place.value.trim(), location: location.value.trim()}), hosts: hostedBy.words(), kicker: kickerWords(lookNow()),
       };
     }))]},
     {label: 'Essentials', icon: 'groups', fields: [hostsField(inv, hostedBy), hostedBy.wrap]},
@@ -834,7 +829,7 @@ export function openEditor(inv) {
       if (!inv) {
         return createInvite(b);
       }
-      changed = [['title', b.name !== inv.name], ['start', b.start !== inv.start], ['end', (b.end || b.start) !== inv.end], ['location', b.location !== inv.location]].filter(([, c]) => c).map(([k]) => k);
+      changed = [['title', b.name !== inv.name], ['start', b.start !== inv.start], ['end', (b.end || b.start) !== inv.end], ['location', b.location !== inv.location || b.place !== inv.place]].filter(([, c]) => c).map(([k]) => k);
       await editInvite(inv, b);
       return '';
     },

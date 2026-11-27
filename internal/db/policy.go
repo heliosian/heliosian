@@ -502,7 +502,7 @@ const PolicySource = `
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
    eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by design card_picture backdrop_picture priority price unit parent_ticket_required
-   drop_off_allowed start end all_day timing location added_by added path href who_href loop_href when_href team_href celebrate_href)
+   drop_off_allowed start end all_day timing location place added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
 (read GROUP (address_consent phone_consent) (exists MEMBER (= group @row) (= person @viewer)))
@@ -1239,6 +1239,7 @@ const PolicySource = `
 (set GROUP.all_day (and (runs_list @old) (not (sourced @old))))
 ; a group's managers say where it happens, unless the calendar import brings it
 (set GROUP.location (and (runs_list @old) (not (sourced @old))))
+(set GROUP.place (and (runs_list @old) (not (sourced @old))))
 ; a group's managers say in words when it happens
 (set GROUP.timing (runs_list @old))
 ; a group's managers write the line under its name

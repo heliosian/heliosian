@@ -192,7 +192,7 @@ func TestActivityRestorationRechecksCurrentAuthority(t *testing.T) {
 			if path == "add-guests" {
 				_, err = iv.addGuests(t.Context(), stale, Env{Viewer: parent, Now: testNow}, access.Actor{Email: rowan}, addGuestsAsk{Group: h.event, People: []guestAsk{{Person: guest}}})
 			} else {
-				_, err = iv.writeGuests(t.Context(), access.Actor{Email: rowan}, []Edit{joined}, h.event, parent, nil, 0)
+				_, err = iv.writeGuests(t.Context(), access.Actor{Email: rowan}, []Edit{joined}, h.event, parent, nil, nil, 0)
 			}
 			if err == nil {
 				t.Fatal("stale bringer authority undid the host's removal")

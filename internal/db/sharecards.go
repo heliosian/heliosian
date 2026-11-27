@@ -55,7 +55,7 @@ func whenCardLines(day, hours, location string) []sharecard.Line {
 
 func eventBlurb(g store.Row) string {
 	parts := []string{}
-	for _, s := range []string{whenText(g), g["location"], blurb(g["description"])} {
+	for _, s := range []string{whenText(g), whereWords(g), blurb(g["description"])} {
 		if s != "" {
 			parts = append(parts, s)
 		}

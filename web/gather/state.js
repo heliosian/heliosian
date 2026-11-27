@@ -3,12 +3,12 @@ import {api} from '/api.js';
 import {parseWhen, timeRange} from '/datecard.js';
 import {loadThemes, refreshThemes, forgetThemes} from '/themes.js';
 import {keyBetween} from '/order.js';
-import {questionQueries, questionParts} from '/rsvpquestions.js';
+import {whereWords} from '/envelope.js';import {questionQueries, questionParts} from '/rsvpquestions.js';
 
 export const state = {model: null, pages: {}};
 
 const byKey = new Map();
-const columns = '(columns name subtitle managed_by start end all_day location description theme envelope seal liner design card_picture backdrop_picture hosted_by path slug status rsvp_yes rsvp_no rsvp_maybe maybe members_visible_to when_href)';
+const columns = '(columns name subtitle managed_by start end all_day location place description theme envelope seal liner design card_picture backdrop_picture hosted_by path slug status rsvp_yes rsvp_no rsvp_maybe maybe members_visible_to when_href)';
 const mineOrHousehold = '(or (= person @viewer) (in person (household @viewer)))';
 const hostedByMe = '(in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))';
 
@@ -19,11 +19,10 @@ function pictureOf(g, column) {
 function inviteOf(g, host) {
   return {
     id: g.id, name: g.name || 'Untitled invitation', subtitle: g.subtitle || '', start: g.start || '', end: g.end || '', allDay: g.all_day === 'Yes',
-    location: g.location || '', description: g.description || '', theme: g.theme || '', hostedBy: g.hosted_by || '',
+    location: g.location || '', place: g.place || '', description: g.description || '', theme: g.theme || '', hostedBy: g.hosted_by || '',
     look: {
       theme: g.theme || '', envelope: g.envelope || '', seal: g.seal || '', liner: g.liner || '', design: g.design ? JSON.parse(g.design) : {},
-      cardPicture: pictureOf(g, 'card_picture'), backdrop: pictureOf(g, 'backdrop_picture'),
-    },
+      cardPicture: pictureOf(g, 'card_picture'), backdrop: pictureOf(g, 'backdrop_picture'),    },
     path: g.path || `/g/${g.id}`,
     slug: g.slug || '', status: g.status || '', rsvpYes: g.rsvp_yes || '', rsvpNo: g.rsvp_no || '', rsvpMaybe: g.rsvp_maybe || '', maybe: g.maybe === 'Yes' && Boolean(g.rsvp_maybe),
     listShown: Boolean(g.members_visible_to), whenHref: g.when_href || '', host, managers: g.managed_by || '', hostNames: [], pageWords: '',
@@ -116,7 +115,7 @@ export function gradebands() {
 export function asEvent(inv) {
   const day = inv.start.slice(0, 10);
   return {
-    id: inv.id, title: inv.name, source: 'sheet', allDay: inv.allDay, location: inv.location, cancelled: inv.status === 'cancelled',
+    id: inv.id, title: inv.name, source: 'sheet', allDay: inv.allDay, location: inv.location, where: whereWords(inv), cancelled: inv.status === 'cancelled',
     start: inv.start, end: inv.end, dates: day ? [day] : [], path: inv.path, can: {edit: inv.host}, hostsAreGuests: true,
   };
 }
@@ -303,7 +302,7 @@ export async function noteOpened(inv, details) {
 function inviteCells(body) {
   return {
     name: body.name, subtitle: body.subtitle, start: body.start, end: body.end || body.start, all_day: Boolean(body.start) && !body.start.includes(' '),
-    location: body.location, description: body.description, theme: body.theme, envelope: body.envelope, seal: body.seal, liner: body.liner,
+    location: body.location, place: body.place, description: body.description, theme: body.theme, envelope: body.envelope, seal: body.seal, liner: body.liner,
     design: Object.keys(body.design).length ? JSON.stringify(body.design) : '', hosted_by: body.hostedBy,
   };
 }

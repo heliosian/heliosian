@@ -5,7 +5,7 @@ import {queries, rowsOf, write} from '/rail.js';
 import {loadThemes, refreshThemes} from '/themes.js';
 import {miniEnvelope} from '/envelope.js';
 import {me, removeTheme} from './state.js';
-import {themeUpload, deleteThemeWords} from './editor.js';
+import {themeUpload, deleteThemeWords, cardOnBackdrop} from './editor.js';
 
 async function allThemes() {
   const a = await queries({
@@ -31,7 +31,8 @@ function themeRow(t, redraw) {
   const row = el('li', 'theme-manage-row');
   row.dataset.theme = t.id;
   const picture = el('div', 'theme-manage-picture');
-  picture.append(miniEnvelope({theme: t.id}, t.name));
+  const look = {theme: t.id};
+  picture.append(cardOnBackdrop({look, name: t.name, day: 'Saturday, December 12', hours: '2:00 – 4:00 PM', location: '', description: '', hosts: [], hostedBy: ''}), miniEnvelope(look, t.name));
   const words = el('div', 'theme-manage-words');
   words.append(el('span', 'theme-manage-name', t.name), el('span', 'theme-manage-blurb', t.blurb || ''));
   const badge = el('span', 'theme-manage-badge' + (t.owner ? ' is-private' : ' is-public'));
@@ -81,7 +82,13 @@ export function openThemeManager() {
   const show = () => {
     const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
     const shown = rows.filter(t => matches(t, words));
-    list.replaceChildren(...shown.map(t => themeRow(t, redraw)));
+    list.replaceChildren();
+    for (const [heading, group] of [['Public', shown.filter(t => !t.owner)], ['Private', shown.filter(t => t.owner)]]) {
+      if (!group.length) {
+        continue;
+      }
+      list.append(el('li', 'theme-manage-group', `${heading} · ${group.length}`), ...group.map(t => themeRow(t, redraw)));
+    }
     if (!rows.length) {
       list.append(el('li', 'theme-manage-empty', 'Gather has no themes yet. Upload one with Upload a theme.'));
     } else if (!shown.length) {

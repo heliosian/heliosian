@@ -47,6 +47,7 @@ func (p *WhenPages) Register(mux *http.ServeMux) {
 func (p *WhenPages) RegisterGather(mux *http.ServeMux) {
 	p.registerCards(mux)
 	mux.HandleFunc("GET /ext/{token}", p.extPage("web/public/gather/ext.html"))
+	mux.HandleFunc("GET /preview/{token}", p.extPage("web/public/gather/ext.html"))
 	mux.HandleFunc("GET /open/envelope/{id}", p.envelopePicture)
 	mux.HandleFunc("GET /open/themes", p.themes)
 	mux.HandleFunc("GET /open/theme-kit.zip", p.themeKit)
@@ -143,8 +144,8 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		}
 		return m.cardPicture(r.Context(), p.bucket, "when pages", g, name), nil
 	}
-	card := sharecard.Card{Kicker: kicker, Title: g["name"], Lines: whenCardLines(day, hours, g["location"]), Button: button}
-	serveGroupCard(w, r, p.style, card, name, whole, load, g["name"], kicker, day, hours, g["location"], button)
+	card := sharecard.Card{Kicker: kicker, Title: g["name"], Lines: whenCardLines(day, hours, whereWords(g)), Button: button}
+	serveGroupCard(w, r, p.style, card, name, whole, load, g["name"], kicker, day, hours, whereWords(g), button)
 }
 
 func (m *Model) sharedPicture(g store.Row) (string, bool) {

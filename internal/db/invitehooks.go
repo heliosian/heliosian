@@ -57,6 +57,7 @@ type extView struct {
 	Day         string        `json:"day"`
 	Hours       string        `json:"hours,omitempty"`
 	Location    string        `json:"location,omitempty"`
+	Place       string        `json:"place,omitempty"`
 	Description string        `json:"description,omitempty"`
 	Hosts       []string      `json:"hosts"`
 	Name        string        `json:"name"`
@@ -165,18 +166,8 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	day, hours := dayAndHours(g)
-	view := extView{
-		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
-		Name: m.nameOf(c.person), Key: c.person, Kid: m.isKid(c.person), Answer: m.answerOf(g, c.person), Guests: guests, Brought: []extPerson{}, Family: []extPerson{},
-		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled", Theme: g["theme"], Envelope: g["envelope"], Maybe: g["maybe"] == "Yes",
-		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"],
-	}
-	for part, into := range map[string]*string{"card": &view.CardPicture, "backdrop": &view.Backdrop} {
-		if g[part+"_picture"] != "" {
-			*into = "/open/ext/" + r.PathValue("token") + "/picture/" + part
-		}
-	}
+	view := m.eventView(g, now, func(part string) string { return "/open/ext/" + r.PathValue("token") + "/picture/" + part })
+	view.Name, view.Key, view.Kid, view.Answer, view.Guests = m.nameOf(c.person), c.person, m.isKid(c.person), m.answerOf(g, c.person), guests
 	view.Questions, view.Replies, view.FamilyGroup = m.extQuestions(g, c.person)
 	view.Notes = m.notesFor(g, c.person)
 	if g["flyer"] != "" {
@@ -190,6 +181,71 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	}
 	iv.noteOpened(r.Context(), m, g, c.person)
 	serve.Write(w, r, http.StatusOK, view)
+}
+
+func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) string) extView {
+	day, hours := dayAndHours(g)
+	view := extView{
+		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Place: g["place"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
+		Brought: []extPerson{}, Family: []extPerson{}, Notes: []extNote{}, Questions: []extQuestion{}, Replies: []extReply{},
+		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled", Theme: g["theme"], Envelope: g["envelope"], Maybe: g["maybe"] == "Yes",
+		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"],
+	}
+	for part, into := range map[string]*string{"card": &view.CardPicture, "backdrop": &view.Backdrop} {
+		if g[part+"_picture"] != "" {
+			*into = picture(part)
+		}
+	}
+	return view
+}
+
+type previewAsk struct {
+	Group string `json:"group"`
+}
+
+func (iv *Invitations) previewInvitation(ctx context.Context, m *Model, env Env, actor access.Actor, ask previewAsk) (extView, error) {
+	g, err := m.guestList(ctx, env, ask.Group)
+	if err != nil {
+		return extView{}, err
+	}
+	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	if err != nil {
+		return extView{}, err
+	}
+	if !runs {
+		return extView{}, access.Forbidden("only the hosts preview their invitation")
+	}
+	view := m.eventView(g, env.Now, func(part string) string {
+		return "/api/blob/" + g["id"] + "/" + part + "_picture?c=" + g[part+"_picture"]
+	})
+	view.Name, view.Key = "Piper McTweet", "preview-piper"
+	view.Guests = g["kind"] != "activity" && g["join"] == "others"
+	view.Questions = m.questionViews(g)
+	view.Family = append(view.Family, extPerson{Key: "preview-wren", Name: "Wren McTweet"})
+	if m.hasKids(g, view.Questions) {
+		view.Family = append(view.Family, extPerson{Key: "preview-jay", Name: "Jay McTweet", Kid: true}, extPerson{Key: "preview-raven", Name: "Raven McTweet", Kid: true})
+	}
+	view.FamilyGroup = &extFamily{ID: "preview-family", Name: "The McTweets"}
+	return view, nil
+}
+
+func (m *Model) hasKids(g store.Row, questions []extQuestion) bool {
+	for _, q := range questions {
+		if q.Asked == "kids" || q.Asked == "adults" {
+			return true
+		}
+	}
+	for _, row := range m.effectiveRows(g["id"]) {
+		if m.isKid(row["person"]) {
+			return true
+		}
+	}
+	for person := range m.copiesOf(g["id"]) {
+		if m.isKid(person) {
+			return true
+		}
+	}
+	return false
 }
 
 func (iv *Invitations) noteOpened(ctx context.Context, m *Model, g store.Row, person string) {
@@ -326,7 +382,7 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		edits = append(edits, invitationEdits(c.group["id"], c.person, "invitation", []string{guest}, at)...)
 		sending = append(sending, guest)
 	}
-	_, err = iv.writeGuests(r.Context(), actor, edits, c.group["id"], c.person, sending, len(sending))
+	_, err = iv.writeGuests(r.Context(), actor, edits, c.group["id"], c.person, sending, nil, len(sending))
 	if err != nil {
 		serve.Error(w, r, err)
 		return

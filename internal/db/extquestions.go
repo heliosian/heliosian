@@ -61,11 +61,8 @@ func (m *Model) answersFor(g store.Row, person string) []string {
 	return append(m.householdOnList(g, person), m.broughtGuests(g, person)...)
 }
 
-func (m *Model) extQuestions(g store.Row, person string) ([]extQuestion, []extReply, *extFamily) {
+func (m *Model) questionViews(g store.Row) []extQuestion {
 	questions := []extQuestion{}
-	replies := []extReply{}
-	party := m.answersFor(g, person)
-	family, hasFamily := m.familyOf(person)
 	for _, q := range m.questionsOf(g) {
 		choices := []string{}
 		for _, c := range strings.Split(q["choices"], "\n") {
@@ -74,9 +71,19 @@ func (m *Model) extQuestions(g store.Row, person string) ([]extQuestion, []extRe
 			}
 		}
 		questions = append(questions, extQuestion{ID: q["id"], Text: q["text"], Kind: q["kind"], Choices: choices, Asked: q["asked"], Required: q["required"] == "Yes", GoingOnly: q["going_only"] == "Yes"})
-		for _, a := range m.Table("ANSWER").Referencing("question", q["id"]) {
+	}
+	return questions
+}
+
+func (m *Model) extQuestions(g store.Row, person string) ([]extQuestion, []extReply, *extFamily) {
+	questions := m.questionViews(g)
+	replies := []extReply{}
+	party := m.answersFor(g, person)
+	family, hasFamily := m.familyOf(person)
+	for _, q := range questions {
+		for _, a := range m.Table("ANSWER").Referencing("question", q.ID) {
 			if slices.Contains(party, a["person"]) || (hasFamily && a["family"] == family["id"]) {
-				replies = append(replies, extReply{Question: q["id"], Person: a["person"], Family: a["family"], Value: a["value"]})
+				replies = append(replies, extReply{Question: q.ID, Person: a["person"], Family: a["family"], Value: a["value"]})
 			}
 		}
 	}

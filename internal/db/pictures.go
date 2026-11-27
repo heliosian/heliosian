@@ -29,6 +29,8 @@ func (m *Model) groupPhoto(group string) string {
 	return ""
 }
 
+var movingPictures = []string{"card_picture", "backdrop_picture", "picture"}
+
 type madeColumn struct {
 	table, original, made string
 }
@@ -315,7 +317,10 @@ func (p *Pictures) makeMade(made madeColumn, id string, row store.Row) error {
 	}
 	var out []byte
 	mimeType := "image/jpeg"
-	if made.made == "pronunciation" {
+	if slices.Contains(movingPictures, made.made) && blob.Animated(src) {
+		mimeType = "image/gif"
+		out, err = workload.Run(ctx, p.s.Work, func() ([]byte, error) { return blob.ScaledGIF(src) })
+	} else if made.made == "pronunciation" {
 		mimeType = "audio/mp4"
 		audio, _, ok := blob.AudioType(declared)
 		if !ok {

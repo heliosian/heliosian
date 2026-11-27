@@ -75,6 +75,12 @@ export async function fetchInvites(e) {
   for (const c of rowsOf(a.copies, 'RECIPIENT')) {
     copies[c.person] = c;
   }
+  for (const [pid, c] of Object.entries(copies)) {
+    const m = memberOf[pid];
+    if (g.kind !== 'activity' && m && (c.created || '') < (m.added || '')) {
+      delete copies[pid];
+    }
+  }
   const answers = {};
   for (const m of rowsOf(a.answers, 'MEMBER')) {
     answers[m.person] = {row: m.id, word: m.group === g.rsvp_yes ? 'yes' : m.group === g.rsvp_maybe ? 'maybe' : 'no', at: m.added, by: m.added_by};
@@ -171,6 +177,10 @@ export async function answerFor(row, word) {
 
 export function sendTo(e, people) {
   return api('POST', '/api/do/invite', {group: e.id, people});
+}
+
+export function sendAgain(e, people) {
+  return api('POST', '/api/do/invite', {group: e.id, people, again: true});
 }
 
 export function sendPending(e) {

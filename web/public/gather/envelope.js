@@ -1,6 +1,5 @@
 import {el} from '/elements.js';
 import {themed, wrapped, wordless, sealMark, kickerWords} from '/themes.js';
-
 function shell(look, className) {
   const env = wrapped(el('div', `envelope ${className || ''}`), look);
   env.append(el('div', 'env-back'), el('div', 'env-peek'), el('div', 'env-pocket'));
@@ -65,8 +64,15 @@ export function inviteCard(words) {
   if (words.hours) {
     body.append(el('p', 'card-hours', words.hours));
   }
-  if (words.location) {
-    body.append(el('p', 'card-place', words.location));
+  if (words.place || words.location) {
+    const place = el('p', 'card-place');
+    if (words.place) {
+      place.append(el('span', 'card-place-name', words.place));
+    }
+    if (words.location) {
+      place.append(el('span', 'card-place-address', words.location));
+    }
+    body.append(place);
   }
   if (words.description) {
     body.append(el('p', 'card-message', words.description));
@@ -86,6 +92,14 @@ export function inviteCard(words) {
   body.classList.add('card-words-hidden');
   card.append(img, body);
   return card;
+}
+
+export function whereWords(w) {
+  return [w.place, w.location].filter(Boolean).join(', ');
+}
+
+export function mapQuery(w) {
+  return w.location || w.place;
 }
 
 export function andList(names) {

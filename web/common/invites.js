@@ -17,6 +17,7 @@ import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
 import {rulesCard, ruleWords} from '/listrules.js';
 import {tabbedFields} from '/tabs.js';
+import {writeGuestWords} from '/aiwrite.js';
 import * as guests from '/guestlist.js';
 import {loadQuestions} from '/rsvpquestions.js';
 import {personBlock, familyBlock, missingNote} from '/questionfields.js';
@@ -648,7 +649,7 @@ function emailPanel(e, view, refresh) {
   const subjectField = el('label', 'field');
   subjectField.append(el('span', '', 'Subject'), subject, el('small', '', 'Leave it blank for the standard subject. A reminder to people who haven’t opened it says Reminder: before it.'));
   const messageField = el('label', 'field');
-  messageField.append(el('span', '', 'Message'), message, el('small', '', 'Your own words at the top of the invitation email, above the card. It goes with reminders and updates too.'));
+  messageField.append(el('span', '', 'Message'), message, writeGuestWords(message, e.id, 'mail', () => `The invitation email: ${subject.value.trim() || `[${e.title}] You’re invited!`}`), el('small', '', 'Your own words at the top of the invitation email, above the card. It goes with reminders and updates too.'));
   const foot = el('div', 'modal-actions');
   foot.append(save, status);
   box.append(subjectField, messageField, foot);
@@ -878,7 +879,7 @@ function sendMenu(e, view, refresh) {
     })},
     {icon: 'calcheck', words: 'Event reminder', run: () => openMessage(e, view, refresh, {
       title: 'Send event reminder', to: ['yes', 'none'], subject: `Reminder: ${day}`, attach: true,
-      message: `Just a reminder that we’re on for ${when}${e.location ? ' at ' + e.location : ''}. See you there!`,
+      message: `Just a reminder that we’re on for ${when}${e.where ? ' at ' + e.where : ''}. See you there!`,
     })},
     {icon: 'chat', words: 'Message', run: () => openMessage(e, view, refresh)},
     ...(begun(e) ? [{icon: 'heart', words: 'Thank-you note', run: () => openMessage(e, view, refresh, {

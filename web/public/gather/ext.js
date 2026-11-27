@@ -2,15 +2,42 @@ import {el, svg} from '/elements.js';
 import {loadThemes, themed} from '/themes.js';
 import {sealedEnvelope, inviteCard, andList} from '/envelope.js';
 import {replyKey, personBlock, familyBlock, missingNote} from '/questionfields.js';
-
 const token = location.pathname.split('/').filter(Boolean).pop();
+const preview = location.pathname.startsWith('/preview/');
 const api = '/open/ext/' + encodeURIComponent(token);
 const root = document.getElementById('invite');
 let view = null;
 let opened = false;
+let made = 0;
+
+function person(key) {
+  return key === '' || key === view.key ? view : [...view.family, ...view.brought].find(p => p.key === key);
+}
+
+function keep(method, path, body) {
+  if (path === '') {
+    person(body.key).answer = body.answer;
+  } else if (path === '/reply') {
+    view.replies = view.replies.filter(r => !(r.question === body.question && (r.person || '') === body.person && (r.family || '') === body.family));
+    if (body.value !== '') {
+      view.replies.push(body);
+    }
+  } else if (path === '/guest' && method === 'POST') {
+    made += 1;
+    view.brought.push({key: 'preview-guest-' + made, name: body.name, kid: body.child});
+  } else if (path === '/guest') {
+    view.brought = view.brought.filter(p => p.key !== body.key);
+  } else if (path === '/comment') {
+    view.notes.push({text: body.text});
+  }
+  return Promise.resolve(null);
+}
 
 function send(method, path, body) {
-  return fetch(path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(res => {
+  if (preview) {
+    return keep(method, path, body);
+  }
+  return fetch(api + path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(res => {
     if (!res.ok) {
       return res.text().then(t => {
         throw new Error(t || 'Something went wrong');
@@ -44,7 +71,7 @@ function details() {
     replies,
     family: view.familyGroup || null,
     household: people().map(p => ({id: p.key, short: p.short, kid: Boolean(p.kid), going: p.answer === 'yes'})),
-    save: (q, target, value) => send('POST', api + '/reply', {question: q.id, person: target.person || '', family: target.family || '', value}),
+    save: (q, target, value) => send('POST', '/reply', {question: q.id, person: target.person || '', family: target.family || '', value}),
   };
 }
 
@@ -63,7 +90,7 @@ function answerRow(p, status) {
     b.append(el('span', '', label));
     b.addEventListener('click', () => {
       b.disabled = true;
-      send('POST', api, {answer: on ? '' : word, key: p.key === view.key ? '' : p.key}).then(load).catch(err => {
+      send('POST', '', {answer: on ? '' : word, key: p.key === view.key ? '' : p.key}).then(load).catch(err => {
         b.disabled = false;
         status.textContent = err.message;
       });
@@ -75,7 +102,7 @@ function answerRow(p, status) {
     const x = el('button', 'reply-remove', '×');
     x.type = 'button';
     x.title = 'Remove this guest';
-    x.addEventListener('click', () => send('DELETE', api + '/guest', {key: p.key}).then(load).catch(err => {
+    x.addEventListener('click', () => send('DELETE', '/guest', {key: p.key}).then(load).catch(err => {
       status.textContent = err.message;
     }));
     row.append(x);
@@ -104,7 +131,7 @@ function guestForm(status) {
   form.addEventListener('submit', ev => {
     ev.preventDefault();
     add.disabled = true;
-    send('POST', api + '/guest', {name: name.value.trim(), email: email.value.trim(), child: childBox.checked}).then(load).catch(err => {
+    send('POST', '/guest', {name: name.value.trim(), email: email.value.trim(), child: childBox.checked}).then(load).catch(err => {
       add.disabled = false;
       status.textContent = err.message;
     });
@@ -158,7 +185,7 @@ function notesPanel() {
       return;
     }
     go.disabled = true;
-    send('POST', api + '/comment', {text: text.value.trim()}).then(load).catch(err => {
+    send('POST', '/comment', {text: text.value.trim()}).then(load).catch(err => {
       go.disabled = false;
       status.textContent = err.message;
     });
@@ -179,7 +206,7 @@ function lookOf() {
 function card() {
   return inviteCard({
     look: lookOf(), name: view.title, subtitle: view.subtitle || '', cancelled: view.cancelled, day: view.day, hours: view.hours || '',
-    location: view.location || '', description: view.description || '', hosts: view.hosts, hostedBy: view.hostedBy || '',
+    location: view.location || '', place: view.place || '', description: view.description || '', hosts: view.hosts, hostedBy: view.hostedBy || '',
   });
 }
 
@@ -189,7 +216,7 @@ function paint() {
   const stage = el('div', 'invite-stage');
   const side = el('div', 'invite-side');
   page.append(stage, side);
-  root.replaceChildren(page);
+  root.replaceChildren(...(preview ? [previewBar()] : []), page);
   const fill = () => {
     stage.replaceChildren(card());
     side.replaceChildren(...(view.cancelled ? [] : [rsvpPanel(), notesPanel()]));
@@ -207,8 +234,31 @@ function paint() {
   }));
 }
 
+function previewBar() {
+  const bar = el('div', 'preview-bar');
+  const back = el('a', 'preview-bar-back', 'Back to editing');
+  back.href = '/';
+  if (history.length > 1) {
+    back.addEventListener('click', ev => {
+      ev.preventDefault();
+      history.back();
+    });
+  }
+  const again = el('button', 'preview-bar-again', 'Start over');
+  again.type = 'button';
+  again.addEventListener('click', () => location.reload());
+  bar.append(el('span', '', `Preview as the McTweets: ${andList([view.name, ...view.family.map(p => p.name)].map(n => n.split(' ')[0]))}. Nothing here is saved or sent.`), again, back);
+  return bar;
+}
+
 async function load() {
-  const res = await fetch(api);
+  if (preview && view) {
+    paint();
+    return;
+  }
+  const res = preview
+    ? await fetch('/api/do/preview-invitation', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({group: token})})
+    : await fetch(api);
   if (res.status === 404) {
     gone();
     return;

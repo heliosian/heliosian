@@ -104,6 +104,32 @@ func TestThemedInvitationMailIsDrawnInItsDesign(t *testing.T) {
 	}
 }
 
+func TestAnInvitationNamesItsPlaceOverItsAddress(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme, "place": "Palo Alto Elks Lodge", "location": "4249 El Camino Real, Palo Alto, CA 94306"}}})
+	m := iv.s.Model()
+	g, _ := m.Table("GROUP").Get(group)
+	msg, err := iv.invitation(m, g, "invitation", parent, "tok", "https://gather.test"+g["path"], true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := html.UnescapeString(msg.HTML)
+	for _, want := range []string{">Palo Alto Elks Lodge</span><br>", ">4249 El Camino Real, Palo Alto, CA 94306</span>", "query=4249+El+Camino+Real%2C+Palo+Alto%2C+CA+94306"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the mail lacks %q: %s", want, body)
+		}
+	}
+	if strings.Contains(msg.HTML, "&#39;") {
+		t.Errorf("the mail's styles escape a quote, which mail readers drop the style at: %s", msg.HTML)
+	}
+	if !strings.Contains(msg.Text, "Palo Alto Elks Lodge, 4249 El Camino Real") {
+		t.Errorf("the text lacks the place: %s", msg.Text)
+	}
+	if e, ok := iv.calendarEvent(m, g, parent, "tok", "https://gather.test"+g["path"]); !ok || e.Location != "Palo Alto Elks Lodge, 4249 El Camino Real, Palo Alto, CA 94306" {
+		t.Errorf("the calendar invite's location is %q", e.Location)
+	}
+}
+
 func TestTheHostsWordTheirInvitationMail(t *testing.T) {
 	iv, _, _, group := queuedInvitations(t, parent)
 	words := "Hi! We're throwing a little party and would love to have you."

@@ -6,6 +6,7 @@ import {dataGrid} from '/datagrid.js';
 import {answerLabel, answerIcon, answerButtons, ticketWords, stamp} from '/inviteparts.js';
 import {host} from '/guesthost.js';
 import {personRow} from '/personrow.js';
+import {writeGuestWords} from '/aiwrite.js';
 
 export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
   const bar = el('div', 'guest-table-bar');
@@ -220,7 +221,10 @@ export function openMessage(e, view, refresh, preset = {}) {
   paintCount();
   const messageWrap = el('div', 'compose-message-wrap');
   messageWrap.append(message, counter);
-  box.append(messageWrap);
+  box.append(messageWrap, writeGuestWords(message, e.id, 'mail', () => {
+    const kind = preset.kind || (preset.attach ? 'reminder' : 'message');
+    return `A ${kind} to the guests: ${subject.value.trim() || 'no subject yet'}`;
+  }));
   const actions = el('div', 'compose-actions');
   const status = el('span', 'save-status');
   let shut = null;

@@ -226,6 +226,8 @@ func (d *Describer) Activity(ctx context.Context, actor string, facts ActivityFa
 }
 
 type InvitationFacts struct {
+	Kind     string
+	Heading  string
 	Title    string
 	Subtitle string
 	When     string
@@ -234,6 +236,18 @@ type InvitationFacts struct {
 	Kicker   string
 	Notes    string
 }
+
+const pageSystem = `You write one of the extra pages on a party or event invitation, such as a schedule, what to bring, or directions. You are given the invitation's title and subtitle, when and where it is, who is hosting, the line its design prints above the title, which sets its mood, the page's title, and the hosts' current text for the page, which is often rough notes.
+
+Write to the guests, warmly and clearly, in the mood the design's line sets. Keep every fact, time, item, request and caveat in the notes, in their order, and fix their spelling and capitalization. Add nothing the notes and details don't support: no invented activities, food, times, places or people. When the notes are empty, write a short page for the page's title from the details alone, and nothing you would have to guess.
+
+Markdown is allowed: **bold**, *italic*, lists starting with "- ", and [words](https://links) the notes give. No headings: the page's title is shown above it. No emoji. Return the page alone.`
+
+const mailSystem = `You write the message hosts send their guests by email about a party or event: the words at the top of the invitation email, or a reminder, update, cancellation or thank-you. You are given the invitation's title and subtitle, when and where it is, who is hosting, the line its design prints above the title, which sets its mood, the email's subject or what kind of email it is, and the hosts' current message, which is often rough notes.
+
+Write from the hosts to the guests, warmly, in a few short sentences, in the mood the design's line sets. Keep every fact, request and caveat in the notes and fix their spelling and capitalization. Add nothing the notes and details don't support: no invented activities, food, times, places or people. The invitation email shows the card with the date, time and place under the message, so don't restate them unless the notes say more about them. When the notes are empty, write a short message suited to the subject from the details alone. Don't sign it: the email says who it is from.
+
+Plain text in short paragraphs; no headings, no markdown, no bullet points, no emoji. Return the message alone.`
 
 const invitationSystem = `You write the summary on a party or event invitation, the few words under the title that the guests read before they answer. You are given the invitation's title and subtitle, when and where it is, who is hosting, the line its design prints above the title, which sets its mood, and the hosts' current summary, which is often rough notes.
 
@@ -259,7 +273,16 @@ func (d *Describer) Invitation(ctx context.Context, actor string, facts Invitati
 	line("Where", facts.Where)
 	line("Hosted by", facts.Hosts)
 	line("The design's line above the title", facts.Kicker)
-	fmt.Fprintf(prompt, "Current summary:\n%s\n", strings.TrimSpace(facts.Notes))
+	system, current := invitationSystem, "Current summary"
+	switch facts.Kind {
+	case "page":
+		system, current = pageSystem, "Current text of the page"
+		line("The page's title", facts.Heading)
+	case "mail":
+		system, current = mailSystem, "Current message"
+		line("The email", facts.Heading)
+	}
+	fmt.Fprintf(prompt, "%s:\n%s\n", current, strings.TrimSpace(facts.Notes))
 	if prompt.Len() > maxPrompt {
 		return "", ErrTooLong
 	}
@@ -269,7 +292,7 @@ func (d *Describer) Invitation(ctx context.Context, actor string, facts Invitati
 	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
 		Model:        claude.DescribeModel,
 		MaxTokens:    4000,
-		System:       []anthropic.TextBlockParam{{Text: invitationSystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
+		System:       []anthropic.TextBlockParam{{Text: system, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
 		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
 		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DescribeEffort, Format: anthropic.JSONOutputFormatParam{Schema: activitySchema}},
 	}, &out); err != nil {

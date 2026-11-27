@@ -280,7 +280,7 @@ function eventsTool() {
         const title = link(e.path, 'admin-row-name');
         title.textContent = e.title;
         const who = (state.model.names || {})[e.addedBy] || e.addedBy;
-        words.append(title, el('div', 'admin-row-note', [dayLabel(e.start.slice(0, 10)) + (e.allDay ? '' : ' ' + e.start.slice(11)), e.location, 'shared by ' + who].filter(Boolean).join(' \u00b7 ')));
+        words.append(title, el('div', 'admin-row-note', [dayLabel(e.start.slice(0, 10)) + (e.allDay ? '' : ' ' + e.start.slice(11)), e.where, 'shared by ' + who].filter(Boolean).join(' \u00b7 ')));
         const actions = el('div', 'admin-pending-actions');
         actions.append(button('Approve', 'check', 'button button-small', () => decide(e, 'approve', 'On the calendar')));
         if (e.declined) {
@@ -314,7 +314,7 @@ function eventsTool() {
       const words = el('div', 'admin-row-words');
       const title = link(e.path, 'admin-row-name');
       title.textContent = e.title;
-      words.append(title, el('div', 'admin-row-note', [e.location, categoryTags(e).map(tagName).join(', ')].filter(Boolean).join(' · ')));
+      words.append(title, el('div', 'admin-row-note', [e.where, categoryTags(e).map(tagName).join(', ')].filter(Boolean).join(' · ')));
       const start = whenPicker(e.start);
       const end = whenPicker(e.end);
       const save = button('Save', 'check', 'button button-small admin-event-save', async () => {

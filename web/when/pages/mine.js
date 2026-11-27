@@ -70,9 +70,9 @@ function eventCard(e, key) {
   const when = el('div', 'mine-card-line');
   when.append(svg('clock'), el('span', '', e.allDay ? 'All day' : timeLine(e, eventDates(e)[0])));
   body.append(when);
-  if (e.location) {
+  if (e.where) {
     const where = el('div', 'mine-card-line');
-    where.append(svg('map'), el('span', '', e.location));
+    where.append(svg('map'), el('span', '', e.where));
     body.append(where);
   }
   card.append(body);

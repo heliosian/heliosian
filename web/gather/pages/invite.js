@@ -9,10 +9,9 @@ import {guestListSection, inviteHostCall, comingCard} from '/invites.js';
 import {findInvite, fetchInvite, loadDetails, noteOpened, me, asEvent, dayWords, hourWords, loadPages, pagesOf} from '../state.js';
 import {answerButtons} from '/inviteparts.js';
 import {openPageEditor} from '../pageeditor.js';
-import {sealedEnvelope, inviteCard, andList} from '/envelope.js';
+import {sealedEnvelope, inviteCard, andList, whereWords} from '/envelope.js';
 import {openEditor} from '../editor.js';
-import {themed, sidebarIn} from '/themes.js';
-import {hostQuestions} from '../questions.js';
+import {themed, sidebarIn} from '/themes.js';import {hostQuestions} from '../questions.js';
 import {personBlock, familyBlock, missingNote} from '/questionfields.js';
 import {notesPanel} from '/hostnotes.js';
 
@@ -182,7 +181,7 @@ function rsvpPanel(inv, details, redraw) {
       panel.append(node);
     }
   }
-  const add = googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: inv.location, details: [inv.description, location.href].filter(Boolean).join('\n\n')});
+  const add = googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, location.href].filter(Boolean).join('\n\n')});
   if (add) {
     const a = el('a', 'button button-secondary reply-calendar');
     a.href = add;
@@ -197,7 +196,7 @@ function rsvpPanel(inv, details, redraw) {
 function showCard(inv, details, stage, from) {
   const card = inviteCard({
     look: inv.look, name: inv.name, subtitle: inv.subtitle, cancelled: inv.status === 'cancelled', day: dayWords(inv), hours: hourWords(inv),
-    location: inv.location, description: inv.description, hosts: details.hosts, hostedBy: inv.hostedBy,
+    location: inv.location, place: inv.place, description: inv.description, hosts: details.hosts, hostedBy: inv.hostedBy,
   });
   if (!from) {
     stage.replaceChildren(card);
@@ -228,8 +227,15 @@ function draw(inv, key, focus) {
   page.append(column, side);
   const fillSide = details => {
     side.replaceChildren();
-    if (inv.host && !page.querySelector('.invite-edit')) {
-      page.append(button('Edit', 'edit', 'button button-secondary button-small invite-edit', () => openEditor(inv)));
+    if (inv.host && !page.querySelector('.invite-host-tools')) {
+      const tools = el('div', 'invite-host-tools');
+      tools.append(
+        button('Preview', 'eye', 'button button-secondary button-small', () => {
+          location.href = '/preview/' + inv.id;
+        }),
+        button('Edit', 'edit', 'button button-secondary button-small invite-edit', () => openEditor(inv)),
+      );
+      page.append(tools);
     }
     if (details.household.length && inv.status !== 'cancelled') {
       side.append(rsvpPanel(inv, details, redraw));

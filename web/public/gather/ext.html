@@ -19,8 +19,7 @@
 <link rel="modulepreload" href="/elements.js">
 <link rel="modulepreload" href="/themes.js">
 <link rel="modulepreload" href="/envelope.js">
-<link rel="modulepreload" href="/questionfields.js">
-<style>
+<link rel="modulepreload" href="/questionfields.js"><style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
@@ -61,6 +60,9 @@ button { font: inherit; }
 .invite-gone h1 { margin: 0 0 8px; font-size: 22px; }
 .invite-gone p { margin: 0; color: var(--muted); }
 .invite-loading { padding: 80px 16px; text-align: center; color: var(--muted); }
+.preview-bar { position: sticky; top: 0; z-index: 70; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 10px max(16px, calc((100% - 1120px) / 2)); background: #1f2a2e; color: #fff; font-size: 14px; }
+.preview-bar span { flex: 1 1 260px; }
+.preview-bar-again, .preview-bar-back { padding: 6px 14px; border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 999px; background: none; color: #fff; font-weight: 700; text-decoration: none; cursor: pointer; }
 @media (max-width: 980px) {
   .invite-page { grid-template-columns: minmax(0, 1fr); padding: 24px 16px 60px; }
   .invite-side { position: static; max-width: 560px; width: 100%; margin: 0 auto; }

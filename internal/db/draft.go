@@ -1,6 +1,7 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -282,6 +283,25 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		slog.InfoContext(ctx, "described event", "actor", actor.Email, "title", body.Title)
 		return map[string]string{"description": description}, nil
 	}))
+	mux.HandleFunc("POST /api/do/describe-guest-words", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, actor access.Actor, body guestWordsDraft) (map[string]string, error) {
+		facts, err := m.guestWordsFacts(ctx, env, body)
+		if err != nil {
+			return nil, err
+		}
+		words, err := describer.Invitation(ctx, actor.Email, facts)
+		if errors.Is(err, claude.ErrTooMany) {
+			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
+		}
+		if errors.Is(err, describe.ErrTooLong) {
+			return nil, access.Invalid("%v", err)
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "describe guest words", "actor", actor.Email, "group", body.Group, "kind", body.Kind, "error", err)
+			return nil, access.Refuse(http.StatusBadGateway, "could not write it right now")
+		}
+		slog.InfoContext(ctx, "described guest words", "actor", actor.Email, "group", body.Group, "kind", body.Kind)
+		return map[string]string{"description": words}, nil
+	}))
 	mux.HandleFunc("POST /api/do/describe-charity", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, actor access.Actor, body charityDraft) (map[string]string, error) {
 		name := strings.TrimSpace(body.Name)
 		if name == "" {
@@ -330,6 +350,43 @@ type eventDraft struct {
 	Hosts    string `json:"hosts"`
 	Kicker   string `json:"kicker"`
 	Notes    string `json:"notes"`
+}
+
+type guestWordsDraft struct {
+	Group   string `json:"group"`
+	Kind    string `json:"kind"`
+	Heading string `json:"heading"`
+	Notes   string `json:"notes"`
+}
+
+func (m *Model) guestWordsFacts(ctx context.Context, env Env, body guestWordsDraft) (describe.InvitationFacts, error) {
+	if body.Kind != "page" && body.Kind != "mail" {
+		return describe.InvitationFacts{}, access.Invalid("kind is page or mail, not %q", body.Kind)
+	}
+	g, err := m.guestList(ctx, env, body.Group)
+	if err != nil {
+		return describe.InvitationFacts{}, err
+	}
+	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
+	if err != nil {
+		return describe.InvitationFacts{}, err
+	}
+	if !runs {
+		return describe.InvitationFacts{}, access.Forbidden("only the hosts write their invitation's words")
+	}
+	kicker := ""
+	if g["theme"] != "" {
+		card, err := cardDesign(m, lookOf(g))
+		if err != nil {
+			return describe.InvitationFacts{}, err
+		}
+		kicker = designValue(card, "text.kicker.words")
+	}
+	day, hours := dayAndHours(g)
+	return describe.InvitationFacts{
+		Kind: body.Kind, Heading: body.Heading, Title: g["name"], Subtitle: g["subtitle"], When: strings.Join(slices.DeleteFunc([]string{day, hours}, func(s string) bool { return s == "" }), ", "),
+		Where: whereWords(g), Hosts: cmp.Or(g["hosted_by"], strings.Join(m.namesOf(m.hostsOf(g)), ", ")), Kicker: kicker, Notes: body.Notes,
+	}, nil
 }
 
 type activityDraft struct {

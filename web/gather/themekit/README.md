@@ -111,17 +111,20 @@ Gather checks a theme when it's uploaded and refuses it with the reason if:
 - Any of these has no `#rrggbb` color in it: `page.backdrop`, `page.ink`, `page.muted`, `envelope.body`, `envelope.side`, `envelope.front`, `envelope.flap`, `envelope.liner`, `seal.color`, `seal.ink`, `card.background`, `card.ink`, `card.accent` and `card.accentInk`. Gather draws the invitation email and the link preview from these, and those can't show gradients or pictures. A gradient or picture works when it ends with a color layer, like `url("liner.jpg") center / cover, #1d4e89`.
 - A `text` color isn't `ink`, `accent` or `#rrggbb`.
 - A `url(...)` points anywhere but a picture in the theme's folder or a `data:` address. Write a picture by its file name alone, like `url("card-top.jpg")`. No web addresses.
-- A picture the theme names is missing, or two pictures share its name.
-- `theme.json` is longer than 50,000 characters once its JPEG, PNG, GIF and WebP pictures are moved into files (Pictures, below). Inline SVG drawings stay in it, so keep them small.
+- A picture the theme names is missing, or two pictures share its name.- `theme.json` is longer than 50,000 characters once its JPEG, PNG, GIF and WebP pictures are moved into files (Pictures, below). Inline SVG drawings stay in it, so keep them small.
 - There's no theme file, or more than one. Drop one theme at a time.
 
 ## Pictures
 
-Pictures are JPEG, PNG, GIF or WebP files in the theme's folder, named in the design by file name. Gather turns each into a JPEG no more than 2048 pixels on its longest side. Keep pictures under a few megabytes. Pictures are drawn as CSS backgrounds, so `center / cover`, `100% auto` and `no-repeat` work as they do anywhere.
+Pictures are JPEG, PNG, GIF or WebP files in the theme's folder, named in the design by file name. Gather turns each into a JPEG no more than 2048 pixels on its longest side, except an animated GIF, which stays a moving GIF. Keep pictures under a few megabytes. Pictures are drawn as CSS backgrounds, so `center / cover`, `100% auto` and `no-repeat` work as they do anywhere.
 
 Save every photo or painted picture as its own file beside `theme.json` and name it there; don't write it into `theme.json` as a base64 `data:` address. If one is written in anyway, Gather moves it into a file of its own when the theme is uploaded.
 
 Small drawings work well as SVG in a `data:` address, like `Ice Skating` in `examples/`. Keep each to a few thousand characters. Write `#` as `%23`, `<` as `%3C` and `>` as `%3E`, and use single quotes inside the SVG.
+
+### Pictures that move
+
+A picture can move if it's an animated GIF, named in the design like any other. Gather keeps it moving, redrawn at most 1280 pixels on its longest side; an animated WebP, or any other format, is drawn still. Link previews show the GIF's first frame, so make that frame stand on its own. Keep a moving picture short and small, a loop of a few seconds and a few megabytes, since a backdrop fills the screen of every guest who opens the invitation.
 
 ## Give it a background picture
 
@@ -151,6 +154,6 @@ A picture behind the page does more for a theme than anything else. It fills the
 
 Give an AI this whole kit, or at least `README.md`, `standard.json` and one example, along with this:
 
-> Make a Helios Gather invitation theme for **[the occasion, the mood, the colors you like]**. Follow README.md exactly. Write one `theme.json` with a `key`, `name` and `blurb`, holding only the settings that differ from standard.json. Give it a background picture: name `backdrop.jpg` in `page.backdrop` with a wash over it, as README.md's "Give it a background picture" shows, and also make the picture, or if you can't, describe it in a few sentences I can give an image generator. Draw the card art and the liner pattern with CSS gradients or small inline SVG in `data:` addresses, or name other picture files and make or describe them the same way. Never write a photo or painted picture into theme.json as base64; give it as a file. Keep the words easy to read over the art: use `card.padding` and `card.artMask` to keep the middle of the card clear. Every color the rules list must contain a `#rrggbb` color. Check every rule in README.md's "The rules" before you answer, and give me the finished `theme.json` and the pictures or their descriptions.
+> Make a Helios Gather invitation theme for **[the occasion, the mood, the colors you like]**. Follow README.md exactly. Write one `theme.json` with a `key`, `name` and `blurb`, holding only the settings that differ from standard.json. Give it a background picture: name `backdrop.jpg` in `page.backdrop` with a wash over it, as README.md's "Give it a background picture" shows, and also make the picture, or if you can't, describe it in a few sentences I can give an image generator. Draw the card art and the liner pattern with CSS gradients or small inline SVG in `data:` addresses, or name other picture files and make or describe them the same way. Never write a photo or painted picture into theme.json as base64; give it as a file. A picture that should move must be an animated GIF, as README.md's "Pictures that move" says. Keep the words easy to read over the art: use `card.padding` and `card.artMask` to keep the middle of the card clear. Every color the rules list must contain a `#rrggbb` color. Check every rule in README.md's "The rules" before you answer, and give me the finished `theme.json` and the pictures or their descriptions.
 
 Then put the file in a folder of its own with its pictures, named as the theme names them, and check it in `preview.html`.

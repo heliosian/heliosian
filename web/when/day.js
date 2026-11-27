@@ -63,8 +63,8 @@ function timelineRow(e, date) {
   dot.style.background = eventTint(e);
   const body = el('span', 'timeline-body');
   body.append(el('span', 'timeline-time', timeLine(e, date)), el('span', 'timeline-title', e.title));
-  if (e.location) {
-    body.append(el('span', 'timeline-place', e.location));
+  if (e.where) {
+    body.append(el('span', 'timeline-place', e.where));
   }
   row.append(dot, body);
   attachRowPeek(row, date, e);

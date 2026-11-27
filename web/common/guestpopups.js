@@ -4,8 +4,9 @@ import {field, text as textInput} from '/form.js';
 import {openPersonCard, doneButton} from '/personcard.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from '/inviteparts.js';
-import {bringGuest, asksChild, sendTo, sendPending, takeOff, changeGuestEmail, deleteEvent, cancelEvent} from '/guestlist.js';
+import {bringGuest, asksChild, sendTo, sendAgain, sendPending, takeOff, changeGuestEmail, deleteEvent, cancelEvent} from '/guestlist.js';
 import {host} from '/guesthost.js';
+import {writeGuestWords} from '/aiwrite.js';
 
 const me = () => host.me();
 import {personRow} from '/personrow.js';
@@ -181,6 +182,18 @@ export function openGuestCard(e, p, view, refresh) {
       try {
         await sendTo(e, [p.key]);
         longToast('The invitation is on its way');
+        closeModal();
+        refresh();
+      } catch (err) {
+        toast(err.message);
+      }
+    }));
+  }
+  if (p.invited && p.email && p.sent) {
+    links.append(button('Resend invitation', 'mail', 'link-button', async () => {
+      try {
+        await sendAgain(e, [p.key]);
+        longToast(`The invitation is on its way to ${p.email} again`);
         closeModal();
         refresh();
       } catch (err) {
@@ -369,7 +382,7 @@ export function openCancel(e, view, refresh) {
     cancel(true);
   });
   choices.append(notify);
-  noteWrap.append(el('label', '', 'Note to the guests'), note, button('Send the cancellation', 'mail', 'button button-small', () => cancel(true)));
+  noteWrap.append(el('label', '', 'Note to the guests'), note, writeGuestWords(note, e.id, 'mail', () => 'A cancellation'), button('Send the cancellation', 'mail', 'button button-small', () => cancel(true)));
   choices.append(noteWrap);
   choices.append(button('Cancel event & don’t notify', 'close', 'button button-secondary', () => cancel(false)));
   choices.append(button('Don’t do anything', null, 'button button-secondary', () => shut()));

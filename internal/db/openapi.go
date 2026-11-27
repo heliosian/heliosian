@@ -366,7 +366,7 @@ func spec() schema {
 					"properties": schema{
 						"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
 						"part":    schema{"type": "string", "enum": []string{"card", "backdrop"}, "description": "Which picture: card sets card_picture_original, backdrop sets backdrop_picture_original."},
-						"picture": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in the _original column; the server then makes card_picture or backdrop_picture, a JPEG with every tag dropped, from it."},
+						"picture": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in the _original column; the server then makes card_picture or backdrop_picture from it, a JPEG with every tag dropped, or for an animated GIF the GIF redrawn smaller and still moving."},
 						"stock":   schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of picture."},
 					},
 				}}}},
@@ -656,6 +656,18 @@ func spec() schema {
 				"responses": claudeFailures(schema{"200": described("the invitation"), "400": failure("A summary too long, or a body that is not JSON.")}),
 			},
 		},
+		"/api/do/describe-guest-words": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Have Claude write an invitation's page or a message to its guests",
+				"description": "For the hosts (runs_list). Rewrites the hosts' notes, or writes from the invitation alone, as one of its extra pages (page, Markdown, under heading, the page's title) or the words of an email to its guests (mail, plain text, heading being its subject or kind), in the mood of the design's kicker line. The title, date, place, hosts and kicker come from the invitation itself.",
+				"requestBody": jsonBody([]string{"group", "kind"}, schema{
+					"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)}, "kind": schema{"type": "string", "enum": []string{"page", "mail"}},
+					"heading": schema{"type": "string"}, "notes": schema{"type": "string"},
+				}),
+				"responses": claudeFailures(schema{"200": described("the page or message"), "400": failure("A kind other than page or mail, words too long, or a body that is not JSON."), "404": failure("No event, party or activity the caller can see.")}),
+			},
+		},
 		"/api/do/describe-charity": schema{
 			"post": schema{
 				"tags":        []string{"do"},
@@ -673,15 +685,16 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Send a guest list's invitation to people waiting for it",
-				"description": "For an event, party or activity the caller can see. The hosts (runs_list) send it to anyone waiting, or to everyone waiting when people is empty, and may mark it sent without mailing it (skip); anyone else sends it only to people they brought.",
+				"description": "For an event, party or activity the caller can see. The hosts (runs_list) send it to anyone waiting, or to everyone waiting when people is empty, and may mark it sent without mailing it (skip); anyone else sends it only to people they brought. With again, the hosts send it once more to people named who were sent it and are still on the list, as a reminder.",
 				"requestBody": jsonBody([]string{"group"}, schema{
 					"group":  schema{"type": "string", "pattern": idPattern(GroupPrefix)},
 					"people": schema{"type": "array", "items": schema{"type": "string", "pattern": idPattern(PersonPrefix)}},
 					"skip":   schema{"type": "boolean"},
+					"again":  schema{"type": "boolean"},
 				}),
 				"responses": refusals(schema{
 					"200": answers("The invitation MESSAGE and how many it went to.", "Sent"),
-					"400": failure("Someone not waiting for the invitation, or a body that is not JSON."),
+					"400": failure("Someone not waiting for the invitation, or, with again, someone not sent it yet or without an address, or a body that is not JSON."),
 					"404": failure("No event, party or activity the caller can see."),
 				}),
 			},
@@ -703,6 +716,35 @@ func spec() schema {
 				"responses": refusals(schema{
 					"200": answers("How many it went to.", "Sent"),
 					"400": failure("An unknown kind, words too long, a reminder or message with no subject or words, or a body that is not JSON."),
+					"404": failure("No event, party or activity the caller can see."),
+				}),
+			},
+		},
+		"/api/do/remove-guest": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Take someone off a guest list",
+				"description": "On an event or party, the hosts (runs_list) keep the person off (MEMBER.member excluded) and anyone else who may change that MEMBER row takes them off as cancelled; their answer goes with them. On an activity, the person's MEMBER.invited becomes excluded, and someone signed up cancels the sign-up instead. A host who adds them back with send mails them the invitation again; an activity guest brought back keeps the invitation they had.",
+				"requestBody": jsonBody([]string{"group", "person"}, schema{
+					"group":  schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+					"person": schema{"type": "string", "pattern": idPattern(PersonPrefix)},
+				}),
+				"responses": refusals(schema{
+					"200": answers("The MEMBER row written.", "Sent"),
+					"404": failure("No event, party or activity the caller can see."),
+					"409": failure("An activity volunteer who signed up, who cancels the sign-up in hca-team."),
+				}),
+			},
+		},
+		"/api/do/preview-invitation": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Preview an invitation as a guest from outside",
+				"description": "For the hosts (runs_list). Answers the page a guest from outside sees, made out to a household no one is in: Piper and Wren McTweet, with their kids Jay and Raven McTweet when the event asks kids or adults a question of their own or has a kid on its list. Nothing is written; the page keeps the household's answers itself.",
+				"requestBody": jsonBody([]string{"group"}, schema{"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)}}),
+				"responses": refusals(schema{
+					"200": object("The guest's page.", []string{}, schema{}),
+					"400": failure("A body that is not JSON."),
 					"404": failure("No event, party or activity the caller can see."),
 				}),
 			},

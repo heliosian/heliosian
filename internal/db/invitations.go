@@ -49,6 +49,7 @@ func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, toke
 	api.HandleFunc("POST /api/do/guest-mail", modelAction(s, tokens, iv.guestMail))
 	api.HandleFunc("POST /api/do/add-guests", modelAction(s, tokens, iv.addGuests))
 	api.HandleFunc("POST /api/do/remove-guest", modelAction(s, tokens, iv.removeGuest))
+	api.HandleFunc("POST /api/do/preview-invitation", modelAction(s, tokens, iv.previewInvitation))
 	iv.RegisterGuestPages(mux)
 	mux.HandleFunc("POST /hooks/replies/mime", iv.replies)
 	go iv.run()
@@ -79,7 +80,7 @@ func (iv *Invitations) write(ctx context.Context, actor access.Actor, edits []Ed
 	return Write(ctx, iv.s, actor, Env{System: invitationsJob, Now: time.Now()}, Batch{Batch: edits})
 }
 
-func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edits []Edit, group, from string, sending []string, counted int) ([]string, error) {
+func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edits []Edit, group, from string, sending, again []string, counted int) ([]string, error) {
 	if len(edits) == 0 {
 		return nil, nil
 	}
@@ -135,10 +136,10 @@ func (iv *Invitations) writeGuests(ctx context.Context, actor access.Actor, edit
 				}
 			}
 		}
-		copies := m.copiesOf(group)
+		copies := m.currentCopies(group)
 		named := map[string]bool{}
 		for _, p := range sending {
-			if _, sent := copies[p]; sent {
+			if _, sent := copies[p]; sent && !slices.Contains(again, p) {
 				return access.Refuse(http.StatusConflict, "%s has been sent the invitation already", m.nameOf(p))
 			}
 			if named[p] {
@@ -210,8 +211,22 @@ func (m *Model) copiesOf(group string) map[string]store.Row {
 	return out
 }
 
+func (m *Model) currentCopies(group string) map[string]store.Row {
+	out := m.copiesOf(group)
+	if g, _ := m.Table("GROUP").Get(group); g["kind"] == "activity" {
+		return out
+	}
+	for person, r := range out {
+		row, ok := m.Table("MEMBER").Find(group, person)
+		if ok && r["created"] < row["added"] {
+			delete(out, person)
+		}
+	}
+	return out
+}
+
 func (m *Model) pendingOf(group string) []string {
-	copies := m.copiesOf(group)
+	copies := m.currentCopies(group)
 	out := []string{}
 	for _, row := range m.effectiveRows(group) {
 		if _, sent := copies[row["person"]]; !sent && !slices.Contains(out, row["person"]) {
@@ -352,6 +367,31 @@ type inviteAsk struct {
 	Group  string   `json:"group"`
 	People []string `json:"people"`
 	Skip   bool     `json:"skip"`
+	Again  bool     `json:"again"`
+}
+
+func (iv *Invitations) inviteAgain(ctx context.Context, m *Model, env Env, actor access.Actor, g store.Row, runs bool, people []string) (sentAnswer, error) {
+	if !runs {
+		return sentAnswer{}, access.Forbidden("only the hosts send the invitation again")
+	}
+	if len(people) == 0 {
+		return sentAnswer{}, access.Invalid("name who to send it to again")
+	}
+	copies := m.currentCopies(g["id"])
+	for _, p := range people {
+		if _, sent := copies[p]; !sent || m.keptOff(g, p) {
+			return sentAnswer{}, access.Invalid("%s hasn't been sent the invitation; send it first", m.nameOf(p))
+		}
+		if m.addressOf(p) == "" {
+			return sentAnswer{}, access.Invalid("%s has no email address", m.nameOf(p))
+		}
+	}
+	ids, err := iv.writeGuests(ctx, actor, invitationEdits(g["id"], env.Viewer, "resend", people, env.Now), g["id"], env.Viewer, nil, nil, 0)
+	if err != nil {
+		return sentAnswer{}, err
+	}
+	slog.InfoContext(ctx, "invitations: sent again", "viewer", env.Viewer, "group", g["id"], "people", len(people))
+	return sentAnswer{Result: ids[:1], Sent: len(people)}, nil
 }
 
 type sentAnswer struct {
@@ -372,6 +412,9 @@ func (iv *Invitations) invite(ctx context.Context, m *Model, env Env, actor acce
 	runs, err := m.passes(ctx, env, "GROUP", g["id"], "(runs_list @row)")
 	if err != nil {
 		return sentAnswer{}, err
+	}
+	if ask.Again {
+		return iv.inviteAgain(ctx, m, env, actor, g, runs, ask.People)
 	}
 	pending := m.pendingOf(g["id"])
 	people := ask.People
@@ -404,7 +447,7 @@ func (iv *Invitations) invite(ctx context.Context, m *Model, env Env, actor acce
 	if !runs && kind == "invitation" {
 		counted = len(people)
 	}
-	ids, err := iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, people, counted)
+	ids, err := iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, people, nil, counted)
 	if err != nil {
 		return sentAnswer{}, err
 	}
@@ -624,6 +667,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	}
 	at := stamp(env.Now)
 	added := []string{}
+	restored := []string{}
 	for _, p := range people {
 		if !strings.HasPrefix(p, "@") {
 			if row, ok := m.Table("MEMBER").Find(g["id"], p); ok {
@@ -645,9 +689,8 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 					restore = (!excluded || runs || ownGuest) && !active
 				}
 				if restore {
-					joined := guestMembership(g, env.Viewer, Edit{Set: row["id"], Cells: map[string]any{"member": "yes"}})
+					joined := guestMembership(g, env.Viewer, Edit{Set: row["id"], Cells: map[string]any{"member": "yes", "added_by": env.Viewer, "added": at}})
 					if g["kind"] == "activity" {
-						joined.Cells["added_by"], joined.Cells["added"] = env.Viewer, at
 						if memberAs(row) == "excluded" {
 							joined.Cells["member"] = ""
 						}
@@ -660,6 +703,9 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 					}
 					edits = append(edits, joined)
 					added = append(added, p)
+					if g["kind"] != "activity" {
+						restored = append(restored, p)
+					}
 				}
 				continue
 			}
@@ -688,9 +734,9 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	}
 	sending := []string{}
 	if !runs || ask.Send {
-		copies := m.copiesOf(g["id"])
+		copies := m.currentCopies(g["id"])
 		for _, p := range added {
-			if _, sent := copies[p]; !sent && addressed[p] {
+			if _, sent := copies[p]; (!sent || slices.Contains(restored, p)) && addressed[p] {
 				sending = append(sending, p)
 			}
 		}
@@ -702,7 +748,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 	if runs {
 		counted = 0
 	}
-	_, err = iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, sending, counted)
+	_, err = iv.writeGuests(ctx, actor, edits, g["id"], env.Viewer, sending, restored, counted)
 	if err != nil {
 		return sentAnswer{}, err
 	}

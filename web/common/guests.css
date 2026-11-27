@@ -581,6 +581,12 @@ button.send-tile { font: inherit; text-align: left; }
 
 .compose-message-wrap { position: relative; }
 
+.describe-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
+.describe-status { font-size: 13px; color: var(--muted); }
+
+.describe-status.error { color: var(--alert); }
+
 .compose-message { box-sizing: border-box; width: 100%; padding: 12px 14px 26px; border: 1px solid var(--field-line, var(--line)); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.5; background: var(--field); }
 
 .compose-count { position: absolute; right: 12px; bottom: 10px; font-size: 12px; color: var(--muted); pointer-events: none; }

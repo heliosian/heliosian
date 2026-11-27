@@ -688,8 +688,8 @@ function showResults(query) {
     const body = el('span', 'search-row-body');
     body.append(el('span', 'search-row-title', event.title));
     const line = [timeLine(event)];
-    if (event.location) {
-      line.push(event.location);
+    if (event.where) {
+      line.push(event.where);
     }
     if (hidden) {
       line.push('off under the filters');

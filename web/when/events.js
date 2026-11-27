@@ -49,8 +49,8 @@ export function eventRow(e, opts = {}) {
     title.prepend(star);
   }
   body.append(title);
-  if (e.location) {
-    body.append(el('span', 'event-place', e.location));
+  if (e.where) {
+    body.append(el('span', 'event-place', e.where));
   }
   if (e.link && e.call) {
     body.append(callPill(e));

@@ -44,7 +44,7 @@ func checkWords(lists [][]string) error {
 }
 
 func savedSearchQuery(lists [][]string, from, to string) string {
-	return fmt.Sprintf(`(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) (<= start %q) (or (>= end %q) (and (blank end) (>= start %q))) %s) (order start asc) (columns start end all_day path name description location))`,
+	return fmt.Sprintf(`(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) (<= start %q) (or (>= end %q) (and (blank end) (>= start %q))) %s) (order start asc) (columns start end all_day path name description location place))`,
 		to+" 23:59", from, from, searchCondition(lists))
 }
 
@@ -104,7 +104,7 @@ func (m *Model) savedSearchICS(ctx context.Context, token, origin string, now ti
 		link := origin + g["path"]
 		c.Events = append(c.Events, mail.Event{
 			UID: id + "@when.heliosian.com", Start: start, End: end, AllDay: allDay, Summary: g["name"],
-			Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: g["location"], URL: link,
+			Description: strings.TrimSpace(withoutMarkers(g["description"]) + "\n\n" + link), Location: whereWords(g), URL: link,
 		})
 	}
 	return []byte(c.ICS()), true, nil

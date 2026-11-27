@@ -80,6 +80,12 @@ func checkedDesign(m *Model, raw string) (map[string]any, error) {
 				if _, ok := value.(bool); !ok {
 					return nil, fmt.Errorf("design card.words is %v, not true or false", value)
 				}
+			case path == "text.kicker":
+				kicker, ok := value.(map[string]any)
+				words, isWords := kicker["words"].(string)
+				if !ok || len(kicker) != 1 || !isWords || strings.TrimSpace(words) == "" || len([]rune(words)) > 100 {
+					return nil, fmt.Errorf("design text.kicker is %v; an invitation sets only its words, up to 100 characters", value)
+				}
 			default:
 				return nil, fmt.Errorf("design has no %s to change", path)
 			}

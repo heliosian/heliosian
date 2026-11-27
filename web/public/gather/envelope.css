@@ -78,6 +78,10 @@
 
 .card-place { --role-font: var(--place-font); --role-size: var(--place-size); --role-weight: var(--place-weight); --role-style: var(--place-style); --role-case: var(--place-case); --role-spacing: var(--place-spacing); --role-line: var(--place-line); --role-color: var(--place-color); margin: 18px 0 0; }
 
+.card-place-name, .card-place-address { display: block; }
+
+.card-place-name { font-weight: bolder; }
+
 .card-message { --role-font: var(--message-font); --role-size: var(--message-size); --role-weight: var(--message-weight); --role-style: var(--message-style); --role-case: var(--message-case); --role-spacing: var(--message-spacing); --role-line: var(--message-line); --role-color: var(--message-color); margin: 26px 0 0; max-width: 40ch; white-space: pre-line; }
 
 .card-hosts { --role-font: var(--hosts-font); --role-size: var(--hosts-size); --role-weight: var(--hosts-weight); --role-style: var(--hosts-style); --role-case: var(--hosts-case); --role-spacing: var(--hosts-spacing); --role-line: var(--hosts-line); --role-color: var(--hosts-color); margin: 30px 0 0; }

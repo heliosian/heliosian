@@ -5,8 +5,8 @@ import {openThemeManager} from './thememanager.js';
 import {load, navigate} from '/router.js';
 import {openPageEditor} from './pageeditor.js';
 import {themed, sealMark} from '/themes.js';
-import {parseWhen} from '/datecard.js';
-import {andList} from '/envelope.js';
+import {parseWhen, googleCalendarLink} from '/datecard.js';
+import {andList, whereWords, mapQuery} from '/envelope.js';
 import {appOrigin} from '/appswitch.js';
 
 function navLink(href, label, icon, active) {
@@ -111,10 +111,19 @@ function inviteHead(key, inv) {
   };
   const from = parseWhen(inv.start);
   const hours = hourWords(inv);
-  head.append(line('calendar', from ? headDay.format(from.date) : dayWords(inv), hours ? el('div', 'nav-invite-second', hours) : null));
-  if (inv.location) {
-    const [street, town] = placeLines(inv.location);
-    const map = link('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(inv.location), 'nav-invite-map');
+  const add = googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, `${location.origin}/g/${encodeURIComponent(key)}`].filter(Boolean).join('\n\n')});
+  let when = hours ? el('div', 'nav-invite-second', hours) : null;
+  if (add) {
+    when = link(add, 'nav-invite-map');
+    when.target = '_blank';
+    when.rel = 'noopener';
+    when.title = 'Add to Google Calendar';
+    when.append(el('span', '', hours || 'Add to calendar'), el('span', 'nav-invite-arrow', '↗'));
+  }
+  head.append(line('calendar', from ? headDay.format(from.date) : dayWords(inv), when));
+  if (inv.place || inv.location) {
+    const [street, town] = inv.place ? [inv.place, inv.location.split(',').slice(0, 2).join(',')] : placeLines(inv.location);
+    const map = link('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(mapQuery(inv)), 'nav-invite-map');
     map.target = '_blank';
     map.rel = 'noopener';
     map.append(el('span', '', town || 'Map'), el('span', 'nav-invite-arrow', '↗'));

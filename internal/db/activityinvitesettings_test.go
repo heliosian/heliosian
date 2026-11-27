@@ -103,7 +103,7 @@ func TestActivityGuestAdditionRechecksInvitationPermission(t *testing.T) {
 	edits := []Edit{{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": student, "invited": "yes", "added_by": parent}}}
 	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"guests_invited_by": ""}}})
 	iv := &Invitations{s: h.s}
-	if _, err := iv.writeGuests(t.Context(), access.Actor{Email: rowan}, edits, h.event, parent, nil, 0); err == nil {
+	if _, err := iv.writeGuests(t.Context(), access.Actor{Email: rowan}, edits, h.event, parent, nil, nil, 0); err == nil {
 		t.Fatal("a prepared guest addition bypassed the current invitation setting")
 	}
 	if _, ok := h.s.Model().Table("MEMBER").Find(h.event, student); ok {

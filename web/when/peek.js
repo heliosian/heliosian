@@ -62,8 +62,8 @@ function fillEventPeek(node, date, e) {
   row.style.setProperty('--c', eventTint(e));
   const body = el('span', 'day-peek-body');
   body.append(el('span', 'day-peek-time', timeLine(e, date)), el('span', 'day-peek-title', e.title));
-  if (e.location) {
-    body.append(el('span', 'day-peek-place', e.location));
+  if (e.where) {
+    body.append(el('span', 'day-peek-place', e.where));
   }
   row.append(el('span', 'day-peek-bar'), body, roomDots(e));
   node.append(row);
