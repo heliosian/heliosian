@@ -1,5 +1,5 @@
 import {state, isAdmin, feed, readUpcoming, readToDos, holdsApps, inGrid, widgetGrid, categoryOf, fraction, clock, parseDate, tint} from './state.js';
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {searchInput} from '/shell.js';
 import {el, svg, toast} from '/elements.js';
 import {markToDo} from './writes.js';

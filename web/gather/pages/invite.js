@@ -2,16 +2,17 @@ import {el, button, svg} from '/elements.js';
 import {googleCalendarLink} from '/datecard.js';
 import {setTitle, renderChrome, pageHead} from '/shell.js';
 import {loadRow, load, navigate} from '/router.js';
-import {appOrigin} from '/appswitch.js';
-import {render as markdown} from '/markdown.js';
+import {appOrigin} from '/origins.js';
+import {openSheet, fillDeck} from '/sheets.js';
 import {fetchInvites as fetchGuestList} from '/guestlist.js';
 import {guestListSection, inviteHostCall, comingCard} from '/invites.js';
-import {findInvite, fetchInvite, loadDetails, noteOpened, me, asEvent, dayWords, hourWords, loadPages, pagesOf} from '../state.js';
+import {findInvite, fetchInvite, loadDetails, noteOpened, me, asEvent, dayWords, hourWords, loadPages, pagesOf, state} from '../state.js';
 import {answerButtons} from '/inviteparts.js';
 import {openPageEditor} from '../pageeditor.js';
 import {sealedEnvelope, inviteCard, andList, whereWords} from '/envelope.js';
 import {openEditor} from '../editor.js';
-import {themed, sidebarIn} from '/themes.js';import {hostQuestions} from '../questions.js';
+import {themed, sidebarIn} from '/themes.js';
+import {hostQuestions} from '../questions.js';
 import {personBlock, familyBlock, missingNote} from '/questionfields.js';
 import {notesPanel} from '/hostnotes.js';
 
@@ -76,61 +77,13 @@ function deckOf(inv) {
   return [{id: '', title: inv.name, card: true}, ...pagesOf(inv)];
 }
 
-function paperOf(inv, item) {
-  const sheet = themed(el('article', 'invite-sheet'), {...inv.look, cardPicture: ''});
-  if (item.background) {
-    sheet.style.setProperty('--paper', item.background);
-    sheet.style.setProperty('--card-art', 'none');
-  }
-  if (item.pictureUrl) {
-    sheet.style.setProperty('--card-art', `url("${item.pictureUrl}") center / cover no-repeat`);
-    sheet.style.setProperty('--art-mask', 'none');
-    sheet.style.setProperty('--art-opacity', '1');
-    sheet.style.setProperty('--frame-inset', '0');
-  }
-  const paper = el('div', 'invite-sheet-paper');
-  const art = el('div', 'card-art');
-  art.setAttribute('aria-hidden', 'true');
-  paper.append(art);
-  sheet.append(paper);
-  return {sheet, paper};
+function openPage(inv, key, p) {
+  return openSheet(inv.look, p, ...(inv.host ? [button('Edit', 'edit', 'invite-sheet-edit', () => openPageEditor(inv, p, key))] : []));
 }
 
-function openSheet(inv, key, p) {
-  const {sheet, paper} = paperOf(inv, p);
-  const text = el('div', 'markdown invite-sheet-text');
-  text.append(markdown(p.body || ''));
-  const inner = el('div', 'invite-sheet-inner');
-  inner.append(el('h2', 'invite-sheet-title', p.title), el('div', 'card-rule'), text);
-  if (inv.host) {
-    paper.append(button('Edit', 'edit', 'invite-sheet-edit', () => openPageEditor(inv, p, key)));
-  }
-  paper.append(inner);
-  return sheet;
-}
-
-function peekSheet(inv, key, item, below, depth) {
-  const {sheet, paper} = paperOf(inv, item);
-  sheet.classList.add('is-folded', below ? 'is-below' : 'is-above');
-  sheet.style.setProperty('--i', String(depth));
-  const cover = el('button', 'invite-sheet-cover');
-  cover.type = 'button';
-  cover.append(el('span', 'invite-sheet-title', item.title));
+function deck(inv, key, focus, above, below) {
   const base = `/g/${encodeURIComponent(key)}`;
-  cover.addEventListener('click', () => navigate(item.card ? base : `${base}/p/${item.id}`));
-  paper.append(cover);
-  if (below) {
-    paper.append(el('span', 'invite-sheet-fold'));
-  }
-  return sheet;
-}
-
-function fillDeck(inv, key, focus, above, below) {
-  const deck = deckOf(inv);
-  const at = Math.max(0, deck.findIndex(item => item.id === focus));
-  above.replaceChildren(...deck.slice(0, at).map((item, j) => peekSheet(inv, key, item, false, at - 1 - j)));
-  below.replaceChildren(...deck.slice(at + 1).map((item, j) => peekSheet(inv, key, item, true, j)));
-  return deck[at];
+  return fillDeck(inv.look, deckOf(inv), focus, above, below, item => navigate(item.card ? base : `${base}/p/${item.id}`));
 }
 
 function turnIn(inv, node, shown) {
@@ -163,6 +116,7 @@ function answerRow(inv, person, redraw) {
 
 function rsvpPanel(inv, details, redraw) {
   const panel = el('section', 'side-card reply-panel');
+  panel.id = 'rsvp';
   const waiting = details.household.filter(p => !p.answer).length;
   panel.append(el('div', 'side-title', waiting ? 'Will you be there?' : 'Your RSVP'));
   if (!inv.rsvpYes || !inv.rsvpNo) {
@@ -238,9 +192,14 @@ function draw(inv, key, focus) {
       page.append(tools);
     }
     if (details.household.length && inv.status !== 'cancelled') {
-      side.append(rsvpPanel(inv, details, redraw));
+      const rsvp = rsvpPanel(inv, details, redraw);
+      side.append(rsvp);
       if (!inv.host) {
         side.append(notesPanel(asEvent(inv), false));
+      }
+      if (state.showRsvp) {
+        state.showRsvp = false;
+        requestAnimationFrame(() => rsvp.scrollIntoView({behavior: 'smooth', block: 'start'}));
       }
     }
   };
@@ -248,11 +207,11 @@ function draw(inv, key, focus) {
   loadDetails(inv).then(details => {
     if (opened.has(inv.id)) {
       loadPages(inv).then(() => {
-        const item = fillDeck(inv, key, focus, above, below);
+        const item = deck(inv, key, focus, above, below);
         if (item.card) {
           showCard(inv, details, stage, false);
         } else {
-          stage.replaceChildren(openSheet(inv, key, item));
+          stage.replaceChildren(openPage(inv, key, item));
         }
         turnIn(inv, stage.firstChild, item.id);
         fillSide(details);
@@ -266,7 +225,7 @@ function draw(inv, key, focus) {
       showCard(inv, details, stage, from);
       fillSide(details);
       showing.set(inv.id, '');
-      setTimeout(() => loadPages(inv).then(() => fillDeck(inv, key, '', above, below)), 900);
+      setTimeout(() => loadPages(inv).then(() => deck(inv, key, '', above, below)), 900);
       noteOpened(inv, details);
     });
     stage.replaceChildren(sealed);

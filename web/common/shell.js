@@ -1,4 +1,5 @@
-import {initAppSwitch, currentApp} from '/appswitch.js';
+import {initAppSwitch} from '/appswitch.js';
+import {currentApp} from '/origins.js';
 import {initUserMenu, renderAvatars, renderProfileLink} from '/usermenu.js';
 import {initAlerts, renderAlerts} from '/alerts.js';
 import {initSpoof} from '/spoof.js';

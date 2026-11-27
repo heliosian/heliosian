@@ -19,7 +19,9 @@
 <link rel="modulepreload" href="/elements.js">
 <link rel="modulepreload" href="/themes.js">
 <link rel="modulepreload" href="/envelope.js">
-<link rel="modulepreload" href="/questionfields.js"><style>
+<link rel="modulepreload" href="/questionfields.js">
+<link rel="modulepreload" href="/sheets.js">
+<link rel="modulepreload" href="/markdown.js"><style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
@@ -29,6 +31,7 @@ button { font: inherit; }
 .invite-page.is-sealed { grid-template-columns: minmax(0, 1fr); }
 .invite-page.is-sealed .invite-side { display: none; }
 .invite-stage { position: relative; display: flex; justify-content: center; padding-top: 12px; }
+.invite-column { scroll-margin-top: 72px; }
 .invite-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
 .invite-panel { padding: 20px; border-radius: 14px; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06); }
 .invite-panel-title { margin: 0 0 14px; font-size: 17px; font-weight: 800; }

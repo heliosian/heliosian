@@ -2,12 +2,14 @@ import {el, svg} from '/elements.js';
 import {loadThemes, themed} from '/themes.js';
 import {sealedEnvelope, inviteCard, andList} from '/envelope.js';
 import {replyKey, personBlock, familyBlock, missingNote} from '/questionfields.js';
+import {openSheet, fillDeck} from '/sheets.js';
 const token = location.pathname.split('/').filter(Boolean).pop();
 const preview = location.pathname.startsWith('/preview/');
 const api = '/open/ext/' + encodeURIComponent(token);
 const root = document.getElementById('invite');
 let view = null;
 let opened = false;
+let shownPage = '';
 let made = 0;
 
 function person(key) {
@@ -213,12 +215,26 @@ function card() {
 function paint() {
   document.title = view.title + ' · You’re invited';
   const page = themed(el('div', 'invite-page'), lookOf());
+  const column = el('div', 'invite-column');
+  const above = el('div', 'invite-sheets is-above');
   const stage = el('div', 'invite-stage');
+  const below = el('div', 'invite-sheets is-below');
   const side = el('div', 'invite-side');
-  page.append(stage, side);
+  column.append(above, stage, below);
+  page.append(column, side);
   root.replaceChildren(...(preview ? [previewBar()] : []), page);
+  const deck = [{id: '', title: view.title, card: true}, ...view.pages.map(p => ({...p, pictureUrl: p.picture || ''}))];
+  const show = item => {
+    shownPage = item.id;
+    paintDeck();
+    column.scrollIntoView({behavior: 'smooth', block: 'start'});
+  };
+  const paintDeck = () => {
+    const item = fillDeck(lookOf(), deck, shownPage, above, below, show);
+    stage.replaceChildren(item.card ? card() : openSheet(lookOf(), item));
+  };
   const fill = () => {
-    stage.replaceChildren(card());
+    paintDeck();
     side.replaceChildren(...(view.cancelled ? [] : [rsvpPanel(), notesPanel()]));
   };
   if (opened) {

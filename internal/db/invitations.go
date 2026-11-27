@@ -60,6 +60,7 @@ func (iv *Invitations) RegisterGuestPages(mux *http.ServeMux) {
 	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
 	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
 	mux.HandleFunc("GET /open/ext/{token}/picture/{part}", iv.extPicture)
+	mux.HandleFunc("GET /open/ext/{token}/page/{page}/picture", iv.extPagePicture)
 	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)
 	mux.HandleFunc("POST /open/ext/{token}/guest", iv.extGuest)
 	mux.HandleFunc("POST /open/ext/{token}/reply", iv.extReply)

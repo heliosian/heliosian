@@ -1,5 +1,5 @@
 import {el, svg, link} from '/elements.js';
-import {appOrigin, currentApp} from '/appswitch.js';
+import {appOrigin, currentApp} from '/origins.js';
 import {api, signedIn} from '/api.js';
 
 export function write(batch) {

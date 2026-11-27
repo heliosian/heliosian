@@ -7,7 +7,7 @@ import {openPageEditor} from './pageeditor.js';
 import {themed, sealMark} from '/themes.js';
 import {parseWhen, googleCalendarLink} from '/datecard.js';
 import {andList, whereWords, mapQuery} from '/envelope.js';
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 
 function navLink(href, label, icon, active) {
   const a = link(href, active ? 'is-active' : '');
@@ -54,6 +54,59 @@ function draggablePage(a, page, inv, list) {
     }
     load();
   });
+}
+
+function hostMenu(key, inv, base) {
+  const holder = el('div', 'tab-host');
+  const menu = el('div', 'tab-host-menu');
+  menu.hidden = true;
+  const item = (label, icon, run) => {
+    const b = button(label, icon, 'tab-host-item', () => {
+      menu.hidden = true;
+      run();
+    });
+    menu.append(b);
+  };
+  item('Questions', 'list', () => navigate(`${base}/questions`));
+  item('Notes from guests', 'chat', () => navigate(`${base}/notes`));
+  item('Add a page', 'plus', () => openPageEditor(inv, null, key));
+  const path = location.pathname;
+  const toggle = button('Host', 'gear', 'tab-button' + (path === `${base}/questions` || path === `${base}/notes` ? ' is-active' : ''), () => {
+    menu.hidden = !menu.hidden;
+  });
+  holder.append(menu, toggle);
+  openHost = holder;
+  return holder;
+}
+
+let openHost = null;
+
+document.addEventListener('click', ev => {
+  if (openHost && !openHost.contains(ev.target)) {
+    openHost.querySelector('.tab-host-menu').hidden = true;
+  }
+});
+
+function phoneNav(nav, key, inv) {
+  const base = `/g/${encodeURIComponent(key)}`;
+  const path = location.pathname;
+  const rsvp = navLink(base, 'RSVP', 'check', false);
+  rsvp.addEventListener('click', ev => {
+    ev.preventDefault();
+    state.showRsvp = true;
+    if (path === base && document.getElementById('rsvp')) {
+      document.getElementById('rsvp').scrollIntoView({behavior: 'smooth', block: 'start'});
+      return;
+    }
+    navigate(base);
+  });
+  nav.append(rsvp, navLink(base, 'Invitation', 'mail', path === base || path.startsWith(`${base}/p/`)));
+  if (inv.host || inv.listShown) {
+    nav.append(navLink(`${base}/guests`, inv.host ? 'Guest list' : 'Who’s coming', 'groups', path === `${base}/guests`));
+  }
+  if (inv.host) {
+    nav.append(hostMenu(key, inv, base));
+  }
 }
 
 function inviteNav(nav, key, inv) {
@@ -178,13 +231,13 @@ function fillNav(nav, sidebar) {
   const inv = parts[0] === 'g' && parts[1] ? findInvite(parts[1]) : null;
   brandFor(inv);
   if (inv) {
-    if (sidebar) {
-      nav.append(inviteHead(parts[1], inv));
+    if (!sidebar) {
+      phoneNav(nav, parts[1], inv);
+      return;
     }
+    nav.append(inviteHead(parts[1], inv));
     inviteNav(nav, parts[1], inv);
-    if (sidebar) {
-      nav.append(madeWith());
-    }
+    nav.append(madeWith());
     return;
   }
   nav.append(navLink('/', 'Invitations', '', true));

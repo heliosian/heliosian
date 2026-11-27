@@ -1,7 +1,7 @@
 import {state, isAdmin, linkCategories, holdsApps} from './state.js';
 import {categoryMarkOf} from './dom.js';
 import {el, svg, toast} from '/elements.js';
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {plain} from '/markdown.js';
 import {answerEvent} from '/calendar.js';
 import {load} from '/router.js';

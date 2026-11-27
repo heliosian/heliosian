@@ -71,6 +71,22 @@ func TestClaudeWritesAPageOrMessageFromTheInvitationItself(t *testing.T) {
 	}
 }
 
+func TestAGuestsInvitationCarriesItsPagesInOrder(t *testing.T) {
+	h := newInviteHarness(t)
+	h.setup([]Edit{
+		{Insert: "INVITE_PAGE", Row: map[string]any{"group": h.event, "order": "b", "title": "Onsite Childcare", "body": "Upstairs, **6 to 10**."}},
+		{Insert: "INVITE_PAGE", Row: map[string]any{"group": h.event, "order": "a", "title": "Schedule", "body": "Doors at 6."}},
+	})
+	rec := h.do(maya, http.MethodPost, "/api/do/preview-invitation", map[string]string{"group": h.event})
+	var view extView
+	if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("previewing answered %d %s", rec.Code, rec.Body)
+	}
+	if len(view.Pages) != 2 || view.Pages[0].Title != "Schedule" || view.Pages[1].Body != "Upstairs, **6 to 10**." {
+		t.Errorf("the invitation's pages came as %+v", view.Pages)
+	}
+}
+
 func TestAPartyWithAKidOnItsListPreviewsWithTheKids(t *testing.T) {
 	h := newInviteHarness(t)
 	h.setup([]Edit{{Insert: "MEMBER", Row: map[string]any{"group": h.event, "person": student, "member": "yes"}}})

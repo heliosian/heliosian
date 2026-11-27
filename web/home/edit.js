@@ -5,7 +5,7 @@ import {load} from '/router.js';
 import {imageTools} from '/images.js';
 import {createPersonPicker} from '/picker.js';
 import {listed} from '/directory.js';
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {api} from '/api.js';
 import {rulesCard, ruleOf, ruleSaysSomething, nameRulesWith} from '/listrules.js';
 import {tabStrip} from '/tabs.js';

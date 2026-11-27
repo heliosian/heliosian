@@ -2,7 +2,7 @@ import {state, feed, readMonth, shiftMonth, clock, parseDate, tint} from './stat
 import {el, svg} from '/elements.js';
 import {rsvpButtons, calendarMark, calendarMenu, dropdown} from './cards.js';
 import {dayTypeClass} from '/daytype.js';
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {parseWhen, timeRange} from '/datecard.js';
 
 let month = null;

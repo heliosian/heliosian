@@ -80,6 +80,7 @@ type extView struct {
 	HostedBy    string        `json:"hostedBy,omitempty"`
 	Subtitle    string        `json:"subtitle,omitempty"`
 	Maybe       bool          `json:"maybe,omitempty"`
+	Pages       []extPage     `json:"pages"`
 	Notes       []extNote     `json:"notes"`
 	Questions   []extQuestion `json:"questions"`
 	Replies     []extReply    `json:"replies"`
@@ -166,7 +167,10 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
-	view := m.eventView(g, now, func(part string) string { return "/open/ext/" + r.PathValue("token") + "/picture/" + part })
+	base := "/open/ext/" + r.PathValue("token")
+	view := m.eventView(g, now, func(part string) string { return base + "/picture/" + part }, func(p store.Row) string {
+		return base + "/page/" + p["id"] + "/picture?c=" + p["picture"]
+	})
 	view.Name, view.Key, view.Kid, view.Answer, view.Guests = m.nameOf(c.person), c.person, m.isKid(c.person), m.answerOf(g, c.person), guests
 	view.Questions, view.Replies, view.FamilyGroup = m.extQuestions(g, c.person)
 	view.Notes = m.notesFor(g, c.person)
@@ -183,11 +187,42 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	serve.Write(w, r, http.StatusOK, view)
 }
 
-func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) string) extView {
+type extPage struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	Body       string `json:"body"`
+	Background string `json:"background,omitempty"`
+	Picture    string `json:"picture,omitempty"`
+}
+
+func (m *Model) invitePages(g store.Row) []store.Row {
+	rows := slices.Clone(m.Table("INVITE_PAGE").Referencing("group", g["id"]))
+	slices.SortFunc(rows, func(a, b store.Row) int { return store.CompareKeys(a["order"], b["order"]) })
+	return rows
+}
+
+func (iv *Invitations) extPagePicture(w http.ResponseWriter, r *http.Request) {
+	c, err := iv.extCopy(r)
+	page, ok := iv.s.Model().Table("INVITE_PAGE").Get(r.PathValue("page"))
+	if err != nil || !ok || page["group"] != c.group["id"] || page["picture"] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	raw, kind, err := iv.s.Model().contentBytes(r.Context(), iv.pics.bucket, page["picture"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", kind)
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Write(raw)
+}
+
+func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) string, pagePicture func(page store.Row) string) extView {
 	day, hours := dayAndHours(g)
 	view := extView{
 		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Place: g["place"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
-		Brought: []extPerson{}, Family: []extPerson{}, Notes: []extNote{}, Questions: []extQuestion{}, Replies: []extReply{},
+		Brought: []extPerson{}, Family: []extPerson{}, Pages: []extPage{}, Notes: []extNote{}, Questions: []extQuestion{}, Replies: []extReply{},
 		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled", Theme: g["theme"], Envelope: g["envelope"], Maybe: g["maybe"] == "Yes",
 		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"],
 	}
@@ -195,6 +230,13 @@ func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) 
 		if g[part+"_picture"] != "" {
 			*into = picture(part)
 		}
+	}
+	for _, p := range m.invitePages(g) {
+		page := extPage{ID: p["id"], Title: p["title"], Body: p["body"], Background: p["background"]}
+		if p["picture"] != "" {
+			page.Picture = pagePicture(p)
+		}
+		view.Pages = append(view.Pages, page)
 	}
 	return view
 }
@@ -217,6 +259,8 @@ func (iv *Invitations) previewInvitation(ctx context.Context, m *Model, env Env,
 	}
 	view := m.eventView(g, env.Now, func(part string) string {
 		return "/api/blob/" + g["id"] + "/" + part + "_picture?c=" + g[part+"_picture"]
+	}, func(p store.Row) string {
+		return "/api/blob/" + p["id"] + "/picture?c=" + p["picture"]
 	})
 	view.Name, view.Key = "Piper McTweet", "preview-piper"
 	view.Guests = g["kind"] != "activity" && g["join"] == "others"

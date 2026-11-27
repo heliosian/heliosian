@@ -1,6 +1,7 @@
 import {queries} from '/rail.js';
 import {el} from '/elements.js';
-import {appOrigin, hoverMenu, hoverClick} from '/appswitch.js';
+import {hoverMenu, hoverClick} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {noteError} from '/feedback.js';
 import {birthdayWork} from '/birthdays.js';
 

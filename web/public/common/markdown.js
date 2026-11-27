@@ -1,4 +1,4 @@
-import {appOrigin} from '/appswitch.js';
+import {appOrigin} from '/origins.js';
 import {el, svg} from '/elements.js';
 
 const appHosts = /^https?:\/\/(who|team|hca|celebrate|birthday|calendar|cal|when|loop|ask|wiki|home|www)\.heliosian\.com(\/.*)?$/;
