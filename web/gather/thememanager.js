@@ -1,4 +1,4 @@
-import {el, button, toast} from '/elements.js';
+import {el, svg, button, toast} from '/elements.js';
 import {openModal} from '/modal.js';
 import {field, text} from '/form.js';
 import {queries, rowsOf, write} from '/rail.js';
@@ -34,7 +34,11 @@ function themeRow(t, redraw) {
   picture.append(miniEnvelope({theme: t.id}, t.name));
   const words = el('div', 'theme-manage-words');
   words.append(el('span', 'theme-manage-name', t.name), el('span', 'theme-manage-blurb', t.blurb || ''));
-  words.append(el('span', 'theme-manage-owner' + (t.owner ? '' : ' is-public'), t.owner ? `Private to ${t.owner}` : 'Public: every host can pick it'));
+  const badge = el('span', 'theme-manage-badge' + (t.owner ? ' is-private' : ' is-public'));
+  badge.append(svg(t.owner ? 'lock' : 'groups'), el('span', '', t.owner ? 'Private' : 'Public'));
+  const owner = el('div', 'theme-manage-owner');
+  owner.append(badge, el('span', '', t.owner ? `Only ${t.owner} can pick it` : 'Every host can pick it'));
+  words.append(owner);
   const actions = el('div', 'theme-manage-actions');
   const act = (work, message) => work().then(async () => {
     await refreshThemes([t.id]);

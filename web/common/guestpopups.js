@@ -4,7 +4,7 @@ import {field, text as textInput} from '/form.js';
 import {openPersonCard, doneButton} from '/personcard.js';
 import {createPersonPicker} from '/picker.js';
 import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from '/inviteparts.js';
-import {bringGuest, sendTo, sendPending, takeOff, changeGuestEmail, deleteEvent, cancelEvent} from '/guestlist.js';
+import {bringGuest, asksChild, sendTo, sendPending, takeOff, changeGuestEmail, deleteEvent, cancelEvent} from '/guestlist.js';
 import {host} from '/guesthost.js';
 
 const me = () => host.me();
@@ -44,6 +44,10 @@ function guestForm(e, of, onDone) {
   child.type = 'checkbox';
   const childLabel = el('label', 'message-to-choice');
   childLabel.append(child, el('span', '', 'This guest is a child'));
+  childLabel.hidden = true;
+  asksChild(e).then(on => {
+    childLabel.hidden = !on;
+  });
   outside.append(field('Name', name), field('Email', email), childLabel);
   panels.outside = outside;
   form.append(helios, outside);

@@ -314,6 +314,21 @@ func TestRefusedChangeWritesNothing(t *testing.T) {
 	}
 }
 
+func TestACellTooLongForASheetIsRefusedBeforeItIsWritten(t *testing.T) {
+	f := newFixture(t)
+	long := strings.Repeat("é", CellLimit+1)
+	err := commitAndWait(f.store, context.Background(), access.Actor{Email: "ann"}, "app", Update("Things", Row{"Name": "hat"}, Row{"Color": long}))
+	if err == nil || !strings.Contains(err.Error(), "Things.Color would hold 50001 characters") {
+		t.Fatalf("a cell over the limit answered %v", err)
+	}
+	if count(f.store, "app", "Things", Row{"Color": long}) != 0 || f.rows(t, "Things")[0]["Color"] != "red" || len(f.log(t)) != 0 {
+		t.Fatal("a cell over the limit reached memory, the sheet or the log")
+	}
+	if err := commitAndWait(f.store, context.Background(), access.Actor{Email: "ann"}, "app", Update("Things", Row{"Name": "hat"}, Row{"Color": strings.Repeat("é", CellLimit)})); err != nil {
+		t.Fatalf("a cell at the limit was refused: %v", err)
+	}
+}
+
 func TestATransactionCommitsEveryStageOrNone(t *testing.T) {
 	f := newFixture(t)
 	ran, swapped := false, 0

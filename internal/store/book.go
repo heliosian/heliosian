@@ -8,13 +8,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"heliosian/internal/access"
 	"heliosian/internal/auth"
 	"heliosian/internal/data"
 	"heliosian/internal/logging"
 )
 
 type Row = map[string]string
+
+const CellLimit = 50000
 
 type Tables map[string][]Row
 
@@ -170,6 +174,11 @@ func (b *Book) Plan(ctx context.Context, tables Tables, actor string, ops []Op) 
 		}
 		if tab.AppendOnly && op.kind == update {
 			return Plan{}, fmt.Errorf("%s: tab %s is append-only", b.app, op.tab)
+		}
+		for column, value := range op.cells {
+			if n := utf8.RuneCountInString(value); n > CellLimit {
+				return Plan{}, access.Invalid("%s.%s would hold %d characters, more than the %d a spreadsheet cell takes", op.tab, column, n, CellLimit)
+			}
 		}
 		rows, changes := apply(tables[op.tab], op)
 		if len(changes) == 0 {

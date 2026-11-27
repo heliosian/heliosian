@@ -68,7 +68,7 @@ function openQuestion(inv, details, q) {
     field('Question', words, '', true),
     field('Answered with', kind),
     choicesField,
-    field('Asked of', asked, 'Kids are students, and guests from outside marked as children.'),
+    field('Asked of', asked, 'Kids are students, and guests from outside who are children. Once a question goes to kids or adults, whoever adds someone from outside is asked whether they’re a child.'),
     required.wrap,
     goingOnly.wrap,
   ], {

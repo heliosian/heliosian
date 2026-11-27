@@ -30,6 +30,15 @@ function onGuestList(id) {
               (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.managed_by (= id ${id}))))))`;
 }
 
+function ageQuestions(id) {
+  return `(from QUESTION (where (= group ${id}) (in asked "kids" "adults")) (columns asked))`;
+}
+
+export async function asksChild(e) {
+  const a = await queries({ages: ageQuestions(JSON.stringify(e.id))});
+  return rowsOf(a.ages, 'QUESTION').length > 0;
+}
+
 export async function fetchInvites(e) {
   const id = JSON.stringify(e.id);
   const [a, index] = await Promise.all([queries({
@@ -50,6 +59,7 @@ export async function fetchInvites(e) {
     household: '(from PERSON (where (in id (household @viewer))) (columns name_show))',
     families: '(from GROUP (where (= kind "family")) (columns name slug who_href))',
     notify: '(from PERSON_SETTING (where (= person @viewer) (= app "when") (= key "notify_hosts")) (columns value))',
+    ages: ageQuestions(id),
   }), directory()]);
   const g = rowsOf(a.group, 'GROUP')[0];
   const viewer = me().id;
@@ -127,6 +137,7 @@ export async function fetchInvites(e) {
     coming: host ? listed_ : listed_.map(r => (r.answer === 'no' ? {...r, answer: ''} : r)),
     counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: listed_.filter(r => r.answer === 'maybe').length, no: listed_.filter(r => r.answer === 'no').length},
     maybe: g.maybe === 'Yes',
+    askChild: rowsOf(a.ages, 'QUESTION').length > 0,
     remindDays: g.remind_days || '', resendDays: g.resend_days || '',
     hosts: hostRows.map(h => ({...rowFor(h.person), memberRow: h})),
     managedBy: g.managed_by || '', hostsHidden: Boolean(hostGroup) && !hostGroup.visible_to,

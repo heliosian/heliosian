@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"image/color"
 	"image/png"
@@ -20,6 +21,7 @@ import (
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/sharecard"
+	"heliosian/internal/store"
 )
 
 const (
@@ -236,6 +238,33 @@ func dropTheme(t *testing.T, s *Store, pics *Pictures, as string, files map[stri
 	rec := httptest.NewRecorder()
 	serveAs(mux, rec, r, as)
 	return rec
+}
+
+func TestPicturesWrittenIntoAThemeBecomeItsFiles(t *testing.T) {
+	s := sample(t)
+	pics := newPictures(s)
+	host := s.Model().addressOf(staff)
+	painted := "data:image/png;base64," + base64.StdEncoding.EncodeToString(pngOf(t, 8))
+	drawn := `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='4'/></svg>`
+	theme := map[string]any{"key": "brunch", "name": "Brunch", "card": map[string]any{"art": `url("` + painted + `") center / cover`}, "page": map[string]any{"backdrop": `url('` + painted + `') center / cover, #f4e9d8`}, "seal": map[string]any{"picture": `url("` + drawn + `") center / 70% no-repeat`}}
+	if rec := postTheme(t, s, pics, host, theme, nil); rec.Code != http.StatusOK {
+		t.Fatalf("a theme with its pictures written in: %d %s", rec.Code, rec.Body)
+	}
+	row, ok := s.Model().Table("THEME").Find("brunch", staff)
+	if !ok {
+		t.Fatal("no THEME row for the upload")
+	}
+	if got := s.Model().Table("THEME_PICTURE").Referencing("theme", row["id"]); len(got) != 1 || got[0]["name"] != "inline-1.png" {
+		t.Errorf("the theme's pictures are %v, want one inline-1.png for the art and the backdrop", got)
+	}
+	if strings.Contains(row["design"], "base64") || !strings.Contains(row["design"], `url(\"inline-1.png\") center / cover`) || !strings.Contains(row["design"], "image/svg+xml") {
+		t.Errorf("the stored design is %s", row["design"])
+	}
+	theme["key"] = "huge"
+	theme["seal"] = map[string]any{"picture": `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><desc>` + strings.Repeat("x", store.CellLimit) + `</desc></svg>")`}
+	if rec := postTheme(t, s, pics, host, theme, nil); rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "even with its pictures moved into files") {
+		t.Errorf("a design too long for a cell: %d %s", rec.Code, rec.Body)
+	}
 }
 
 func TestAHostUploadsAThemeOnlyTheirInvitationsUse(t *testing.T) {

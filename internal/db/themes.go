@@ -435,6 +435,66 @@ func themeFile(files []droppedFile) (droppedFile, error) {
 	return droppedFile{}, access.Invalid("that holds %d theme files; drop one theme at a time", len(found))
 }
 
+func rewriteStrings(v any, f func(string) string) any {
+	switch x := v.(type) {
+	case string:
+		return f(x)
+	case map[string]any:
+		for k, e := range x {
+			x[k] = rewriteStrings(e, f)
+		}
+	case []any:
+		for i, e := range x {
+			x[i] = rewriteStrings(e, f)
+		}
+	}
+	return v
+}
+
+func (t *themeUpload) filePictures(files []droppedFile) error {
+	taken := map[string]bool{}
+	for _, f := range files {
+		taken[f.name] = true
+	}
+	byURL := map[string]string{}
+	var bad error
+	rewriteStrings(t.design, func(s string) string {
+		return cssURL.ReplaceAllStringFunc(s, func(u string) string {
+			m := cssURL.FindStringSubmatch(u)
+			target := m[1] + m[2] + m[3]
+			if !strings.HasPrefix(target, "data:") {
+				return u
+			}
+			if name, ok := byURL[target]; ok {
+				return `url("` + name + `")`
+			}
+			content, err := dataBytes(target)
+			if err != nil {
+				bad = access.Invalid("could not read a picture written into the design: %v", err)
+				return u
+			}
+			mimeType := http.DetectContentType(content)
+			ext, ok := blob.ImageExtensions[mimeType]
+			if !ok {
+				return u
+			}
+			if err := blob.Check(content); err != nil {
+				bad = access.Invalid("could not read a picture written into the design: %v", err)
+				return u
+			}
+			name := ""
+			for n := len(byURL) + 1; name == "" || taken[name]; n++ {
+				name = fmt.Sprintf("inline-%d.%s", n, ext)
+			}
+			taken[name] = true
+			byURL[target] = name
+			t.pictures[name] = upload{content: content, mimeType: mimeType}
+			return `url("` + name + `")`
+		})
+	})
+	return bad
+}
+
 func readThemeUpload(r *http.Request) (themeUpload, error) {
 	files, err := droppedFiles(r)
 	if err != nil {
@@ -466,6 +526,16 @@ func readThemeUpload(r *http.Request) (themeUpload, error) {
 	}
 	if err := standardDesign(d); err != nil {
 		return themeUpload{}, access.Invalid("%v", err)
+	}
+	if err := t.filePictures(files); err != nil {
+		return themeUpload{}, err
+	}
+	whole, err := json.Marshal(d)
+	if err != nil {
+		return themeUpload{}, err
+	}
+	if n := len([]rune(string(whole))); n > store.CellLimit {
+		return themeUpload{}, access.Invalid("the design is %d characters long, even with its pictures moved into files; a theme's design holds at most %d - make its inline drawings smaller, or save them as PNG files beside theme.json", n, store.CellLimit)
 	}
 	named, _ := pictureNames(d)
 	for _, f := range files {

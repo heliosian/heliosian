@@ -266,6 +266,22 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		slog.InfoContext(ctx, "described activity", "actor", actor.Email, "title", body.Title)
 		return map[string]string{"description": description}, nil
 	}))
+	mux.HandleFunc("POST /api/do/describe-event", modelAction(s, tokens, func(ctx context.Context, _ *Model, _ Env, actor access.Actor, body eventDraft) (map[string]string, error) {
+		facts := describe.InvitationFacts{Title: body.Title, Subtitle: body.Subtitle, When: body.When, Where: body.Where, Hosts: body.Hosts, Kicker: body.Kicker, Notes: body.Notes}
+		description, err := describer.Invitation(ctx, actor.Email, facts)
+		if errors.Is(err, claude.ErrTooMany) {
+			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
+		}
+		if errors.Is(err, describe.ErrTooLong) {
+			return nil, access.Invalid("%v", err)
+		}
+		if err != nil {
+			slog.ErrorContext(ctx, "describe event", "actor", actor.Email, "title", body.Title, "error", err)
+			return nil, access.Refuse(http.StatusBadGateway, "could not write a summary right now")
+		}
+		slog.InfoContext(ctx, "described event", "actor", actor.Email, "title", body.Title)
+		return map[string]string{"description": description}, nil
+	}))
 	mux.HandleFunc("POST /api/do/describe-charity", modelAction(s, tokens, func(ctx context.Context, m *Model, env Env, actor access.Actor, body charityDraft) (map[string]string, error) {
 		name := strings.TrimSpace(body.Name)
 		if name == "" {
@@ -304,6 +320,16 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 type charityDraft struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
+}
+
+type eventDraft struct {
+	Title    string `json:"title"`
+	Subtitle string `json:"subtitle"`
+	When     string `json:"when"`
+	Where    string `json:"where"`
+	Hosts    string `json:"hosts"`
+	Kicker   string `json:"kicker"`
+	Notes    string `json:"notes"`
 }
 
 type activityDraft struct {

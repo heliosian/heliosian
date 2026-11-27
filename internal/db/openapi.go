@@ -644,6 +644,18 @@ func spec() schema {
 				"responses": claudeFailures(schema{"200": described("the activity"), "400": failure("A description too long, or a body that is not JSON.")}),
 			},
 		},
+		"/api/do/describe-event": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Have Claude write an invitation's summary",
+				"description": "Rewrites the hosts' notes, or writes from the details alone, into a few sentences to the guests in the mood of the design's kicker line.",
+				"requestBody": jsonBody([]string{}, schema{
+					"title": schema{"type": "string"}, "subtitle": schema{"type": "string"}, "when": schema{"type": "string"},
+					"where": schema{"type": "string"}, "hosts": schema{"type": "string"}, "kicker": schema{"type": "string"}, "notes": schema{"type": "string"},
+				}),
+				"responses": claudeFailures(schema{"200": described("the invitation"), "400": failure("A summary too long, or a body that is not JSON.")}),
+			},
+		},
 		"/api/do/describe-charity": schema{
 			"post": schema{
 				"tags":        []string{"do"},

@@ -210,6 +210,14 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .editor-end { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 
+.modal-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+.describe-line { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+
+.describe-status { font-size: 13px; color: var(--muted); }
+
+.describe-status.error { color: var(--alert); }
+
 .editor-end:empty { display: none; }
 
 .theme-tile-backdrop { margin-bottom: 8px; padding: 16px 0; border-radius: 6px; background: var(--backdrop); background-attachment: scroll; overflow: hidden; }
@@ -282,9 +290,15 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .theme-manage-blurb { color: var(--muted); font-size: 13px; }
 
-.theme-manage-owner { margin-top: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.theme-manage-owner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); }
 
-.theme-manage-owner.is-public { color: var(--brand); }
+.theme-manage-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.02em; }
+
+.theme-manage-badge svg { width: 14px; height: 14px; }
+
+.theme-manage-badge.is-public { background: var(--brand); color: #fff; }
+
+.theme-manage-badge.is-private { border: 1.5px solid var(--muted); color: var(--ink); }
 
 .theme-manage-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 

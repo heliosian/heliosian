@@ -2,7 +2,8 @@ import {el, button, svg, toast} from '/elements.js';
 import {openModal, closeLayers} from '/modal.js';
 import {field, text, textarea, whenPickers} from '/form.js';
 import {navigate} from '/router.js';
-import {themes, lookTheme, themed, wrapped, sealMark, fontChoices} from '/themes.js';
+import {themes, lookTheme, themed, wrapped, sealMark, fontChoices, kickerWords} from '/themes.js';
+import {api} from '/api.js';
 import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture, clearDesignPicture, uploadTheme, removeTheme, me, state} from './state.js';
 import {offerUpdate, hostsRow, menuButton} from '/invites.js';
 import {fetchInvites as fetchGuestList, cancelEvent} from '/guestlist.js';
@@ -351,7 +352,33 @@ function hostedByField(current) {
       const v = input.value.trim();
       return v === names ? '' : v;
     },
+    words: () => input.value.trim() || names,
   };
+}
+
+function writeWithAI(summary, facts) {
+  const status = el('small', 'describe-status');
+  const generate = button('Generate with AI', 'sparkle', 'button button-small button-secondary', async () => {
+    generate.disabled = true;
+    status.classList.remove('error');
+    status.textContent = 'Writing…';
+    try {
+      const {description} = await api('POST', '/api/do/describe-event', {...facts(), notes: summary.value});
+      summary.value = description;
+      status.textContent = '';
+      summary.focus();
+    } catch (err) {
+      status.classList.add('error');
+      status.textContent = err.message;
+    } finally {
+      generate.disabled = false;
+    }
+  });
+  const line = el('div', 'describe-line');
+  line.append(generate, status);
+  const box = el('div');
+  box.append(summary, line);
+  return box;
 }
 
 export function firstHex(value) {
@@ -735,7 +762,13 @@ export function openEditor(inv) {
     themeArea.replaceChildren(head, el('p', 'theme-hint', 'Change its card, background, colors, fonts and envelope from the pages under Theme.'), preview);
   }
   pages = sidePages([
-    {label: 'Details', icon: 'list', fields: [field('Title', name, '', true), field('Subtitle', subtitle, 'A line under the title on the card. Leave it blank for none.'), when, field('Where', location), field('Summary', summary)]},
+    {label: 'Details', icon: 'list', fields: [field('Title', name, '', true), field('Subtitle', subtitle, 'A line under the title on the card. Leave it blank for none.'), when, field('Where', location), field('Summary', writeWithAI(summary, () => {
+      const when = {start: starts.value(), end: !ends.wrap.hidden ? ends.value() : until.value && starts.value() ? `${starts.value().slice(0, 10)} ${until.value}` : ''};
+      return {
+        title: name.value.trim(), subtitle: subtitle.value.trim(), when: when.start ? [dayWords(when), hourWords(when)].filter(Boolean).join(', ') : '',
+        where: location.value.trim(), hosts: hostedBy.words(), kicker: kickerWords(lookNow()),
+      };
+    }))]},
     {label: 'Essentials', icon: 'groups', fields: [hostsField(inv, hostedBy), hostedBy.wrap]},
     {label: 'Theme', icon: 'doc', fields: [themeArea], onShow: paintTheme, onToggle: () => {
       subsOpen = !subsOpen;

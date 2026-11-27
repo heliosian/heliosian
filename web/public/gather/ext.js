@@ -94,6 +94,7 @@ function guestForm(status) {
   email.type = 'email';
   email.placeholder = 'Their email (optional)';
   const child = el('label', 'bring-child');
+  child.hidden = !view.questions.some(q => q.asked === 'kids' || q.asked === 'adults');
   const childBox = el('input');
   childBox.type = 'checkbox';
   child.append(childBox, el('span', '', 'Child'));

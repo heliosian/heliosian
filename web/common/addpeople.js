@@ -26,7 +26,7 @@ export function guestAdders(e, view, done) {
   };
   return {
     person: close => personAdder({isOn, onAdd: onAdd(close), gradeColors: host.gradeColors()}),
-    outside: close => outsideAdder({isOn, onAdd: onAdd(close), note: outsideNote}),
+    outside: close => outsideAdder({isOn, onAdd: onAdd(close), note: outsideNote, askChild: view.askChild}),
     import: close => importAdder({isOn, onAdd: onAdd(close), note: importNote}),
   };
 }

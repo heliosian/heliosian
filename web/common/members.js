@@ -309,13 +309,13 @@ export function personAdder({isOn, onAdd, gradeColors}) {
 
 const emailForm = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-export function outsideAdder({isOn, onAdd, note}) {
+export function outsideAdder({isOn, onAdd, note, askChild}) {
   const wrap = el('div', 'outside-adder-wrap');
   wrap.append(el('div', 'picker-note', note));
   const families = el('div', 'outside-families');
-  families.append(outsideFamilyCard());
+  families.append(outsideFamilyCard(askChild));
   wrap.append(families, button('Add another family', 'plus', 'link-button outside-another', () => {
-    const card = outsideFamilyCard();
+    const card = outsideFamilyCard(askChild);
     families.append(card);
     card.focus();
   }));
@@ -354,7 +354,7 @@ export function outsideAdder({isOn, onAdd, note}) {
     add.disabled = true;
     try {
       await onAdd(people);
-      families.replaceChildren(outsideFamilyCard());
+      families.replaceChildren(outsideFamilyCard(askChild));
       add.disabled = false;
     } catch (err) {
       status.textContent = err.message;
@@ -368,25 +368,25 @@ export function outsideAdder({isOn, onAdd, note}) {
   return wrap;
 }
 
-function outsideFamilyCard() {
+function outsideFamilyCard(askChild) {
   const card = el('div', 'outside-family');
   const members = [];
   const name = textInput('', {placeholder: 'Name'});
   const email = textInput('', {type: 'email', placeholder: 'Email address'});
   const head = el('div', 'picker-email');
   head.append(name, email);
-  card.append(head, outsideMembers(members));
+  card.append(head, outsideMembers(members, askChild));
   card.members = members;
   card.head = () => ({name: name.value.trim(), email: email.value.trim().toLowerCase()});
   card.focus = () => name.focus();
   return card;
 }
 
-function outsideMembers(members) {
+function outsideMembers(members, askChild) {
   const family = el('div', 'outside-members');
   family.append(el('div', 'outside-members-title', 'Family members (optional)'), el('div', 'picker-note', 'A spouse, a partner, children. Anyone with an email address gets their own.'));
   const list = el('div', 'outside-member-list');
-  const adder = outsideMemberAdder(members, list);
+  const adder = outsideMemberAdder(members, list, askChild);
   family.append(list, button('Add family member', 'plus', 'button button-secondary button-small', () => {
     adder.node.hidden = false;
     adder.name.focus();
@@ -409,12 +409,13 @@ function paintOutsideMembers(list, members) {
   }
 }
 
-function outsideMemberAdder(members, list) {
+function outsideMemberAdder(members, list, askChild) {
   const node = el('div', 'picker-email outside-adder');
   node.hidden = true;
   const name = textInput('', {placeholder: 'Family member’s name'});
   const email = textInput('', {type: 'email', placeholder: 'Their email (optional)'});
   const child = el('label', 'outside-child');
+  child.hidden = !askChild;
   const childBox = el('input');
   childBox.type = 'checkbox';
   child.append(childBox, el('span', '', 'Child'));

@@ -225,6 +225,59 @@ func (d *Describer) Activity(ctx context.Context, actor string, facts ActivityFa
 	return strings.TrimSpace(out.Description), nil
 }
 
+type InvitationFacts struct {
+	Title    string
+	Subtitle string
+	When     string
+	Where    string
+	Hosts    string
+	Kicker   string
+	Notes    string
+}
+
+const invitationSystem = `You write the summary on a party or event invitation, the few words under the title that the guests read before they answer. You are given the invitation's title and subtitle, when and where it is, who is hosting, the line its design prints above the title, which sets its mood, and the hosts' current summary, which is often rough notes.
+
+Write to the guests, warmly, in two to four short sentences, in the mood the design's line sets: playful for a playful design, grand for a grand one. Keep every fact, request and caveat in the notes - what there will be, what to bring or wear, who is welcome, a deadline - and fix their spelling and capitalization. Add nothing the notes and details don't support: no invented activities, food, times, places or people. Don't restate the date, time or place unless the notes say more about them; the invitation shows them beside the summary. When the notes are empty, write one or two sentences from the details alone.
+
+Plain text; no headings, no markdown, no bullet points, no emoji. Return the summary alone.`
+
+func (d *Describer) Invitation(ctx context.Context, actor string, facts InvitationFacts) (string, error) {
+	if !d.limit.Allow(actor, time.Now()) {
+		return "", claude.ErrTooMany
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	prompt := &strings.Builder{}
+	line := func(label, value string) {
+		if value = strings.TrimSpace(value); value != "" {
+			fmt.Fprintf(prompt, "%s: %s\n", label, value)
+		}
+	}
+	line("Title", facts.Title)
+	line("Subtitle", facts.Subtitle)
+	line("When", facts.When)
+	line("Where", facts.Where)
+	line("Hosted by", facts.Hosts)
+	line("The design's line above the title", facts.Kicker)
+	fmt.Fprintf(prompt, "Current summary:\n%s\n", strings.TrimSpace(facts.Notes))
+	if prompt.Len() > maxPrompt {
+		return "", ErrTooLong
+	}
+	var out struct {
+		Description string `json:"description"`
+	}
+	if _, err := claude.JSON(ctx, d.client, anthropic.MessageNewParams{
+		Model:        claude.DescribeModel,
+		MaxTokens:    4000,
+		System:       []anthropic.TextBlockParam{{Text: invitationSystem, CacheControl: anthropic.NewCacheControlEphemeralParam()}},
+		Messages:     []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt.String()))},
+		OutputConfig: anthropic.OutputConfigParam{Effort: claude.DescribeEffort, Format: anthropic.JSONOutputFormatParam{Schema: activitySchema}},
+	}, &out); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.Description), nil
+}
+
 func tallyWords(counts map[string]int) string {
 	keys := []string{}
 	for k := range counts {
