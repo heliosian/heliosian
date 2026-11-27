@@ -338,9 +338,6 @@ func TestAHostUploadsAThemeOnlyTheirInvitationsUse(t *testing.T) {
 	if rec := postTheme(t, s, pics, other, map[string]any{"key": "plain", "name": "Mine"}, nil); rec.Code != http.StatusOK {
 		t.Errorf("another host uploads a theme whose key the site uses: %d %s", rec.Code, rec.Body)
 	}
-	if _, err := Write(context.Background(), s, access.Actor{Email: host}, Env{Viewer: staff, Now: testNow}, Batch{Batch: []Edit{{Delete: row["id"]}}}); err == nil {
-		t.Error("the host deleted a theme an invitation uses")
-	}
 	if _, err := Write(context.Background(), s, access.Actor{Email: maya}, Env{Viewer: s.Model().SignedIn(maya), Now: testNow}, Batch{Batch: []Edit{{Set: row["id"], Cells: map[string]any{"added_by": ""}}}}); err != nil {
 		t.Fatalf("an admin can't make the theme the site's own: %v", err)
 	}
@@ -367,8 +364,31 @@ func TestGatherAdminsDeleteTheSitesThemesButPlain(t *testing.T) {
 	if err := remove(s.Model().addressOf(parent), parent, spare); err == nil {
 		t.Error("someone who isn't an admin deleted one of the site's themes")
 	}
-	if err := remove(maya, admin, skatingTheme); err == nil {
-		t.Error("an admin deleted a theme invitations use")
+	type use struct{ group, column, maker string }
+	uses := []use{}
+	for _, col := range []string{"theme", "envelope", "seal", "liner"} {
+		for _, g := range s.Model().Table("GROUP").Referencing(col, skatingTheme) {
+			uses = append(uses, use{g["id"], col, g["added_by"]})
+		}
+	}
+	if len(uses) == 0 {
+		t.Fatal("no sample invitation uses the skating theme")
+	}
+	was, _ := s.Model().Table("THEME").Get(skatingTheme)
+	pictures := len(s.Model().Table("THEME_PICTURE").Referencing("theme", skatingTheme))
+	if err := remove(maya, admin, skatingTheme); err != nil {
+		t.Fatalf("an admin can't delete a theme invitations use: %v", err)
+	}
+	for _, u := range uses {
+		g, _ := s.Model().Table("GROUP").Get(u.group)
+		copied, ok := s.Model().Table("THEME").Get(g[u.column])
+		if !ok || copied["added_by"] != u.maker || copied["name"] != was["name"] || copied["design"] != was["design"] {
+			t.Errorf("%s's %s is %v after the delete; want a copy of %s for %s", u.group, u.column, copied, was["name"], u.maker)
+			continue
+		}
+		if got := len(s.Model().Table("THEME_PICTURE").Referencing("theme", copied["id"])); got != pictures {
+			t.Errorf("the copy for %s has %d pictures, want %d", u.maker, got, pictures)
+		}
 	}
 	for _, g := range s.Model().Table("GROUP").Referencing("theme", plainTheme) {
 		if _, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{{Set: g["id"], Cells: map[string]any{"theme": larpTheme}}}}); err != nil {
@@ -383,6 +403,54 @@ func TestGatherAdminsDeleteTheSitesThemesButPlain(t *testing.T) {
 	}
 	if _, ok := s.Model().Table("THEME").Get(spare); ok || len(s.Model().Table("THEME_PICTURE").Referencing("theme", spare)) != 0 {
 		t.Error("the deleted theme or its pictures are still there")
+	}
+}
+
+func TestDeletingYourOwnThemeInUseKeepsACopyUnderAnotherKey(t *testing.T) {
+	s := sample(t)
+	const theo = "grp00000009001"
+	g, _ := s.Model().Table("GROUP").Get(theo)
+	maker := g["added_by"]
+	ids, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{
+		{Insert: "THEME", As: "t", Row: map[string]any{"key": "mine", "name": "Mine", "design": `{}`, "added_by": maker}},
+		{Set: theo, Cells: map[string]any{"theme": "@t"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Write(context.Background(), s, access.Actor{Email: s.Model().addressOf(maker)}, Env{Viewer: maker, Now: testNow}, Batch{Batch: []Edit{{Delete: ids[0]}}}); err != nil {
+		t.Fatalf("the owner can't delete their theme an invitation uses: %v", err)
+	}
+	g, _ = s.Model().Table("GROUP").Get(theo)
+	if copied, ok := s.Model().Table("THEME").Get(g["theme"]); !ok || copied["key"] != "mine-copy" || copied["added_by"] != maker || copied["name"] != "Mine" {
+		t.Errorf("the invitation's theme is %v after the delete, want a copy keyed mine-copy", copied)
+	}
+}
+
+func TestAnAdminsUploadReplacesTheSitesThemeWithItsKey(t *testing.T) {
+	const skating = "thm00000000003"
+	s := sample(t)
+	pics := newPictures(s)
+	themes := len(s.Model().Table("THEME").All())
+	theme := map[string]any{"key": "skating", "name": "Ice Skating 2", "card": map[string]any{"art": `url("rink.png") center / cover`}}
+	if rec := postTheme(t, s, pics, maya, theme, map[string][]byte{"rink.png": pngOf(t, 8)}); rec.Code != http.StatusOK {
+		t.Fatalf("an admin uploads a new version of a site theme: %d %s", rec.Code, rec.Body)
+	}
+	if row, _ := s.Model().Table("THEME").Get(skating); row["name"] != "Ice Skating 2" || row["added_by"] != "" || len(s.Model().Table("THEME").All()) != themes {
+		t.Errorf("after an admin's upload the site theme is %v, and there are %d themes, want %d", row, len(s.Model().Table("THEME").All()), themes)
+	}
+	if got := s.Model().Table("THEME_PICTURE").Referencing("theme", skating); len(got) != 1 || got[0]["name"] != "rink.png" {
+		t.Errorf("the site theme's pictures are %v, want rink.png", got)
+	}
+	theme["name"] = "My Skating"
+	if rec := postTheme(t, s, pics, s.Model().addressOf(parent), theme, map[string][]byte{"rink.png": pngOf(t, 8)}); rec.Code != http.StatusOK {
+		t.Fatalf("a host uploads a theme with a site theme's key: %d %s", rec.Code, rec.Body)
+	}
+	if row, _ := s.Model().Table("THEME").Get(skating); row["name"] != "Ice Skating 2" {
+		t.Errorf("a host's upload changed the site theme to %v", row)
+	}
+	if mine, ok := s.Model().Table("THEME").Find("skating", parent); !ok || mine["name"] != "My Skating" {
+		t.Errorf("the host's upload is %v, %v; want a private theme of their own", mine, ok)
 	}
 }
 

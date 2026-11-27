@@ -147,7 +147,7 @@ export function wordless(look) {
   return Boolean(look.cardPicture) && look.design?.card?.words === false;
 }
 
-const sidebarVars = ['--side-bg', '--side-ink', '--side-active'];
+const sidebarVars = ['--side-bg', '--side-ink', '--side-active', '--side-behind'];
 
 export function sidebarIn(look) {
   const body = document.body.style;
@@ -159,6 +159,7 @@ export function sidebarIn(look) {
     return;
   }
   const t = themeOf(look.theme);
+  body.setProperty('--side-behind', lookTheme(look).page.backdrop);
   const page = look.design?.page?.backdrop;
   if (page) {
     body.setProperty('--side-bg', `linear-gradient(180deg, color-mix(in srgb, ${page} 28%, #000), color-mix(in srgb, ${page} 48%, #000))`);

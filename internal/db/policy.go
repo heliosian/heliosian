@@ -905,6 +905,8 @@ const PolicySource = `
 ; Gather's admins rename any theme and rewrite its blurb
 (set THEME.name (admin_of "gather"))
 (set THEME.blurb (admin_of "gather"))
+; Gather's admins replace the design of one of the site's own themes
+(set THEME.design (and (admin_of "gather") (blank @old.added_by)))
 ; Gather's admins make a theme one of the site's own, or make one private to themselves
 (set THEME.added_by (and (admin_of "gather") (or (blank @new.added_by) (= @new.added_by @viewer))))
 ; a theme's owner removes it
@@ -923,6 +925,9 @@ const PolicySource = `
 (delete THEME_PICTURE (= @old.theme.added_by @viewer))
 ; Gather's admins remove any theme's pictures
 (delete THEME_PICTURE (admin_of "gather"))
+; Gather's admins add and replace the pictures of the site's own themes
+(insert THEME_PICTURE (and (admin_of "gather") (blank @new.theme.added_by)))
+(set THEME_PICTURE.original (and (admin_of "gather") (blank @old.theme.added_by)))
 
 ;; Who? admins
 

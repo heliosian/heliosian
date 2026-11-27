@@ -5,7 +5,7 @@ import {queries, rowsOf, write} from '/rail.js';
 import {loadThemes, refreshThemes} from '/themes.js';
 import {miniEnvelope} from '/envelope.js';
 import {me, removeTheme} from './state.js';
-import {themeUpload} from './editor.js';
+import {themeUpload, deleteThemeWords} from './editor.js';
 
 async function allThemes() {
   const a = await queries({
@@ -53,7 +53,7 @@ function themeRow(t, redraw) {
   }
   if (t.owner || t.key !== 'plain') {
     actions.append(button('Delete', 'trash', 'button button-secondary theme-manage-delete', () => {
-      if (!confirm(`Delete ${t.name} for everyone? Hosts won't be able to pick it any more. A theme an invitation uses can't be deleted.`)) {
+      if (!confirm(deleteThemeWords(t))) {
         return;
       }
       removeTheme(t.id).then(() => {

@@ -94,12 +94,16 @@ function removeButton(t, onRemove) {
   remove.append(svg('trash'));
   remove.addEventListener('click', ev => {
     ev.stopPropagation();
-    if (!confirm(`Delete ${t.name} for everyone? Hosts won't be able to pick it any more. A theme an invitation uses can't be deleted.`)) {
+    if (!confirm(deleteThemeWords(t))) {
       return;
     }
     removeTheme(t.id).then(() => onRemove(t.id)).catch(err => toast(err.message));
   });
   return remove;
+}
+
+export function deleteThemeWords(t) {
+  return `Delete ${t.name}? No one will be able to pick it any more. Invitations already using it keep their look: whoever made each one gets a private copy of ${t.name}, as if they'd designed it themselves.`;
 }
 
 function previewButton(t, onPreview) {
@@ -628,6 +632,10 @@ async function cancelQuietly(inv) {
 function endControls(inv) {
   const wrap = el('div', 'editor-end');
   const e = asEvent(inv);
+  if (inv.status === 'cancelled') {
+    wrap.append(button('Delete invitation', 'trash', 'link-button danger', () => deleteInvitation(e)));
+    return wrap;
+  }
   fetchGuestList(e).then(view => {
     if (!view.sent) {
       wrap.append(button('Delete invitation', 'trash', 'link-button danger', () => deleteInvitation(e)));
@@ -815,7 +823,7 @@ export function openEditor(inv) {
   ]);
   revealSubs();
   marks();
-  if (inv && inv.host && inv.status !== 'cancelled') {
+  if (inv && inv.host) {
     pages.wrap.querySelector('.editor-pages-nav').append(endControls(inv));
   }
   openModal(inv ? 'Edit invitation' : 'New invitation', [pages.wrap], {

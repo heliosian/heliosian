@@ -278,9 +278,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-hint { margin: 0; font-size: 13px; color: var(--muted); }
 
-.wiki-text-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: -4px; }
-
-.wiki-text-tools .wiki-insert { margin-left: auto; }
+.text-tools .wiki-insert { margin-left: auto; }
 
 .field { display: block; margin: 14px 0; }
 

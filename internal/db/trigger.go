@@ -354,10 +354,14 @@ func beforeDelete(s *Store, tx *store.Tx[Model], c Change, where string) ([]Chan
 		if err != nil {
 			return nil, access.Invalid("%s: %v", where, err)
 		}
+		names := map[string]string{}
 		for _, w := range writes {
-			_, before, err := stageWrite(s, tx, w, where, nil, true, unchecked)
+			id, before, err := stageWrite(s, tx, w, where, names, true, unchecked)
 			if err != nil {
 				return nil, err
+			}
+			if w.As != "" {
+				names[w.As] = id
 			}
 			staged = append(staged, before)
 		}

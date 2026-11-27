@@ -3,6 +3,7 @@ import {openModal} from '/modal.js';
 import {field, text, textarea} from '/form.js';
 import {navigate, load} from '/router.js';
 import {lookTheme} from '/themes.js';
+import {textTools, indentLists} from '/texttools.js';
 import {savePage, removePage, setPagePicture, clearPagePicture} from './state.js';
 import {pictureInput, firstHex} from './editor.js';
 
@@ -40,13 +41,16 @@ function pictureSlot(page) {
 export function openPageEditor(inv, page, key) {
   const title = text(page ? page.title : '', {required: true, placeholder: 'Schedule, What to bring, Directions…'});
   const body = textarea(page ? page.body || '' : '', 12);
-  body.placeholder = 'What guests see on this page. **Bold**, *italics*, - lists and links work.';
+  body.placeholder = 'What guests see on this page.';
+  indentLists(body);
+  const bodyBox = el('div', 'text-box');
+  bodyBox.append(textTools(body), body);
   const background = backgroundField(inv, page ? page.background : '');
   const base = `/g/${encodeURIComponent(key)}`;
   let id = '';
   openModal(page ? 'Edit page' : 'Add a page', [
     field('Title', title, 'Its name in the invitation’s sidebar.', true),
-    field('Page', body),
+    field('Page', bodyBox, 'Markdown: **bold**, *italic*, - a list, [words](https://a.link).'),
     background.wrap,
     pictureSlot(page),
   ], {

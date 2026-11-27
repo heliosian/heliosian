@@ -3,6 +3,7 @@ package db
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -249,12 +250,37 @@ func themeInUse(m *Model, c Change) ([]Edit, error) {
 	if c.Old["key"] == "plain" && c.Old["added_by"] == "" {
 		return nil, access.Invalid("the site's plain theme is what Create Your Own starts from, so it stays")
 	}
+	copies := map[string]string{}
+	edits := []Edit{}
 	for _, col := range []string{"theme", "envelope", "seal", "liner"} {
-		if using := m.Table("GROUP").Referencing(col, c.Old["id"]); len(using) > 0 {
-			return nil, access.Invalid("%s is the %s of %s; choose another there first", c.Old["name"], col, using[0]["name"])
+		for _, g := range m.Table("GROUP").Referencing(col, c.Old["id"]) {
+			maker := g["added_by"]
+			alias, made := copies[maker]
+			if !made {
+				alias = fmt.Sprintf("copy%d", len(copies))
+				copies[maker] = alias
+				edits = append(edits, Edit{Insert: "THEME", As: alias, Row: map[string]any{"key": freeThemeKey(m, c.Old["key"], maker), "name": c.Old["name"], "blurb": c.Old["blurb"], "design": c.Old["design"], "added_by": maker}})
+				for _, p := range m.Table("THEME_PICTURE").Referencing("theme", c.Old["id"]) {
+					edits = append(edits, Edit{Insert: "THEME_PICTURE", Row: map[string]any{"theme": "@" + alias, "name": p["name"], "original": p["original"], "picture": p["picture"]}})
+				}
+			}
+			edits = append(edits, Edit{Set: g["id"], Cells: map[string]any{col: "@" + alias}})
 		}
 	}
-	return nil, nil
+	return edits, nil
+}
+
+func freeThemeKey(m *Model, key, owner string) string {
+	free := key
+	for n := 1; ; n++ {
+		if _, taken := m.Table("THEME").Find(free, owner); !taken {
+			return free
+		}
+		free = key + "-copy"
+		if n > 1 {
+			free = fmt.Sprintf("%s-copy-%d", key, n)
+		}
+	}
 }
 
 func themeDesign(m *Model, id string) (map[string]any, error) {
@@ -562,6 +588,15 @@ func readThemeUpload(r *http.Request) (themeUpload, error) {
 	return t, nil
 }
 
+func (m *Model) gatherAdmin(ctx context.Context, env Env) (bool, error) {
+	q, err := Parse(`(from APP (where (= key "gather") (admin_of "gather")))`)
+	if err != nil {
+		return false, err
+	}
+	result := m.Run(ctx, q, env)
+	return len(result.IDs) > 0, result.Err
+}
+
 func registerThemeUpload(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens) {
 	mux.HandleFunc("POST /api/do/theme", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens)
@@ -594,7 +629,17 @@ func registerThemeUpload(mux *http.ServeMux, s *Store, pics *Pictures, tokens au
 			cells := map[string]any{"name": t.name, "blurb": t.blurb, "design": string(design)}
 			theme := ""
 			old := map[string]store.Row{}
-			if row, found := m.Table("THEME").Find(t.key, env.Viewer); found {
+			row, found := m.Table("THEME").Find(t.key, env.Viewer)
+			if !found {
+				if public, ok := m.Table("THEME").Find(t.key, ""); ok {
+					admin, err := m.gatherAdmin(r.Context(), env)
+					if err != nil {
+						return err
+					}
+					row, found = public, admin
+				}
+			}
+			if found {
 				theme = wr.add(Edit{Set: row["id"], Cells: cells})
 				for _, pic := range m.Table("THEME_PICTURE").Referencing("theme", row["id"]) {
 					old[pic["name"]] = pic
