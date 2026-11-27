@@ -67,10 +67,10 @@ func writeCard(w http.ResponseWriter, etag string, png []byte) {
 
 func (s *Style) Answered(w http.ResponseWriter, r *http.Request, parts ...string) bool {
 	etag, _ := s.cardTag(parts...)
-	return s.answer(w, r, etag)
+	return answer(w, r, etag)
 }
 
-func (s *Style) answer(w http.ResponseWriter, r *http.Request, etag string) bool {
+func answer(w http.ResponseWriter, r *http.Request, etag string) bool {
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
 		return true
@@ -95,7 +95,7 @@ func (s *Style) ServeOnce(w http.ResponseWriter, r *http.Request, c Card, parts 
 
 func (s *Style) serve(w http.ResponseWriter, r *http.Request, c Card, keep bool, parts ...string) {
 	etag, tagline := s.cardTag(parts...)
-	if s.answer(w, r, etag) {
+	if answer(w, r, etag) {
 		return
 	}
 	png, err := s.draw(c, tagline)

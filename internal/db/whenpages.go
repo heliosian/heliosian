@@ -33,10 +33,11 @@ type WhenPages struct {
 	pics   *Pictures
 	bucket *blob.Bucket
 	style  *sharecard.Style
+	fonts  *themeFonts
 }
 
 func NewWhenPages(s *Store, pics *Pictures, style *sharecard.Style) *WhenPages {
-	return &WhenPages{s: s, pics: pics, bucket: pics.bucket, style: style}
+	return &WhenPages{s: s, pics: pics, bucket: pics.bucket, style: style, fonts: newThemeFonts(pics.bucket)}
 }
 
 func (p *WhenPages) Register(mux *http.ServeMux) {
@@ -132,6 +133,10 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	g := m.sharedGroup(strings.TrimSuffix(r.PathValue("id"), ".png"))
 	if g == nil {
 		http.NotFound(w, r)
+		return
+	}
+	if g["slug"] != "" && g["theme"] != "" {
+		p.invitationCard(w, r, m, g)
 		return
 	}
 	name, whole := m.sharedPicture(g)
