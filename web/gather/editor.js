@@ -70,6 +70,16 @@ function usableThemes() {
   return themes().filter(t => !t.addedBy || t.addedBy === me().id);
 }
 
+function isPlain(id) {
+  const plain = plainTheme();
+  return Boolean(plain) && plain.id === id;
+}
+
+function defaultTheme() {
+  const first = usableThemes().find(t => !isPlain(t.id)) || plainTheme();
+  return first ? first.id : '';
+}
+
 function removableTheme(t) {
   return state.model.gatherAdmin && !t.addedBy && t.key !== 'plain';
 }
@@ -105,7 +115,7 @@ function picker(label, drawTile, onPick, blurbs = true, lead = [], onRemove = nu
   const fill = () => {
     tiles.clear();
     grid.replaceChildren(...lead);
-    for (const t of usableThemes().filter(x => !lead.length || x.id !== plainTheme().id)) {
+    for (const t of usableThemes().filter(x => !lead.length || !isPlain(x.id))) {
       const tile = el('button', 'theme-tile');
       tile.type = 'button';
       tile.setAttribute('role', 'radio');
@@ -438,8 +448,12 @@ function linerSwatch(t) {
 }
 
 export function openEditor(inv) {
+  if (!inv && !defaultTheme()) {
+    toast('Gather has no themes yet, so there is nothing to draw an invitation in. A Gather admin needs to add one.');
+    return;
+  }
   const look = inv ? inv.look : {theme: '', envelope: '', seal: '', liner: '', design: {}};
-  const chosen = {theme: look.theme || usableThemes().find(t => t.id !== plainTheme().id).id, envelope: look.envelope, seal: look.seal, liner: look.liner};
+  const chosen = {theme: look.theme || defaultTheme(), envelope: look.envelope, seal: look.seal, liner: look.liner};
   const changes = {card: {}, page: {}, fonts: {}};
   for (const section of Object.keys(changes)) {
     Object.assign(changes[section], look.design?.[section] || {});
@@ -462,7 +476,7 @@ export function openEditor(inv) {
   const pickers = {};
   const marks = () => {
     pickers.theme.set(chosen.theme);
-    own.classList.toggle('is-on', chosen.theme === plainTheme().id);
+    own.classList.toggle('is-on', isPlain(chosen.theme));
     for (const part of ['envelope', 'seal', 'liner']) {
       pickers[part].set(chosen[part] || fallback[part]());
     }
@@ -494,10 +508,10 @@ export function openEditor(inv) {
     marks();
     paintTheme();
   };
-  pickers.theme = picker('Theme', t => cardPreview({...sample(), look: {theme: t.id}, name: title()}), pick, true, [own, upload], id => {
+  pickers.theme = picker('Theme', t => cardPreview({...sample(), look: {theme: t.id}, name: title()}), pick, true, plainTheme() ? [own, upload] : [upload], id => {
     for (const part of ['theme', 'envelope', 'seal', 'liner']) {
       if (chosen[part] === id) {
-        chosen[part] = part === 'theme' ? usableThemes().find(t => t.id !== plainTheme().id).id : '';
+        chosen[part] = part === 'theme' ? defaultTheme() : '';
       }
     }
     for (const p of Object.values(pickers)) {
@@ -580,7 +594,7 @@ export function openEditor(inv) {
     const t = themes().find(x => x.id === chosen.theme);
     const head = el('div', 'theme-head');
     const words = el('div', 'theme-head-words');
-    words.append(el('span', 'theme-head-label', 'Theme'), el('span', 'theme-head-name', chosen.theme === plainTheme().id ? 'Your own' : t.name));
+    words.append(el('span', 'theme-head-label', 'Theme'), el('span', 'theme-head-name', isPlain(chosen.theme) ? 'Your own' : t.name));
     head.append(words, button('Change theme', 'edit', 'button button-secondary', () => {
       themeChosen = false;
       paintTheme();
