@@ -191,10 +191,23 @@ function filePicker(label, folder, add) {
   return [pick, input];
 }
 
+function themeGroups(files) {
+  const groups = new Map();
+  for (const f of files) {
+    const folder = f.themeFolder || (f.webkitRelativePath ? f.webkitRelativePath.split('/')[0] : '');
+    const key = /\.zip$/i.test(f.name) ? `zip:${f.name}:${f.size}` : folder ? `folder:${folder}` : 'loose';
+    if (!groups.has(key)) {
+      groups.set(key, {name: /\.zip$/i.test(f.name) ? f.name : folder || 'the loose files', files: []});
+    }
+    groups.get(key).files.push(f);
+  }
+  return [...groups.values()];
+}
+
 export function themeUpload(onUploaded) {
   let files = [];
   const zone = el('div', 'theme-drop');
-  const words = el('p', 'theme-drop-words', 'Drop your theme here: its folder, a zip of it, or theme.json with its pictures.');
+  const words = el('p', 'theme-drop-words', 'Drop your themes here: their folders, zips of them, or theme.json with its pictures. Each zip and each folder is a theme of its own.');
   const list = el('ul', 'theme-drop-list');
   const add = more => {
     files = [...files, ...more.filter(f => !f.name.startsWith('.') && !files.some(x => x.name === f.name && x.size === f.size))];
@@ -221,7 +234,13 @@ export function themeUpload(onUploaded) {
     const entries = [...ev.dataTransfer.items].map(i => i.webkitGetAsEntry()).filter(Boolean);
     const found = [];
     for (const entry of entries) {
-      found.push(...await entryFiles(entry));
+      const inside = await entryFiles(entry);
+      if (entry.isDirectory) {
+        for (const f of inside) {
+          f.themeFolder = entry.fullPath;
+        }
+      }
+      found.push(...inside);
     }
     add(found);
   });
@@ -231,11 +250,28 @@ export function themeUpload(onUploaded) {
   kit.append(link, ': instructions, examples and a preview page that checks a theme before you upload it. Hand it to an AI to design one. Uploading a theme again with the same key replaces it.');
   openModal('Upload a theme', [kit, zone], {
     saveLabel: 'Upload',
-    submit: () => {
+    submit: async () => {
       if (!files.length) {
         throw new Error('Drop your theme in first.');
       }
-      return uploadTheme(files);
+      const done = [];
+      const failed = [];
+      for (const group of themeGroups(files)) {
+        try {
+          done.push(await uploadTheme(group.files));
+          files = files.filter(f => !group.files.includes(f));
+        } catch (err) {
+          failed.push(`${group.name}: ${err.message}`);
+        }
+      }
+      add([]);
+      if (!failed.length) {
+        return done[0];
+      }
+      if (done.length) {
+        onUploaded(done[0]);
+      }
+      throw new Error(`${done.length ? `Uploaded ${done.length}; ` : ''}${failed.length === 1 ? 'this one didn’t upload' : 'these didn’t upload'} - ${failed.join(' · ')}`);
     },
     afterSave: onUploaded,
   });
