@@ -12,13 +12,11 @@ The standard is `internal/db/themebase.json`: every setting with its value when 
 
 `plain`, the site's theme with that key, is what Create Your Own starts from.
 
-## Uploading and promoting
+## Uploading and managing
 
 A host uploads a theme from the editor: Theme, Upload a theme, a drop area that takes the theme's folder, a zip of it, or loose files, dragged in or chosen (`themeUpload` in `web/gather/editor.js`). Every file goes to `POST /api/do/theme` (`registerThemeUpload`), which unpacks zips, takes the one `theme.json` (or, with none of that name, the one `.json` file) as the theme, keeps the pictures the design names, and leaves out every other file. A picture the design names and the upload lacks is refused. Uploading the same key again replaces the host's theme and its pictures.
 
-A theme becomes the site's own when a Gather admin blanks its `added_by` in the CONFIG sheet's `THEME` tab, or with a batch setting `added_by` to blank.
-
-A Gather admin deletes one of the site's own themes from the editor's Theme picker: hovering a theme's card shows a trash button (`removableTheme` in `web/gather/editor.js`, which reads admin status the way When's calendar does, an `APP` row only an admin can see). Deleting a theme deletes its pictures. `themeInUse` refuses it while any invitation's theme, envelope, seal or liner is that theme, and always refuses the site's `plain`, which Create Your Own starts from; the refusal is shown as it comes.
+Gather's admins manage every theme, the site's own and every host's private ones, from Manage themes in Gather's sidebar (`web/gather/thememanager.js`), which only they see; the pages read admin status the way When's calendar does, from an `APP` row only an admin can read. It lists each theme with its envelope, its name and blurb, and whose it is, and offers Rename (a popup for the name and blurb), Make public (blank `added_by`, the site's own), Make private (`added_by` the admin, so only they can pick it) and Delete. The editor's Theme picker also shows an admin a trash button on a site theme's card (`removableTheme` in `web/gather/editor.js`). Deleting a theme deletes its pictures. `themeInUse` refuses a delete while any invitation's theme, envelope, seal or liner is that theme, and the site's `plain`, which Create Your Own starts from, can be neither deleted (`themeInUse`) nor made private (`themeChecked`); a refusal is shown as it comes. A theme made private while other hosts' invitations use it keeps drawing them, since anyone who sees an invitation reads its theme, but those hosts can't pick it again.
 
 ## How pages get themes
 

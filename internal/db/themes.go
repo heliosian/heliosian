@@ -226,6 +226,9 @@ func storedDesign(raw string) (map[string]any, error) {
 }
 
 func themeChecked(m *Model, c Change) ([]Edit, error) {
+	if c.Old != nil && c.New != nil && c.Old["key"] == "plain" && c.Old["added_by"] == "" && c.New["added_by"] != "" {
+		return nil, access.Invalid("the site's plain theme is what Create Your Own starts from, so it stays the site's own")
+	}
 	if c.New == nil || (c.Old != nil && c.Old["key"] == c.New["key"] && c.Old["design"] == c.New["design"]) {
 		return nil, nil
 	}

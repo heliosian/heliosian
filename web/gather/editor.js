@@ -2,7 +2,7 @@ import {el, button, svg, toast} from '/elements.js';
 import {openModal} from '/modal.js';
 import {field, text, textarea, whenPickers} from '/form.js';
 import {navigate} from '/router.js';
-import {themes, lookTheme, wrapped, sealMark, fontChoices} from '/themes.js';
+import {themes, lookTheme, themed, wrapped, sealMark, fontChoices} from '/themes.js';
 import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture, clearDesignPicture, uploadTheme, removeTheme, me, state} from './state.js';
 import {offerUpdate, hostsRow} from '/invites.js';
 import {fetchInvites as fetchGuestList} from '/guestlist.js';
@@ -174,7 +174,7 @@ function filePicker(label, folder, add) {
   return [pick, input];
 }
 
-function themeUpload(onUploaded) {
+export function themeUpload(onUploaded) {
   let files = [];
   const zone = el('div', 'theme-drop');
   const words = el('p', 'theme-drop-words', 'Drop your theme here: its folder, a zip of it, or theme.json with its pictures.');
@@ -222,6 +222,19 @@ function themeUpload(onUploaded) {
     },
     afterSave: onUploaded,
   });
+}
+
+function themeScene(words) {
+  const scene = themed(el('div', 'theme-scene'), words.look);
+  const card = el('div', 'theme-scene-card');
+  card.append(cardPreview(words));
+  const sealed = miniEnvelope(words.look, words.name);
+  const open = miniEnvelope(words.look, words.name);
+  open.classList.add('is-open');
+  const envelopes = el('div', 'theme-scene-envelopes');
+  envelopes.append(sealed, open);
+  scene.append(card, envelopes);
+  return scene;
 }
 
 function cardPreview(words) {
@@ -501,7 +514,7 @@ export function openEditor(inv) {
   upload.type = 'button';
   const uploadArt = el('div', 'build-own-art');
   uploadArt.append(svg('doc'), el('span', '', 'A theme file'));
-  upload.append(uploadArt, el('span', 'theme-name', 'Upload a theme'), el('span', 'theme-blurb', 'A whole design of your own: card, envelope, seal and liner'));
+  upload.append(uploadArt, el('span', 'theme-name', 'Upload a theme'), el('span', 'theme-blurb', 'A whole design, designed by hand or with AI (give it our toolkit and design guidance).'));
   const pick = id => {
     chosen.theme = id;
     themeChosen = true;
@@ -599,8 +612,7 @@ export function openEditor(inv) {
       themeChosen = false;
       paintTheme();
     }));
-    const preview = el('div', 'theme-current');
-    preview.append(cardPreview({...sample(), look: lookNow(), name: title()}));
+    const preview = themeScene({...sample(), look: lookNow(), name: title()});
     themeArea.replaceChildren(head, el('p', 'theme-hint', 'Change its card, background, colors, fonts and envelope from the pages under Theme.'), preview);
   }
   pages = sidePages([

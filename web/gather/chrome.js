@@ -1,6 +1,7 @@
 import {el, link, svg, button, toast} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {me, findInvite, pagesOf, movePage, dayWords, hourWords} from './state.js';
+import {me, findInvite, pagesOf, movePage, dayWords, hourWords, state} from './state.js';
+import {openThemeManager} from './thememanager.js';
 import {load, navigate} from '/router.js';
 import {openPageEditor} from './pageeditor.js';
 import {themed, sealMark} from '/themes.js';
@@ -178,6 +179,15 @@ function fillNav(nav, sidebar) {
     return;
   }
   nav.append(navLink('/', 'Invitations', '', true));
+  if (state.model.gatherAdmin) {
+    const manage = navLink('/', 'Manage themes', 'doc', false);
+    manage.addEventListener('click', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openThemeManager();
+    });
+    nav.append(manage);
+  }
 }
 
 export function initChrome() {

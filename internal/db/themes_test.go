@@ -357,6 +357,44 @@ func TestGatherAdminsDeleteTheSitesThemesButPlain(t *testing.T) {
 	}
 }
 
+func TestGatherAdminsManageEveryTheme(t *testing.T) {
+	s := sample(t)
+	ids, err := Write(context.Background(), s, access.System(setupEnv.System), setupEnv, Batch{Batch: []Edit{
+		{Insert: "THEME", Row: map[string]any{"key": "mine", "name": "Mine", "design": `{}`, "added_by": parent}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	private := ids[0]
+	admin := s.Model().SignedIn(maya)
+	change := func(email, viewer string, e Edit) error {
+		_, err := Write(context.Background(), s, access.Actor{Email: email}, Env{Viewer: viewer, Now: testNow}, Batch{Batch: []Edit{e}})
+		return err
+	}
+	host := s.Model().addressOf(parent)
+	if err := change(host, parent, Edit{Set: larpTheme, Cells: map[string]any{"name": "Quest"}}); err == nil {
+		t.Error("someone who isn't an admin renamed one of the site's themes")
+	}
+	if err := change(maya, admin, Edit{Set: larpTheme, Cells: map[string]any{"name": "Quest", "blurb": "Swords"}}); err != nil {
+		t.Fatalf("an admin can't rename a site theme: %v", err)
+	}
+	if err := change(maya, admin, Edit{Set: skatingTheme, Cells: map[string]any{"added_by": admin}}); err != nil {
+		t.Fatalf("an admin can't make a site theme private to themselves: %v", err)
+	}
+	if got := len(as(t, s, guest, `(from THEME (where (= key "skating")))`)); got != 0 {
+		t.Errorf("someone with no invitation in it reads a theme an admin made private: %d", got)
+	}
+	if err := change(maya, admin, Edit{Set: skatingTheme, Cells: map[string]any{"added_by": ""}}); err != nil {
+		t.Fatalf("an admin can't make the theme public again: %v", err)
+	}
+	if err := change(maya, admin, Edit{Set: plainTheme, Cells: map[string]any{"added_by": admin}}); err == nil || !strings.Contains(err.Error(), "Create Your Own") {
+		t.Errorf("an admin making plain private: %v", err)
+	}
+	if err := change(maya, admin, Edit{Delete: private}); err != nil {
+		t.Fatalf("an admin can't delete someone's private theme: %v", err)
+	}
+}
+
 func TestTheThemeKitHoldsAPreviewAndTheSitesThemes(t *testing.T) {
 	s := sample(t)
 	t.Chdir("../..")

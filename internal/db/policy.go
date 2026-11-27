@@ -902,12 +902,15 @@ const PolicySource = `
 (set THEME.name (= @old.added_by @viewer))
 (set THEME.blurb (= @old.added_by @viewer))
 (set THEME.design (= @old.added_by @viewer))
-; Gather's admins make someone's theme one of the site's own
-(set THEME.added_by (and (admin_of "gather") (blank @new.added_by)))
+; Gather's admins rename any theme and rewrite its blurb
+(set THEME.name (admin_of "gather"))
+(set THEME.blurb (admin_of "gather"))
+; Gather's admins make a theme one of the site's own, or make one private to themselves
+(set THEME.added_by (and (admin_of "gather") (or (blank @new.added_by) (= @new.added_by @viewer))))
 ; a theme's owner removes it
 (delete THEME (= @old.added_by @viewer))
-; Gather's admins remove one of the site's own themes
-(delete THEME (and (admin_of "gather") (blank @old.added_by)))
+; Gather's admins remove any theme
+(delete THEME (admin_of "gather"))
 ; the pictures of a theme the viewer may read
 (read THEME_PICTURE
   (or (blank theme.added_by) (= theme.added_by @viewer) (admin_of "gather")
@@ -918,8 +921,8 @@ const PolicySource = `
 (insert THEME_PICTURE (= @new.theme.added_by @viewer))
 (set THEME_PICTURE.original (= @old.theme.added_by @viewer))
 (delete THEME_PICTURE (= @old.theme.added_by @viewer))
-; Gather's admins remove the pictures of one of the site's own themes
-(delete THEME_PICTURE (and (admin_of "gather") (blank @old.theme.added_by)))
+; Gather's admins remove any theme's pictures
+(delete THEME_PICTURE (admin_of "gather"))
 
 ;; Who? admins
 
