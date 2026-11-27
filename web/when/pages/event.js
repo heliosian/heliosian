@@ -9,12 +9,15 @@ import {openPersonCard} from '/personcard.js';
 import {setTitle} from '/shell.js';
 import {load} from '/router.js';
 import {setPicture, setStatus} from '../writes.js';
-import {openGuestForm} from '../guestpopups.js';
-import {answerIcon} from '../inviteparts.js';
+import {openGuestForm} from '/guestpopups.js';
+import {answerIcon} from '/inviteparts.js';
+import {openEditor} from '../eventeditor.js';
 import {andList} from '/andlist.js';
 import {personTile} from '/people.js';
 import {audienceChips, blocks} from '../events.js';
-import {fetchInvites, familyBand, familyAnswered, comingCard, guestListSection, inviteHostCall, flyerCard, addFlyerLink, openEditor, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '../invites.js';
+import {missingAnswers} from '/questionfields.js';
+import {notesPanel} from '/hostnotes.js';
+import {fetchInvites, familyBand, familyAnswered, householdQuestions, comingCard, guestListSection, inviteHostCall, flyerCard, addFlyerLink, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '/invites.js';
 
 function hero(e) {
   return detailHero({
@@ -64,7 +67,6 @@ export function eventPage(e) {
   top.append(back);
   if (e.can.edit || e.can.correct) {
     const edit = button('Edit Event', 'edit', 'button button-small button-secondary', async () => {
-      const {openEditor} = await import('../invites.js');
       openEditor(e, editorView, async () => {
         await load();
       });
@@ -167,10 +169,14 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
   const keep = keepAsk === e.id;
   keepAsk = null;
   if (view.mine.length) {
+    const asked = await householdQuestions(e, view);
+    if (!ask.isConnected) {
+      return;
+    }
     ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
     const self = view.mine.find(r => r.key === me().id && !r.guestOf);
-    const done = self ? Boolean(self.answer) : familyAnswered(view);
-    ask.replaceChildren(done && !keep ? '' : familyBand(e, view, refresh));
+    const done = (self ? Boolean(self.answer) : familyAnswered(view)) && !missingAnswers(asked).length;
+    ask.replaceChildren(done && !keep ? '' : familyBand(e, view, refresh, asked));
   } else if ((view.guests || view.host) && (e.sharing === 'Public' || e.sharing === 'Link') && !isParty(e) && guest.repaint) {
     guest.add = () => openGuestForm(e, me().id, refresh);
     guest.repaint();
@@ -215,6 +221,11 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
     if (card) {
       answered.replaceChildren(card);
     }
+  }
+  if (view.group.kind === 'event' && view.host) {
+    answered.append(notesPanel(e, true));
+  } else if (view.group.kind === 'event' && view.mine.length) {
+    ask.append(notesPanel(e, false));
   }
   if ((view.hosts.length || view.host) && (view.host || !view.hostsHidden)) {
     info.append(hostsRow(e, view, refresh));
@@ -296,6 +307,7 @@ function rsvpCard(e, slot, guest) {
     }
     const answers = () => [
       button('Yes', answerIcon('yes'), 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say(word === 'yes' ? '' : 'yes')),
+      ...(e.groups.rsvp_maybe ? [button('Maybe', answerIcon('maybe'), 'button rsvp-maybe' + (word === 'maybe' ? ' is-on' : ''), () => say(word === 'maybe' ? '' : 'maybe'))] : []),
       button('No', answerIcon('no'), 'button rsvp-no' + (word === 'no' ? ' is-on' : ''), () => say(word === 'no' ? '' : 'no')),
     ];
     if (settled) {

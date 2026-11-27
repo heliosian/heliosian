@@ -49,7 +49,7 @@ const (
 var searchTables = []string{"GROUP", "PERSON", "DOCUMENT"}
 
 var searchExclusions = []string{
-	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)))))`,
+	`(from GROUP (where (or (in id (select GROUP.rsvp_yes)) (in id (select GROUP.rsvp_no)) (in id (select GROUP.rsvp_maybe)))))`,
 	`(from GROUP (where (= kind "event") (= parent.kind "event")))`,
 	`(from GROUP (where (in kind "day_part" "day" "category")))`,
 	`(from GROUP (where (in id (select GROUP.waitlist))))`,

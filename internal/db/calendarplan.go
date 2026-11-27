@@ -117,8 +117,8 @@ func (p *calendarPlan) deleteGroup(id string) {
 	if p.deleted[id] {
 		return
 	}
-	if g := p.groups[id]; g["rsvp_yes"] != "" || g["rsvp_no"] != "" || g["audience"] != "" {
-		p.edits = append(p.edits, Edit{Set: id, Cells: map[string]any{"rsvp_yes": "", "rsvp_no": "", "audience": ""}})
+	if g := p.groups[id]; g["rsvp_yes"] != "" || g["rsvp_no"] != "" || g["rsvp_maybe"] != "" || g["audience"] != "" {
+		p.edits = append(p.edits, Edit{Set: id, Cells: map[string]any{"rsvp_yes": "", "rsvp_no": "", "rsvp_maybe": "", "audience": ""}})
 	}
 	for _, child := range p.children[id] {
 		if !p.kept[child] {
@@ -210,7 +210,7 @@ func (p *calendarPlan) merge(event, into string) {
 		p.edits = append(p.edits, Edit{Set: alias, Cells: map[string]any{"target": into}})
 		p.kept[alias] = true
 	}
-	for _, column := range []string{"rsvp_yes", "rsvp_no", "hidden_for"} {
+	for _, column := range []string{"rsvp_yes", "rsvp_no", "rsvp_maybe", "hidden_for"} {
 		from, to := e[column], a[column]
 		if from == "" {
 			continue

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gather theme preview</title>
+<style>
+/*GATHER-STYLE*/
+
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; color: #22272b; background: #f3f1ec; }
+.kit-head { padding: 28px 24px 20px; background: #ffffff; border-bottom: 1px solid #e2ded5; }
+.kit-head h1 { margin: 0 0 6px; font-size: 22px; }
+.kit-head p { margin: 0 0 14px; max-width: 70ch; color: #5d646b; line-height: 1.45; }
+.kit-pick { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.kit-pick label { display: inline-flex; align-items: center; padding: 9px 16px; border-radius: 8px; background: #0e4d54; color: #ffffff; font-weight: 600; cursor: pointer; }
+.kit-pick label.is-secondary { background: #e6ecec; color: #0e4d54; }
+.kit-pick input { display: none; }
+.kit-report { margin: 20px 24px 0; padding: 14px 18px; border-radius: 10px; background: #ffffff; border: 1px solid #e2ded5; line-height: 1.45; }
+.kit-report.is-ok { border-color: #8cc5a0; background: #effaf2; }
+.kit-report.is-bad { border-color: #e3a1a1; background: #fdf1f1; }
+.kit-report h2 { margin: 0 0 6px; font-size: 16px; }
+.kit-report ul { margin: 0; padding-left: 20px; }
+.kit-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; margin: 20px 24px; padding: 32px; border-radius: 14px; background: var(--backdrop); color: var(--backdrop-ink); }
+.kit-stage h3, .kit-parts h3 { margin: 0 0 12px; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.75; }
+.kit-envelope { display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 420px; }
+.kit-envelope .envelope-stage { padding-top: 10px; }
+.kit-again { padding: 6px 12px; border: 1px solid currentColor; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.kit-card { display: flex; flex-direction: column; align-items: center; }
+.kit-parts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px; margin: 0 24px 32px; padding: 20px; border-radius: 14px; background: #ffffff; border: 1px solid #e2ded5; }
+.kit-part { display: flex; flex-direction: column; gap: 8px; }
+.kit-part .envelope-mini { width: 150px; }
+.kit-seal { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; border-radius: var(--seal-radius); outline: var(--seal-outline); outline-offset: -8px; background: var(--seal-picture), var(--seal); color: var(--seal-ink); font-family: var(--display); font-size: 28px; font-weight: 700; }
+.kit-liner { width: 150px; height: 90px; border-radius: 6px; background: var(--liner); }
+.kit-sidebar { width: 180px; padding: 14px; border-radius: 10px; }
+.kit-sidebar span { display: block; padding: 7px 10px; border-radius: 6px; font-size: 14px; }
+.kit-empty { margin: 40px 24px; color: #5d646b; }
+@media (max-width: 900px) { .kit-stage { grid-template-columns: minmax(0, 1fr); padding: 18px; } }
+</style>
+</head>
+<body>
+<header class="kit-head">
+  <h1>Gather theme preview</h1>
+  <p>Choose a theme’s folder: its <code>theme.json</code> and the pictures it names. This page draws the envelope and card the way Gather does, and lists anything Gather would refuse when you upload it. Nothing leaves your computer except the request for the theme’s Google Fonts. After you change the theme, choose the folder again.</p>
+  <div class="kit-pick">
+    <label>Choose a theme folder<input type="file" id="folder" webkitdirectory multiple></label>
+    <label class="is-secondary">Choose files<input type="file" id="files" multiple></label>
+  </div>
+</header>
+<section class="kit-report" id="report" hidden></section>
+<p class="kit-empty" id="empty">No theme chosen yet. Try one from the kit’s <code>examples</code> folder.</p>
+<section class="kit-stage" id="stage" hidden>
+  <div><h3>Sealed</h3><div class="kit-envelope" id="envelope"></div></div>
+  <div><h3>Opened</h3><div class="kit-card" id="card"></div></div>
+</section>
+<section class="kit-parts" id="parts" hidden></section>
+<script>
+/*GATHER-CODE*/
+</script>
+<script>
+const standard = /*GATHER-STANDARD*/;
+const rules = /*GATHER-RULES*/;
+const {addThemes, themed, wrapped, sealMark} = modules['/themes.js'];
+const {sealedEnvelope, inviteCard, miniEnvelope} = modules['/envelope.js'];
+const {el} = modules['/elements.js'];
+
+const urlPattern = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^"'()\s]*))\s*\)/g;
+const anyHex = /#[0-9a-fA-F]{6}\b/;
+const wholeHex = /^#[0-9a-fA-F]{6}$/;
+const pictureTypes = /\.(jpe?g|png|gif|webp)$/i;
+const sample = {
+  name: 'Theo Turns Eight', subtitle: 'An afternoon of games and cake', day: 'Saturday, December 12', hours: '2:00 – 4:00 PM',
+  location: '14 Cypress Ave, Half Moon Bay', description: 'Bring a jacket for the backyard games. Pizza at three, cake at half past.', hosts: [], hostedBy: 'the Lindqvists',
+};
+let previews = 0;
+
+function isSection(v) {
+  return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+}
+
+function merged(base, over) {
+  const out = {...base};
+  for (const [k, v] of Object.entries(over)) {
+    out[k] = isSection(v) && isSection(base[k]) ? merged(base[k], v) : v;
+  }
+  return out;
+}
+
+function at(d, path) {
+  return path.split('.').reduce((v, k) => (isSection(v) ? v[k] : undefined), d);
+}
+
+function eachString(v, visit, path = '') {
+  if (typeof v === 'string') {
+    visit(v, path);
+    return;
+  }
+  if (Array.isArray(v)) {
+    v.forEach((x, i) => eachString(x, visit, `${path}[${i}]`));
+    return;
+  }
+  if (isSection(v)) {
+    for (const [k, x] of Object.entries(v)) {
+      eachString(x, visit, path ? `${path}.${k}` : k);
+    }
+  }
+}
+
+function strangers(over, base, path, out) {
+  for (const [k, v] of Object.entries(over)) {
+    const p = path ? `${path}.${k}` : k;
+    if (!(k in base)) {
+      out.push(`${p} is not a setting standard.json has.`);
+      continue;
+    }
+    const b = base[k];
+    if (Array.isArray(b)) {
+      if (!Array.isArray(v) || v.some(x => typeof x !== 'string')) {
+        out.push(`${p} is a list of text.`);
+      }
+      continue;
+    }
+    if (isSection(b)) {
+      if (!isSection(v)) {
+        out.push(`${p} is a section of settings, not ${JSON.stringify(v)}.`);
+        continue;
+      }
+      strangers(v, b, p, out);
+      continue;
+    }
+    if (typeof v !== 'string') {
+      out.push(`${p} is text, not ${JSON.stringify(v)}. Put it in quotes.`);
+    }
+  }
+}
+
+function urlTargets(design) {
+  const out = [];
+  eachString(design, s => {
+    for (const m of s.matchAll(urlPattern)) {
+      out.push(m[1] ?? m[2] ?? m[3] ?? '');
+    }
+  });
+  return out;
+}
+
+function check(theme, pictures) {
+  const problems = [];
+  if (!isSection(theme)) {
+    return ['theme.json is not a JSON object.'];
+  }
+  if (typeof theme.key !== 'string' || !new RegExp(rules.key).test(theme.key)) {
+    problems.push(`key is lower-case letters, digits and dashes, like "ice-rink", not ${JSON.stringify(theme.key)}.`);
+  }
+  if (typeof theme.name !== 'string' || !theme.name) {
+    problems.push('name is required, as text.');
+  }
+  if (theme.blurb !== undefined && typeof theme.blurb !== 'string') {
+    problems.push('blurb is text.');
+  }
+  const {key, name, blurb, ...design} = theme;
+  strangers(design, standard, '', problems);
+  if (problems.length) {
+    return problems;
+  }
+  const whole = merged(standard, design);
+  eachString(whole, (s, path) => {
+    if (s === '') {
+      problems.push(`${path} is blank. Write none for a part the theme does without.`);
+    }
+  });
+  if (!rules.shapes.includes(whole.seal.shape)) {
+    problems.push(`seal.shape is ${rules.shapes.join(', ')}, not ${JSON.stringify(whole.seal.shape)}.`);
+  }
+  const sealPicture = whole.seal.picture;
+  if (sealPicture !== 'none' && (!new RegExp(urlPattern.source).test(sealPicture) || anyHex.test(sealPicture))) {
+    problems.push(`seal.picture is none or picture layers drawn over seal.color, with no color of its own, not ${JSON.stringify(sealPicture)}.`);
+  }
+  if (!rules.aligns.includes(whole.card.align)) {
+    problems.push(`card.align is ${rules.aligns.join(' or ')}, not ${JSON.stringify(whole.card.align)}.`);
+  }
+  for (const path of rules.mailPaths) {
+    if (!anyHex.test(at(whole, path) || '')) {
+      problems.push(`${path} has no #rrggbb color. The invitation email is drawn from it; end a gradient or picture with a color layer.`);
+    }
+  }
+  for (const role of rules.textRoles) {
+    const c = whole.text[role].color;
+    if (c !== 'ink' && c !== 'accent' && !wholeHex.test(c)) {
+      problems.push(`text.${role}.color is ink, accent or a #rrggbb color, not ${JSON.stringify(c)}.`);
+    }
+  }
+  const named = [];
+  for (const target of urlTargets(design)) {
+    if (target.startsWith('data:')) {
+      continue;
+    }
+    if (!target || /[\/:\\]/.test(target)) {
+      problems.push(`The design names ${JSON.stringify(target)}. A picture is a data: address or the file name of a picture in the theme’s folder.`);
+      continue;
+    }
+    if (!named.includes(target)) {
+      named.push(target);
+    }
+  }
+  for (const n of named) {
+    if (!pictures.has(n)) {
+      problems.push(`The design names ${n}, which isn’t in the folder.`);
+    }
+  }
+  return problems;
+}
+
+function resolved(v, urls) {
+  if (typeof v === 'string') {
+    return v.replace(urlPattern, (whole, a, b, c) => {
+      const n = a ?? b ?? c ?? '';
+      return urls.has(n) ? `url("${urls.get(n)}")` : whole;
+    });
+  }
+  if (Array.isArray(v)) {
+    return v.map(x => resolved(x, urls));
+  }
+  if (isSection(v)) {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, resolved(x, urls)]));
+  }
+  return v;
+}
+
+function report(problems, theme) {
+  const box = document.getElementById('report');
+  box.hidden = false;
+  box.className = 'kit-report ' + (problems.length ? 'is-bad' : 'is-ok');
+  const head = el('h2', '', problems.length ? `Gather would refuse this theme: ${problems.length} to fix` : `${theme.name} is ready to upload`);
+  box.replaceChildren(head);
+  if (!problems.length) {
+    box.append(el('p', '', 'Drop the folder into Upload a theme in Gather.'));
+    return;
+  }
+  const list = el('ul');
+  list.append(...problems.map(p => el('li', '', p)));
+  box.append(list);
+}
+
+function part(title, node) {
+  const wrap = el('div', 'kit-part');
+  wrap.append(el('h3', '', title), node);
+  return wrap;
+}
+
+function draw(theme, urls) {
+  const {key, name, blurb, ...design} = theme;
+  const whole = resolved(merged(standard, design), urls);
+  const id = `preview-${++previews}`;
+  addThemes([{...whole, id, key, name, blurb}]);
+  const look = {theme: id, envelope: '', seal: '', liner: '', design: {}};
+  const stage = themed(document.getElementById('stage'), look);
+  stage.hidden = false;
+  const envelope = document.getElementById('envelope');
+  const seal = () => {
+    envelope.replaceChildren(sealedEnvelope(look, sample.name, 'For the Ashdown family', () => {
+      const again = el('button', 'kit-again', 'Seal it again');
+      again.type = 'button';
+      again.addEventListener('click', seal);
+      envelope.replaceChildren(inviteCard({...sample, look}), again);
+    }));
+  };
+  seal();
+  document.getElementById('card').replaceChildren(inviteCard({...sample, look}));
+  const sidebar = el('div', 'kit-sidebar');
+  sidebar.style.background = whole.sidebar.background;
+  sidebar.style.color = whole.sidebar.ink;
+  const active = el('span', '', 'Details');
+  active.style.background = whole.sidebar.active;
+  sidebar.append(active, el('span', '', 'Guest list'), el('span', '', 'Questions'));
+  const parts = document.getElementById('parts');
+  parts.hidden = false;
+  parts.replaceChildren(
+    part('Envelope', miniEnvelope(look, sample.name)),
+    part('Seal', wrapped(el('span', 'kit-seal', sealMark(look, sample.name)), look)),
+    part('Liner', wrapped(el('span', 'kit-liner'), look)),
+    part('Sidebar in Gather', sidebar),
+  );
+}
+
+async function choose(list) {
+  const files = [...list].filter(f => !f.name.startsWith('.'));
+  const themes = files.filter(f => f.name === 'theme.json');
+  document.getElementById('empty').hidden = true;
+  if (themes.length !== 1) {
+    report([themes.length ? 'That holds more than one theme.json. Choose one theme’s own folder.' : 'There’s no theme.json there. Choose the folder that holds it.'], {});
+    return;
+  }
+  const folder = (themes[0].webkitRelativePath || '').split('/').slice(0, -1).join('/');
+  const pictures = new Map(files.filter(f => pictureTypes.test(f.name) && (f.webkitRelativePath || '').split('/').slice(0, -1).join('/') === folder).map(f => [f.name, f]));
+  let theme;
+  try {
+    theme = JSON.parse(await themes[0].text());
+  } catch (err) {
+    report([`theme.json is not JSON: ${err.message}`], {});
+    return;
+  }
+  const problems = check(theme, pictures);
+  report(problems, theme);
+  if (problems.length && !isSection(theme)) {
+    return;
+  }
+  const urls = new Map([...pictures].map(([n, f]) => [n, URL.createObjectURL(f)]));
+  try {
+    draw(theme, urls);
+  } catch (err) {
+    document.getElementById('stage').hidden = true;
+    document.getElementById('parts').hidden = true;
+    report([...problems, `It couldn’t be drawn: ${err.message}`], theme);
+  }
+}
+
+for (const id of ['folder', 'files']) {
+  const input = document.getElementById(id);
+  input.addEventListener('change', () => {
+    choose(input.files);
+    input.value = '';
+  });
+}
+</script>
+</body>
+</html>

@@ -3,9 +3,11 @@ import {popup, closeModal, closeLayers} from '/modal.js';
 import {field, text as textInput} from '/form.js';
 import {openPersonCard, doneButton} from '/personcard.js';
 import {createPersonPicker} from '/picker.js';
-import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from './inviteparts.js';
-import {bringGuest, sendTo, sendPending, takeOff, deleteEvent, cancelEvent} from './guestlist.js';
-import {state, me} from './state.js';
+import {answerWords, firstName, answerButtons, ticketWords, ticketDetail, answeredWords, pickerPeople} from '/inviteparts.js';
+import {bringGuest, sendTo, sendPending, takeOff, changeGuestEmail, deleteEvent, cancelEvent} from '/guestlist.js';
+import {host} from '/guesthost.js';
+
+const me = () => host.me();
 import {personRow} from '/personrow.js';
 import {pageSize, fillPager} from '/members.js';
 
@@ -38,7 +40,11 @@ function guestForm(e, of, onDone) {
   outside.hidden = true;
   const name = textInput('', {maxLength: 200, placeholder: 'Full name'});
   const email = textInput('', {type: 'email', placeholder: 'Optional'});
-  outside.append(field('Name', name), field('Email', email));
+  const child = el('input');
+  child.type = 'checkbox';
+  const childLabel = el('label', 'message-to-choice');
+  childLabel.append(child, el('span', '', 'This guest is a child'));
+  outside.append(field('Name', name), field('Email', email), childLabel);
   panels.outside = outside;
   form.append(helios, outside);
   const choices = el('div', 'guest-form-choices');
@@ -85,6 +91,7 @@ function guestForm(e, of, onDone) {
       }
       body.name = name.value.trim();
       body.email = email.value.trim();
+      body.child = child.checked;
     }
     submit.disabled = true;
     try {
@@ -108,6 +115,33 @@ export function openGuestForm(e, of, onDone) {
   });
   shut = popup('Add a guest', form).shut;
   form.querySelector('.person-picker input').focus();
+}
+
+function emailChange(e, p, refresh) {
+  const box = el('div', 'guest-card-email');
+  const input = textInput(p.email, {type: 'email', placeholder: 'name@example.com'});
+  const status = el('span', 'save-status');
+  const save = button('Change email', 'mail', 'button button-secondary button-small', async () => {
+    const address = input.value.trim();
+    if (!address || address.toLowerCase() === (p.email || '').toLowerCase()) {
+      status.textContent = 'Type the new address first.';
+      return;
+    }
+    save.disabled = true;
+    try {
+      await changeGuestEmail(e, p, address);
+      toast(`${firstName(p)} now gets this invitation at ${address}`);
+      closeModal();
+      refresh();
+    } catch (err) {
+      status.textContent = err.message;
+      save.disabled = false;
+    }
+  });
+  const row = el('div', 'guest-card-email-row');
+  row.append(input, save);
+  box.append(el('div', 'rsvps-head', 'Their email'), row, el('div', 'hint', 'For this invitation only: their answer stays, and their invitations from anyone else keep going to the old address. Resend the invitation to reach the new one.'), status);
+  return box;
 }
 
 export function openGuestCard(e, p, view, refresh) {
@@ -134,6 +168,9 @@ export function openGuestCard(e, p, view, refresh) {
     ask.append(el('div', 'guests-by', answeredWords(p)));
   }
   fields.push(ask);
+  if (p.outside && p.invited) {
+    fields.push(emailChange(e, p, refresh));
+  }
   const links = el('div', 'guest-card-links');
   if (p.invited && p.email && !p.sent) {
     links.append(button('Send invitation', 'mail', 'link-button', async () => {
@@ -253,7 +290,7 @@ export function openPending(e, view, refresh) {
       before: [tick],
       lines: [[r.guestOf ? `Guest of ${r.guestOfName}` : r.line, r.email].filter(Boolean).join(' · '), marks],
       after: [after],
-      gradeColors: state.model.gradeColors,
+      gradeColors: host.gradeColors(),
     });
   };
   const draw = to => {

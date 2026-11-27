@@ -126,6 +126,11 @@ Helios MCP, in `docs/mcp/`:
 
 - [mcp.md](docs/mcp/mcp.md) — the data model for Claude and other MCP clients: connecting, signing in through OAuth, and the tools
 
+Helios Gather, in `docs/gather/`:
+
+- [gather.md](docs/gather/gather.md) — invitations in an envelope: a When event with a design, its envelope page, and answering
+- [themes.md](docs/gather/themes.md) — where invitation themes live, how hosts upload them, and the theme kit they're made from
+
 Audits, in `docs/audits/`:
 
 - [README.md](docs/audits/README.md) — how every audit is run: reading the existing issues first, and how findings are filed and closed

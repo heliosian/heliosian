@@ -48,14 +48,21 @@ func RegisterInvitations(mux, api *http.ServeMux, s *Store, pics *Pictures, toke
 	api.HandleFunc("POST /api/do/guest-mail", modelAction(s, tokens, iv.guestMail))
 	api.HandleFunc("POST /api/do/add-guests", modelAction(s, tokens, iv.addGuests))
 	api.HandleFunc("POST /api/do/remove-guest", modelAction(s, tokens, iv.removeGuest))
-	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
-	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
-	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)
-	mux.HandleFunc("POST /open/ext/{token}/guest", iv.extGuest)
-	mux.HandleFunc("DELETE /open/ext/{token}/guest", iv.extRemoveGuest)
+	iv.RegisterGuestPages(mux)
 	mux.HandleFunc("POST /hooks/replies/mime", iv.replies)
 	go iv.run()
 	return iv
+}
+
+func (iv *Invitations) RegisterGuestPages(mux *http.ServeMux) {
+	mux.HandleFunc("GET /open/ext/{token}", iv.extView)
+	mux.HandleFunc("GET /open/ext/{token}/flyer", iv.extFlyer)
+	mux.HandleFunc("GET /open/ext/{token}/picture/{part}", iv.extPicture)
+	mux.HandleFunc("POST /open/ext/{token}", iv.extAnswer)
+	mux.HandleFunc("POST /open/ext/{token}/guest", iv.extGuest)
+	mux.HandleFunc("POST /open/ext/{token}/reply", iv.extReply)
+	mux.HandleFunc("POST /open/ext/{token}/comment", iv.extComment)
+	mux.HandleFunc("DELETE /open/ext/{token}/guest", iv.extRemoveGuest)
 }
 
 func (iv *Invitations) Start() {
@@ -213,8 +220,10 @@ func (m *Model) pendingOf(group string) []string {
 	return out
 }
 
+var answerColumns = []struct{ column, word, suffix string }{{"rsvp_yes", "yes", " Going"}, {"rsvp_maybe", "maybe", " Maybe"}, {"rsvp_no", "no", " Not Going"}}
+
 func (m *Model) answerOf(g store.Row, person string) string {
-	for _, a := range []struct{ column, word string }{{"rsvp_yes", "yes"}, {"rsvp_no", "no"}} {
+	for _, a := range answerColumns {
 		if g[a.column] == "" {
 			continue
 		}
@@ -263,20 +272,27 @@ func (m *Model) ended(g store.Row, now time.Time) bool {
 
 func (m *Model) clearAnswerEdits(g store.Row, person string) []Edit {
 	edits := []Edit{}
-	for _, column := range []string{"rsvp_yes", "rsvp_no"} {
-		if g[column] == "" {
+	for _, a := range answerColumns {
+		if g[a.column] == "" {
 			continue
 		}
-		if row, ok := m.Table("MEMBER").Find(g[column], person); ok {
+		if row, ok := m.Table("MEMBER").Find(g[a.column], person); ok {
 			edits = append(edits, Edit{Delete: row["id"]})
 		}
 	}
 	return edits
 }
 
+func answerColumn(g store.Row, answer string) string {
+	if answer == "maybe" && g["maybe"] != "Yes" {
+		return ""
+	}
+	return map[string]string{"yes": "rsvp_yes", "maybe": "rsvp_maybe", "no": "rsvp_no"}[answer]
+}
+
 func (m *Model) answerEdits(g store.Row, person, answer, by string, at time.Time) []Edit {
 	edits := m.clearAnswerEdits(g, person)
-	column := map[string]string{"yes": "rsvp_yes", "no": "rsvp_no"}[answer]
+	column := answerColumn(g, answer)
 	if column == "" {
 		return edits
 	}
@@ -405,7 +421,7 @@ type guestMailAsk struct {
 	Notify  bool     `json:"notify"`
 }
 
-var guestMailKinds = map[string]string{"reminder": "reminder", "message": "post", "update": "update", "cancel": "update"}
+var guestMailKinds = map[string]string{"reminder": "reminder", "message": "post", "update": "update", "cancel": "update", "thanks": "thanks"}
 
 func (iv *Invitations) storeText(ctx context.Context, m *Model, text string) (string, []Edit, error) {
 	raw := []byte(text)
@@ -433,14 +449,20 @@ func (iv *Invitations) guestMail(ctx context.Context, m *Model, env Env, actor a
 	}
 	kind, ok := guestMailKinds[ask.Kind]
 	if !ok {
-		return sentAnswer{}, access.Invalid("kind is reminder, message, update or cancel, not %q", ask.Kind)
+		return sentAnswer{}, access.Invalid("kind is reminder, message, update, cancel or thanks, not %q", ask.Kind)
 	}
 	text := strings.TrimSpace(ask.Text)
 	if len(text) > maxGuestWords {
 		return sentAnswer{}, access.Invalid("the words run over %d characters", maxGuestWords)
 	}
-	if (ask.Kind == "reminder" || ask.Kind == "message") && (strings.TrimSpace(ask.Subject) == "" || text == "") {
+	if (ask.Kind == "reminder" || ask.Kind == "message" || ask.Kind == "thanks") && (strings.TrimSpace(ask.Subject) == "" || text == "") {
 		return sentAnswer{}, access.Invalid("a subject and some words, please")
+	}
+	if ask.Kind == "thanks" {
+		from, _, _, spans := mail.Span(g["start"], g["end"], School)
+		if g["status"] != "open" || !spans || env.Now.Before(from) {
+			return sentAnswer{}, access.Invalid("a thank-you note goes once the event has begun")
+		}
 	}
 	edits := []Edit{}
 	if ask.Kind == "cancel" {
@@ -499,6 +521,7 @@ type guestAsk struct {
 	Person string `json:"person"`
 	Name   string `json:"name"`
 	Email  string `json:"email"`
+	Child  bool   `json:"child"`
 }
 
 type addGuestsAsk struct {
@@ -537,7 +560,7 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 			}
 		}
 	}
-	if ask.Answer != "" && ask.Answer != "yes" {
+	if ask.Answer != "" && ask.Answer != "yes" && !(runs && answerColumn(g, ask.Answer) != "") {
 		return sentAnswer{}, access.Invalid("a guest is answered for as yes or not at all, not %q", ask.Answer)
 	}
 	if len(ask.People) == 0 {
@@ -577,6 +600,9 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 		row := map[string]any{"source": "guest"}
 		if name != "" {
 			row["name_long_override"] = name
+		}
+		if guest.Child {
+			row["child"] = true
 		}
 		edits = append(edits, Edit{Insert: "PERSON", As: as, Row: row})
 		if address != "" {
@@ -654,9 +680,9 @@ func (iv *Invitations) addGuests(ctx context.Context, m *Model, env Env, actor a
 		edits = append(edits, guestMembership(g, env.Viewer, Edit{Insert: "MEMBER", Row: row}))
 		added = append(added, p)
 	}
-	if ask.Answer == "yes" {
+	if ask.Answer != "" {
 		for _, p := range people {
-			edits = append(edits, m.answerEdits(g, p, "yes", env.Viewer, env.Now)...)
+			edits = append(edits, m.answerEdits(g, p, ask.Answer, env.Viewer, env.Now)...)
 		}
 	}
 	sending := []string{}

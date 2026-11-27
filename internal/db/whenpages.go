@@ -30,18 +30,32 @@ func WhenCardStyle(name, tagline func() string) *sharecard.Style {
 
 type WhenPages struct {
 	s      *Store
+	pics   *Pictures
 	bucket *blob.Bucket
 	style  *sharecard.Style
 }
 
-func NewWhenPages(s *Store, bucket *blob.Bucket, style *sharecard.Style) *WhenPages {
-	return &WhenPages{s: s, bucket: bucket, style: style}
+func NewWhenPages(s *Store, pics *Pictures, style *sharecard.Style) *WhenPages {
+	return &WhenPages{s: s, pics: pics, bucket: pics.bucket, style: style}
 }
 
 func (p *WhenPages) Register(mux *http.ServeMux) {
+	p.registerCards(mux)
+	mux.HandleFunc("GET /ext/{token}", p.extPage("web/public/when/ext.html"))
+}
+
+func (p *WhenPages) RegisterGather(mux *http.ServeMux) {
+	p.registerCards(mux)
+	mux.HandleFunc("GET /ext/{token}", p.extPage("web/public/gather/ext.html"))
+	mux.HandleFunc("GET /open/envelope/{id}", p.envelopePicture)
+	mux.HandleFunc("GET /open/themes", p.themes)
+	mux.HandleFunc("GET /open/theme-kit.zip", p.themeKit)
+	mux.HandleFunc("GET "+themePictureRoute+"{id}", p.themePicture)
+}
+
+func (p *WhenPages) registerCards(mux *http.ServeMux) {
 	mux.HandleFunc("GET /open/share/upcoming.png", p.shareUpcoming)
 	mux.HandleFunc("GET /open/share/{id}", p.shareCard)
-	mux.HandleFunc("GET /ext/{token}", p.extPage)
 }
 
 func (m *Model) sharedGroup(key string) store.Row {
@@ -74,20 +88,22 @@ func (p *WhenPages) head(g store.Row, origin string) string {
 	return p.style.PreviewTags(g["name"], eventBlurb(g), origin+g["path"], origin+"/open/share/"+g["id"]+".png")
 }
 
-func (p *WhenPages) extPage(w http.ResponseWriter, r *http.Request) {
-	page, err := os.ReadFile(extShell)
-	if err != nil {
-		serve.Error(w, r, err)
-		return
+func (p *WhenPages) extPage(shell string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		page, err := os.ReadFile(shell)
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		m := p.s.Model()
+		head := ""
+		if _, g, ok := m.invitedGroup(r.PathValue("token")); ok {
+			head = p.head(g, "https://"+r.Host)
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write([]byte(strings.Replace(string(page), "<!--preview-->", head, 1)))
 	}
-	m := p.s.Model()
-	head := ""
-	if _, g, ok := m.invitedGroup(r.PathValue("token")); ok {
-		head = p.head(g, "https://"+r.Host)
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write([]byte(strings.Replace(string(page), "<!--preview-->", head, 1)))
 }
 
 func (p *WhenPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f4e54">
+<meta name="robots" content="noindex">
+<title>You're invited · Helios Gather</title>
+<!--preview-->
+<link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png">
+<link rel="icon" href="/brand/icon-192.png">
+<link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/fonts/fonts.css">
+<link rel="stylesheet" href="/palette.css">
+<link rel="stylesheet" href="/questions.css">
+<link rel="stylesheet" href="/envelope.css">
+<link rel="modulepreload" href="/elements.js">
+<link rel="modulepreload" href="/themes.js">
+<link rel="modulepreload" href="/envelope.js">
+<link rel="modulepreload" href="/questionfields.js">
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 15px; line-height: 1.4; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; }
+button { font: inherit; }
+.invite-page { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; padding: 48px max(24px, calc((100% - 1120px) / 2)) 96px; background: var(--backdrop); }
+.invite-page.is-sealed { grid-template-columns: minmax(0, 1fr); }
+.invite-page.is-sealed .invite-side { display: none; }
+.invite-stage { position: relative; display: flex; justify-content: center; padding-top: 12px; }
+.invite-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; }
+.invite-panel { padding: 20px; border-radius: 14px; background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.06); }
+.invite-panel-title { margin: 0 0 14px; font-size: 17px; font-weight: 800; }
+.invite-panel-note { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.reply-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.reply-name { flex: 1 1 140px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.reply-choices { display: flex; gap: 6px; flex-shrink: 0; }
+.reply-choice { display: inline-flex; align-items: center; gap: 4px; min-width: 64px; justify-content: center; padding: 7px 14px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--card); color: var(--ink); font-weight: 700; cursor: pointer; }
+.reply-choice svg { width: 15px; height: 15px; }
+.reply-choice:hover { border-color: var(--accent); }
+.reply-choice.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.reply-remove { border: 0; background: none; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.reply-status { margin: 8px 0 0; font-size: 13px; color: var(--alert); }
+.reply-status:empty { display: none; }
+.bring { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.bring-title { margin: 0 0 10px; font-size: 14px; font-weight: 800; }
+.bring-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.bring-form input:not([type=checkbox]) { grid-column: 1 / -1; width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: var(--field); }
+.bring-child { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+.bring-child input { accent-color: var(--accent); }
+.bring-add { padding: 9px 14px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-ink); font-weight: 700; cursor: pointer; }
+.note { padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.note strong { font-size: 13px; }
+.note p { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.note.is-reply { margin-left: 14px; padding-left: 10px; border-top: 0; border-left: 3px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.note-write { display: flex; gap: 8px; align-items: flex-end; margin-top: 10px; }
+.note-text { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; background: var(--field); resize: vertical; }
+.invite-gone { max-width: 520px; margin: 80px auto; padding: 32px 24px; text-align: center; background: var(--card); border-radius: 16px; }
+.invite-gone h1 { margin: 0 0 8px; font-size: 22px; }
+.invite-gone p { margin: 0; color: var(--muted); }
+.invite-loading { padding: 80px 16px; text-align: center; color: var(--muted); }
+@media (max-width: 980px) {
+  .invite-page { grid-template-columns: minmax(0, 1fr); padding: 24px 16px 60px; }
+  .invite-side { position: static; max-width: 560px; width: 100%; margin: 0 auto; }
+}
+</style>
+</head>
+<body>
+<div id="invite"><p class="invite-loading">Looking up your invitation…</p></div>
+<script type="module" src="/ext.js"></script>
+</body>
+</html>

@@ -363,6 +363,57 @@ func TestAnOutsideGuestCannotAttachADirectoryPerson(t *testing.T) {
 	}
 }
 
+func TestAnOutsideChildIsMarkedAsAdded(t *testing.T) {
+	h := newInviteHarness(t)
+	if rec := h.do(maya, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "family": true, "people": []map[string]any{
+		{"name": "Ana Rivera", "email": "ana@example.net"},
+		{"name": "Leo Rivera", "child": true},
+	}}); rec.Code != http.StatusOK {
+		t.Fatalf("add-guests: %d %s", rec.Code, rec.Body)
+	}
+	children := map[string]string{}
+	for _, p := range h.s.Model().Table("PERSON").All() {
+		if p["source"] == "guest" && (p["name_long"] == "Ana Rivera" || p["name_long"] == "Leo Rivera") {
+			children[p["name_long"]] = p["child"]
+		}
+	}
+	if children["Ana Rivera"] != "" || children["Leo Rivera"] != "Yes" {
+		t.Errorf("the Riveras' child marks are %v, want Leo alone", children)
+	}
+}
+
+func TestTheHostsMoveAnOutsideGuestToANewAddressForTheirListAlone(t *testing.T) {
+	h := newInviteHarness(t)
+	add := func(viewer, email, answer string) int {
+		return h.do(viewer, http.MethodPost, "/api/do/add-guests", map[string]any{"group": h.event, "answer": answer, "people": []map[string]string{{"name": "Coach Pat", "email": email}}}).Code
+	}
+	if code := add(maya, "coach@example.net", "no"); code != http.StatusOK {
+		t.Fatalf("the host adding a guest who said no: %d", code)
+	}
+	old := h.s.Model().personAt("coach@example.net")
+	if code := add(maya, "pat@example.net", "no"); code != http.StatusOK {
+		t.Fatalf("the host adding the guest at the new address: %d", code)
+	}
+	if rec := h.do(maya, http.MethodPost, "/api/do/remove-guest", map[string]string{"group": h.event, "person": old}); rec.Code != http.StatusOK {
+		t.Fatalf("taking the old address off: %d %s", rec.Code, rec.Body)
+	}
+	m := h.s.Model()
+	g, _ := m.Table("GROUP").Get(h.event)
+	moved := m.personAt("pat@example.net")
+	if moved == old || m.answerOf(g, moved) != "no" {
+		t.Errorf("the guest at the new address is %s answering %q, want someone new answering no", moved, m.answerOf(g, moved))
+	}
+	if m.personAt("coach@example.net") != old {
+		t.Error("the old address no longer identifies the old guest")
+	}
+	if m.onList(g, old) || !m.onList(g, moved) {
+		t.Errorf("on the list: old %v, new %v; want only the new", m.onList(g, old), m.onList(g, moved))
+	}
+	if code := add(rowan, "friend@example.net", "no"); code == http.StatusOK {
+		t.Error("someone who isn't a host answered no for a guest they added")
+	}
+}
+
 func TestAnOutsideGuestBringsOnlySoManyGuests(t *testing.T) {
 	h := newInviteHarness(t)
 	h.setup([]Edit{{Set: h.event, Cells: map[string]any{"auto_invite": true}}})

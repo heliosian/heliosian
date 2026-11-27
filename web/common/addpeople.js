@@ -1,9 +1,10 @@
 import {el, button, longToast} from '/elements.js';
 import {popup} from '/modal.js';
 import {personAdder, outsideAdder} from '/members.js';
+import {importAdder} from '/contactimport.js';
 import {ruleChoices, newRule} from '/listrules.js';
-import {addPeople, addRules, previewRules} from './guestlist.js';
-import {state, gradebands, dayLabel} from './state.js';
+import {addPeople, addRules, previewRules} from '/guestlist.js';
+import {host} from '/guesthost.js';
 
 export const outsideNote = 'Someone outside Helios - a coach, a grandparent, a friend - and their family. They get the email and the calendar invite with a page of their own to answer from, no sign-in needed, that shows the event and nothing of who else is coming. Everyone in a family answers for the others.';
 
@@ -24,16 +25,19 @@ export function guestAdders(e, view, done) {
     done(inviteWords(view.host, people));
   };
   return {
-    person: close => personAdder({isOn, onAdd: onAdd(close), gradeColors: state.model.gradeColors}),
+    person: close => personAdder({isOn, onAdd: onAdd(close), gradeColors: host.gradeColors()}),
     outside: close => outsideAdder({isOn, onAdd: onAdd(close), note: outsideNote}),
+    import: close => importAdder({isOn, onAdd: onAdd(close), note: importNote}),
   };
 }
+
+const importNote = 'Many people from outside Helios at once - paste names and email addresses, or choose a contacts file. Each is added on their own and gets an invitation and a page of their own to answer from.';
 
 export function openPicker(e, view, refresh, {tab = 'person'} = {}) {
   const box = el('div', 'picker');
   const tabs = el('div', 'tabs');
   const panel = el('div', 'picker-panel');
-  const kinds = view.host ? [['person', 'Add Person'], ['group', 'Add Group'], ['outside', 'Add Non-Helios']] : [['person', 'Add Person'], ['outside', 'Add Non-Helios']];
+  const kinds = view.host ? [['person', 'Add Person'], ['group', 'Add Group'], ['outside', 'Add Non-Helios'], ['import', 'Import a list']] : [['person', 'Add Person'], ['outside', 'Add Non-Helios']];
   let active = kinds.some(([key]) => key === tab) ? tab : 'person';
   for (const [key, label] of kinds) {
     const b = el('button', 'tab-button' + (key === active ? ' is-active' : ''), label);
@@ -94,7 +98,7 @@ function searchable(groups) {
 
 function groupNote(g) {
   if (g.kind === 'event' || g.kind === 'party') {
-    return g.start ? dayLabel(g.start.slice(0, 10)) : 'repeats';
+    return g.start ? host.dayLabel(g.start.slice(0, 10)) : 'repeats';
   }
   return '';
 }
@@ -201,7 +205,7 @@ function groupPanel(e, view, done) {
     }
   };
   const paint = () => {
-    roomChips.replaceChildren(...gradebands().flatMap(b => b.classrooms).map(c => chip({id: c.id, name: c.name, kind: 'classroom'}, state.model.colors[c.name])));
+    roomChips.replaceChildren(...host.gradebands().flatMap(b => b.classrooms).map(c => chip({id: c.id, name: c.name, kind: 'classroom'}, host.classroomColors()[c.name])));
     const grades = groups ? groups.filter(g => g.kind === 'grade').sort((a, b) => gradeOrder(a) - gradeOrder(b)) : [];
     gradeChips.replaceChildren(...grades.map(g => chip(g, g.color)));
     const others = [...picked.values()].filter(g => g.kind !== 'classroom' && g.kind !== 'grade');

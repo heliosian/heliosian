@@ -1,0 +1,22 @@
+{
+  "key": "larp",
+  "name": "LARP Quest",
+  "blurb": "Parchment, a wax seal and crossed swords",
+  "fonts": {"display": "'Cinzel Decorative', Cinzel, serif", "body": "'EB Garamond', Georgia, serif", "load": ["Cinzel Decorative:wght@700", "EB Garamond:ital,wght@0,400;0,600;1,400"]},
+  "page": {"backdrop": "radial-gradient(ellipse at top, #2f4a32, #121c14 75%)", "ink": "#efe3c4", "muted": "#b3a585"},
+  "sidebar": {"background": "linear-gradient(180deg, #121c14, #2f4a32)", "active": "rgba(201, 162, 74, 0.2)"},
+  "envelope": {"body": "#5a3b24", "side": "#4e331f", "front": "#66442a", "flap": "#452c1a", "liner": "radial-gradient(circle, #3e5e3f 0 5px, transparent 6px) 0 0 / 24px 24px, radial-gradient(circle, #c9a24a 0 2px, transparent 2.5px) 12px 12px / 24px 24px, #24361f", "radius": "4px"},
+  "seal": {"color": "#7a1f1f", "ink": "#f3d9a4", "picture": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='none' stroke='%23f3d9a4' stroke-width='2' stroke-dasharray='3 4'/%3E%3Cg transform='rotate(40 50 50)'%3E%3Cpath d='M48 14 L50 8 L52 14 V66 H48Z' fill='%23f3d9a4'/%3E%3Crect x='38' y='66' width='24' height='5' rx='2' fill='%23f3d9a4'/%3E%3Crect x='48' y='71' width='4' height='12' fill='%23c9a24a'/%3E%3Ccircle cx='50' cy='86' r='3.5' fill='%23f3d9a4'/%3E%3C/g%3E%3Cg transform='rotate(-40 50 50)'%3E%3Cpath d='M48 14 L50 8 L52 14 V66 H48Z' fill='%23f3d9a4'/%3E%3Crect x='38' y='66' width='24' height='5' rx='2' fill='%23f3d9a4'/%3E%3Crect x='48' y='71' width='4' height='12' fill='%23c9a24a'/%3E%3Ccircle cx='50' cy='86' r='3.5' fill='%23f3d9a4'/%3E%3C/g%3E%3C/svg%3E\") center / 82% no-repeat"},
+  "card": {
+    "background": "radial-gradient(ellipse at center, #f6ead0 55%, #e2cc9c)", "ink": "#3b2a1a", "accent": "#7a1f1f", "accentInk": "#f6ead0", "radius": "3px", "padding": "112px 56px 88px",
+    "art": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg transform='rotate(40 50 50)'%3E%3Cpath d='M48 8 L50 2 L52 8 V70 H48Z' fill='%238a8f98'/%3E%3Crect x='36' y='70' width='28' height='5' rx='2' fill='%238b6a3e'/%3E%3Crect x='48' y='75' width='4' height='14' fill='%235a3b24'/%3E%3Ccircle cx='50' cy='92' r='4' fill='%23c9a24a'/%3E%3C/g%3E%3Cg transform='rotate(-40 50 50)'%3E%3Cpath d='M48 8 L50 2 L52 8 V70 H48Z' fill='%238a8f98'/%3E%3Crect x='36' y='70' width='28' height='5' rx='2' fill='%238b6a3e'/%3E%3Crect x='48' y='75' width='4' height='14' fill='%235a3b24'/%3E%3Ccircle cx='50' cy='92' r='4' fill='%23c9a24a'/%3E%3C/g%3E%3C/svg%3E\") center top 24px / 68px no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 30'%3E%3Cpath d='M10 15 C50 0 70 30 100 15 C130 0 150 30 190 15' stroke='%238b6a3e' stroke-width='2' fill='none'/%3E%3Ccircle cx='100' cy='15' r='4' fill='%237a1f1f'/%3E%3Ccircle cx='10' cy='15' r='2.5' fill='%238b6a3e'/%3E%3Ccircle cx='190' cy='15' r='2.5' fill='%238b6a3e'/%3E%3C/svg%3E\") center bottom 34px / 180px no-repeat",
+    "frame": {"inset": "12px", "border": "3px double #8b6a3e", "shadow": "none"}
+  },
+  "text": {
+    "kicker": {"words": "Hear ye! You are summoned to", "size": "18px", "style": "italic", "case": "none", "spacing": "0.02em"},
+    "title": {"size": "40px", "lineHeight": "1.15", "color": "accent"},
+    "place": {"style": "normal"},
+    "message": {"style": "italic"},
+    "rule": {"width": "120px", "height": "4px", "style": "double"}
+  }
+}

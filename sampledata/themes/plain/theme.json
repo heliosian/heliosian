@@ -1,0 +1,7 @@
+{
+  "key": "plain",
+  "name": "Plain",
+  "blurb": "A blank white card for your own pictures",
+  "fonts": {"display": "Montserrat, sans-serif", "body": "Roboto, sans-serif"},
+  "seal": {"color": "#555555"}
+}

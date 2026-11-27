@@ -52,7 +52,9 @@ h1 { font-family: Montserrat, Roboto, sans-serif; font-size: 28px; line-height: 
 .family-pick svg { width: 13px; height: 13px; stroke-width: 2.5; }
 .family-pick.choice-yes.is-on { background: var(--green); border-color: var(--green); color: #fff; }
 .family-pick.choice-no.is-on { background: var(--ink); border-color: var(--ink); color: #fff; }
-.add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-top: 8px; }
+.add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 8px; margin-top: 8px; align-items: center; }
+.add .child { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
+.add .child input { width: auto; padding: 0; }
 .add input { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; font-size: 14px; }
 .add button { padding: 9px 14px; border: 0; border-radius: 8px; background: var(--brand); color: #fff; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .link { background: none; border: 0; padding: 0; color: var(--brand); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }

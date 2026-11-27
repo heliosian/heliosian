@@ -30,17 +30,19 @@ const PolicySource = `
   (and (not (blank @g.visible_to))
        (exists GROUP @v (= managed_by @g) (visible @v))))
 
-; @g holds those who said they are coming, or not, to a group the viewer may see
+; @g holds those who said they are coming, or not, or maybe, to a group the viewer may see
 (define (answers_visible @g)
   (or (exists GROUP @answered (= rsvp_yes @g) (visible @answered))
-      (exists GROUP @answered (= rsvp_no @g) (visible @answered))))
+      (exists GROUP @answered (= rsvp_no @g) (visible @answered))
+      (exists GROUP @answered (= rsvp_maybe @g) (visible @answered))))
 
 (define (declines @g)
   (exists GROUP (= rsvp_no @g)))
 
 (define (runs_answers @g)
   (or (exists GROUP @a (= rsvp_yes @g) (runs_list @a))
-      (exists GROUP @a (= rsvp_no @g) (runs_list @a))))
+      (exists GROUP @a (= rsvp_no @g) (runs_list @a))
+      (exists GROUP @a (= rsvp_maybe @g) (runs_list @a))))
 
 ; the viewer may answer for @m's person in @m's answer group: themselves, someone in their family, their guest at the group answered, or anyone in a group they manage
 (define (answers_for @m)
@@ -80,6 +82,10 @@ const PolicySource = `
 (define (birthday_helper @p)
   (or (exists EFFECTIVE_MEMBER (in group (select APP.visible_to (= key "birthday"))) (= person @p))
       (exists EFFECTIVE_MEMBER (in group (select APP.admins (= key "birthday"))) (= person @p))))
+
+; @t is no theme, one of the site's themes, or one the viewer uploaded
+(define (usable_theme @t)
+  (or (blank @t) (blank @t.added_by) (= @t.added_by @viewer)))
 
 ; the viewer is in effect a member of super-admins
 (define (super_admin)
@@ -208,7 +214,7 @@ const PolicySource = `
 
 ; the row's reference column c names a group other than the row itself, of which the row is not a managers, waitlist, answer, unsubscribed, co-chair offers, leads, audience or hidden group
 (define (counted c)
-  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.unsubscribed id) (!= c.chair_offers id)
+  (and (!= c id) (!= c.managed_by id) (!= c.waitlist id) (!= c.rsvp_yes id) (!= c.rsvp_no id) (!= c.rsvp_maybe id) (!= c.unsubscribed id) (!= c.chair_offers id)
        (!= c.leads id) (!= c.audience id) (!= c.hidden_for id)))
 
 ; @g exists only to serve one group: one row names it, as its managers, waitlist, answer, unsubscribed, co-chair offers, leads, audience or hidden group, and nothing else names it
@@ -218,6 +224,7 @@ const PolicySource = `
                  (select GROUP.waitlist @r (= waitlist @g) (counted waitlist))
                  (select GROUP.rsvp_yes @r (= rsvp_yes @g) (counted rsvp_yes))
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
+                 (select GROUP.rsvp_maybe @r (= rsvp_maybe @g) (counted rsvp_maybe))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
@@ -233,6 +240,7 @@ const PolicySource = `
                  (select GROUP.waitlist @r (= waitlist @g) (counted waitlist))
                  (select GROUP.rsvp_yes @r (= rsvp_yes @g) (counted rsvp_yes))
                  (select GROUP.rsvp_no @r (= rsvp_no @g) (counted rsvp_no))
+                 (select GROUP.rsvp_maybe @r (= rsvp_maybe @g) (counted rsvp_maybe))
                  (select GROUP.unsubscribed @r (= unsubscribed @g) (counted unsubscribed))
                  (select GROUP.chair_offers @r (= chair_offers @g) (counted chair_offers))
                  (select GROUP.leads @r (= leads @g) (counted leads))
@@ -320,6 +328,14 @@ const PolicySource = `
 (define (student @p)
   (in @p (members (slug "students"))))
 
+; the viewer may give answer @a: the event's hosts any, someone who sees the event one for a guest in their household or for a family they are in
+(define (answers_question @a)
+  (or (runs_list @a.question.group)
+      (and (visible @a.question.group)
+           (or (and (not (blank @a.person)) (blank @a.family) (!= @a.question.asked "household") (self_or_household @a.person))
+               (and (blank @a.person) (not (blank @a.family)) (= @a.question.asked "household")
+                    (in @a.family (select MEMBER.group (= person @viewer))))))))
+
 ; the viewer runs a group, or is no student and sees a party taking joining that has a price or a waitlist
 (define (brings_guests)
   (or (exists GROUP @l (runs_list @l))
@@ -374,8 +390,12 @@ const PolicySource = `
    vc_grade grade_override grade vc_classroom classroom_override classroom vc_crew crew_override crew
    vc_department department_override department vc_job_title job_title_override job_title
    phone vc_phone_visibility vc_address_visibility pronouns pronunciation facts facts_updated
-   photo_updated vc_bio path href who_href)
+   photo_updated vc_bio child path href who_href)
   true)
+; whoever brought an outside guest, or their own family, says whether they are a child
+(set PERSON.child
+  (and (= @old.source "guest")
+       (or (self_or_household @old) (exists MEMBER (= person @old) (= guest_of @viewer)))))
 ; a person's birthday and how they take part, to the Birthdays team
 (read PERSON (birthday birthday_participation) (birthday_team))
 ; when a person last signed out everywhere and when the Veracross import dropped them, for the server and super admins
@@ -481,7 +501,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no chair_offers leads audience hidden_for guests_invited_by auto_invite priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days theme envelope seal liner hosted_by design card_picture backdrop_picture priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -533,6 +553,28 @@ const PolicySource = `
        (visible group.parent)))
 ; every column of a rule
 (read RULE (id group order exclude target under person search property value replace_with within) true)
+; the questions of an event the viewer may see
+(read QUESTION (visible group))
+; every column of a question
+(read QUESTION (id group order text kind choices asked required going_only) true)
+; an answer, to the hosts of the event that asks it and to the household it is for
+(read ANSWER
+  (or (runs_list question.group)
+      (and (not (blank person)) (self_or_household person))
+      (and (not (blank family)) (in family (select MEMBER.group (= person @viewer))))))
+; every column of an answer
+(read ANSWER (id question person family value added added_by) true)
+; a note to an event's hosts, to the hosts and to the household of the guest who wrote it or whose note it answers
+(read COMMENT
+  (or (runs_list group)
+      (self_or_household person)
+      (exists COMMENT @n (= id @row.reply_to) (self_or_household @n.person))))
+; every column of a note to the hosts
+(read COMMENT (id group person reply_to text added) true)
+; an invitation's pages, to whoever sees the event
+(read INVITE_PAGE (visible group))
+; every column of an invitation's page but its uploaded picture
+(read INVITE_PAGE (id group order title body background picture) true)
 ; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown, but never who hid something
 (read MEMBER
   (or (self_or_household person)
@@ -679,7 +721,9 @@ const PolicySource = `
 ; how the name of a person the viewer may see is said
 (read CONTENT (exists PERSON @p (= pronunciation @row) (person_visible @p)))
 ; the flyer of a group the viewer may see, and how a family's name is said
-(read CONTENT (exists GROUP @g (or (= flyer @row) (= pronunciation @row)) (visible @g)))
+(read CONTENT (exists GROUP @g (or (= flyer @row) (= pronunciation @row) (= card_picture @row) (= backdrop_picture @row)) (visible @g)))
+; the background picture of an invitation page the viewer may see
+(read CONTENT (exists INVITE_PAGE @p (= picture @row) (visible @p.group)))
 ; the screenshot of a report the viewer sent
 (read CONTENT (exists REPORT (= screenshot @row) (= added_by @viewer)))
 ; the preview and picture of a stock picture, to anyone
@@ -846,6 +890,36 @@ const PolicySource = `
 (set GREETING.individual (= @old.added_by @viewer))
 ; a greeting's owner removes it
 (delete GREETING (= @old.added_by @viewer))
+; the site's themes, the viewer's own, those an invitation the viewer sees is drawn in, and every theme to Gather's admins
+(read THEME
+  (or (blank added_by) (= added_by @viewer) (admin_of "gather")
+      (exists GROUP @g (or (= theme @row) (= envelope @row) (= seal @row) (= liner @row)) (visible @g))))
+; every column of a theme
+(read THEME (id key name blurb design added_by) true)
+; anyone but a guest uploads a theme of their own
+(insert THEME (and (= @new.added_by @viewer) (!= @viewer.source "guest")))
+; a theme's owner renames it, rewrites its blurb and replaces its design
+(set THEME.name (= @old.added_by @viewer))
+(set THEME.blurb (= @old.added_by @viewer))
+(set THEME.design (= @old.added_by @viewer))
+; Gather's admins make someone's theme one of the site's own
+(set THEME.added_by (and (admin_of "gather") (blank @new.added_by)))
+; a theme's owner removes it
+(delete THEME (= @old.added_by @viewer))
+; Gather's admins remove one of the site's own themes
+(delete THEME (and (admin_of "gather") (blank @old.added_by)))
+; the pictures of a theme the viewer may read
+(read THEME_PICTURE
+  (or (blank theme.added_by) (= theme.added_by @viewer) (admin_of "gather")
+      (exists GROUP @g (or (= theme @row.theme) (= envelope @row.theme) (= seal @row.theme) (= liner @row.theme)) (visible @g))))
+; every column of a theme picture but its original
+(read THEME_PICTURE (id theme name picture) true)
+; a theme's owner adds, replaces and removes its pictures
+(insert THEME_PICTURE (= @new.theme.added_by @viewer))
+(set THEME_PICTURE.original (= @old.theme.added_by @viewer))
+(delete THEME_PICTURE (= @old.theme.added_by @viewer))
+; Gather's admins remove the pictures of one of the site's own themes
+(delete THEME_PICTURE (and (admin_of "gather") (blank @old.theme.added_by)))
 
 ;; Who? admins
 
@@ -1186,6 +1260,65 @@ const PolicySource = `
 (set GROUP.flyer_original (runs_list @old))
 ; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
 (set GROUP.auto_invite (runs_list @old))
+; a group's managers say how many days before it those who have not answered get a reminder, and how many days after the invitation those who have not opened it get it again
+(set GROUP.remind_days (runs_list @old))
+(set GROUP.remind_after_days (runs_list @old))
+(set GROUP.resend_days (runs_list @old))
+; an event's hosts choose the design Helios Gather draws its invitation in, from the site's themes and their own
+(set GROUP.theme (and (= @old.kind "event") (runs_list @old) (usable_theme @new.theme)))
+(set GROUP.envelope (and (= @old.kind "event") (runs_list @old) (usable_theme @new.envelope)))
+(set GROUP.liner (and (= @old.kind "event") (runs_list @old) (usable_theme @new.liner)))
+(set GROUP.seal (and (= @old.kind "event") (runs_list @old) (usable_theme @new.seal)))
+(set GROUP.design (and (= @old.kind "event") (runs_list @old)))
+(set GROUP.hosted_by (and (= @old.kind "event") (runs_list @old)))
+(set GROUP.card_picture_original (and (= @old.kind "event") (runs_list @old)))
+(set GROUP.backdrop_picture_original (and (= @old.kind "event") (runs_list @old)))
+; an event's hosts let its guests answer Maybe, or stop offering it
+(set GROUP.maybe (and (= @old.kind "event") (runs_list @old)))
+; an event's hosts give its invitation a question
+(insert QUESTION (and (= @new.group.kind "event") (runs_list @new.group)))
+; an event's hosts reorder its questions
+(set QUESTION.order (runs_list @old.group))
+; an event's hosts reword a question
+(set QUESTION.text (runs_list @old.group))
+; an event's hosts change how a question is answered
+(set QUESTION.kind (runs_list @old.group))
+; an event's hosts change a question's choices
+(set QUESTION.choices (runs_list @old.group))
+; an event's hosts change whom a question is asked of
+(set QUESTION.asked (runs_list @old.group))
+; an event's hosts make a question required or not
+(set QUESTION.required (runs_list @old.group))
+; an event's hosts ask a question only of those who say yes, or of everyone
+(set QUESTION.going_only (runs_list @old.group))
+; an event's hosts take a question away, with its answers
+(delete QUESTION (runs_list @old.group))
+; a guest's household answers a question asked of each guest for them, a family answers one asked once of each family, and the hosts answer for anyone
+(insert ANSWER (answers_question @new))
+; and changes the answer
+(set ANSWER.value (answers_question @old))
+; and stamps when
+(set ANSWER.added (answers_question @old))
+; and who
+(set ANSWER.added_by (and (answers_question @old) (= @new.added_by @viewer)))
+; and takes it back
+(delete ANSWER (answers_question @old))
+; anyone who sees an event writes its hosts a note, as themselves
+(insert COMMENT
+  (and (= @new.group.kind "event") (visible @new.group) (= @new.person @viewer) (blank @new.reply_to)))
+; an event's hosts reply to a guest's note, as themselves
+(insert COMMENT
+  (and (runs_list @new.group) (= @new.person @viewer) (not (blank @new.reply_to)) (= @new.reply_to.group @new.group)))
+; the writer takes their note back, and the hosts take away any
+(delete COMMENT (or (= @old.person @viewer) (runs_list @old.group)))
+; an event's hosts add pages to its invitation, write them, order them and take them away
+(insert INVITE_PAGE (and (= @new.group.kind "event") (runs_list @new.group)))
+(set INVITE_PAGE.order (runs_list @old.group))
+(set INVITE_PAGE.title (runs_list @old.group))
+(set INVITE_PAGE.body (runs_list @old.group))
+(set INVITE_PAGE.background (runs_list @old.group))
+(set INVITE_PAGE.picture_original (runs_list @old.group))
+(delete INVITE_PAGE (runs_list @old.group))
 (set GROUP.guests_invited_by
   (and (= @old.kind "activity") (runs_list @old)
        (or (blank @new.guests_invited_by) (sees_members @new.guests_invited_by))))
@@ -1238,6 +1371,7 @@ const PolicySource = `
 (insert GROUP
   (and (= @new.kind "event") (= @new.parent.kind "category") (!= @viewer.source "guest") (= @new.added_by @viewer)
        (blank @new.managed_by) (blank @new.url) (= @new.status "open")
+       (usable_theme @new.theme) (usable_theme @new.envelope) (usable_theme @new.seal) (usable_theme @new.liner)
        (or (blank @new.visible_to) (and (= @new.visible_to @new.parent.visible_to) (not @new.listed)))))
 ; whoever added an event or party that has no managers gives it a plain group of their own to manage it, so they host it
 (set GROUP.managed_by

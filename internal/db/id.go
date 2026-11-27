@@ -30,6 +30,10 @@ const (
 	PaymentPrefix         = "pay"
 	EffectiveMemberPrefix = "efm"
 	RulePrefix            = "rul"
+	QuestionPrefix        = "qst"
+	AnswerPrefix          = "ans"
+	CommentPrefix         = "cmt"
+	InvitePagePrefix      = "ipg"
 	DocumentPrefix        = "doc"
 	DocumentGroupPrefix   = "dgr"
 	ContentPrefix         = "cnt"
@@ -51,6 +55,8 @@ const (
 	InviteServicePrefix   = "isv"
 	InviteTemplatePrefix  = "itp"
 	GreetingPrefix        = "grt"
+	ThemePrefix           = "thm"
+	ThemePicturePrefix    = "tpc"
 	ChangePrefix          = "chg"
 )
 

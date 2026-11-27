@@ -142,7 +142,7 @@ export function compactRow(m, {why, chip, onRemove, removeWords, gradeColors}) {
   });
 }
 
-export function memberAdders(person, outside) {
+export function memberAdders(person, outside, imported) {
   const open = (make, title) => {
     let shut = null;
     const adder = make(() => shut());
@@ -154,6 +154,9 @@ export function memberAdders(person, outside) {
     button('Add Helios', 'plus', 'button button-small button-secondary', () => open(person, 'Add from the directory')),
     button('Add Non-Helios', 'plus', 'button button-small button-secondary', () => open(outside, 'Add someone outside Helios')),
   );
+  if (imported) {
+    buttons.append(button('Import a list', 'upload', 'button button-small button-secondary', () => open(imported, 'Import a contact list')));
+  }
   return {buttons};
 }
 
@@ -340,7 +343,7 @@ export function outsideAdder({isOn, onAdd, note}) {
       }
       people.push({email: head.email, name: head.name, via: 'outside', household: head.email});
       for (const m of card.members) {
-        people.push({email: m.email, name: m.name, via: 'outside', household: head.email});
+        people.push({email: m.email, name: m.name, child: m.child, via: 'outside', household: head.email});
       }
     }
     if (!people.length) {
@@ -400,7 +403,7 @@ function paintOutsideMembers(list, members) {
     });
     list.append(personRow({name: m.name, email: m.email}, {
       className: 'outside-member',
-      lines: [m.email || 'No email address'],
+      lines: [[m.child ? 'Child' : '', m.email || 'No email address'].filter(Boolean).join(' · ')],
       after: [remove],
     }));
   }
@@ -411,6 +414,10 @@ function outsideMemberAdder(members, list) {
   node.hidden = true;
   const name = textInput('', {placeholder: 'Family member’s name'});
   const email = textInput('', {type: 'email', placeholder: 'Their email (optional)'});
+  const child = el('label', 'outside-child');
+  const childBox = el('input');
+  childBox.type = 'checkbox';
+  child.append(childBox, el('span', '', 'Child'));
   const put = button('Add', 'plus', 'button button-small', () => {
     const n = name.value.trim();
     const a = email.value.trim().toLowerCase();
@@ -422,13 +429,14 @@ function outsideMemberAdder(members, list) {
       email.focus();
       return;
     }
-    members.push({name: n, email: a});
+    members.push({name: n, email: a, child: childBox.checked});
     name.value = '';
     email.value = '';
+    childBox.checked = false;
     paintOutsideMembers(list, members);
     name.focus();
   });
-  node.append(name, email, put);
+  node.append(name, email, child, put);
   for (const input of [name, email]) {
     input.addEventListener('keydown', ev => {
       if (ev.key === 'Enter') {

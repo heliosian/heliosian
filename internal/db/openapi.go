@@ -356,6 +356,54 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The GROUP and the flyer's hash.", "Stored"), "400": failure("Not an image, or no picture imported for the stock ID.")}),
 			},
 		},
+		"/api/do/design-picture": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Set the picture that fills an event's Gather card or the page behind it",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"group", "part"},
+					"properties": schema{
+						"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+						"part":    schema{"type": "string", "enum": []string{"card", "backdrop"}, "description": "Which picture: card sets card_picture_original, backdrop sets backdrop_picture_original."},
+						"picture": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in the _original column; the server then makes card_picture or backdrop_picture, a JPEG with every tag dropped, from it."},
+						"stock":   schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of picture."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The GROUP and the picture's hash.", "Stored"), "400": failure("Not an image, no picture imported for the stock ID, or a part other than card or backdrop.")}),
+			},
+		},
+		"/api/do/page-picture": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Set the picture that fills the background of one of an event's Gather invitation pages",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"page"},
+					"properties": schema{
+						"page":    schema{"type": "string", "pattern": idPattern(InvitePagePrefix)},
+						"picture": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in picture_original; the server then makes picture, a JPEG with every tag dropped, from it."},
+						"stock":   schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of picture."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The INVITE_PAGE and the picture's hash.", "Stored"), "400": failure("Not an image, or no picture imported for the stock ID.")}),
+			},
+		},
+		"/api/do/theme": schema{
+			"post": schema{
+				"tags":        []string{"do"},
+				"summary":     "Upload a Gather theme: its theme file and the pictures it names, loose or zipped",
+				"description": "The theme is the caller's own, which only their invitations use. Uploading the caller's theme with the same key again replaces it, its pictures included. The server unpacks any zip, takes the one theme.json (or, with none of that name, the one .json file) as the theme, and keeps the pictures the design names by file name; every other file is left out. The format and its rules are in the theme kit, GET /open/theme-kit.zip on Gather.",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"file"},
+					"properties": schema{
+						"file": schema{"type": "array", "items": schema{"type": "string", "contentMediaType": "application/octet-stream"}, "description": "The theme's files, each with its file name: theme.json, its pictures, or zips holding them."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The THEME, then each row the upload wrote.", "Stored"), "400": failure("No theme file or more than one, the theme breaks the standard, or a picture it names is missing or not an image.")}),
+			},
+		},
 		"/api/do/pronunciation": schema{
 			"post": schema{
 				"tags":    []string{"do"},
@@ -630,11 +678,11 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Mail a guest list",
-				"description": "For the hosts (runs_list). reminder and message go to people who hold an invitation or skip copy, a queued copy included, whose answer is in to (yes, no, or none for no answer) or who are named in people, skipping anyone since kept off; update goes to everyone with such a copy but those who said no and those kept off; cancel sets the group's status to cancelled and, with notify, mails everyone with such a copy, kept off included. A copy that failed before it was sent does not count.",
+				"description": "For the hosts (runs_list). reminder, message and thanks go to people who hold an invitation or skip copy, a queued copy included, whose answer is in to (yes, maybe, no, or none for no answer) or who are named in people, skipping anyone since kept off; thanks only once the open event has begun, and it is sent even after the event has passed; update goes to everyone with such a copy but those who said no and those kept off; cancel sets the group's status to cancelled and, with notify, mails everyone with such a copy, kept off included. A copy that failed before it was sent does not count.",
 				"requestBody": jsonBody([]string{"group", "kind"}, schema{
 					"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
-					"kind":    schema{"type": "string", "enum": []string{"reminder", "message", "update", "cancel"}},
-					"to":      schema{"type": "array", "items": schema{"type": "string", "enum": []string{"yes", "no", "none"}}},
+					"kind":    schema{"type": "string", "enum": []string{"reminder", "message", "update", "cancel", "thanks"}},
+					"to":      schema{"type": "array", "items": schema{"type": "string", "enum": []string{"yes", "maybe", "no", "none"}}},
 					"people":  schema{"type": "array", "items": schema{"type": "string", "pattern": idPattern(PersonPrefix)}},
 					"subject": schema{"type": "string"},
 					"text":    schema{"type": "string", "maxLength": maxGuestWords},
@@ -661,7 +709,7 @@ func spec() schema {
 					}}},
 					"guest_of": schema{"type": "string", "pattern": "^$|" + idPattern(PersonPrefix), "description": "Who brings them: the caller or someone in their household, unless the caller is a host."},
 					"family":   schema{"type": "boolean"},
-					"answer":   schema{"type": "string", "enum": []string{"", "yes"}, "description": "yes to answer yes for everyone added."},
+					"answer":   schema{"type": "string", "enum": []string{"", "yes", "no", "maybe"}, "description": "The answer to give everyone added. Anyone may answer yes; the hosts may also answer no, or maybe where the event offers it."},
 					"send":     schema{"type": "boolean"},
 				}),
 				"responses": refusals(schema{

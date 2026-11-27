@@ -1,9 +1,13 @@
-import {me, answer} from './state.js';
+import {host} from '/guesthost.js';
 import {el, svg, toast} from '/elements.js';
 import {listed} from '/directory.js';
-import {answerFor as answerOnList} from './guestlist.js';
+import {answerFor as answerOnList} from '/guestlist.js';
 
-export const answerWords = {yes: 'Yes', no: 'No'};
+export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
+
+export function answerChoices(row) {
+  return Object.entries(answerWords).filter(([word]) => word !== 'maybe' || (row.answerGroups && row.answerGroups.maybe));
+}
 
 export function answerLabel(row, view) {
   return answerWords[row.answer] || (view.host || row.mine ? 'No response' : 'Invited');
@@ -14,12 +18,12 @@ export function firstName(p) {
 }
 
 export function answerIcon(word) {
-  return word === 'yes' ? 'check' : word === 'no' ? 'close' : 'info';
+  return word === 'yes' ? 'check' : word === 'no' ? 'close' : word === 'maybe' ? 'clock' : 'info';
 }
 
 export async function answerFor(e, row, next) {
-  if (row.key === me().id) {
-    await answer(e, next);
+  if (row.key === host.me().id) {
+    await host.answer(e, next);
     return;
   }
   await answerOnList(row, next);
@@ -29,7 +33,7 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
   const wrap = el('div', 'rsvp-mini' + (small ? ' is-small' : ''));
   const paint = () => {
     wrap.replaceChildren();
-    for (const [word, label] of Object.entries(answerWords)) {
+    for (const [word, label] of answerChoices(row)) {
       const b = el('button', 'rsvp-mini-choice rsvp-mini-' + word + (row.answer === word ? ' is-on' : ''));
       b.type = 'button';
       b.append(svg(answerIcon(word)), el('span', '', label));

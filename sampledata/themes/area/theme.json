@@ -1,0 +1,26 @@
+{
+  "key": "area",
+  "name": "Area 51",
+  "blurb": "Greetings, Earthlings: saucers, mesas and little green men",
+  "fonts": {"display": "Righteous, 'Space Grotesk', sans-serif", "body": "'Space Grotesk', sans-serif", "load": ["Righteous", "Space Grotesk:wght@400;500;700"]},
+  "page": {"backdrop": "linear-gradient(rgba(8, 18, 22, 0.74), rgba(8, 18, 22, 0.84)), url(\"backdrop.jpg\") center / cover fixed, #0a1a20", "ink": "#f6ead0", "muted": "#9fc3c4"},
+  "sidebar": {"background": "linear-gradient(180deg, #0a1a20, #1b3e46)", "active": "rgba(255, 45, 138, 0.22)"},
+  "envelope": {"body": "#2ab3b8", "side": "#239ea3", "front": "#3cc3c7", "flap": "#1f8f94", "liner": "url(\"aliens.jpg\") center 40% / cover no-repeat, #0c1b22"},
+  "seal": {"color": "#ff2d8a", "ink": "#ffe9b0", "text": "👽", "picture": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 12 C75 12 87 31 85 50 C83 71 64 90 50 90 C36 90 17 71 15 50 C13 31 25 12 50 12Z' fill='%237be36b' stroke='%233f9a3a' stroke-width='3'/%3E%3Cellipse cx='35' cy='53' rx='11' ry='18' transform='rotate(32 35 53)' fill='%230d1717'/%3E%3Cellipse cx='65' cy='53' rx='11' ry='18' transform='rotate(-32 65 53)' fill='%230d1717'/%3E%3Ccircle cx='31' cy='46' r='3' fill='%23ffffff'/%3E%3Ccircle cx='61' cy='46' r='3' fill='%23ffffff'/%3E%3Cpath d='M44 76 Q50 80 56 76' stroke='%230d1717' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\") center / 78% no-repeat"},
+  "card": {
+    "background": "#122e2d", "ink": "#f6ead0", "accent": "#ff3d8f", "accentInk": "#ffffff",
+    "radius": "18px", "padding": "52px 60px 282px", "minHeight": "640px",
+    "art": "url(\"card-bottom.jpg\") center calc(100% + 90px) / 100% auto no-repeat, url(\"card-top.jpg\") center top / 100% auto no-repeat, url(\"card-sky.jpg\") center / 100% 100% no-repeat",
+    "artMask": "none"
+  },
+  "text": {
+    "kicker": {"words": "Greetings, Earthlings", "font": "display", "size": "15px", "case": "uppercase", "spacing": "0.18em", "color": "#7fe3e0"},
+    "title": {"size": "42px", "case": "uppercase", "spacing": "0.02em", "color": "#ffc93c"},
+    "day": {"size": "18px", "weight": "700"},
+    "hours": {"size": "17px"},
+    "place": {"size": "16px"},
+    "message": {"size": "15px"},
+    "hosts": {"size": "14px"},
+    "rule": {"width": "96px", "height": "4px"}
+  }
+}

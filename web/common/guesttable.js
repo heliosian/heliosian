@@ -1,10 +1,10 @@
 import {el, svg, button, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {mailList} from './guestlist.js';
+import {mailList} from '/guestlist.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {dataGrid} from '/datagrid.js';
-import {answerLabel, answerIcon, answerButtons, ticketWords, stamp} from './inviteparts.js';
-import {state} from './state.js';
+import {answerLabel, answerIcon, answerButtons, ticketWords, stamp} from '/inviteparts.js';
+import {host} from '/guesthost.js';
 import {personRow} from '/personrow.js';
 
 export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp = true} = {}) {
@@ -47,7 +47,7 @@ export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp
   }
   const sections = [];
   if (rsvp) {
-    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: view.host ? 'No response' : 'Invited'}], chosen: answers});
+    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.maybe || view.counts.maybe ? [{value: 'maybe', label: 'Maybe'}] : []), ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: view.host ? 'No response' : 'Invited'}], chosen: answers});
   }
   if (gradeValues.length) {
     sections.push({label: 'Grade', icon: 'school', values: gradeValues, chosen: grades});
@@ -191,6 +191,7 @@ export function openMessage(e, view, refresh, preset = {}) {
   pickTile.addEventListener('click', () => openPick(e, view, picked, paintPick));
   tiles.append(
     tile('yes', 'Yes', counts.yes || 0, 'is-yes'),
+    ...(view.maybe || counts.maybe ? [tile('maybe', 'Maybe', counts.maybe || 0, 'is-maybe')] : []),
     tile('no', 'No', counts.no || 0, 'is-no'),
     tile('none', 'No response', view.list.filter(r => r.invited && r.sent && !r.answer).length, 'is-waiting'),
     pickTile,
@@ -237,7 +238,7 @@ export function openMessage(e, view, refresh, preset = {}) {
     }
     send.disabled = true;
     try {
-      const made = await mailList(e, {kind: preset.attach ? 'reminder' : 'message', subject: subject.value.trim(), text: message.value.trim(), to: [...to], people: [...picked]});
+      const made = await mailList(e, {kind: preset.kind || (preset.attach ? 'reminder' : 'message'), subject: subject.value.trim(), text: message.value.trim(), to: [...to], people: [...picked]});
       longToast(made.sent === 1 ? 'Sent to one person' : `Sent to ${made.sent} people`);
       shut();
       refresh();
@@ -296,7 +297,7 @@ function openPick(e, view, picked, onDone) {
         before: [check],
         lines: [r.line],
         after: [said],
-        gradeColors: state.model.gradeColors,
+        gradeColors: host.gradeColors(),
       });
       row.addEventListener('click', () => {
         if (picked.has(r.key)) {

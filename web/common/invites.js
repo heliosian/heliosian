@@ -1,14 +1,13 @@
-import {state, me, answer, eventDates, weekdayLong, parseDate, timeLine} from './state.js';
+import {host} from '/guesthost.js';
 import {el, svg, button, iconButton, toast, longToast} from '/elements.js';
 import {popup} from '/modal.js';
-import {checkbox} from '/form.js';
+import {checkbox, field, select} from '/form.js';
 import {createPersonPicker} from '/picker.js';
 import {known} from '/directory.js';
-import {uploadImage} from './imagecontrol.js';
-import {answerWords, answerLabel, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from './inviteparts.js';
-import {openGuestForm, openGuestCard, openPending, sendInvites, deleteInvitation, openCancel} from './guestpopups.js';
-import {listFilters, openTable, openMessage} from './guesttable.js';
-import {openPicker, guestAdders} from './addpeople.js';
+import {answerChoices, answerLabel, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from '/inviteparts.js';
+import {openGuestForm, openGuestCard, openPending, sendInvites, openCancel} from '/guestpopups.js';
+import {listFilters, openTable, openMessage} from '/guesttable.js';
+import {openPicker, guestAdders} from '/addpeople.js';
 import {andList} from '/andlist.js';
 import {personTile, personCard, peopleRow} from '/people.js';
 import {personRow} from '/personrow.js';
@@ -18,7 +17,11 @@ import {openPersonCard} from '/personcard.js';
 import {memberAdders, membersCard} from '/members.js';
 import {rulesCard, ruleWords} from '/listrules.js';
 import {tabbedFields} from '/tabs.js';
-import * as guests from './guestlist.js';
+import * as guests from '/guestlist.js';
+import {loadQuestions} from '/rsvpquestions.js';
+import {personBlock, familyBlock, missingNote} from '/questionfields.js';
+
+const me = () => host.me();
 
 export async function fetchInvites(e) {
   const view = await guests.fetchInvites(e);
@@ -55,7 +58,7 @@ function hideButton(e, refresh) {
   hide.type = 'button';
   hide.addEventListener('click', async () => {
     try {
-      await answer(e, 'hidden');
+      await host.answer(e, 'hidden');
       toast('Hidden - it shows on the month in gray');
       refresh();
     } catch (err) {
@@ -67,7 +70,7 @@ function hideButton(e, refresh) {
 
 function bigChoices(e, r, refresh) {
   const wrap = el('div', 'rsvp-choices');
-  for (const [word, label] of Object.entries(answerWords)) {
+  for (const [word, label] of answerChoices(r)) {
     const b = el('button', 'rsvp-choice is-' + word + (r.answer === word ? ' is-on' : ''));
     b.type = 'button';
     b.disabled = !r.mine;
@@ -96,7 +99,7 @@ function answerItems(e, r, refresh, clear) {
       toast(err.message);
     }
   };
-  const items = Object.entries(answerWords).map(([word, words]) => ({icon: answerIcon(word), words, word, run: run(word)}));
+  const items = answerChoices(r).map(([word, words]) => ({icon: answerIcon(word), words, word, run: run(word)}));
   if (clear) {
     items.push({icon: answerIcon(''), words: clear, word: 'none', run: run('')});
   }
@@ -108,7 +111,7 @@ function memberRow(e, view, r, refresh) {
   row.append(personRow(r, {
     className: 'rsvp-person',
     lines: [r.guestOf ? `Guest of ${r.guestOfName}` : r.invitedBy ? `Invited by ${r.invitedBy}${r.invitedAt ? ' on ' + stamp(r.invitedAt) : ''}` : ''],
-    gradeColors: state.model.gradeColors,
+    gradeColors: host.gradeColors(),
   }), bigChoices(e, r, refresh));
   if (r.guestOf && r.mine && !r.volunteer) {
     row.append(removeGuestButton(e, view, r, 'invite-remove rsvp-person-remove', refresh));
@@ -116,8 +119,21 @@ function memberRow(e, view, r, refresh) {
   return row;
 }
 
-export function familyBand(e, view, refresh) {
+export function householdQuestions(e, view) {
+  const people = view.mine.filter(r => !r.guestOf).map(r => ({id: r.id, short: r.key === me().id ? 'you' : firstName(r), going: r.answer === 'yes'}));
+  return loadQuestions(e.id, people);
+}
+
+function appendAll(box, nodes) {
+  box.append(...nodes.filter(Boolean));
+}
+
+export function familyBand(e, view, refresh, questions) {
   const box = el('div', 'rsvp-panel');
+  const redraw = async () => {
+    box.replaceWith(familyBand(e, view, refresh, await householdQuestions(e, view)));
+  };
+  const askedOf = r => personBlock(questions, questions.household.find(p => p.id === r.id), redraw);
   const self = view.mine.find(r => r.key === me().id && !r.guestOf);
   const others = view.mine.filter(r => r !== self);
   const asked = view.mine.some(r => r.invited);
@@ -133,9 +149,16 @@ export function familyBand(e, view, refresh) {
     top.append(bigChoices(e, self, refresh));
   }
   box.append(top);
+  if (self) {
+    appendAll(box, [askedOf(self)]);
+  }
   for (const r of others) {
     box.append(memberRow(e, view, r, refresh));
+    if (!r.guestOf) {
+      appendAll(box, [askedOf(r)]);
+    }
   }
+  appendAll(box, [familyBlock(questions, redraw), missingNote(questions)]);
   const foot = el('div', 'rsvp-panel-foot');
   const of = ownKey(view);
   if (of && (view.guests || view.host)) {
@@ -204,7 +227,7 @@ export function comingCard(e, view, refresh) {
       card.append(pending);
     }
   }
-  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
+  const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
   head.append(el('h2', 'section section-swoosh', 'Who’s coming'));
   card.append(head);
@@ -217,18 +240,19 @@ export function comingCard(e, view, refresh) {
   const unsent = r => view.host && r.pending && r.email && !r.answer;
   const groups = [
     {key: 'yes', label: 'Yes', cls: 'is-yes', has: r => r.answer === 'yes'},
+    {key: 'maybe', label: 'Maybe', cls: 'is-maybe', has: r => r.answer === 'maybe'},
     ...(view.host ? [{key: 'no', label: 'No', cls: 'is-no', has: r => r.answer === 'no'}] : []),
     {key: 'waiting', label: view.host ? 'No response' : 'Invited', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
     ...(view.host ? [{key: 'pending', label: 'Pending (Unsent)', cls: 'is-pending', has: unsent}] : []),
   ];
-  const familyRank = ['yes', 'waiting', 'pending', 'no'];
+  const familyRank = ['yes', 'maybe', 'waiting', 'pending', 'no'];
   const familyGroup = family => familyRank.map(key => groups.find(g => g.key === key)).find(g => g && family.some(g.has));
   const cardOf = p => personCard(p, {
     onClick: () => openGuestCard(e, p, view, refresh),
     line: p.guestOf ? `Guest of ${p.guestOfName}` : p.line,
     mine: view.mine.some(m => m.key === p.key),
     corner: ticketMark(view, p),
-    gradeColors: state.model.gradeColors,
+    gradeColors: host.gradeColors(),
   });
   const paint = shown => {
     current = shown;
@@ -302,7 +326,7 @@ function guestFamilyRow(e, view, family, refresh) {
       corner: ticketMark(view, r),
       after: r.mine ? dropMenu(said, [...(unsent ? [send] : []), ...answerItems(e, r, refresh, 'Clear')], true) : said,
     };
-  }), state.model.gradeColors);
+  }), host.gradeColors());
 }
 
 export function inviteCall(e, view, refresh) {
@@ -324,7 +348,7 @@ export function hostsRow(e, view, refresh) {
     const tile = personTile(h, {
       onClick: () => openPersonCard(h),
       title: [h.name, h.line].filter(Boolean).join(' · '),
-      gradeColors: state.model.gradeColors,
+      gradeColors: host.gradeColors(),
     });
     const own = h.key === self;
     if (view.host && (own || view.hosts.length > 1)) {
@@ -470,7 +494,7 @@ function flyerFile(e, refresh) {
       return;
     }
     try {
-      const made = await uploadImage(file.files[0]);
+      const made = await host.uploadImage(file.files[0]);
       await guests.setFlyer(e, made.name);
       toast('Flyer saved');
       refresh();
@@ -553,8 +577,55 @@ export function openGuestSettings(e, view, refresh) {
   };
   paintGuests(e, view, panel, again);
   const box = el('div', 'guest-settings');
-  box.append(tabbedFields([{label: 'Guests', fields: [panel]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}]));
+  box.append(tabbedFields([{label: 'Guests', fields: [panel]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}, {label: 'Custom URL', fields: [urlPanel(e, view, refresh)]}]));
   popup('Guest List Settings', box, {wide: true});
+}
+
+function urlPanel(e, view, refresh) {
+  const box = el('div', 'guests-settings');
+  let saved = view.group.slug || '';
+  const input = el('input', 'link-word');
+  input.type = 'text';
+  input.maxLength = 40;
+  input.spellcheck = false;
+  input.autocapitalize = 'off';
+  input.placeholder = 'fall-potluck';
+  input.value = saved;
+  const row = el('div', 'link-row');
+  row.append(el('span', 'link-prefix', location.host + '/g/'), input);
+  const status = el('span', 'save-status');
+  const save = button('Save', 'check', 'button button-small', async () => {
+    const slug = input.value.replace(/^-+|-+$/g, '');
+    save.disabled = true;
+    status.classList.remove('error');
+    try {
+      await guests.setSlug(e, slug);
+    } catch (err) {
+      status.textContent = err.message;
+      status.classList.add('error');
+      save.disabled = false;
+      return;
+    }
+    const was = `/g/${saved || e.id}`;
+    saved = slug;
+    input.value = slug;
+    if (location.pathname === was || location.pathname.startsWith(was + '/')) {
+      history.replaceState(history.state, '', `/g/${slug || e.id}` + location.pathname.slice(was.length));
+    }
+    toast(slug ? `The link is ${location.host}/g/${slug} now.` : 'The custom URL is cleared.');
+    refresh();
+  });
+  save.disabled = true;
+  input.addEventListener('input', () => {
+    input.value = input.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+    save.disabled = input.value === saved;
+  });
+  const wrap = el('div', 'field');
+  wrap.append(el('span', '', 'Custom URL'), row, el('small', '', 'A short word for the link you share - letters, digits and dashes. Change it any time; links already sent keep working.'));
+  const foot = el('div', 'modal-actions');
+  foot.append(save, status);
+  box.append(wrap, foot);
+  return box;
 }
 
 function paintGuests(e, view, panel, again) {
@@ -626,13 +697,13 @@ function paintGuests(e, view, panel, again) {
   const members = membersCard({
     noun: ['guest', 'guests'],
     listWord: 'guest list',
-    adders: memberAdders(adders.person, adders.outside),
+    adders: memberAdders(adders.person, adders.outside, view.host ? adders.import : null),
     phrase: ruleWords,
     chip: () => null,
     onExclude: takeOff,
     onRemove: takeOff,
     canRemove: m => !m.volunteer,
-    gradeColors: state.model.gradeColors,
+    gradeColors: host.gradeColors(),
   });
   const reasons = r => r.guestOf ? [{guestOf: r.guestOfName}] : r.byHand ? [{added: true}] : r.byRule ? [{rule: view.rules.findIndex(x => 'group:rule ' + x.order === r.via)}] : [{added: true}];
   const shown = view.list.filter(r => r.invited).map(r => ({person: r.key, email: r.email, name: r.name, photoUrl: r.photoUrl, words: r.words, grade: r.grade, outside: r.outside, volunteer: r.volunteer, reasons: reasons(r)}));
@@ -663,6 +734,28 @@ function settingsPanel(e, view, refresh) {
     on => guests.setGuestsInvite(e, view, on), on => (on ? 'People can invite others now.' : 'Only the hosts add to the list now.'));
   setting('Send new guests their invitation', view.autoInvite, 'Whoever comes onto the list later - a family joining a class, someone a rule now takes in - is sent the invitation as they come. Off, they wait in Pending for you to send.',
     on => guests.setAutoInvite(e, on), on => (on ? 'New guests are sent the invitation as they come.' : 'New guests wait in Pending for you to send.'));
+  if (view.group.kind === 'event') {
+    setting('Guests can answer Maybe', view.maybe, 'Beside Yes and No, a Maybe for guests who aren’t sure yet. Off, the Maybe answers already given stay.',
+      on => guests.setMaybe(e, on), on => (on ? 'Guests can answer Maybe now.' : 'Guests answer Yes or No now.'));
+  }
+  const days = (label, hint, value, choices, column, words) => {
+    const input = select([{value: '', label: 'Off'}, ...choices.map(n => ({value: String(n), label: words(n)}))], value);
+    input.addEventListener('change', async () => {
+      try {
+        await guests.setDays(e, column, input.value);
+        toast(input.value ? `${label}: ${words(Number(input.value))}` : `${label}: off`);
+        refresh();
+      } catch (err) {
+        toast(err.message);
+        input.value = value;
+      }
+    });
+    box.append(field(label, input, hint));
+  };
+  days('Remind people who haven’t answered', 'One email, before the event, to everyone sent the invitation who hasn’t said yes, no or maybe.',
+    view.remindDays, [1, 2, 3, 5, 7, 14], 'remind_days', n => (n === 1 ? 'the day before' : `${n} days before`));
+  days('Resend to people who haven’t opened it', 'The invitation again, once, to anyone who hasn’t opened or answered it by then.',
+    view.resendDays, [2, 3, 5, 7], 'resend_days', n => `${n} days after it went out`);
   setting('Notify me when people respond', view.notifyMe, 'An email to you as each answer comes in.',
     on => guests.setNotifyMe(e, view, on), on => (on ? 'You’ll get an email as answers come in' : 'No more emails about answers'));
   return box;
@@ -697,9 +790,7 @@ function guestsHead(e, view, refresh) {
 
 function sendMenu(e, view, refresh) {
   const waiting = view.list.filter(r => r.invited && r.sent && !r.answer).length;
-  const first = eventDates(e)[0];
-  const day = weekdayLong(first) + ', ' + parseDate(first).toLocaleDateString('en-US', {month: 'long', day: 'numeric'});
-  const when = e.allDay ? day : `${day}, ${timeLine(e)}`;
+  const {day, when} = host.whenWords(e);
   const pending = view.list.filter(r => r.pending && r.email).length;
   const pendingItem = {icon: 'send', words: `Pending invites · ${pending}`, run: () => openPending(e, view, refresh)};
   if (!view.sent) {
@@ -716,7 +807,18 @@ function sendMenu(e, view, refresh) {
       message: `Just a reminder that we’re on for ${when}${e.location ? ' at ' + e.location : ''}. See you there!`,
     })},
     {icon: 'chat', words: 'Message', run: () => openMessage(e, view, refresh)},
+    ...(begun(e) ? [{icon: 'heart', words: 'Thank-you note', run: () => openMessage(e, view, refresh, {
+      title: 'Send a thank-you note', to: ['yes'], subject: 'Thank you for coming!', kind: 'thanks',
+      message: `Thank you so much for coming to ${e.title}! It meant a lot to have you there.`,
+    })}] : []),
   ]);
+}
+
+function begun(e) {
+  const pad = n => String(n).padStart(2, '0');
+  const d = new Date();
+  const now = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return !e.cancelled && Boolean(e.start) && e.start <= now;
 }
 
 function guestCounts(e, view, refresh) {
@@ -728,6 +830,7 @@ function guestCounts(e, view, refresh) {
   const items = [
     {icon: 'mail', label: 'Invited', count: view.list.filter(sent).length, tone: 'all', expand: listOf(sent)},
     {icon: 'check', label: 'Yes', count: c.yes, tone: 'yes', expand: listOf(r => r.answer === 'yes')},
+    ...(view.maybe || c.maybe ? [{icon: 'clock', label: 'Maybe', count: c.maybe, tone: 'maybe', expand: listOf(r => r.answer === 'maybe')}] : []),
     {icon: 'ban', label: 'No', count: c.no, tone: 'no', expand: listOf(r => r.answer === 'no')},
     {icon: 'reply', label: 'No reply yet', count: view.list.filter(waiting).length, tone: 'waiting', expand: listOf(waiting)},
     {icon: 'clock', label: 'Unsent (Pending)', count: view.list.filter(unsent).length, tone: 'pending', expand: listOf(unsent)},
@@ -756,35 +859,8 @@ function guestPlainRow(e, view, r, refresh) {
     onClick: () => openGuestCard(e, r, view, refresh),
     lines: [bits.join(' · ')],
     after,
-    gradeColors: state.model.gradeColors,
+    gradeColors: host.gradeColors(),
   });
-}
-
-export async function openEditor(e, view, refresh) {
-  if (!e.can.edit && !e.can.correct) {
-    return;
-  }
-  const {eventForm} = await import('./eventform.js');
-  let shut = null;
-  const box = el('div', 'editor');
-  box.append(eventForm({edit: e, override: e.can.correct && e.source !== 'sheet', more: [], onDone: async (ids, changed) => {
-    shut();
-    await refresh();
-    if (changed && changed.length) {
-      offerUpdate(e, changed);
-    }
-  }}));
-  if (view && view.host && e.source === 'sheet' && !e.cancelled) {
-    const foot = el('div', 'editor-danger');
-    foot.append(view.sent
-      ? button('Cancel event', 'close', 'link-button danger', () => {
-        shut();
-        openCancel(e, view, refresh);
-      })
-      : button('Delete event', 'trash', 'link-button danger', () => deleteInvitation(e)));
-    box.append(foot);
-  }
-  shut = popup('Edit ' + e.title, box, {wide: true}).shut;
 }
 
 export async function offerUpdate(e, changed) {

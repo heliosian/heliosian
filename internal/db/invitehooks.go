@@ -16,8 +16,6 @@ import (
 	"heliosian/internal/store"
 )
 
-const extShell = "web/public/when/ext.html"
-
 type extCopy struct {
 	recipient, group store.Row
 	person           string
@@ -51,23 +49,40 @@ type extPerson struct {
 	Key    string `json:"key"`
 	Name   string `json:"name"`
 	Answer string `json:"answer,omitempty"`
+	Kid    bool   `json:"kid,omitempty"`
 }
 
 type extView struct {
-	Title       string      `json:"title"`
-	Day         string      `json:"day"`
-	Hours       string      `json:"hours,omitempty"`
-	Location    string      `json:"location,omitempty"`
-	Description string      `json:"description,omitempty"`
-	Hosts       []string    `json:"hosts"`
-	Name        string      `json:"name"`
-	Answer      string      `json:"answer,omitempty"`
-	Guests      bool        `json:"guests"`
-	Brought     []extPerson `json:"brought"`
-	Family      []extPerson `json:"family"`
-	Past        bool        `json:"past,omitempty"`
-	Cancelled   bool        `json:"cancelled,omitempty"`
-	Flyer       string      `json:"flyer,omitempty"`
+	Title       string        `json:"title"`
+	Day         string        `json:"day"`
+	Hours       string        `json:"hours,omitempty"`
+	Location    string        `json:"location,omitempty"`
+	Description string        `json:"description,omitempty"`
+	Hosts       []string      `json:"hosts"`
+	Name        string        `json:"name"`
+	Key         string        `json:"key"`
+	Kid         bool          `json:"kid,omitempty"`
+	Answer      string        `json:"answer,omitempty"`
+	Guests      bool          `json:"guests"`
+	Brought     []extPerson   `json:"brought"`
+	Family      []extPerson   `json:"family"`
+	Past        bool          `json:"past,omitempty"`
+	Cancelled   bool          `json:"cancelled,omitempty"`
+	Flyer       string        `json:"flyer,omitempty"`
+	Theme       string        `json:"theme,omitempty"`
+	Envelope    string        `json:"envelope,omitempty"`
+	Seal        string        `json:"seal,omitempty"`
+	Liner       string        `json:"liner,omitempty"`
+	Design      string        `json:"design,omitempty"`
+	CardPicture string        `json:"cardPicture,omitempty"`
+	Backdrop    string        `json:"backdrop,omitempty"`
+	HostedBy    string        `json:"hostedBy,omitempty"`
+	Subtitle    string        `json:"subtitle,omitempty"`
+	Maybe       bool          `json:"maybe,omitempty"`
+	Notes       []extNote     `json:"notes"`
+	Questions   []extQuestion `json:"questions"`
+	Replies     []extReply    `json:"replies"`
+	FamilyGroup *extFamily    `json:"familyGroup,omitempty"`
 }
 
 func (iv *Invitations) extFlyer(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +92,23 @@ func (iv *Invitations) extFlyer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raw, kind, err := iv.s.Model().contentBytes(r.Context(), iv.pics.bucket, c.group["flyer"])
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", kind)
+	w.Header().Set("Content-Security-Policy", "sandbox")
+	w.Write(raw)
+}
+
+func (iv *Invitations) extPicture(w http.ResponseWriter, r *http.Request) {
+	part := r.PathValue("part")
+	c, err := iv.extCopy(r)
+	if err != nil || (part != "card" && part != "backdrop") || c.group[part+"_picture"] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	raw, kind, err := iv.s.Model().contentBytes(r.Context(), iv.pics.bucket, c.group[part+"_picture"])
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -136,17 +168,25 @@ func (iv *Invitations) extView(w http.ResponseWriter, r *http.Request) {
 	day, hours := dayAndHours(g)
 	view := extView{
 		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
-		Name: m.nameOf(c.person), Answer: m.answerOf(g, c.person), Guests: guests, Brought: []extPerson{}, Family: []extPerson{},
-		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled",
+		Name: m.nameOf(c.person), Key: c.person, Kid: m.isKid(c.person), Answer: m.answerOf(g, c.person), Guests: guests, Brought: []extPerson{}, Family: []extPerson{},
+		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled", Theme: g["theme"], Envelope: g["envelope"], Maybe: g["maybe"] == "Yes",
+		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"],
 	}
+	for part, into := range map[string]*string{"card": &view.CardPicture, "backdrop": &view.Backdrop} {
+		if g[part+"_picture"] != "" {
+			*into = "/open/ext/" + r.PathValue("token") + "/picture/" + part
+		}
+	}
+	view.Questions, view.Replies, view.FamilyGroup = m.extQuestions(g, c.person)
+	view.Notes = m.notesFor(g, c.person)
 	if g["flyer"] != "" {
 		view.Flyer = "/open/ext/" + r.PathValue("token") + "/flyer"
 	}
 	for _, p := range m.householdOnList(g, c.person)[1:] {
-		view.Family = append(view.Family, extPerson{Key: p, Name: m.nameOf(p), Answer: m.answerOf(g, p)})
+		view.Family = append(view.Family, extPerson{Key: p, Name: m.nameOf(p), Answer: m.answerOf(g, p), Kid: m.isKid(p)})
 	}
 	for _, p := range m.broughtGuests(g, c.person) {
-		view.Brought = append(view.Brought, extPerson{Key: p, Name: m.nameOf(p), Answer: m.answerOf(g, p)})
+		view.Brought = append(view.Brought, extPerson{Key: p, Name: m.nameOf(p), Answer: m.answerOf(g, p), Kid: m.isKid(p)})
 	}
 	iv.noteOpened(r.Context(), m, g, c.person)
 	serve.Write(w, r, http.StatusOK, view)
@@ -180,8 +220,8 @@ func (iv *Invitations) extAnswer(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, access.Invalid("send {\"answer\": \"yes\"}: %v", err))
 		return
 	}
-	if body.Answer != "" && body.Answer != "yes" && body.Answer != "no" {
-		serve.Error(w, r, access.Invalid("an answer is yes, no or blank, not %q", body.Answer))
+	if body.Answer != "" && answerColumn(c.group, body.Answer) == "" {
+		serve.Error(w, r, access.Invalid("an answer is yes, no, maybe when offered, or blank, not %q", body.Answer))
 		return
 	}
 	m := iv.s.Model()
@@ -220,9 +260,10 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name  string `json:"name"`
 		Email string `json:"email"`
+		Child bool   `json:"child"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, queryLimit)).Decode(&body); err != nil {
-		serve.Error(w, r, access.Invalid("send {\"name\": \"…\", \"email\": \"…\"}: %v", err))
+		serve.Error(w, r, access.Invalid("send {\"name\": \"…\", \"email\": \"…\", \"child\": false}: %v", err))
 		return
 	}
 	m := iv.s.Model()
@@ -245,7 +286,11 @@ func (iv *Invitations) extGuest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if guest == "" {
-		edits = append(edits, Edit{Insert: "PERSON", As: "guest", Row: map[string]any{"source": "guest", "name_long_override": name}})
+		row := map[string]any{"source": "guest", "name_long_override": name}
+		if body.Child {
+			row["child"] = true
+		}
+		edits = append(edits, Edit{Insert: "PERSON", As: "guest", Row: row})
 		if address != "" {
 			edits = append(edits, Edit{Insert: "PERSON_EMAIL", Row: map[string]any{"person": "@guest", "address": address, "primary": true, "source": "guest"}})
 		}

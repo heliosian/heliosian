@@ -2,7 +2,7 @@ import {today, dayLabel, eventTint, timeLine, answerOf, answer} from './state.js
 import {peopleLine} from './dom.js';
 import {el, link, svg, button} from '/elements.js';
 import {roomDots, planCards} from './events.js';
-import {answerIcon} from './inviteparts.js';
+import {answerIcon} from '/inviteparts.js';
 
 let peek = null;
 let peekTimer = 0;

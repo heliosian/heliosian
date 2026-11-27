@@ -1,4 +1,23 @@
-import {loadModel, event, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags} from './state.js';
+import {loadModel, event, fetchEvent, today, parseDate, state, eventDates, allCalendars, setActiveFeed, setClassrooms, setTags, feedClassrooms, feedTags, me, answer, isParty, gradebands, dayLabel, weekdayLong, timeLine} from './state.js';
+import {setGuestHost} from '/guesthost.js';
+import {uploadImage} from './imagecontrol.js';
+
+setGuestHost({
+  me,
+  answer,
+  isParty,
+  gradebands,
+  dayLabel,
+  uploadImage,
+  gradeColors: () => state.model.gradeColors,
+  classroomColors: () => state.model.colors,
+  everyone: () => state.model.everyone,
+  whenWords: e => {
+    const first = eventDates(e)[0];
+    const day = weekdayLong(first) + ', ' + parseDate(first).toLocaleDateString('en-US', {month: 'long', day: 'numeric'});
+    return {day, when: e.allDay ? day : `${day}, ${timeLine(e)}`};
+  },
+});
 import {initChrome, clearSearch} from './chrome.js';
 import {showPage} from '/shell.js';
 import {startApp, load, loadRow, notFound} from '/router.js';

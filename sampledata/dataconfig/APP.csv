@@ -7,6 +7,7 @@ app00000000003,birthday,Staff Birthdays,Staff Birthday Donations,grp00000000700,
 app00000000007,loop,Helios Loop,Email lists for events & more,,grp00000000008,m
 app00000000008,ask,Helios Ask,Ask about the school and what's on,,grp00000000004,n
 app00000000009,wiki,Helios Wiki,Parent-to-Parent Info & Support,grp00000000007,grp00000000004,o
+app00000000012,gather,Helios Gather,Invitations in an envelope,,grp00000000004,p
 app00000000010,admin,Helios Admin,The data behind the apps,,grp00000000005,s
 app00000000011,mcp,Helios MCP,Helios's data for Claude and other AI tools,,grp00000000005,y
 app00000000004,home,Heliosian,,grp00000000015,grp00000000004,

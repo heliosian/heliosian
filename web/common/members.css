@@ -113,7 +113,11 @@
 
 .outside-member + .outside-member { border-top: 1px solid var(--line); }
 
-.picker-email.outside-adder { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; margin-top: 8px; }
+.picker-email.outside-adder { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; margin-top: 8px; }
+
+.outside-child { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; cursor: pointer; }
+
+.picker-email .outside-child input { width: auto; padding: 0; }
 
 .picker-email.outside-adder .button { white-space: nowrap; }
 

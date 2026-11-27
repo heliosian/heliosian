@@ -978,16 +978,7 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .panel-empty { padding: 14px; color: var(--muted); font-size: 13.5px; }
 
-.link-button { display: inline-flex; align-items: center; gap: 4px; margin-top: 10px; }
-
-.link-button svg { width: 14px; height: 14px; }
-
-.link-button.danger { color: var(--alert); }
-
-/* The Hosts card's tools: Add co-host and Hide hosts on one line. */
-.hosts-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; }
-
-.hosts-hidden-note { font-style: italic; }
+.link-button { margin-top: 10px; }
 
 /* The month grid. */
 .pager { display: flex; align-items: center; gap: 8px; margin: 4px 0 14px; }
@@ -1168,44 +1159,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .pending-actions { display: flex; gap: 8px; flex-shrink: 0; }
 
-.rsvp-panel { margin: 28px 0 8px; padding: 16px; border: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); border-radius: 16px; background: color-mix(in srgb, var(--green-2) 14%, var(--card)); }
-
-.rsvp-panel-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-
-.rsvp-choices { display: flex; gap: 10px; flex-wrap: wrap; }
-
-.rsvp-choice { display: flex; align-items: center; gap: 12px; min-width: 150px; padding: 12px 18px; border: 1.5px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-
-.rsvp-choice:hover:not(:disabled) { filter: brightness(0.97); }
-
-.rsvp-choice:disabled { cursor: default; opacity: 0.6; }
-
-.rsvp-choice .invite-said-mark { width: 28px; height: 28px; }
-
-.rsvp-choice.is-yes .invite-said-mark { background: #2f9e6a; }
-
-.rsvp-choice.is-maybe .invite-said-mark { background: var(--amber); }
-
-.rsvp-choice strong { font-size: 16px; }
-
-.rsvp-choice.is-on.is-yes { border-color: #2f9e6a; background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
-
-.rsvp-choice.is-on.is-maybe { border-color: var(--amber); background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
-
-.rsvp-choice.is-on.is-no { border-color: var(--no-fill, #b3261e); background: var(--no-wash, #f7eeee); color: var(--no-text, #b3261e); }
-
-.rsvp-panel-person { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; padding-top: 16px; border-top: 1px solid color-mix(in srgb, var(--green-2) 45%, var(--card)); }
-
-.rsvp-person { flex: 1 1 200px; min-width: 0; }
-
-.rsvp-person .person-row-name { font-family: Montserrat, Roboto, sans-serif; font-size: 18px; font-weight: 700; }
-
-.rsvp-member-holder { position: relative; }
-
-.rsvp-member-holder .rsvp-member-menu { top: calc(100% + 6px); bottom: auto; left: 0; right: auto; }
-
-.rsvp-panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 10px; }
-
 /* The ask under the event: a band in a green wash with a ticked calendar,
    the question large, and the buttons big at the right - Yes green, No
    white, the one that holds ringed. */
@@ -1263,10 +1216,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-maybe.is-on, .rsvp-maybe.is-on:hover { background: var(--maybe-fill, var(--amber)); border-color: var(--maybe-fill, var(--amber)); color: #fff; box-shadow: 0 0 0 4px rgba(232, 163, 61, 0.3); }
 
-.coming-section h2.section-swoosh { position: relative; z-index: 0; display: inline-block; padding-bottom: 10px; margin: 0 0 2px; font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; color: var(--brand); }
-
-.coming-section h2.section-swoosh::after { content: ''; position: absolute; left: 2%; right: 2%; bottom: 2px; height: 12px; background-image: url('/swoosh.png'); background-repeat: no-repeat; background-size: 100% 100%; z-index: -1; }
-
 .invite-said { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
 
 .invite-said strong { color: var(--ink); }
@@ -1285,133 +1234,15 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .invite-said.is-no strong { color: var(--no-text, #b3261e); }
 
-.invite-remove { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; color: var(--muted); cursor: pointer; }
-
-.invite-remove:hover { background: var(--glass-mid, rgba(0, 0, 0, 0.06)); color: var(--ink); }
-
-.invite-remove svg { width: 16px; height: 16px; }
-
-.invite-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-
-.invite-foot .link-button { margin-top: 0; padding-left: 0; }
-
 .invite-who { flex: 1 1 auto; min-width: 0; }
 
 .invite-name { font-size: 14.5px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.invite-line { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* Yes, Maybe and No as one small set, the one given filled in its color;
-   grayed for someone the viewer may not answer for. */
-.rsvp-mini { display: inline-flex; gap: 4px; }
-
-.rsvp-mini-choice { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1.5px solid var(--dash-line, var(--line)); border-radius: 999px; background: var(--glass-soft, #fff); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
-
-.rsvp-mini-choice svg { width: 13px; height: 13px; }
-
-.rsvp-mini-choice:disabled { cursor: default; opacity: 0.55; }
-
-.rsvp-mini-choice:not(:disabled):hover { border-color: var(--ink); color: var(--ink); }
-
-.rsvp-mini-yes.is-on { background: #2f9e6a; border-color: #2f9e6a; color: #fff; }
-
-.rsvp-mini-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; }
-
-.rsvp-mini-no.is-on { background: var(--ink); border-color: var(--ink); color: var(--page); }
-
-.rsvp-mini-choice.is-on:disabled { opacity: 0.85; }
-
-@media (max-width: 560px) {
-  .rsvp-mini-choice span { display: none; }
-  .rsvp-mini-choice { padding: 7px 9px; }
-  .rsvp-mini-choice svg { width: 15px; height: 15px; }
-}
-
-/* The invitation's flyer in the rail, as HCA-Team keeps an event's. */
-.flyer-card { margin-bottom: 14px; }
-
-.flyer-open { display: block; margin-top: 10px; border-radius: 10px; overflow: hidden; }
-
-.flyer-image { display: block; width: 100%; height: auto; border-radius: 10px; }
-
-.flyer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-
-.flyer-actions label.button input { display: none; }
-
-.guests-settings { display: flex; flex-direction: column; gap: 14px; }
-
-.guests-settings .field-toggle { margin: 0; }
-
-.pending-check { width: 18px; height: 18px; flex-shrink: 0; margin: 0; accent-color: var(--brand); cursor: pointer; }
-
-.pending-check:disabled { cursor: default; }
-
-.pending-row.is-sent .person-row-name { text-decoration: line-through; }
-
-.pending-row.is-sent .person-row-face, .pending-row.is-sent .person-row-words { opacity: 0.55; }
-
-.guests-cancel { display: flex; justify-content: flex-end; margin-top: 10px; }
-
-.guests-cancel .link-button { font-size: 13px; }
 
 /* Edit's foot for a hand-added event's hosts: Delete before anyone is
    sent the invitation, Cancel after. */
 .editor-danger { display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
 
 .editor-danger .link-button { font-size: 13px; }
-
-.cancel-choices { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-
-.cancel-choices .button { justify-content: center; }
-
-.cancel-note { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--input); }
-
-.cancel-note label { font-size: 13px; font-weight: 600; }
-
-.cancel-note textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; resize: vertical; }
-
-.cancel-note .button { align-self: flex-start; }
-
-.pending-list { display: flex; flex-direction: column; }
-
-.pending-row { padding: 10px 4px; }
-
-.pending-row + .pending-row { border-top: 1px solid var(--line); }
-
-.pending-row .button { flex-shrink: 0; }
-
-.guest-form .field input[type=email] { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--field); }
-
-.guest-form-choices { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 4px; }
-
-.message-to-choice.is-off { opacity: 0.5; }
-
-.guests-tools .hero-image-menu-holder { position: relative; }
-
-.guests-tools .hero-image-menu { right: 0; left: auto; top: calc(100% + 6px); bottom: auto; }
-
-/* A host's way in when there is no list yet. */
-.guests-start { display: flex; align-items: center; gap: 12px 18px; margin: 20px 0 8px; padding: 16px 20px; border: 1.5px dashed var(--accent); border-radius: 16px; background: var(--teal-wash, #eef6f5); flex-wrap: wrap; }
-
-.guests-start > svg { box-sizing: border-box; width: 54px; height: 54px; padding: 12px; border-radius: 50%; background: var(--glass, #fff); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); color: var(--accent); flex-shrink: 0; }
-
-.guests-start-words { flex: 1 1 240px; min-width: 0; }
-
-.guests-start-title { font-family: Montserrat, Roboto, sans-serif; font-size: 23px; font-weight: 700; color: var(--brand); line-height: 1.1; }
-
-.guests-start-lead { font-size: 15px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
-
-.guests-section { margin: 0; padding: 18px 16px 16px; }
-
-.guests-head { align-items: flex-start; }
-
-.guests-head-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; color: #2f8f3f; }
-
-.guests-head-mark svg { width: 30px; height: 30px; }
-
-.guests-head-words { flex: 1 1 60px; min-width: 0; }
-
-.guests-head .guests-settings-button { flex-shrink: 0; color: var(--muted); }
 
 .editor > .tabs { margin-bottom: 14px; }
 
@@ -1421,74 +1252,13 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .event-form-wrap > form[hidden] { display: none; }
 
-.guests-title { font-family: Montserrat, Roboto, sans-serif; font-size: 20px; font-weight: 700; color: var(--brand); line-height: 1.15; }
-
-.guests-subtitle { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
-
-.guests-section .guests-tools { flex-basis: 100%; justify-content: flex-end; }
-
-.guests-section .guests-tools .button { padding: 7px 12px; font-size: 13px; }
-
-.guests-section .guests-note { font-size: 13px; margin-top: 10px; }
 .guests-group-info { display: inline-flex; color: var(--muted); }
 
 .guests-group-info svg { width: 15px; height: 15px; }
 
-.guests-plain { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; background: var(--card); font: inherit; color: inherit; text-align: left; cursor: pointer; }
-
-.guests-plain + .guests-plain { border-top: 1px solid var(--line); }
-
-.guests-plain:hover { background: var(--input); }
-
-.guests-plain.is-guest { padding-left: 24px; }
-
 .guests-plain-mark { width: 22px; height: 22px; flex-shrink: 0; }
 
 .guests-plain-mark svg { width: 12px; height: 12px; }
-
-.guests-plain-mark.is-yes { background: #2f9e6a; }
-
-.guests-plain-mark.is-maybe { background: var(--amber); }
-
-.guests-plain-mark.is-no { background: #b3261e; }
-
-.guests-plain-mark.is-none { background: var(--glass-mid, var(--input)); color: var(--muted); }
-
-.guests-plain-warn { display: inline-flex; color: #b3261e; }
-
-.guests-plain-warn svg { width: 16px; height: 16px; }
-
-.guests-table-mark { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; background: var(--card); color: var(--brand); }
-
-.guests-table-mark svg { width: 20px; height: 20px; }
-
-/* Who's coming takes the page's width: a section of its own, the faces in
-   a roomier grid. */
-.coming-section { margin: 28px 0 8px; }
-
-.coming-section .rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
-
-.coming-section .rsvps-head { margin: 14px 0 8px; }
-
-.coming-section .guest-table-bar { margin: 4px 0 8px; }
-
-.coming-section .rsvps-card-head .rule-search { flex: 0 1 260px; }
-
-.person-card-face .ticket-mark { right: -6px; bottom: -6px; width: 26px; height: 26px; }
-
-.person-card-face .ticket-mark svg { width: 15px; height: 15px; }
-
-.coming-section .rsvps-pending { margin: 0 0 14px; }
-
-.family-member-face .ticket-mark { right: -6px; bottom: -6px; width: 20px; height: 20px; }
-
-.family-member-face .ticket-mark svg { width: 12px; height: 12px; }
-
-.guests-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-
-.guests-head .section-title { margin: 0; }
-
-.guests-tools { display: flex; gap: 8px; flex-wrap: wrap; }
 
 .guests-counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 
@@ -1522,72 +1292,13 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .guests-count.is-ticket strong { color: var(--ticket-text, var(--brand)); }
 
-.guests-note { font-size: 13.5px; color: var(--muted); margin: 0 0 12px; line-height: 1.45; }
-
-.guests-marks { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-
-.guests-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: var(--input); font-size: 11.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-
-.guests-chip svg { width: 12px; height: 12px; }
-
-.guests-chip.is-ticket { background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); }
-
-.guests-chip.is-noticket { background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
-
-.guests-chip.is-sent { background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
-
-.guests-chip.is-unsent { background: var(--hollow, #fff); border: 1px dashed var(--dash-line, var(--line)); }
-
 .email-edit-input { box-sizing: border-box; width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
-
-.guests-chip.is-opened { background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); }
-
-.guest-table-opened { white-space: nowrap; color: var(--muted); }
-
-.guests-chip.is-warning { background: var(--no-wash, #fbeeee); color: var(--no-text, #b3261e); cursor: help; }
 
 .guests-chip-edit { margin-left: 4px; padding: 0 0 0 6px; border: 0; border-left: 1px solid color-mix(in srgb, var(--no-text, #b3261e) 35%, transparent); background: none; font: inherit; font-size: 11.5px; font-weight: 700; color: var(--no-text, #b3261e); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 
-.guests-by { font-size: 11px; color: var(--muted); text-align: right; max-width: 230px; line-height: 1.35; }
-
 .guests-foot { display: flex; gap: 8px; margin-top: 6px; }
 
-/* The way onto a list: a tab per kind of adding - a person from the
-   directory, a group by rule, someone from outside. */
-.picker-panel { min-height: 200px; }
-
 .picker-rule { margin-top: 6px; }
-
-.picker-search { box-sizing: border-box; width: 100%; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--page); color: var(--ink); font: inherit; font-size: 15px; }
-
-/* Search hits sorted into sections, each a row that picks or unpicks its group. */
-.picker-results:not(:empty) { max-height: 280px; margin-top: 6px; border: 1px solid var(--line); border-radius: 10px; overflow-y: auto; }
-
-.picker-result-head { padding: 6px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); background: var(--page); }
-
-.picker-result { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; width: 100%; padding: 8px 14px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 14px; text-align: left; cursor: pointer; }
-
-.picker-result:hover { background: var(--teal-wash, #eef6f5); }
-
-.picker-result.is-on { color: var(--brand); font-weight: 600; }
-
-.picker-result small { color: var(--muted); font-weight: 400; white-space: nowrap; }
-
-.picker-result-none { padding: 8px 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
-
-.picker-picked { margin-top: 10px; }
-
-.picker-unpick { margin-left: 2px; font-size: 15px; line-height: 1; }
-
-.picker-label { margin: 14px 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
-
-.picker-who { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.picker-who-choice { padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
-
-.picker-who-choice.is-on { background: var(--teal-wash, #eef6f5); border-color: var(--accent); color: var(--brand); font-weight: 600; }
-
-.picker-preview { font-size: 13.5px; color: var(--brand); margin: 10px 0 4px; min-height: 1.2em; }
 
 .picker-auto { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: center; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
 
@@ -1595,48 +1306,7 @@ button.guests-count:hover { filter: brightness(0.96); }
 
 .picker-auto small { grid-column: 2; font-size: 12.5px; font-weight: 400; color: var(--muted); line-height: 1.4; }
 
-
-.hosts-card-remove { position: absolute; top: -4px; right: 0; width: 20px; height: 20px; border: 0; border-radius: 50%; background: var(--input); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
-
-.hosts-card-remove:hover { background: var(--alert); color: #fff; }
-
-.hosts-tools .link-button { margin-top: 8px; padding-left: 0; }
-
-.rsvp-row-line { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-
-.rsvp-row-line.is-guest { padding-left: 14px; }
-
-.rsvp-row-said { border: 0; background: none; padding: 0; font: inherit; font-size: 14px; text-align: left; }
-
-button.rsvp-row-said { cursor: pointer; }
-
-.rsvp-row-said > svg { width: 14px; height: 14px; color: var(--muted); }
-
-button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-offset: 3px; }
-
-.rsvp-row-said .invite-said-mark { width: 24px; height: 24px; }
-
-.rsvp-row-said.is-none .invite-said-mark { background: var(--glass-mid, var(--input)); color: var(--muted); }
-
-.rsvp-row-word { font-size: 12.5px; color: var(--muted); }
-
-.rsvp-row-said.is-none .rsvp-row-word { display: none; }
-
-.rsvp-row-said.is-none strong { color: var(--muted); font-weight: 500; }
-
-.rsvp-row-remove { margin-left: auto; }
-
-.rsvp-row .invite-foot { margin-top: 10px; }
-
 .settings-adders { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin: 4px 0 10px; }
-
-.side-add-flyer { display: inline-flex; align-items: center; gap: 4px; align-self: flex-end; font-size: 13px; color: var(--muted); cursor: pointer; }
-
-.side-add-flyer:hover { color: var(--brand); }
-
-.side-add-flyer svg { width: 14px; height: 14px; }
-
-.side-add-flyer input { display: none; }
 
 .settings-adders .link-button { margin-top: 0; padding: 4px 0; }
 
@@ -1653,10 +1323,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .cohost-chips .picker-note { margin: 0; }
 
 .cohost-pick { display: flex; gap: 8px; align-items: flex-start; }
-
-.cohost-picker { flex: 1; min-width: 0; }
-
-.cohost-add .person-picker-list { position: static; margin-top: 4px; }
 
 /* The invitation as it stands, under the counts: its message, its
    settings in a line, and Edit invite. */
@@ -1699,10 +1365,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .rsvp-clear { font-size: 12.5px; color: var(--soft-ink, #3b5a4b); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-family: inherit; }
 
 .rsvp-clear:hover { color: var(--lift-ink, #1d6b48); }
-
-.rsvp-add { display: inline-flex; align-items: center; gap: 3px; }
-
-.rsvp-add svg { width: 12px; height: 12px; }
 
 .month-pip-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1810,22 +1472,6 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .detail-tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
-.hero-image-menu-item .invite-said { gap: 10px; color: var(--ink); }
-
-.hero-image-menu-item.is-send { width: calc(100% - 16px); margin: 4px 8px 6px; border-radius: 999px; background: var(--brand-fill); color: #fff; font-weight: 700; justify-content: center; }
-
-.hero-image-menu-item.is-send:hover { background: var(--brand-deep); }
-
-.hero-image-menu-item.is-send svg { color: #fff; }
-
-.hero-image-menu-item .invite-said-mark { width: 22px; height: 22px; }
-
-.hero-image-menu-item .invite-said-mark svg { width: 13px; height: 13px; color: #fff; }
-
-.hero-image-menu-item .invite-said.is-none .invite-said-mark { background: var(--glass-mid, var(--input)); }
-
-.hero-image-menu-item .invite-said.is-none .invite-said-mark svg { color: var(--muted); }
-
 /* The badge at the banner's foot for an event another app runs: the
    app's mark on a tile, what it is there, and a line - a link to its page. */
 .hero-linked { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: center; gap: 14px; max-width: calc(100% - 32px); padding: 12px 20px 12px 12px; border-radius: 18px; background: rgba(252, 253, 251, 0.96); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.2); color: #1f2f31; text-decoration: none; }
@@ -1873,136 +1519,7 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 
 .side-card-help { background: var(--teal-wash, #eaf4f3); border-color: var(--teal-line, #d3e7e5); }
 
-/* The RSVPs card, for admins: the yeses and the nos as face tiles, the
-   way HCA-Team draws its volunteers - the face, a student's grade badged
-   on its corner, the name under it. */
-.rsvps-pending { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; margin: 0 0 14px; padding: 16px 20px; border: 1.5px solid color-mix(in srgb, var(--amber) 35%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--maybe-wash, #fff8e8) 70%, var(--card)); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04); }
-
-.rsvps-pending-mark { display: flex; align-items: center; justify-content: center; width: 54px; height: 54px; flex-shrink: 0; border-radius: 50%; background: var(--maybe-wash, #fff1d1); color: var(--maybe-text, #a26b00); }
-
-.rsvps-pending-mark svg { width: 30px; height: 30px; }
-
-.rsvps-pending-words { flex: 1 1 160px; min-width: 0; }
-
-.rsvps-pending-title { font-family: Montserrat, Roboto, sans-serif; font-size: 23px; font-weight: 700; line-height: 1.1; color: var(--maybe-text, #a26b00); }
-
-.rsvps-pending-sub { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; font-size: 15px; color: var(--muted); margin-top: 4px; }
-
-.rsvps-pending-sub .rsvps-pending-info { margin-top: 0; padding: 0; font-size: 12.5px; }
-
-.rsvps-pending-sub .rsvps-pending-info svg { width: 13px; height: 13px; }
-
-.rsvps-pending-send { margin-left: auto; }
-
-.guest-card-ask { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
-
-.guest-card-ask:first-child { margin-top: 6px; padding-top: 0; border-top: 0; }
-
-.guest-card-ask .rsvps-head { margin: 0 0 12px; font-size: 12px; }
-
-.guest-card-ask .rsvp-mini { flex-wrap: wrap; gap: 10px; }
-
-.guest-card-ask .rsvp-mini-choice { gap: 8px; padding: 10px 22px; font-size: 15px; }
-
-.guest-card-ask .rsvp-mini-choice svg { width: 17px; height: 17px; }
-
-.guest-card-ask .guests-by { max-width: none; margin-top: 10px; font-size: 12.5px; text-align: left; }
-
-.guest-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
-
-.guest-card-links { display: flex; align-items: center; flex-wrap: wrap; }
-
-.guest-card-links .link-button { margin-top: 0; padding: 4px 0; }
-
-.guest-card-links .link-button + .link-button { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--line); }
-
-.rsvps-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-
-.rsvps-card-head .link-button { margin-top: 0; padding: 2px 4px; font-size: 13px; }
-
-/* The compose form: a head with a mark, Send to as tinted tiles, Pick &
-   Choose over the list, the subject behind the event's name, the words
-   with a count, and Cancel and Send at the foot. */
-.compose { padding-top: 4px; }
-
-.compose-head { display: flex; align-items: flex-start; gap: 16px; margin: -8px 0 18px; }
-
-.compose-mark { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
-
-.compose-mark svg { width: 24px; height: 24px; }
-
-.compose-title { font-family: Montserrat, Roboto, sans-serif; font-size: 22px; font-weight: 700; margin: 4px 0 4px; color: var(--ink); }
-
-.compose-lead { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.45; }
-
-.compose-label { font-size: 15px; font-weight: 700; margin: 16px 0 8px; }
-
-.send-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-
-.send-tile { display: flex; align-items: center; gap: 10px; padding: 12px 12px; border: 2px solid transparent; border-radius: 12px; background: var(--input); cursor: pointer; }
-
-.send-tile input { width: 20px; height: 20px; margin: 0; flex-shrink: 0; accent-color: var(--accent); }
-
-button.send-tile { font: inherit; text-align: left; }
-
-.send-tile-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
-
-.send-tile-icon svg { width: 18px; height: 18px; }
-
-.send-tile-words { display: flex; flex-direction: column; min-width: 0; }
-
-.send-tile-label { font-size: 14.5px; font-weight: 700; color: var(--ink); white-space: nowrap; }
-
-.send-tile-note { font-size: 13px; color: var(--muted); }
-
-.send-tile.is-yes { background: var(--yes-wash, #e3f3ea); }
-
-.send-tile.is-maybe { background: var(--maybe-wash, #fff8e8); }
-
-.send-tile.is-no { background: var(--no-wash, #fbeeee); }
-
-.send-tile.is-waiting { background: var(--accent-wash, #eef6f5); }
-
-.send-tile.is-pick { background: var(--glass, #eeeef8); }
-
-.send-tile.is-on { border-color: var(--accent); }
-
-.send-pick-rows { max-height: 50vh; margin-top: 8px; }
-
 .pick-said { flex-shrink: 0; margin-left: auto; font-size: 13px; }
-
-.pick-said.is-none .invite-said-mark { background: var(--glass-mid, var(--input)); color: var(--muted); }
-
-.pick-said.is-none strong { color: var(--muted); font-weight: 500; }
-
-.guest-table-bar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 6px; }
-
-.guest-table-bar .rule-search { flex: 1 1 180px; }
-
-.guest-table-bar .chip-row { margin-left: auto; }
-
-.guest-table-facets { display: flex; gap: 6px; flex-wrap: wrap; }
-
-
-.guest-table-answer { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-
-.guest-table-said .rsvp-mini { margin: -4px 0; }
-
-.guest-table-wrap .data-grid-wrap { max-height: 50vh; overflow: auto; }
-
-.guest-table-wrap .data-grid th { position: sticky; top: 0; z-index: 1; }
-
-.guest-table-name .invite-line { font-weight: 400; white-space: normal; }
-
-.guest-table-said { white-space: nowrap; font-weight: 600; }
-
-.guest-table-said.is-yes { color: var(--yes-text, #1d6b48); }
-
-.guest-table-said.is-maybe { color: var(--maybe-text, #7a5a00); }
-
-.guest-table-said.is-no { color: var(--no-text, #b3261e); }
-
-.guest-table-said.is-none { color: var(--muted); font-weight: 500; }
 
 .pick-chip.is-on.is-yes { background: var(--yes-wash, #e3f3ea); border-color: #2f9e6a; color: var(--yes-text, #1d6b48); }
 
@@ -2012,31 +1529,7 @@ button.send-tile { font: inherit; text-align: left; }
 
 .pick-chip.is-on.is-none { background: var(--accent-wash, #eef6f5); border-color: var(--accent); color: var(--ticket-text, var(--brand)); }
 
-.compose-message-wrap { position: relative; }
-
-.compose-message { box-sizing: border-box; width: 100%; padding: 12px 14px 26px; border: 1px solid var(--field-line, var(--line)); border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.5; background: var(--field); }
-
-.compose-count { position: absolute; right: 12px; bottom: 10px; font-size: 12px; color: var(--muted); pointer-events: none; }
-
-.compose-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 18px; }
-
-.compose-actions .save-status { margin-right: auto; }
-
-@media (max-width: 860px) {
-  .send-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-
-.message-subject { display: flex; align-items: center; gap: 8px; }
-
-.message-subject-prefix { flex-shrink: 0; padding: 9px 10px; border-radius: 8px; background: var(--input); font-size: 13.5px; font-weight: 600; color: var(--brand); white-space: nowrap; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
-
-.message-subject input[type=text] { flex: 1; min-width: 0; padding: 10px 12px; border: 1px solid var(--field-line, var(--line)); border-radius: 8px; font: inherit; background: var(--field); }
-
 .message-to { display: flex; flex-wrap: wrap; gap: 8px 16px; }
-
-.message-to-choice { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; cursor: pointer; }
-
-.message-to-choice input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
 
 .rsvps-head.is-yes { color: var(--yes-text, #1d6b48); }
 
@@ -2047,31 +1540,6 @@ button.send-tile { font: inherit; text-align: left; }
 .rsvps-head.is-pending { color: var(--maybe-text, #a26b00); }
 
 .rsvps-head { margin: 10px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-
-/* A host's mark on a party guest's face: their ticket standing. */
-.ticket-mark { position: absolute; right: -6px; bottom: -6px; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; box-shadow: 0 0 0 2px var(--card); }
-
-.ticket-mark svg { width: 13px; height: 13px; }
-
-.ticket-mark.is-free { background: #2f9e6a; }
-
-.ticket-mark.is-waitlist { background: var(--amber); }
-
-.ticket-mark.is-none { background: var(--card); color: var(--soft-ink, #9aa7a8); box-shadow: 0 0 0 2px var(--card), inset 0 0 0 1.5px var(--outline, #c9d3d4); }
-
-.guest-card-ticket { display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 16px 20px; border-radius: 14px; background: var(--accent-wash, #eef6f5); color: var(--ticket-text, var(--brand)); font-size: 14px; }
-
-.guest-card-ticket:first-child { margin-top: 6px; }
-
-.guest-card-ticket > svg { width: 22px; height: 22px; flex-shrink: 0; }
-
-.guest-card-ticket .invite-line { white-space: normal; margin-top: 2px; }
-
-.guest-card-ticket.is-free { background: var(--yes-wash, #e3f3ea); color: var(--yes-text, #1d6b48); }
-
-.guest-card-ticket.is-waitlist { background: var(--maybe-wash, #fff8e8); color: var(--maybe-text, #7a5a00); }
-
-.guest-card-ticket.is-none { background: var(--glass, #f1f1f1); color: var(--muted); }
 
 /* The admins' part of the source card, set off under a rule. */
 .side-admin { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--wash-line, #c5dad7); }

@@ -1,0 +1,13 @@
+id,group,order,text,kind,choices,asked,required,going_only
+qst00000009001,grp00000009001,i,Any food allergies we should know about?,text,,kids,,Yes
+qst00000009002,grp00000009001,j,T-shirt size for the party tee,choice,"XS
+S
+M
+L",kids,Yes,Yes
+qst00000009003,grp00000009001,k,Coffee or tea while the kids bounce?,choice,"Coffee
+Tea
+Neither",adults,,Yes
+qst00000009004,grp00000009001,l,Can your family stay to help clean up?,yes_no,,household,,Yes
+qst00000009021,grp00000009021,i,"Hot tea, iced tea or lemonade?",choice,"Hot tea
+Iced tea
+Lemonade",everyone,,Yes

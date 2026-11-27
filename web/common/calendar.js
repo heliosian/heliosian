@@ -87,7 +87,7 @@ export const calendarQueries = {
   parts: '(from GROUP (where (= kind "day_part")) (columns name start end parent))',
   dayRules: '(from RULE (where (in group (select GROUP.id (= kind "day")))) (columns group target))',
   tree: '(from GROUP (where (in kind "category" "activity" "celebration" "event")) (columns kind parent slug))',
-  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location description parent status visible_to listed audience rsvp_yes rsvp_no waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
+  events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location description parent status visible_to listed audience rsvp_yes rsvp_no rsvp_maybe maybe waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
   audiences: `(from RULE (where (in group (select GROUP.audience ${eventKinds}))) (columns group target))`,
   sources: `(from GROUP_SOURCE (where (in group (select GROUP.id ${eventKinds}))) (columns group calendar_event document name))`,
   photos: `(from PHOTO (where (in group (select GROUP.id (in kind "event" "party" "activity" "category")))) (order order asc) (columns group ready))`,
@@ -161,8 +161,8 @@ export function buildCalendar(a) {
     const rooms = (audiences[g.audience] || []).map(r => classroomName[r.target]).filter(Boolean);
     const top = topOf(g.parent);
     const own = group => ((group && mine[group]) || []).find(m => m.person === me.id);
-    const myRows = {yes: (own(g.rsvp_yes) || {}).id || '', no: (own(g.rsvp_no) || {}).id || '', hidden: (own(g.hidden_for) || {}).id || ''};
-    const answer = myRows.yes ? 'yes' : myRows.no ? 'no' : myRows.hidden ? 'hidden' : '';
+    const myRows = {yes: (own(g.rsvp_yes) || {}).id || '', no: (own(g.rsvp_no) || {}).id || '', maybe: (own(g.rsvp_maybe) || {}).id || '', hidden: (own(g.hidden_for) || {}).id || ''};
+    const answer = myRows.yes ? 'yes' : myRows.maybe ? 'maybe' : myRows.no ? 'no' : myRows.hidden ? 'hidden' : '';
     const holders = [...new Set([g.id, ...(g.kind === 'activity' ? below(g.id) : [])].flatMap(id => (mine[id] || []).map(m => m.person)))];
     const waiting = [...new Set((mine[g.waitlist] || []).map(m => m.person))];
     const going = [...new Set((mine[g.rsvp_yes] || []).map(m => m.person))];
@@ -180,7 +180,7 @@ export function buildCalendar(a) {
       mine: holders.length ? 'going' : waiting.length ? 'waitlisted' : '', mineWho: (holders.length ? holders : waiting).map(nameOf), minePeople: [],
       going: going.length ? andList(going.map(nameOf)) + (going.length > 1 || going[0] === me.id ? ' are going' : ' is going') : '',
       me: {answer}, invited: invitedTo.has(g.id), invitation: invitedTo.has(g.id), dayType: '', keywords: [], addedBy: g.added_by || '', added: g.added || '',
-      myRows, groups: {rsvp_yes: g.rsvp_yes || '', rsvp_no: g.rsvp_no || '', hidden_for: g.hidden_for || '', audience: g.audience || ''},
+      myRows, groups: {rsvp_yes: g.rsvp_yes || '', rsvp_no: g.rsvp_no || '', rsvp_maybe: g.maybe === 'Yes' ? g.rsvp_maybe || '' : '', hidden_for: g.hidden_for || '', audience: g.audience || ''},
       audienceRules: (audiences[g.audience] || []).map(r => r.id), photo: photos[g.id] ? photos[g.id][0].id : '', category: top,
       can: {edit: hosted.has(g.id) || admin, correct: admin, image: hosted.has(g.id) || admin, approve: admin && g.status === 'pending', decline: admin && g.status === 'pending', keywords: false, opened: false},
     };
@@ -274,7 +274,7 @@ export function roomsOn(cal, date, classrooms) {
   return groups;
 }
 
-const answerGroups = {yes: 'rsvp_yes', no: 'rsvp_no', hidden: 'hidden_for'};
+const answerGroups = {yes: 'rsvp_yes', no: 'rsvp_no', maybe: 'rsvp_maybe', hidden: 'hidden_for'};
 
 export async function answerEvent(e, word, viewer) {
   const batch = Object.values(e.myRows).filter(Boolean).map(id => ({delete: id}));

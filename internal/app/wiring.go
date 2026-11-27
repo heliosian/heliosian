@@ -198,11 +198,15 @@ func NewCore(cfg Config) *Core {
 		Now:      schoolNow,
 	}
 	db.RegisterFeeds(calendarMux, dataStore, schoolNow)
-	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle)
+	whenPages := db.NewWhenPages(dataStore, pictures, calendarStyle)
 	whenPages.Register(calendarMux)
+	gatherMux := http.NewServeMux()
+	serve.Pages(gatherMux, "web/gather/index.html", "/{$}", "/g/{key}", "/g/{key}/{section...}")
+	whenPages.RegisterGather(gatherMux)
 	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})
+	invitations.RegisterGuestPages(gatherMux)
 	birthdays := db.NewBirthdayMailer(dataStore, db.BirthdayMailConfig{Sender: cfg.BirthdayMail, Origin: hosts.Origin(cfg.Domain), Shared: cfg.Writer})
 	shared := tools.New(tools.Deps{Search: search, Bucket: cfg.Bucket, Now: schoolNow})
 	mcpMux := http.NewServeMux()
@@ -219,6 +223,7 @@ func NewCore(cfg Config) *Core {
 		{Key: "admin", Title: "Helios Admin", Mux: adminMux},
 		{Key: "wiki", Title: "Helios Wiki", Mux: wikiMux, Preview: wikiShare.PreviewHead},
 		{Key: "mcp", Title: "Helios MCP", Mux: mcpMux},
+		{Key: "gather", Title: "Helios Gather: Invitations in an envelope", Mux: gatherMux, Preview: whenPages.PreviewHead},
 	}
 	ask.Register(askMux, api, ask.Sources{Data: dataStore, Tools: shared, Now: schoolNow}, cfg.Asker, spend, cfg.ChatKey, askAbout)
 	feedback := db.NewFeedback(dataStore, cfg.Bucket, tokens, db.FeedbackConfig{Sender: cfg.Mail, Base: cfg.FeedbackBase, Filer: cfg.FeedbackFiler})

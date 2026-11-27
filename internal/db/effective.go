@@ -488,7 +488,7 @@ func (r *membershipResolver) selectRule(group string, rule store.Row) map[string
 	return picked
 }
 
-var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "unsubscribed", "chair_offers", "leads", "audience", "hidden_for"}
+var servingColumns = []string{"managed_by", "waitlist", "rsvp_yes", "rsvp_no", "rsvp_maybe", "unsubscribed", "chair_offers", "leads", "audience", "hidden_for"}
 
 func (groups *View) groupsUnder(group string) []string {
 	out := []string{}

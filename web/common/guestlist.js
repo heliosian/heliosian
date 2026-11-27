@@ -5,7 +5,10 @@ import {directory, listed, known, contactLine, emailOf, photoOf, wordsOf, gradeO
 import {nameRulesWith, ruleOf, ruleRow} from '/listrules.js';
 import {keptOff} from '/members.js';
 import {keyBetween} from '/order.js';
-import {state, me, isParty} from './state.js';
+import {host} from '/guesthost.js';
+
+const me = () => host.me();
+const isParty = e => host.isParty(e);
 
 const names = {groups: {}, people: {}};
 
@@ -23,13 +26,14 @@ function onGuestList(id) {
               (in id (select RECIPIENT.person (in message (select MESSAGE.id (= group ${id}) (in kind "invitation" "skip")))))
               (in id (select MEMBER.person (in group (select GROUP.rsvp_yes (= id ${id})))))
               (in id (select MEMBER.person (in group (select GROUP.rsvp_no (= id ${id})))))
+              (in id (select MEMBER.person (in group (select GROUP.rsvp_maybe (= id ${id})))))
               (in id (select EFFECTIVE_MEMBER.person (in group (select GROUP.managed_by (= id ${id}))))))`;
 }
 
 export async function fetchInvites(e) {
   const id = JSON.stringify(e.id);
   const [a, index] = await Promise.all([queries({
-    group: `(from GROUP (where (= id ${id})) (columns kind name team_href managed_by visible_to members_visible_to join eligible guests_invited_by flyer auto_invite rsvp_yes rsvp_no added_by status))`,
+    group: `(from GROUP (where (= id ${id})) (columns kind name slug team_href managed_by visible_to members_visible_to join eligible guests_invited_by flyer auto_invite remind_days resend_days rsvp_yes rsvp_no rsvp_maybe maybe added_by status))`,
     inviters: `(from GROUP @g (where (= id ${id}) (invites_guests @g @viewer)) (columns id))`,
     runs: `(from GROUP @g (where (= id ${id}) (runs_list @g)) (columns kind))`,
     hostGroup: `(from GROUP (where (in id (select GROUP.managed_by (= id ${id})))) (columns visible_to))`,
@@ -40,8 +44,8 @@ export async function fetchInvites(e) {
     rules: `(from RULE (where (= group ${id})) (order order asc) (include target within))`,
     messages: `(from MESSAGE (where (= group ${id}) (in kind "invitation" "skip")) (columns kind from_person created))`,
     copies: `(from RECIPIENT (where (in message (select MESSAGE.id (= group ${id}) (in kind "invitation" "skip"))) (or (not (blank sent)) (blank failed))) (order created asc id asc) (columns message person sent failed detail created))`,
-    answers: `(from MEMBER (where (or (in group (select GROUP.rsvp_yes (= id ${id}))) (in group (select GROUP.rsvp_no (= id ${id}))))) (columns group person added added_by))`,
-    people: `(from PERSON (where ${onGuestList(id)}) (columns name_show name_short source grade classroom slug))`,
+    answers: `(from MEMBER (where (or (in group (select GROUP.rsvp_yes (= id ${id}))) (in group (select GROUP.rsvp_no (= id ${id}))) (in group (select GROUP.rsvp_maybe (= id ${id}))))) (columns group person added added_by))`,
+    people: `(from PERSON (where ${onGuestList(id)}) (columns name_show name_short source grade classroom slug child))`,
     emails: `(from PERSON_EMAIL (where primary (in person (select PERSON.id ${onGuestList(id)}))) (columns person address))`,
     household: '(from PERSON (where (in id (household @viewer))) (columns name_show))',
     families: '(from GROUP (where (= kind "family")) (columns name slug who_href))',
@@ -63,7 +67,7 @@ export async function fetchInvites(e) {
   }
   const answers = {};
   for (const m of rowsOf(a.answers, 'MEMBER')) {
-    answers[m.person] = {row: m.id, word: m.group === g.rsvp_yes ? 'yes' : 'no', at: m.added, by: m.added_by};
+    answers[m.person] = {row: m.id, word: m.group === g.rsvp_yes ? 'yes' : m.group === g.rsvp_maybe ? 'maybe' : 'no', at: m.added, by: m.added_by};
   }
   const rules = rowsOf(a.rules, 'RULE').map(r => ({...ruleOf(r), order: r.order}));
   for (const r of Object.values(a.rules.resources.GROUP || {})) {
@@ -93,10 +97,10 @@ export async function fetchInvites(e) {
     const byRule = reasons.find(w => w.startsWith('rule'));
     return {
       key: pid, id: pid, email, name: nameOf(pid), photoUrl: d ? photoOf(d) : '',
-      line: d ? contactLine(d) : outside ? 'Outside the directory' : '', words: d ? wordsOf(d) : 'Outside the directory', outside,
+      line: d ? contactLine(d) : outside ? 'Outside the directory' : '', words: d ? wordsOf(d) : 'Outside the directory', outside, child: p.child === 'Yes',
       isStudent: Boolean(d && isStudent(d)), isParent: Boolean(d && isParent(d)), isStaff: Boolean(d && isStaff(d)),
       grade: d && isStudent(d) ? gradeOf(d) : '', grades: d && isStudent(d) && gradeOf(d) ? [gradeOf(d)] : [], classrooms: [],
-      answerGroups: {yes: g.rsvp_yes || '', no: g.rsvp_no || ''},
+      answerGroups: {yes: g.rsvp_yes || '', no: g.rsvp_no || '', maybe: g.maybe === 'Yes' ? g.rsvp_maybe || '' : ''},
       answer: answer ? answer.word : '', answerRow: answer ? answer.row : '', answeredAt: answer ? answer.at : '', answeredBy: answer && answer.by && answer.by !== pid ? nameOf(answer.by) : '',
       invited: onList, excluded: Boolean(excluded), sent: Boolean(copy), pending: onList && !copy, opened: m ? m.opened || '' : '',
       memberRow: m || null, byRule: Boolean(byRule), byHand: Boolean(m && (m.member === 'yes' || m.invited === 'yes')), via: byRule && !(m && (m.member === 'yes' || m.invited === 'yes')) ? 'group:' + byRule : '',
@@ -121,7 +125,9 @@ export async function fetchInvites(e) {
     id: e.id, group: g, host, sent, rules, mine, mayInvite, memberRows: Object.values(memberOf).filter(m => people[m.person]),
     list: host ? listed_ : listed_.filter(r => r.answer !== 'no'),
     coming: host ? listed_ : listed_.map(r => (r.answer === 'no' ? {...r, answer: ''} : r)),
-    counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: 0, no: listed_.filter(r => r.answer === 'no').length},
+    counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: listed_.filter(r => r.answer === 'maybe').length, no: listed_.filter(r => r.answer === 'no').length},
+    maybe: g.maybe === 'Yes',
+    remindDays: g.remind_days || '', resendDays: g.resend_days || '',
     hosts: hostRows.map(h => ({...rowFor(h.person), memberRow: h})),
     managedBy: g.managed_by || '', hostsHidden: Boolean(hostGroup) && !hostGroup.visible_to,
     listPrivate: !g.members_visible_to, guests: g.kind === 'activity' ? Boolean(g.guests_invited_by) : g.join === 'others', autoInvite: g.auto_invite === 'Yes',
@@ -174,7 +180,7 @@ export async function addPeople(e, view, people) {
       continue;
     }
     const key = p.household || p.email || p.name;
-    families.set(key, [...(families.get(key) || []), {name: p.name, email: p.email || ''}]);
+    families.set(key, [...(families.get(key) || []), {name: p.name, email: p.email || '', child: Boolean(p.child)}]);
   }
   const send = !view.host;
   if (helios.length) {
@@ -187,8 +193,13 @@ export async function addPeople(e, view, people) {
 
 export function bringGuest(e, body) {
   const d = body.email ? known(body.email) : null;
-  const guest = d ? {person: d.id} : {name: body.name, email: body.email || ''};
+  const guest = d ? {person: d.id} : {name: body.name, email: body.email || '', child: Boolean(body.child)};
   return api('POST', '/api/do/add-guests', {group: e.id, people: [guest], guest_of: body.of, answer: body.answer, send: Boolean(body.invite)});
+}
+
+export async function changeGuestEmail(e, row, email) {
+  await api('POST', '/api/do/add-guests', {group: e.id, people: [{name: row.name, email, child: row.child}], guest_of: row.guestOf, answer: row.answer, send: false});
+  await takeOff(e, row);
 }
 
 export function takeOff(e, row) {
@@ -196,7 +207,7 @@ export function takeOff(e, row) {
 }
 
 export function setPublicList(e, on) {
-  return write([{set: e.id, cells: {members_visible_to: on ? state.model.everyone : ''}}]);
+  return write([{set: e.id, cells: {members_visible_to: on ? host.everyone() : ''}}]);
 }
 
 export function setGuestsInvite(e, view, on) {
@@ -206,6 +217,25 @@ export function setGuestsInvite(e, view, on) {
 
 export function setAutoInvite(e, on) {
   return write([{set: e.id, cells: {auto_invite: on}}]);
+}
+
+export function setMaybe(e, on) {
+  return write([{set: e.id, cells: {maybe: on}}]);
+}
+
+export async function setSlug(e, slug) {
+  try {
+    await write([{set: e.id, cells: {slug}}]);
+  } catch (err) {
+    if (err.message.includes('two rows have the slug')) {
+      throw new Error(`${location.host}/g/${slug} is taken. Try another word.`);
+    }
+    throw err;
+  }
+}
+
+export function setDays(e, column, days) {
+  return write([{set: e.id, cells: {[column]: days}}]);
 }
 
 export function setFlyer(e, image) {
@@ -226,7 +256,11 @@ export async function setNotifyMe(e, view, on) {
 }
 
 export function addHost(e, view, person) {
-  return write([{insert: 'MEMBER', row: {group: view.managedBy, person, member: 'yes', added_by: me().id, added: stamp()}}]);
+  const batch = [{insert: 'MEMBER', row: {group: view.managedBy, person, member: 'yes', added_by: me().id, added: stamp()}}];
+  if (e.hostsAreGuests && !view.list.some(r => r.key === person)) {
+    batch.push({insert: 'MEMBER', row: {group: e.id, person, member: 'yes', added_by: me().id, added: stamp()}});
+  }
+  return write(batch);
 }
 
 export function removeHost(e, view, host) {

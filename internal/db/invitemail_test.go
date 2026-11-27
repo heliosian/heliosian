@@ -42,7 +42,10 @@ func TestInvitationWording(t *testing.T) {
 		g, _ := m.Table("GROUP").Get(group)
 		for _, kind := range []string{"invitation", "update"} {
 			t.Run(fmt.Sprintf("%s/hosted=%t", kind, hosted), func(t *testing.T) {
-				msg := iv.invitation(m, g, kind, parent, "https://when.test/event", true)
+				msg, err := iv.invitation(m, g, kind, parent, "https://when.test/event", true)
+				if err != nil {
+					t.Fatal(err)
+				}
 				intro := "You're invited to"
 				if kind == "update" {
 					intro = "The details have been updated for"
@@ -60,6 +63,44 @@ func TestInvitationWording(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestThemedInvitationsLinkToGather(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	m := iv.s.Model()
+	g, _ := m.Table("GROUP").Get(group)
+	if got := iv.linkFor(m, g, parent, "tok"); got != "https://when.test"+g["path"] {
+		t.Errorf("plain event: got %s", got)
+	}
+	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme}}})
+	m = iv.s.Model()
+	g, _ = m.Table("GROUP").Get(group)
+	if got := iv.linkFor(m, g, parent, "tok"); got != "https://gather.test"+g["path"] {
+		t.Errorf("themed event: got %s", got)
+	}
+	if got := iv.linkFor(m, g, guest, "tok"); got != "https://gather.test/ext/tok" {
+		t.Errorf("themed event, outside guest: got %s", got)
+	}
+}
+
+func TestThemedInvitationMailIsDrawnInItsDesign(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme, "hosted_by": "The Movie Crew"}}})
+	m := iv.s.Model()
+	g, _ := m.Table("GROUP").Get(group)
+	msg, err := iv.invitation(m, g, "invitation", parent, "https://gather.test"+g["path"], true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := html.UnescapeString(msg.HTML)
+	for _, want := range []string{"#7a1f1f", "Cinzel+Decorative", "Hosted by The Movie Crew", "Open your invitation", "Add to Google Calendar", "SENT WITH HELIOS GATHER", "https://gather.test/open/envelope/" + group + ".png"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("themed mail lacks %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(msg.Text, "Hosted by The Movie Crew") {
+		t.Errorf("text lacks the hosts' own words: %s", msg.Text)
 	}
 }
 

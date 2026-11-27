@@ -35,6 +35,11 @@ var stagedTriggers = []stagedTrigger{
 	{table: "GROUP", fire: answerGroups},
 	{table: "GROUP", fire: answerSharing},
 	{table: "GROUP", fire: hiddenGone},
+	{table: "GROUP", fire: designChecked},
+	{table: "INVITE_PAGE", fire: madeNotMade},
+	{table: "THEME_PICTURE", fire: madeNotMade},
+	{table: "THEME", fire: themeChecked},
+	{table: "INVITE_PAGE", fire: pageBackgroundChecked},
 	{table: "MEMBER", fire: oneAnswer},
 	{table: "MEMBER", fire: activityGuestExcluded},
 	{table: "DOCUMENT", fire: wikiAddressMoved},
@@ -52,6 +57,14 @@ var deleteTriggers = []stagedTrigger{
 	{table: "DOCUMENT", fire: deleteReferencing("DOCUMENT_GROUP", "document")},
 	{table: "DOCUMENT", fire: deleteReferencing("PHOTO", "document")},
 	{table: "TODO", fire: deleteReferencing("TODO_MARK", "todo")},
+	{table: "GROUP", fire: deleteReferencing("QUESTION", "group")},
+	{table: "GROUP", fire: deleteReferencing("ANSWER", "family")},
+	{table: "QUESTION", fire: deleteReferencing("ANSWER", "question")},
+	{table: "GROUP", fire: deleteReferencing("COMMENT", "group")},
+	{table: "GROUP", fire: deleteReferencing("INVITE_PAGE", "group")},
+	{table: "THEME", fire: themeInUse},
+	{table: "THEME", fire: deleteReferencing("THEME_PICTURE", "theme")},
+	{table: "COMMENT", fire: deleteReferencing("COMMENT", "reply_to")},
 }
 
 var committedTriggers = []committedTrigger{
@@ -60,6 +73,8 @@ var committedTriggers = []committedTrigger{
 	{table: "PHOTO", to: picturesInbox},
 	{table: "PERSON", to: picturesInbox},
 	{table: "GROUP", to: picturesInbox},
+	{table: "INVITE_PAGE", to: picturesInbox},
+	{table: "THEME_PICTURE", to: picturesInbox},
 	{table: "GROUP", to: searchInbox},
 	{table: "PERSON", to: searchInbox},
 	{table: "DOCUMENT", to: searchInbox},
@@ -94,6 +109,7 @@ var committedTriggers = []committedTrigger{
 	{table: "PERSON", to: inviteInbox},
 	{table: "MESSAGE", to: inviteInbox},
 	{table: "RECIPIENT", to: inviteInbox},
+	{table: "COMMENT", to: inviteInbox},
 	{table: "BIRTHDAY_YEAR", to: birthdayInbox},
 	{table: "PERSON", to: birthdayInbox},
 	{table: "GROUP", to: birthdayInbox},
@@ -185,17 +201,18 @@ func oneAnswer(m *Model, c Change) ([]Edit, error) {
 	}
 	groups := m.Table("GROUP")
 	writes := []Edit{}
-	for _, pair := range [][2]string{{"rsvp_yes", "rsvp_no"}, {"rsvp_no", "rsvp_yes"}} {
-		for _, answered := range groups.Referencing(pair[0], c.New["group"]) {
+	for _, joined := range answerColumns {
+		for _, answered := range groups.Referencing(joined.column, c.New["group"]) {
 			if answered["kind"] == "activity" && m.keptOff(answered, c.New["person"]) {
 				return nil, access.Forbidden("a person kept off this activity cannot answer its invitation")
 			}
-			other := answered[pair[1]]
-			if other == "" {
-				continue
-			}
-			if row, ok := m.Table("MEMBER").Find(other, c.New["person"]); ok {
-				writes = append(writes, Edit{Delete: row["id"]})
+			for _, other := range answerColumns {
+				if other.column == joined.column || answered[other.column] == "" {
+					continue
+				}
+				if row, ok := m.Table("MEMBER").Find(answered[other.column], c.New["person"]); ok {
+					writes = append(writes, Edit{Delete: row["id"]})
+				}
 			}
 		}
 	}
@@ -218,7 +235,7 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	writes := []Edit{}
-	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"unsubscribed", " Unsubscribed"}, {"chair_offers", " Co-Chair Offers"}, {"leads", " Leads"}, {"audience", " Audience"}, {"hidden_for", " Hidden"}} {
+	for _, served := range []struct{ column, suffix string }{{"managed_by", " Managers"}, {"waitlist", " Waitlist"}, {"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}, {"rsvp_maybe", " Maybe"}, {"unsubscribed", " Unsubscribed"}, {"chair_offers", " Co-Chair Offers"}, {"leads", " Leads"}, {"audience", " Audience"}, {"hidden_for", " Hidden"}} {
 		id, suffix := c.New[served.column], served.suffix
 		if id == "" || id == c.New["id"] {
 			continue
@@ -248,7 +265,10 @@ func hiddenFor(_ *Model, c Change) ([]Edit, error) {
 }
 
 func answerGroups(_ *Model, c Change) ([]Edit, error) {
-	if c.Old != nil || c.New == nil || c.New["kind"] != "event" {
+	if c.New == nil || c.New["kind"] != "event" {
+		return nil, nil
+	}
+	if c.Old != nil && (c.New["maybe"] != "Yes" || c.New["rsvp_maybe"] != "") {
 		return nil, nil
 	}
 	return answerGroupEdits(c.New), nil
@@ -256,8 +276,8 @@ func answerGroups(_ *Model, c Change) ([]Edit, error) {
 
 func answerGroupEdits(g store.Row) []Edit {
 	writes := []Edit{}
-	for _, answer := range []struct{ column, suffix string }{{"rsvp_yes", " Going"}, {"rsvp_no", " Not Going"}} {
-		if g[answer.column] != "" {
+	for _, answer := range answerColumns {
+		if g[answer.column] != "" || (answer.word == "maybe" && g["maybe"] != "Yes") {
 			continue
 		}
 		writes = append(writes,
@@ -279,11 +299,11 @@ func answerSharing(m *Model, c Change) ([]Edit, error) {
 		return nil, nil
 	}
 	writes := []Edit{}
-	for _, column := range []string{"rsvp_yes", "rsvp_no"} {
-		if c.New[column] == "" {
+	for _, a := range answerColumns {
+		if c.New[a.column] == "" {
 			continue
 		}
-		writes = append(writes, Edit{Set: c.New[column], Cells: map[string]any{"visible_to": c.New["visible_to"], "members_visible_to": c.New["members_visible_to"]}})
+		writes = append(writes, Edit{Set: c.New[a.column], Cells: map[string]any{"visible_to": c.New["visible_to"], "members_visible_to": c.New["members_visible_to"]}})
 	}
 	return writes, nil
 }

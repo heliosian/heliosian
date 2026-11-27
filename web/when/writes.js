@@ -92,6 +92,7 @@ export async function addEvent(body) {
     {set: '@hosts', cells: {managed_by: '@hosts'}},
     {insert: 'MEMBER', row: {group: '@hosts', person: me().id, member: 'yes'}},
     {set: '@event', cells: {managed_by: '@hosts'}},
+    {set: '@event', cells: {resend_days: '3'}},
   ];
   if (body.sharing === 'Invite Only') {
     batch.push({set: '@event', cells: {visible_to: '@event'}});

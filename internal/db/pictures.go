@@ -42,6 +42,10 @@ var (
 		{"PERSON", "pronunciation_original", "pronunciation"},
 		{"GROUP", "pronunciation_original", "pronunciation"},
 		{"GROUP", "flyer_original", "flyer"},
+		{"GROUP", "card_picture_original", "card_picture"},
+		{"GROUP", "backdrop_picture_original", "backdrop_picture"},
+		{"INVITE_PAGE", "picture_original", "picture"},
+		{"THEME_PICTURE", "original", "picture"},
 	}
 )
 
@@ -149,6 +153,29 @@ func (p *Pictures) waitPhoto(ctx context.Context, env Env, id string) error {
 		case <-changed:
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+	}
+}
+
+func (p *Pictures) waitMade(ctx context.Context, made madeColumn, id string) (store.Row, error) {
+	for {
+		p.mu.Lock()
+		changed, failed := p.changed, p.failed[id]
+		p.mu.Unlock()
+		row, ok := p.s.Model().Table(made.table).Get(id)
+		if !ok || row[made.original] == "" {
+			return nil, access.Missing("no such picture")
+		}
+		if row[made.made] != "" {
+			return row, nil
+		}
+		if failed != nil {
+			return nil, errors.New("could not make that picture")
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
 }

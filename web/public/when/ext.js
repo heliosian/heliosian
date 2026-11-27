@@ -118,13 +118,17 @@ function paint() {
     const email = el('input');
     email.type = 'email';
     email.placeholder = 'Their email (optional)';
+    const child = el('label', 'child');
+    const childBox = el('input');
+    childBox.type = 'checkbox';
+    child.append(childBox, el('span', '', 'Child'));
     const add = el('button', '', 'Add guest');
     add.type = 'submit';
-    form.append(name, email, add);
+    form.append(name, email, child, add);
     form.addEventListener('submit', ev => {
       ev.preventDefault();
       add.disabled = true;
-      send('POST', api + '/guest', {name: name.value.trim(), email: email.value.trim()}).then(load).catch(err => {
+      send('POST', api + '/guest', {name: name.value.trim(), email: email.value.trim(), child: childBox.checked}).then(load).catch(err => {
         add.disabled = false;
         status.textContent = err.message;
       });

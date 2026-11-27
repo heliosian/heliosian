@@ -1,0 +1,12 @@
+{
+  "key": "my-theme",
+  "name": "My Theme",
+  "blurb": "A line about it for the Theme picker",
+  "fonts": {"display": "'Playfair Display', Georgia, serif", "body": "Nunito, sans-serif", "load": ["Playfair Display:wght@500;700", "Nunito:wght@400;600;700"]},
+  "page": {"backdrop": "linear-gradient(160deg, #f4efe6, #e6dccb)", "ink": "#33302b", "muted": "#7d776d"},
+  "sidebar": {"background": "linear-gradient(180deg, #2b2a26, #4a463f)", "active": "rgba(255, 255, 255, 0.14)"},
+  "envelope": {"body": "#d9c7a7", "side": "#cfbb98", "front": "#e2d2b5", "flap": "#c7b08a", "liner": "repeating-linear-gradient(45deg, #b5543c 0 6px, #f6eee0 6px 12px)"},
+  "seal": {"color": "#b5543c", "ink": "#ffffff"},
+  "card": {"background": "#fffdf8", "ink": "#33302b", "accent": "#b5543c"},
+  "text": {"title": {"size": "52px", "weight": "700"}}
+}

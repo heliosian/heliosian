@@ -1,0 +1,19 @@
+{
+  "key": "skating",
+  "name": "Ice Skating",
+  "blurb": "Icy blues, skate trails and snowflakes",
+  "fonts": {"display": "Marcellus, Georgia, serif", "body": "Nunito, sans-serif", "load": ["Marcellus", "Nunito:wght@400;600;700"]},
+  "page": {"backdrop": "linear-gradient(180deg, #e8f3fa, #cfe3f0)", "ink": "#1d3557", "muted": "#5d7a99"},
+  "sidebar": {"background": "linear-gradient(180deg, #0f2440, #1d4e89)", "active": "rgba(168, 218, 245, 0.2)"},
+  "envelope": {"body": "#bcdcef", "side": "#a9d0e8", "front": "#cde6f4", "flap": "#9cc6e1", "liner": "radial-gradient(circle, #ffffff 0 2px, transparent 2.5px) 0 0 / 20px 20px, radial-gradient(circle, rgba(255, 255, 255, 0.6) 0 1.5px, transparent 2px) 10px 10px / 20px 20px, #1d4e89"},
+  "seal": {"color": "#1d4e89", "ink": "#ffffff", "picture": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M30 22 H52 V52 C52 58 56 62 64 64 L74 67 C80 69 82 73 82 77 V80 H30 Z' fill='%23ffffff'/%3E%3Cpath d='M36 30 H47 M36 38 H47 M36 46 H47' stroke='%231d4e89' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M38 80 V87 M70 80 V87 M24 87 H80 Q88 87 88 80' stroke='%23cfe6f4' stroke-width='3.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\") center / 70% no-repeat"},
+  "card": {
+    "background": "linear-gradient(180deg, #ffffff, #eaf4fb)", "ink": "#1d3557", "accent": "#2f6fae", "radius": "16px", "padding": "76px 48px 132px",
+    "art": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg stroke='%2390c2e3' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Cpath d='M20 3v34M5.3 11.5l29.4 17M5.3 28.5l29.4-17'/%3E%3Cpath d='M16 6l4 4 4-4M16 34l4-4 4 4'/%3E%3C/g%3E%3C/svg%3E\") left 30px top 28px / 32px no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg stroke='%23a8d0ea' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Cpath d='M20 3v34M5.3 11.5l29.4 17M5.3 28.5l29.4-17'/%3E%3C/g%3E%3C/svg%3E\") right 44px top 64px / 22px no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg stroke='%23a8d0ea' stroke-width='2.5' stroke-linecap='round' fill='none'%3E%3Cpath d='M20 3v34M5.3 11.5l29.4 17M5.3 28.5l29.4-17'/%3E%3C/g%3E%3C/svg%3E\") right 84px top 22px / 16px no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg stroke='%23cfe6f4' stroke-width='2.5' stroke-linecap='round' fill='none'%3E%3Cpath d='M20 3v34M5.3 11.5l29.4 17M5.3 28.5l29.4-17'/%3E%3C/g%3E%3C/svg%3E\") left 72px top 96px / 14px no-repeat, url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 560 160'%3E%3Cpath d='M-10 120 C80 60 160 150 240 100 S360 40 420 100 S520 150 580 80' stroke='%2390c2e3' stroke-width='3' fill='none'/%3E%3Cpath d='M-10 138 C90 82 170 162 250 118 S370 62 430 118 S530 162 580 100' stroke='%23cfe6f4' stroke-width='2' fill='none'/%3E%3Cpath d='M240 100 C210 70 250 52 268 70 C284 88 254 112 240 100' stroke='%2390c2e3' stroke-width='3' fill='none'/%3E%3C/svg%3E\") center bottom 6px / 100% auto no-repeat"
+  },
+  "text": {
+    "kicker": {"words": "Lace up for"},
+    "title": {"size": "46px", "case": "uppercase", "spacing": "0.08em"},
+    "rule": {"width": "60px", "height": "1px"}
+  }
+}

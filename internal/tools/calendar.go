@@ -131,7 +131,7 @@ func (c *call) answers(groups []store.Row) (map[string]string, error) {
 	answering := map[string]store.Row{}
 	ids := []string{}
 	for _, g := range groups {
-		for _, col := range []string{"rsvp_yes", "rsvp_no"} {
+		for _, col := range []string{"rsvp_yes", "rsvp_no", "rsvp_maybe"} {
 			if g[col] != "" {
 				answering[g[col]] = g
 				ids = append(ids, g[col])
@@ -147,10 +147,7 @@ func (c *call) answers(groups []store.Row) (map[string]string, error) {
 	}
 	for _, m := range found {
 		g := answering[m["group"]]
-		out[g["id"]] = "yes"
-		if g["rsvp_no"] == m["group"] {
-			out[g["id"]] = "no"
-		}
+		out[g["id"]] = map[string]string{g["rsvp_yes"]: "yes", g["rsvp_no"]: "no", g["rsvp_maybe"]: "maybe"}[m["group"]]
 	}
 	return out, nil
 }

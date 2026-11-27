@@ -37,6 +37,7 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 	registerPDFPages(mux, s, pics, tokens)
 	registerWiki(mux, s, pics, tokens)
 	registerSubscription(mux, s, tokens)
+	registerThemeUpload(mux, s, pics, tokens)
 	mux.HandleFunc("POST /api/do/photo", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {
@@ -116,6 +117,52 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 			return
 		}
 		slog.InfoContext(r.Context(), "set a flyer", "viewer", env.Viewer, "group", id, "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
+	})
+	mux.HandleFunc("POST /api/do/design-picture", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), tokens)
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
+		if err := r.ParseMultipartForm(photoLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the picture as multipart form data: %v", err))
+			return
+		}
+		id, part := r.FormValue("group"), r.FormValue("part")
+		if part != "card" && part != "backdrop" {
+			serve.Error(w, r, access.Invalid("part is card or backdrop, not %q", part))
+			return
+		}
+		ids, hash, err := setUpload(r, s, pics, actor, env, "GROUP", id, part+"_picture_original", func(m *Model) (upload, error) {
+			return pictureOf(r, m, "picture")
+		})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "set a design picture", "viewer", env.Viewer, "group", id, "part", part, "hash", hash)
+		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
+	})
+	mux.HandleFunc("POST /api/do/page-picture", func(w http.ResponseWriter, r *http.Request) {
+		env, actor, ok := caller(w, r, s.Model(), tokens)
+		if !ok {
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
+		if err := r.ParseMultipartForm(photoLimit); err != nil {
+			serve.Error(w, r, access.Invalid("send the picture as multipart form data: %v", err))
+			return
+		}
+		id := r.FormValue("page")
+		ids, hash, err := setUpload(r, s, pics, actor, env, "INVITE_PAGE", id, "picture_original", func(m *Model) (upload, error) {
+			return pictureOf(r, m, "picture")
+		})
+		if err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		slog.InfoContext(r.Context(), "set a page picture", "viewer", env.Viewer, "page", id, "hash", hash)
 		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 	})
 	mux.HandleFunc("POST /api/do/pronunciation", func(w http.ResponseWriter, r *http.Request) {
