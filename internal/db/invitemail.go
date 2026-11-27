@@ -264,7 +264,7 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 		out = iv.cancellation(m, g, msg, from, person, words, link)
 		method = mail.MethodCancel
 	case msg["kind"] == "invitation" || msg["kind"] == "resend" || msg["kind"] == "update":
-		if out, err = iv.invitation(m, g, msg["kind"], person, link, len(cc) == 0); err != nil {
+		if out, err = iv.invitation(m, g, msg["kind"], person, r["token"], link, len(cc) == 0); err != nil {
 			return nil, err
 		}
 	default:
@@ -301,14 +301,14 @@ func (m *Model) addresses(people []string) []string {
 	return out
 }
 
-func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, link string, attached bool) (mail.Message, error) {
+func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, link string, attached bool) (mail.Message, error) {
 	day, hours := dayAndHours(g)
 	names := []string{}
 	for _, p := range m.householdOnList(g, person) {
 		names = append(names, m.shortName(p))
 	}
 	intro := "You're invited to"
-	subject := "[" + g["name"] + "] You're invited!"
+	subject := cmp.Or(g["invite_subject"], "["+g["name"]+"] You're invited!")
 	if kind == "update" {
 		intro = "The details have been updated for"
 		subject = "[" + g["name"] + "] Updated: the details have changed"
@@ -316,13 +316,20 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, link stri
 	if kind == "resend" {
 		intro = "A reminder: you're invited to"
 		subject = "[" + g["name"] + "] Reminder: you're invited!"
+		if g["invite_subject"] != "" {
+			subject = "Reminder: " + g["invite_subject"]
+		}
 	}
+	message := strings.TrimSpace(g["invite_message"])
 	hosting := ""
 	if by := cmp.Or(g["hosted_by"], joinNames(m.namesOf(m.hostsOf(g)))); by != "" {
 		hosting = "Hosted by " + by
 	}
 	rsvpFor := "RSVP for " + joinNames(names) + " here"
 	var text strings.Builder
+	if message != "" {
+		fmt.Fprintf(&text, "%s\n\n", message)
+	}
 	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", intro, g["name"], day)
 	if hours != "" {
 		fmt.Fprintf(&text, "%s\n", hours)
@@ -343,13 +350,16 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, link stri
 		text.WriteString("\nThe invite attached puts it on your calendar.\n")
 	}
 	if g["theme"] != "" {
-		h, err := iv.gatherLetter(m, g, kind, intro, day, hours, description, hosting, person, link, names, attached)
+		h, err := iv.gatherLetter(m, g, gatherLetter{kind: kind, intro: intro, message: message, day: day, hours: hours, description: description, hosting: hosting, person: person, token: token, link: link, names: names, attached: attached})
 		return mail.Message{Subject: subject, Text: text.String(), HTML: h}, err
 	}
 	esc := html.EscapeString
 	var h strings.Builder
 	h.WriteString(`<div style="max-width:600px;margin:0 auto;padding:8px 0;font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1b2a2c">`)
 	h.WriteString(`<div style="background:#fff;border:1px solid #e6e6e6;border-radius:6px;padding:36px 32px 28px">`)
+	if message != "" {
+		fmt.Fprintf(&h, `<p style="margin:0 0 26px;font-size:16px;line-height:1.6;text-align:center;white-space:pre-wrap">%s</p>`, esc(message))
+	}
 	fmt.Fprintf(&h, `<p style="margin:0 0 24px"><a href="%s" style="display:block"><img src="%s" width="536" alt="%s" style="display:block;width:100%%;height:auto;border:0;border-radius:4px"></a></p>`, esc(link), esc(iv.cardOf(g)), esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(intro))
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:26px;line-height:1.25;text-align:center">%s</p>`, esc(g["name"]))
@@ -388,7 +398,13 @@ func roleColor(card map[string]any, role string) (string, error) {
 	}
 }
 
-func (iv *Invitations) gatherLetter(m *Model, g store.Row, kind, intro, day, hours, description, hosting, person, link string, names []string, attached bool) (string, error) {
+type gatherLetter struct {
+	kind, intro, message, day, hours, description, hosting, person, token, link string
+	names                                                                       []string
+	attached                                                                    bool
+}
+
+func (iv *Invitations) gatherLetter(m *Model, g store.Row, l gatherLetter) (string, error) {
 	card, err := cardDesign(m, lookOf(g))
 	if err != nil {
 		return "", err
@@ -419,36 +435,57 @@ func (iv *Invitations) gatherLetter(m *Model, g store.Row, kind, intro, day, hou
 	}
 	fmt.Fprintf(&h, `<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" bgcolor="%s" style="background:%s;font-family:%s"><tr><td align="center" style="padding:36px 14px 28px">`, colors["backdrop"], colors["backdrop"], esc(body))
 	h.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px"><tr><td>`)
-	if kind != "invitation" {
-		fmt.Fprintf(&h, `<p style="margin:0 0 18px;font-size:15px;line-height:1.4;text-align:center;color:%s">%s</p>`, colors["pageInk"], esc(strings.TrimSuffix(intro, " to")))
+	top := l.message
+	if top == "" && l.kind != "invitation" {
+		top = strings.TrimSuffix(l.intro, " to") + "."
 	}
-	fmt.Fprintf(&h, `<a href="%s" style="display:block;text-decoration:none"><img src="%s" width="560" alt="%s" style="display:block;width:100%%;height:auto;border:0;border-radius:%s"></a>`, esc(link), esc(iv.cardOf(g)), esc(g["name"]), esc(radius))
-	fmt.Fprintf(&h, `<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" bgcolor="%s" style="margin-top:20px;background:%s;border-radius:%s;color:%s"><tr><td align="center" style="padding:40px 32px 34px;text-align:center">`, colors["paper"], colors["paper"], esc(radius), colors["ink"])
-	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:13px;line-height:1.4;letter-spacing:0.2em;text-transform:uppercase;color:%s">%s</p>`, colors["kicker"], esc(designValue(card, "text.kicker.words")))
-	fmt.Fprintf(&h, `<p style="margin:0 0 20px;font-family:%s;font-size:40px;line-height:1.1;color:%s">%s</p>`, esc(display), colors["ink"], esc(g["name"]))
-	fmt.Fprintf(&h, `<div style="width:56px;margin:0 auto 20px;border-top:2px solid %s"></div>`, colors["accent"])
-	fmt.Fprintf(&h, `<p style="margin:0;font-size:19px;line-height:1.4;font-weight:600">%s</p>`, esc(day))
-	if hours != "" {
-		fmt.Fprintf(&h, `<p style="margin:2px 0 0;font-size:17px;line-height:1.4">%s</p>`, esc(hours))
+	if top != "" {
+		fmt.Fprintf(&h, `<p style="margin:0 0 24px;font-size:17px;line-height:1.6;text-align:center;white-space:pre-wrap;color:%s">%s</p>`, colors["pageInk"], esc(top))
 	}
+	open := fmt.Sprintf(`<a href="%s" style="display:inline-block;padding:14px 34px;border-radius:999px;background:%s;color:%s;font-size:14px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none">Open your invitation</a>`, esc(l.link), colors["accent"], colors["accentInk"])
+	fmt.Fprintf(&h, `<p style="margin:0 0 30px;text-align:center">%s</p>`, open)
+	if g["card_picture"] != "" && l.token != "" {
+		fmt.Fprintf(&h, `<p style="margin:0;text-align:center"><a href="%s" style="display:inline-block;text-decoration:none"><img src="%s" width="440" alt="%s" style="display:block;width:100%%;max-width:440px;height:auto;border:0;border-radius:%s;box-shadow:0 10px 28px rgba(0,0,0,0.35)"></a></p>`, esc(l.link), esc(iv.config.Origin("gather")+"/open/ext/"+l.token+"/picture/card"), esc(g["name"]), esc(radius))
+	} else {
+		fmt.Fprintf(&h, `<a href="%s" style="display:block;text-decoration:none"><img src="%s" width="560" alt="%s" style="display:block;width:100%%;height:auto;border:0"></a>`, esc(l.link), esc(iv.cardOf(g)), esc(g["name"]))
+	}
+	rule := rgba(colors["ink"], 0.16)
+	fmt.Fprintf(&h, `<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" bgcolor="%s" style="margin-top:30px;background:%s;border-radius:%s;color:%s"><tr><td style="padding:36px 32px 30px">`, colors["paper"], colors["paper"], esc(radius), colors["ink"])
+	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:12px;line-height:1.4;letter-spacing:0.2em;text-transform:uppercase;text-align:center;color:%s">%s</p>`, colors["kicker"], esc(designValue(card, "text.kicker.words")))
+	fmt.Fprintf(&h, `<p style="margin:0;font-family:%s;font-size:32px;line-height:1.15;text-align:center;color:%s">%s</p>`, esc(display), colors["ink"], esc(g["name"]))
+	if l.hosting != "" {
+		fmt.Fprintf(&h, `<p style="margin:10px 0 0;font-size:15px;line-height:1.4;text-align:center;color:%s">%s</p>`, rgba(colors["ink"], 0.62), esc(l.hosting))
+	}
+	if l.description != "" {
+		fmt.Fprintf(&h, `<p style="margin:22px 0 0;font-size:16px;line-height:1.6;text-align:center;white-space:pre-wrap">%s</p>`, esc(l.description))
+	}
+	detail := func(icon, first, second, href, action string) {
+		fmt.Fprintf(&h, `<tr><td width="40" valign="top" style="padding:18px 0;border-top:1px solid %s;font-size:20px;line-height:1.3">%s</td><td valign="top" style="padding:18px 12px 18px 0;border-top:1px solid %s;font-size:16px;line-height:1.45">%s`, rule, icon, rule, esc(first))
+		if second != "" {
+			fmt.Fprintf(&h, `<br>%s`, esc(second))
+		}
+		h.WriteString(`</td>`)
+		fmt.Fprintf(&h, `<td align="right" valign="middle" style="padding:18px 0;border-top:1px solid %s;white-space:nowrap">`, rule)
+		if href != "" {
+			fmt.Fprintf(&h, `<a href="%s" style="color:%s;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none">%s</a>`, esc(href), colors["accent"], action)
+		}
+		h.WriteString(`</td></tr>`)
+	}
+	h.WriteString(`<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:26px">`)
+	calendar := ""
+	if e, ok := iv.calendarEvent(m, g, l.person, "", l.link); ok {
+		calendar = e.GoogleLink()
+	}
+	detail("🗓", l.day, l.hours, calendar, "Add to Google Calendar")
 	if g["location"] != "" {
-		maps := "https://www.google.com/maps/search/?api=1&query=" + url.QueryEscape(g["location"])
-		fmt.Fprintf(&h, `<p style="margin:10px 0 0;font-size:16px;line-height:1.4;font-style:italic"><a href="%s" style="color:%s;text-decoration:underline;text-decoration-color:%s">%s</a></p>`, esc(maps), colors["ink"], colors["accent"], esc(g["location"]))
+		detail("📍", g["location"], "", "https://www.google.com/maps/search/?api=1&query="+url.QueryEscape(g["location"]), "View location")
 	}
-	if description != "" {
-		fmt.Fprintf(&h, `<p style="margin:26px 0 0;font-size:16px;line-height:1.6;white-space:pre-wrap">%s</p>`, esc(description))
-	}
-	if hosting != "" {
-		fmt.Fprintf(&h, `<p style="margin:26px 0 0;font-size:12px;line-height:1.5;letter-spacing:0.16em;text-transform:uppercase;color:%s">%s</p>`, colors["kicker"], esc(hosting))
-	}
-	fmt.Fprintf(&h, `<p style="margin:30px 0 0"><a href="%s" style="display:inline-block;padding:15px 34px;border-radius:999px;background:%s;color:%s;font-size:16px;font-weight:700;letter-spacing:0.02em;text-decoration:none">Open your invitation</a></p>`, esc(link), colors["accent"], colors["accentInk"])
-	fmt.Fprintf(&h, `<p style="margin:12px 0 0;font-size:14px;line-height:1.4">RSVP for %s</p>`, esc(joinNames(names)))
-	if e, ok := iv.calendarEvent(m, g, person, "", link); ok {
-		fmt.Fprintf(&h, `<p style="margin:18px 0 0"><a href="%s" style="display:inline-block;padding:10px 24px;border:2px solid %s;border-radius:999px;color:%s;font-size:14px;font-weight:700;text-decoration:none">Add to Google Calendar</a></p>`, esc(e.GoogleLink()), colors["accent"], colors["accent"])
-	}
+	h.WriteString(`</table>`)
+	fmt.Fprintf(&h, `<p style="margin:26px 0 0;text-align:center">%s</p>`, open)
+	fmt.Fprintf(&h, `<p style="margin:10px 0 0;font-size:14px;line-height:1.4;text-align:center">RSVP for %s</p>`, esc(joinNames(l.names)))
 	h.WriteString(`</td></tr></table>`)
-	fmt.Fprintf(&h, `<p style="margin:22px 0 0;font-size:13px;line-height:1.5;text-align:center;color:%s">This invitation is for %s. Please don’t forward it.`, colors["pageInk"], esc(joinNames(names)))
-	if attached {
+	fmt.Fprintf(&h, `<p style="margin:22px 0 0;font-size:13px;line-height:1.5;text-align:center;color:%s">This invitation is for %s. Please don’t forward it.`, colors["pageInk"], esc(joinNames(l.names)))
+	if l.attached {
 		h.WriteString(`<br>The invite attached puts it on your calendar.`)
 	}
 	h.WriteString(`</p>`)
@@ -456,6 +493,12 @@ func (iv *Invitations) gatherLetter(m *Model, g store.Row, kind, intro, day, hou
 	fmt.Fprintf(&h, `<p style="margin:22px 0 0;text-align:center"><a href="%s" style="text-decoration:none;color:%s;font-size:11px;letter-spacing:0.14em"><img src="%s" width="22" height="22" alt="" style="display:inline-block;vertical-align:middle;border:0;border-radius:5px;margin-right:8px">SENT WITH HELIOS GATHER</a></p>`, esc(gather), colors["muted"], esc(gather+"/brand/icon-192.png"))
 	h.WriteString(`</td></tr></table></td></tr></table>`)
 	return h.String(), nil
+}
+
+func rgba(hex string, alpha float64) string {
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	return fmt.Sprintf("rgba(%d,%d,%d,%g)", r, g, b, alpha)
 }
 
 func (iv *Invitations) letter(g store.Row, link string) mail.Letter {

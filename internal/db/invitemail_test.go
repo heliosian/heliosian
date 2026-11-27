@@ -42,7 +42,7 @@ func TestInvitationWording(t *testing.T) {
 		g, _ := m.Table("GROUP").Get(group)
 		for _, kind := range []string{"invitation", "update"} {
 			t.Run(fmt.Sprintf("%s/hosted=%t", kind, hosted), func(t *testing.T) {
-				msg, err := iv.invitation(m, g, kind, parent, "https://when.test/event", true)
+				msg, err := iv.invitation(m, g, kind, parent, "tok", "https://when.test/event", true)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -89,7 +89,7 @@ func TestThemedInvitationMailIsDrawnInItsDesign(t *testing.T) {
 	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme, "hosted_by": "The Movie Crew"}}})
 	m := iv.s.Model()
 	g, _ := m.Table("GROUP").Get(group)
-	msg, err := iv.invitation(m, g, "invitation", parent, "https://gather.test"+g["path"], true)
+	msg, err := iv.invitation(m, g, "invitation", parent, "tok", "https://gather.test"+g["path"], true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +101,30 @@ func TestThemedInvitationMailIsDrawnInItsDesign(t *testing.T) {
 	}
 	if !strings.Contains(msg.Text, "Hosted by The Movie Crew") {
 		t.Errorf("text lacks the hosts' own words: %s", msg.Text)
+	}
+}
+
+func TestTheHostsWordTheirInvitationMail(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	words := "Hi! We're throwing a little party and would love to have you."
+	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme, "invite_subject": "Come to Movie Night!", "invite_message": words, "card_picture": "cnt00000009201"}}})
+	m := iv.s.Model()
+	g, _ := m.Table("GROUP").Get(group)
+	for kind, subject := range map[string]string{"invitation": "Come to Movie Night!", "resend": "Reminder: Come to Movie Night!", "update": "[Movie Night] Updated: the details have changed"} {
+		msg, err := iv.invitation(m, g, kind, parent, "tok", "https://gather.test"+g["path"], true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if msg.Subject != subject {
+			t.Errorf("%s subject %q, want %q", kind, msg.Subject, subject)
+		}
+		body := html.UnescapeString(msg.HTML)
+		if !strings.Contains(body, words) || !strings.HasPrefix(msg.Text, words) {
+			t.Errorf("%s lacks the hosts' message: %s", kind, msg.Text)
+		}
+		if !strings.Contains(body, "https://gather.test/open/ext/tok/picture/card") || strings.Contains(body, "/open/envelope/") {
+			t.Errorf("%s doesn't show the card picture: %s", kind, body)
+		}
 	}
 }
 

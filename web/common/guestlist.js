@@ -33,7 +33,7 @@ function onGuestList(id) {
 export async function fetchInvites(e) {
   const id = JSON.stringify(e.id);
   const [a, index] = await Promise.all([queries({
-    group: `(from GROUP (where (= id ${id})) (columns kind name slug team_href managed_by visible_to members_visible_to join eligible guests_invited_by flyer auto_invite remind_days resend_days rsvp_yes rsvp_no rsvp_maybe maybe added_by status))`,
+    group: `(from GROUP (where (= id ${id})) (columns kind name slug team_href managed_by visible_to members_visible_to join eligible guests_invited_by flyer auto_invite remind_days resend_days invite_subject invite_message rsvp_yes rsvp_no rsvp_maybe maybe added_by status))`,
     inviters: `(from GROUP @g (where (= id ${id}) (invites_guests @g @viewer)) (columns id))`,
     runs: `(from GROUP @g (where (= id ${id}) (runs_list @g)) (columns kind))`,
     hostGroup: `(from GROUP (where (in id (select GROUP.managed_by (= id ${id})))) (columns visible_to))`,
@@ -236,6 +236,10 @@ export async function setSlug(e, slug) {
 
 export function setDays(e, column, days) {
   return write([{set: e.id, cells: {[column]: days}}]);
+}
+
+export function setInviteEmail(e, subject, message) {
+  return write([{set: e.id, cells: {invite_subject: subject, invite_message: message}}]);
 }
 
 export function setFlyer(e, image) {

@@ -602,8 +602,57 @@ export function openGuestSettings(e, view, refresh) {
   };
   paintGuests(e, view, panel, again);
   const box = el('div', 'guest-settings');
-  box.append(tabbedFields([{label: 'Guests', fields: [panel]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}, {label: 'Custom URL', fields: [urlPanel(e, view, refresh)]}]));
+  box.append(tabbedFields([{label: 'Guests', fields: [panel]}, {label: 'Settings', fields: [settingsPanel(e, view, refresh)]}, {label: 'Invitation email', fields: [emailPanel(e, view, refresh)]}, {label: 'Custom URL', fields: [urlPanel(e, view, refresh)]}]));
   popup('Guest List Settings', box, {wide: true});
+}
+
+function emailPanel(e, view, refresh) {
+  const box = el('div', 'guests-settings');
+  let saved = {subject: view.group.invite_subject || '', message: view.group.invite_message || ''};
+  const subject = el('input');
+  subject.type = 'text';
+  subject.maxLength = 200;
+  subject.placeholder = `[${e.title}] You’re invited!`;
+  subject.value = saved.subject;
+  const message = el('textarea', 'compose-message');
+  message.rows = 6;
+  message.maxLength = 5000;
+  message.placeholder = `Hi! We’d love to have you join us for ${e.title}…`;
+  message.value = saved.message;
+  const status = el('span', 'save-status');
+  const changed = () => subject.value.trim() !== saved.subject || message.value.trim() !== saved.message;
+  const save = button('Save', 'check', 'button button-small', async () => {
+    const next = {subject: subject.value.trim(), message: message.value.trim()};
+    save.disabled = true;
+    status.classList.remove('error');
+    try {
+      await guests.setInviteEmail(e, next.subject, next.message);
+    } catch (err) {
+      status.textContent = err.message;
+      status.classList.add('error');
+      save.disabled = false;
+      return;
+    }
+    saved = next;
+    view.group.invite_subject = next.subject;
+    view.group.invite_message = next.message;
+    toast('The invitation email is saved.');
+    refresh();
+  });
+  save.disabled = true;
+  for (const input of [subject, message]) {
+    input.addEventListener('input', () => {
+      save.disabled = !changed();
+    });
+  }
+  const subjectField = el('label', 'field');
+  subjectField.append(el('span', '', 'Subject'), subject, el('small', '', 'Leave it blank for the standard subject. A reminder to people who haven’t opened it says Reminder: before it.'));
+  const messageField = el('label', 'field');
+  messageField.append(el('span', '', 'Message'), message, el('small', '', 'Your own words at the top of the invitation email, above the card. It goes with reminders and updates too.'));
+  const foot = el('div', 'modal-actions');
+  foot.append(save, status);
+  box.append(subjectField, messageField, foot);
+  return box;
 }
 
 function urlPanel(e, view, refresh) {

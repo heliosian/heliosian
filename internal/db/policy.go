@@ -501,7 +501,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days theme envelope seal liner hosted_by design card_picture backdrop_picture priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by design card_picture backdrop_picture priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -1267,6 +1267,9 @@ const PolicySource = `
 (set GROUP.remind_days (runs_list @old))
 (set GROUP.remind_after_days (runs_list @old))
 (set GROUP.resend_days (runs_list @old))
+; a group's managers word its invitation email's subject and message
+(set GROUP.invite_subject (runs_list @old))
+(set GROUP.invite_message (runs_list @old))
 ; an event's hosts choose the design Helios Gather draws its invitation in, from the site's themes and their own
 (set GROUP.theme (and (= @old.kind "event") (runs_list @old) (usable_theme @new.theme)))
 (set GROUP.envelope (and (= @old.kind "event") (runs_list @old) (usable_theme @new.envelope)))

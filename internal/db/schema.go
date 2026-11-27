@@ -446,6 +446,8 @@ var Tables = []Table{
 			col("remind_days", Int).about("How many days before it starts everyone sent its invitation who has not answered gets a reminder, once; blank for none, or when remind_after_days says when instead."),
 			col("remind_after_days", Int).about("How many days after someone's invitation went out they get a reminder if they have not answered, once; blank for none, or when remind_days says when instead."),
 			col("resend_days", Int).about("How many days after someone's invitation went out it is sent to them again if they have neither opened nor answered it, once; blank for none."),
+			col("invite_subject", Text).about("The subject of its invitation email, in the hosts' words; a resent invitation's is Reminder: and this. Blank for the standard subject."),
+			col("invite_message", Text).about("The hosts' own words at the top of its invitation email, the resent one and the updated one. Blank for none."),
 			ref("theme", "THEME").about("An event's invitation design on Helios Gather, which draws it as an envelope that opens to the card; blank for an event Gather does not show."),
 			ref("envelope", "THEME").about("The theme whose envelope Helios Gather wraps an event's invitation in; blank for the envelope of its theme."),
 			ref("seal", "THEME").about("The theme whose seal sticker closes an event's invitation envelope; blank for the seal of its envelope."),
