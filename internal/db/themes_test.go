@@ -566,3 +566,134 @@ func TestTheOpenThemesResolveTheirPictures(t *testing.T) {
 		t.Errorf("skating is not merged over the standard: %v", got.Themes[1].Design["card"])
 	}
 }
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
+}
+
+func zerosZip(t *testing.T, name string, n int) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	z := zip.NewWriter(&buf)
+	f, err := z.Create(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.CopyN(f, zeroReader{}, int64(n)); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func filesRequest(t *testing.T, parts map[string][]byte) *http.Request {
+	t.Helper()
+	body := &bytes.Buffer{}
+	form := multipart.NewWriter(body)
+	for name, content := range parts {
+		w, err := form.CreateFormFile("file", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/do/theme", body)
+	r.Header.Set("Content-Type", form.FormDataContentType())
+	if err := r.ParseMultipartForm(formMemory); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestThemeArchivesShareOneExpandedBudget(t *testing.T) {
+	small, err := droppedFiles(filesRequest(t, map[string][]byte{
+		"one.zip": zerosZip(t, "a.txt", 32),
+		"two.zip": zerosZip(t, "b.txt", 32),
+	}))
+	if err != nil || len(small) != 2 {
+		t.Fatalf("two small archives: %d files, %v", len(small), err)
+	}
+	n := fileLimit/2 + 1
+	one := zerosZip(t, "a.txt", n)
+	var used uint64
+	got, err := unzipped("one.zip", one, &used)
+	if err != nil || len(got) != 1 || len(got[0].content) != n {
+		t.Fatalf("one archive of half the budget: %d files, err %v", len(got), err)
+	}
+	got = nil
+	_, err = droppedFiles(filesRequest(t, map[string][]byte{
+		"one.zip": one,
+		"two.zip": zerosZip(t, "b.txt", n),
+	}))
+	if err == nil || !strings.Contains(err.Error(), "more than a theme's worth of files") {
+		t.Fatalf("two archives over the budget together: %v", err)
+	}
+}
+
+func TestACorruptThemeEntryIsRefused(t *testing.T) {
+	raw := storedZip(t, "note.txt", []byte("hello"))
+	z, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, err := z.File[0].Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 64)
+	n, err := rc.Read(buf)
+	if n != len("hello") || err != nil {
+		t.Fatalf("first read %d %v", n, err)
+	}
+	n, err = rc.Read(buf)
+	rc.Close()
+	if n != 0 || err != io.EOF {
+		t.Fatalf("next read %d %v", n, err)
+	}
+	var used uint64
+	got, err := unzipped("theme.zip", raw, &used)
+	if err != nil || len(got) != 1 || string(got[0].content) != "hello" {
+		t.Fatalf("honest entry: %v %v", got, err)
+	}
+	at := bytes.LastIndex(raw, []byte{0x50, 0x4b, 0x01, 0x02})
+	if at < 0 || at+20 > len(raw) {
+		t.Fatal("no central directory")
+	}
+	raw[at+16] ^= 0xff
+	used = 0
+	_, err = unzipped("theme.zip", raw, &used)
+	if err == nil || !strings.Contains(err.Error(), "could not read note.txt in theme.zip") {
+		t.Fatalf("corrupt entry: %v", err)
+	}
+}
+
+// A stored entry returns its bytes, then EOF on the next read, which is when
+// the checksum runs. Deflate can return both on one read.
+func storedZip(t *testing.T, name string, content []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	z := zip.NewWriter(&buf)
+	f, err := z.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(content); err != nil {
+		t.Fatal(err)
+	}
+	if err := z.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}

@@ -383,26 +383,29 @@ type droppedFile struct {
 	content []byte
 }
 
-func unzipped(name string, content []byte) ([]droppedFile, error) {
+func unzipped(name string, content []byte, used *uint64) ([]droppedFile, error) {
 	z, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
 		return nil, access.Invalid("could not open %s: %v", name, err)
 	}
 	out := []droppedFile{}
-	total := uint64(0)
+	limit := uint64(fileLimit)
 	for _, f := range z.File {
 		base := path.Base(f.Name)
 		if f.FileInfo().IsDir() || strings.HasPrefix(f.Name, "__MACOSX/") || strings.HasPrefix(base, ".") {
 			continue
 		}
-		if total += f.UncompressedSize64; total > fileLimit {
+		size := f.UncompressedSize64
+		if size > limit || *used > limit-size {
 			return nil, access.Invalid("%s holds more than a theme's worth of files", name)
 		}
+		*used += size
 		rc, err := f.Open()
 		if err != nil {
 			return nil, access.Invalid("could not read %s in %s", f.Name, name)
 		}
-		data, err := io.ReadAll(io.LimitReader(rc, fileLimit))
+		// Read to EOF so the zip reader checks the checksum; it already stops at the declared size.
+		data, err := io.ReadAll(rc)
 		rc.Close()
 		if err != nil {
 			return nil, access.Invalid("could not read %s in %s", f.Name, name)
@@ -414,6 +417,8 @@ func unzipped(name string, content []byte) ([]droppedFile, error) {
 
 func droppedFiles(r *http.Request) ([]droppedFile, error) {
 	out := []droppedFile{}
+	var used uint64
+	limit := uint64(fileLimit)
 	for _, header := range r.MultipartForm.File["file"] {
 		f, err := header.Open()
 		if err != nil {
@@ -426,13 +431,18 @@ func droppedFiles(r *http.Request) ([]droppedFile, error) {
 		}
 		name := path.Base(header.Filename)
 		if http.DetectContentType(content) == "application/zip" {
-			inside, err := unzipped(name, content)
+			inside, err := unzipped(name, content, &used)
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, inside...)
 			continue
 		}
+		size := uint64(len(content))
+		if size > limit || used > limit-size {
+			return nil, access.Invalid("%s holds more than a theme's worth of files", name)
+		}
+		used += size
 		out = append(out, droppedFile{name: name, content: content})
 	}
 	return out, nil
