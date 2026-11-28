@@ -1,11 +1,15 @@
-import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf} from '../state.js';
+import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf, partiesPath, invitationPath, invitationPageId} from '../state.js';
 import {el, svg} from '/elements.js';
 import {selectPill} from '/form.js';
 import {tabStrip} from '/tabs.js';
-import {inTab, listTabs, listPath, listTab, listCategory, searchParties} from '../chrome.js';
+import {inTab, listPath, listTab, listCategory, searchParties, shownTabs, themedPage, pageHeadMain} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {render} from '/router.js';
 import {partyCard} from '../cards.js';
+import {themed} from '/themes.js';
+import {inviteCard} from '/envelope.js';
+import {openSheet, fillDeck} from '/sheets.js';
+import {loadDetails, noteOpened, rsvpPanel, deckOf, cardWords} from '/invitation.js';
 
 function shown(id) {
   return parties(id).filter(p => inTab(p, state.tab) && (!state.category || p.category === state.category));
@@ -45,6 +49,43 @@ export function celebrationBand(c) {
   return band;
 }
 
+function invitationSection(inv) {
+  const section = themed(el('section', 'invitation-section'), inv.look);
+  const column = el('div', 'invitation-column invite-column');
+  const above = el('div', 'invite-sheets is-above');
+  const stage = el('div', 'invitation-stage invite-stage');
+  const below = el('div', 'invite-sheets is-below');
+  const side = el('div', 'invitation-side');
+  column.append(above, stage, below);
+  section.append(column, side);
+  const showDeck = details => {
+    const item = fillDeck(inv.look, deckOf(inv, inv.pages), invitationPageId(), above, below, picked => {
+      history.replaceState(null, '', invitationPath(picked.card ? '' : picked.id));
+      showDeck(details);
+      renderChrome();
+    });
+    stage.replaceChildren(item.card ? inviteCard(cardWords(inv, details)) : openSheet(inv.look, item));
+  };
+  const fillSide = details => {
+    side.replaceChildren();
+    if (details.household.length && inv.status !== 'cancelled') {
+      side.append(rsvpPanel(inv, details, redraw));
+    }
+  };
+  const redraw = async () => fillSide(await loadDetails(inv));
+  loadDetails(inv).then(details => {
+    showDeck(details);
+    fillSide(details);
+    noteOpened(inv, details);
+  });
+  return section;
+}
+
+export function invitationPage() {
+  setTitle(state.model.invitation.name);
+  return invitationSection(state.model.invitation);
+}
+
 function grid(id) {
   const wrap = el('div');
   const items = shown(id);
@@ -71,21 +112,20 @@ function grid(id) {
 export function partiesPage(id) {
   if (id && celebration(id)) {
     state.celebration = id;
-  } else if (state.model.current) {
-    state.celebration = state.model.current;
+  } else if (state.model.listed) {
+    state.celebration = state.model.listed;
   }
   state.tab = listTab();
   state.category = listCategory();
   const c = currentCelebration();
   setTitle('Parties');
-  const page = el('div');
+  const page = themedPage();
   const banner = celebration(state.model.banner) || c;
-  if (banner) {
+  if (banner && !state.model.invitation) {
     page.append(celebrationBand(banner));
   }
   const head = el('div', 'page-head');
-  const main = el('div', 'page-head-main');
-  main.append(el('h1', 'page-title', 'Community Fun(d)raiser Parties'));
+  const main = pageHeadMain('Community Fun(d)raiser Parties', c ? c.title : '');
   if (state.model.settings.partiesIntro) {
     main.append(el('p', 'page-intro', state.model.settings.partiesIntro));
   }
@@ -93,10 +133,10 @@ export function partiesPage(id) {
   const options = state.model.celebrations
     .filter(x => x.id === state.celebration || parties(x.id).length)
     .map(x => ({key: x.id, label: x.title}));
-  if (options.length > 1) {
+  if (options.length > 1 && !state.model.invitation) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
-      history.replaceState(null, '', picked === state.model.current ? '/' : `/celebrations/${encodeURIComponent(celebration(picked).code)}`);
+      history.replaceState(null, '', partiesPath());
       render();
     }));
   }
@@ -105,13 +145,9 @@ export function partiesPage(id) {
   const bar = el('div', 'list-bar');
   const list = el('div');
   const paint = () => list.replaceChildren(grid(state.celebration));
-  const counts = {};
-  for (const t of listTabs) {
-    counts[t.key] = parties().filter(p => inTab(p, t.key)).length;
-  }
   const paintTabs = () => {
     bar.replaceChildren();
-    bar.append(tabStrip(listTabs.map(t => ({...t, count: counts[t.key]})), state.tab, 2, key => {
+    bar.append(tabStrip(shownTabs(true), state.tab, 2, key => {
       state.tab = key;
       history.pushState(null, '', listPath(state.tab, state.category));
       paintTabs();

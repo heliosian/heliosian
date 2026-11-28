@@ -30,6 +30,7 @@ var stagedTriggers = []stagedTrigger{
 	{table: "PERSON", fire: madeNotMade},
 	{table: "GROUP", fire: madeNotMade},
 	{table: "GROUP", fire: servingNames},
+	{table: "GROUP", fire: celebrationFromInvitation},
 	{table: "GROUP", fire: groupSlugMoved},
 	{table: "GROUP", fire: hiddenFor},
 	{table: "GROUP", fire: answerGroups},
@@ -245,6 +246,53 @@ func servingNames(m *Model, c Change) ([]Edit, error) {
 			continue
 		}
 		writes = append(writes, Edit{Set: id, Cells: map[string]any{"name": c.New["name"] + suffix}})
+	}
+	return writes, nil
+}
+
+func invitationCells(event store.Row) map[string]string {
+	place := event["place"]
+	if place == "" {
+		place = event["location"]
+	}
+	return map[string]string{
+		"name": event["name"], "subtitle": event["subtitle"], "start": event["start"], "end": event["end"], "all_day": event["all_day"],
+		"location": place, "address_override": event["location"],
+	}
+}
+
+func celebrationFromInvitation(m *Model, c Change) ([]Edit, error) {
+	if c.New == nil {
+		return nil, nil
+	}
+	groups := m.Table("GROUP")
+	pairs := [][2]store.Row{}
+	switch c.New["kind"] {
+	case "event":
+		for _, celebration := range groups.Referencing("invitation", c.New["id"]) {
+			pairs = append(pairs, [2]store.Row{celebration, c.New})
+		}
+	case "celebration":
+		if c.New["invitation"] == "" || (c.Old != nil && c.Old["invitation"] == c.New["invitation"]) {
+			return nil, nil
+		}
+		event, ok := groups.Get(c.New["invitation"])
+		if !ok {
+			return nil, nil
+		}
+		pairs = append(pairs, [2]store.Row{c.New, event})
+	}
+	writes := []Edit{}
+	for _, pair := range pairs {
+		cells := map[string]any{}
+		for column, value := range invitationCells(pair[1]) {
+			if pair[0][column] != value {
+				cells[column] = value
+			}
+		}
+		if len(cells) > 0 {
+			writes = append(writes, Edit{Set: pair[0]["id"], Cells: cells})
+		}
 	}
 	return writes, nil
 }

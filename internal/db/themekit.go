@@ -19,8 +19,8 @@ var (
 	kitModules = []struct{ file, name string }{
 		{"web/public/common/elements.js", "/elements.js"},
 		{"web/public/common/andlist.js", "/andlist.js"},
-		{"web/public/gather/themes.js", "/themes.js"},
-		{"web/public/gather/envelope.js", "/envelope.js"},
+		{"web/public/common/themes.js", "/themes.js"},
+		{"web/public/common/envelope.js", "/envelope.js"},
 	}
 	kitImport = regexp.MustCompile(`^import \{([^}]*)\} from '([^']+)';$`)
 	kitExport = regexp.MustCompile(`^export (?:async function|function|const|let) (\w+)`)
@@ -69,7 +69,7 @@ func themePreview() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	style, err := os.ReadFile("web/public/gather/envelope.css")
+	style, err := os.ReadFile("web/public/common/envelope.css")
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +78,7 @@ func themePreview() ([]byte, error) {
 		return nil, err
 	}
 	rules, err := json.Marshal(map[string]any{
-		"key": themeKey.String(), "shapes": []string{"circle", "square", "stamp"}, "aligns": []string{"center", "left"},
+		"key": themeKey.String(), "shapes": sealShapes, "aligns": cardAligns, "details": cardDetails, "dateParts": dateParts,
 		"mailPaths": themeMailPaths, "textRoles": themeTextRoles,
 	})
 	if err != nil {

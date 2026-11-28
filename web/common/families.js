@@ -2,8 +2,7 @@ import {el, svg} from '/elements.js';
 import {face, gradeBadge, personRow} from '/personrow.js';
 import {openModal} from '/modal.js';
 import {doneButton} from '/personcard.js';
-
-const saidWords = {yes: 'Yes', maybe: 'Maybe', no: 'No', pending: 'Pending', invited: 'Invited'};
+import {standardWords} from '/themes.js';
 
 const saidIcons = {yes: 'check', maybe: 'clock', no: 'close', pending: 'mail'};
 
@@ -37,9 +36,9 @@ export function familySwitch(byFamily, onChange) {
   return wrap;
 }
 
-export function familySaid(answer, change) {
+export function familySaid(answer, change, words = standardWords) {
   const said = el(change ? 'button' : 'span', 'family-said is-' + (answer || 'none'));
-  said.append(svg(saidIcons[answer] || 'info'), el('span', '', saidWords[answer] || 'No response'));
+  said.append(svg(saidIcons[answer] || 'info'), el('span', '', {...words, pending: 'Pending', invited: 'Invited'}[answer || 'none']));
   if (change) {
     said.type = 'button';
     said.title = 'Change the answer';

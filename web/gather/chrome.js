@@ -1,13 +1,11 @@
 import {el, link, svg, button, toast} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
-import {me, findInvite, pagesOf, movePage, dayWords, hourWords, state} from './state.js';
+import {me, findInvite, pagesOf, movePage, state} from './state.js';
+import {invitationHead, topbarLine, guestListWords, guestListShown} from '/invitation.js';
 import {openThemeManager} from './thememanager.js';
 import {load, navigate} from '/router.js';
 import {openPageEditor} from './pageeditor.js';
-import {parseWhen, googleCalendarLink} from '/datecard.js';
-import {andList} from '/andlist.js';
-import {whereWords} from '/envelope.js';
-import {inviteHead, madeWith} from '/sidebar.js';
+import {madeWith} from '/sidebar.js';
 
 function navLink(href, label, icon, active) {
   const a = link(href, active ? 'is-active' : '');
@@ -101,8 +99,8 @@ function phoneNav(nav, key, inv) {
     navigate(base);
   });
   nav.append(rsvp, navLink(base, 'Invitation', 'mail', path === base || path.startsWith(`${base}/p/`)));
-  if (inv.host || inv.listShown) {
-    nav.append(navLink(`${base}/guests`, inv.host ? 'Guest list' : 'Who’s coming', 'groups', path === `${base}/guests`));
+  if (guestListShown(inv)) {
+    nav.append(navLink(`${base}/guests`, guestListWords(inv), 'groups', path === `${base}/guests`));
   }
   if (inv.host) {
     nav.append(hostMenu(key, inv, base));
@@ -123,8 +121,8 @@ function inviteNav(nav, key, inv) {
     pages.append(a);
   }
   nav.append(pages);
-  if (inv.host || inv.listShown) {
-    nav.append(navLink(`${base}/guests`, inv.host ? 'Guest list' : 'Who’s coming', 'groups', path === `${base}/guests`));
+  if (guestListShown(inv)) {
+    nav.append(navLink(`${base}/guests`, guestListWords(inv), 'groups', path === `${base}/guests`));
   }
   if (inv.host) {
     nav.append(navLink(`${base}/questions`, 'Questions', 'list', path === `${base}/questions`));
@@ -133,52 +131,16 @@ function inviteNav(nav, key, inv) {
   }
 }
 
-const headDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'long', day: 'numeric', year: 'numeric'});
-
-function headOf(key, inv) {
-  const from = parseWhen(inv.start);
-  return inviteHead({
-    href: `/g/${encodeURIComponent(key)}`, name: inv.name, look: inv.look, day: from ? headDay.format(from.date) : dayWords(inv), hours: hourWords(inv),
-    calendar: googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, `${location.origin}/g/${encodeURIComponent(key)}`].filter(Boolean).join('\n\n')}),
-    place: inv.place, location: inv.location, hostedBy: inv.hostedBy || andList(inv.hostNames),
-  });
-}
-
-function brandFor(inv) {
-  const brand = document.querySelector('.sidebar .brand');
-  brand.hidden = Boolean(inv);
-  const bar = document.querySelector('#topbar');
-  let line = bar.querySelector('.topbar-subtitle');
-  if (!line) {
-    line = el('div', 'topbar-subtitle');
-    const menu = bar.querySelector('.topbar-menu');
-    if (menu) {
-      menu.after(line);
-    } else {
-      bar.prepend(line);
-    }
-  }
-  line.hidden = !inv;
-  if (!inv) {
-    line.replaceChildren();
-    return;
-  }
-  line.replaceChildren(el('span', 'topbar-title', inv.name));
-  if (inv.subtitle) {
-    line.append(el('span', 'topbar-subtitle-words', inv.subtitle));
-  }
-}
-
 function fillNav(nav, sidebar) {
   const parts = location.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   const inv = parts[0] === 'g' && parts[1] ? findInvite(parts[1]) : null;
-  brandFor(inv);
+  topbarLine(inv);
   if (inv) {
     if (!sidebar) {
       phoneNav(nav, parts[1], inv);
       return;
     }
-    nav.append(headOf(parts[1], inv));
+    nav.append(invitationHead(inv, `/g/${encodeURIComponent(parts[1])}`));
     inviteNav(nav, parts[1], inv);
     nav.append(madeWith());
     return;

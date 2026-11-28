@@ -42,7 +42,7 @@ func TestImplementationOnlyGroupsServeOneGroup(t *testing.T) {
 	tech, techManagers, viewers, sciOly := made[0], made[1], made[4], made[6]
 	got := ids(as(t, s, staff, `(from GROUP @g (where (implementation_only @g)))`), "id")
 	slices.Sort(got)
-	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000000704", "grp00000009002", "grp00000009003", "grp00000009004", "grp00000009012", "grp00000009013", "grp00000009014", "grp00000009022", "grp00000009023", "grp00000009024", "grp00000009032", "grp00000009033", "grp00000009034", "grp00000020073", "grp00000020075", "grp00000020077", viewers}
+	want := []string{"grp00000000041", "grp00000000042", "grp00000000043", "grp00000000044", "grp00000000513", "grp00000000514", "grp00000000522", "grp00000000704", "grp00000009002", "grp00000009003", "grp00000009004", "grp00000009012", "grp00000009013", "grp00000009014", "grp00000009022", "grp00000009023", "grp00000009024", "grp00000009032", "grp00000009033", "grp00000009034", "grp00000009042", "grp00000009043", "grp00000009044", "grp00000009052", "grp00000009053", "grp00000009054", "grp00000009055", "grp00000009062", "grp00000009063", "grp00000009064", "grp00000009072", "grp00000009073", "grp00000009074", "grp00000009082", "grp00000009083", "grp00000009084", "grp00000009092", "grp00000009093", "grp00000009094", "grp00000009102", "grp00000009103", "grp00000009104", "grp00000020073", "grp00000020075", "grp00000020077", viewers}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("implementation only: %v, want %v", got, want)
@@ -73,7 +73,7 @@ func TestABatchScansEachTableOnceForItsSelects(t *testing.T) {
 		queries = append(queries, mustParse(t, src))
 	}
 	results := m.RunAll(trace.With(t.Context(), root), queries, Env{Viewer: staff, Now: testNow})
-	if len(results[3].IDs) != 23 {
+	if len(results[3].IDs) != 45 {
 		t.Fatalf("the fourth query found %v", results[3].IDs)
 	}
 	passes := map[string]int{}
@@ -267,9 +267,15 @@ func TestRun(t *testing.T) {
 			"grp00000020046", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051", "grp00000020052",
 			"grp00000020053", "grp00000020054", "grp00000020055", "grp00000020056", "grp00000020057", "grp00000020059",
 			"grp00000020062", "grp00000020064", "grp00000020065", "grp00000020068", "grp00000020074", "grp00000020076",
-			"grp00000020078",
+			"grp00000020078", "grp00000009001", "grp00000009041", "grp00000009043", "grp00000009044", "grp00000009101",
+			"grp00000009103", "grp00000009071", "grp00000009073", "grp00000009074", "grp00000009081", "grp00000009083",
+			"grp00000009084", "grp00000009091",
 		}},
-		{"", `(from GROUP (where (>= start today) (!= kind "group")))`, "id", []string{"grp00000000040", "grp00000000512", "grp00000000521", "grp00000009001", "grp00000009011", "grp00000009021", "grp00000009031"}},
+		{"", `(from GROUP (where (>= start today) (!= kind "group")))`, "id", []string{
+			"grp00000000040", "grp00000000512", "grp00000000520", "grp00000000521", "grp00000009001", "grp00000009011",
+			"grp00000009021", "grp00000009031", "grp00000009041", "grp00000009101", "grp00000009051", "grp00000009061",
+			"grp00000009071", "grp00000009081", "grp00000009091",
+		}},
 		{"", `(from GROUP (where (< end now)))`, "id", nil},
 		{"", `(from PERSON (where (in id (select MEMBER.person (= group "grp00000000020")))))`, "id", []string{"per00000000001", "per00000000002", "per00000020018", "per00000020019"}},
 		{"", `(from SAVED_SEARCH (where (contains search "community")))`, "token", []string{"fed00000000002"}},
@@ -304,7 +310,7 @@ func TestRun(t *testing.T) {
 		}},
 		{"", `(from PERSON (where (blank vc_name)))`, "id", []string{"per00000000004"}},
 		{"", `(from GROUP (where (contains name "LL PICnic") (= kind "event")))`, "id", []string{"grp00000000040"}},
-		{"", `(from GROUP (where (contains description "picnic")))`, "id", nil},
+		{"", `(from GROUP (where (contains description "picnic")))`, "id", []string{"grp00000009071", "grp00000009081"}},
 		{"", `(from GROUP (where (contains kind "ami")))`, "id", []string{
 			"grp00000000020", "grp00000000503", "grp00000020043", "grp00000020044", "grp00000020045", "grp00000020046",
 			"grp00000020047", "grp00000020048", "grp00000020049", "grp00000020050", "grp00000020051", "grp00000020052",
@@ -315,7 +321,10 @@ func TestRun(t *testing.T) {
 		{"", `(from PERSON (where (= (length vc_name) 0)))`, "id", []string{"per00000000004"}},
 		{"", `(from MEMBER (where (= (length guest_of.name_short) 5)))`, "person", []string{"per00000000004"}},
 		{"", `(from BIRTHDAY_YEAR (where (>= year 2026) (= charity.name "Second Harvest")))`, "id", []string{"bdy00000000001", "bdy00000000003"}},
-		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{"grp00000000040", "grp00000009001", "grp00000009011", "grp00000009021", "grp00000009031"}},
+		{"", `(from GROUP (where (!= status "closed") (= kind "Event")))`, "id", []string{
+			"grp00000000040", "grp00000009001", "grp00000009011", "grp00000009021", "grp00000009031", "grp00000009041",
+			"grp00000009101", "grp00000009051", "grp00000009061", "grp00000009071", "grp00000009081", "grp00000009091",
+		}},
 		{"per00000000003", `(from PERSON (where (= @viewer id)))`, "id", []string{"per00000000003"}},
 		{"", `(from PERSON (where (= @viewer id)))`, "id", nil},
 	} {
@@ -715,7 +724,7 @@ func TestEffectiveMembers(t *testing.T) {
 		t.Fatalf("the picnic holds %v", got)
 	}
 	rows := runAs(t, s.Model(), "per00000000002", `(from GROUP @g (where (exists EFFECTIVE_MEMBER (= group @g) (= person @viewer))) (order id asc))`).Rows()
-	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000020", "grp00000000030", "grp00000000036", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000000701", "grp00000000703", "grp00000009001", "grp00000009011", "grp00000020073", "grp00000020075", "grp00000020078"}) {
+	if got := ids(rows, "id"); !slices.Equal(got, []string{"grp00000000002", "grp00000000004", "grp00000000007", "grp00000000008", "grp00000000020", "grp00000000030", "grp00000000036", "grp00000000040", "grp00000000042", "grp00000000502", "grp00000000512", "grp00000000513", "grp00000000514", "grp00000000521", "grp00000000701", "grp00000000703", "grp00000009001", "grp00000009011", "grp00000009041", "grp00000009043", "grp00000009101", "grp00000009103", "grp00000020073", "grp00000020075", "grp00000020078"}) {
 		t.Fatalf("Rowan is effectively in %v", got)
 	}
 	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000030", "person": "per00000000002", "member": "excluded"}}})

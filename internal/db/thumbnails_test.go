@@ -56,6 +56,7 @@ func thumbnailed(t *testing.T, s *Store, id string) store.Row {
 }
 
 func TestAPagesPictureThatFailsIsTriedAgain(t *testing.T) {
+	allowLocalFetch(t)
 	banner := redPNG(t, 600, 300)
 	asked := atomic.Int32{}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,6 +154,7 @@ func TestIdenticalImagesReuseACompletedThumbnailWithoutReadingTheSource(t *testi
 }
 
 func TestIdenticalHTMLResolvesEachPagesPicture(t *testing.T) {
+	allowLocalFetch(t)
 	red, black := redPNG(t, 600, 300), pngOf(t, 600)
 	asked := atomic.Int32{}
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +259,7 @@ func TestAPDFsThumbnailIsPostedFromALaptop(t *testing.T) {
 }
 
 func TestDocumentsGetThumbnails(t *testing.T) {
+	allowLocalFetch(t)
 	banner := redPNG(t, 1200, 630)
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/news/share/banner.png" {

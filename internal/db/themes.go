@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"path"
 	"reflect"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/auth"
@@ -93,6 +95,7 @@ type gatherDesign struct {
 		Radius     string `json:"radius"`
 		Padding    string `json:"padding"`
 		Align      string `json:"align"`
+		Details    string `json:"details"`
 		Width      string `json:"width"`
 		MinHeight  string `json:"minHeight"`
 		Border     string `json:"border"`
@@ -111,8 +114,11 @@ type gatherDesign struct {
 			Words string `json:"words"`
 			themeText
 		} `json:"kicker"`
-		Title   themeText `json:"title"`
-		Day     themeText `json:"day"`
+		Title themeText `json:"title"`
+		Day   struct {
+			Format string `json:"format"`
+			themeText
+		} `json:"day"`
 		Hours   themeText `json:"hours"`
 		Place   themeText `json:"place"`
 		Message themeText `json:"message"`
@@ -124,6 +130,28 @@ type gatherDesign struct {
 			Color  string `json:"color"`
 		} `json:"rule"`
 	} `json:"text"`
+	Words struct {
+		Coming string `json:"coming"`
+		Yes    string `json:"yes"`
+		Maybe  string `json:"maybe"`
+		No     string `json:"no"`
+		None   string `json:"none"`
+	} `json:"words"`
+}
+
+var (
+	sealShapes  = []string{"circle", "square", "stamp"}
+	cardAligns  = []string{"center", "left"}
+	cardDetails = []string{"stacked", "side-by-side"}
+	dateLayouts = map[string]string{"weekday": "Monday", "wkd": "Mon", "month": "January", "mon": "Jan", "day": "2", "year": "2006"}
+	dateParts   = slices.Sorted(maps.Keys(dateLayouts))
+	datePart    = regexp.MustCompile(`\{([^{}]*)\}`)
+)
+
+func themedDay(card map[string]any, from time.Time) string {
+	return datePart.ReplaceAllStringFunc(designValue(card, "text.day.format"), func(part string) string {
+		return from.Format(dateLayouts[part[1:len(part)-1]])
+	})
 }
 
 func blankFields(v reflect.Value, at string) []string {
@@ -193,14 +221,22 @@ func standardDesign(over map[string]any) error {
 	if blank := blankFields(reflect.ValueOf(d), "design"); len(blank) > 0 {
 		return fmt.Errorf("the design leaves blank %s; write none for a part it does without", strings.Join(blank, ", "))
 	}
-	if !slices.Contains([]string{"circle", "square", "stamp"}, d.Seal.Shape) {
+	if !slices.Contains(sealShapes, d.Seal.Shape) {
 		return fmt.Errorf("a seal is shaped circle, square or stamp, not %q", d.Seal.Shape)
 	}
 	if d.Seal.Picture != "none" && (!cssURL.MatchString(d.Seal.Picture) || hexColor.MatchString(d.Seal.Picture)) {
 		return fmt.Errorf("seal.picture is none or picture layers drawn over seal.color, with no color of its own, not %q", d.Seal.Picture)
 	}
-	if !slices.Contains([]string{"center", "left"}, d.Card.Align) {
+	if !slices.Contains(cardAligns, d.Card.Align) {
 		return fmt.Errorf("a card aligns center or left, not %q", d.Card.Align)
+	}
+	if !slices.Contains(cardDetails, d.Card.Details) {
+		return fmt.Errorf("a card's details are stacked or side-by-side, not %q", d.Card.Details)
+	}
+	for _, m := range datePart.FindAllStringSubmatch(d.Text.Day.Format, -1) {
+		if _, ok := dateLayouts[m[1]]; !ok {
+			return fmt.Errorf("text.day.format names {%s}; it takes {%s}", m[1], strings.Join(dateParts, "}, {"))
+		}
 	}
 	merged := mergedDesign(themeBase, over)
 	for _, p := range themeMailPaths {

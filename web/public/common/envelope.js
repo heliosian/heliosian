@@ -1,6 +1,56 @@
-import {el} from '/elements.js';
+import {el, svg} from '/elements.js';
 import {andList} from '/andlist.js';
-import {themed, wrapped, wordless, sealMark, kickerWords} from '/themes.js';
+import {themed, wrapped, wordless, sealMark, kickerWords, lookTheme} from '/themes.js';
+
+export function dayIn(look, start) {
+  const [year, month, day] = (start || '').slice(0, 10).split('-').map(Number);
+  if (!year || !month || !day) {
+    return 'Date to come';
+  }
+  const date = new Date(year, month - 1, day);
+  const name = options => date.toLocaleDateString('en-US', options);
+  const parts = {weekday: name({weekday: 'long'}), wkd: name({weekday: 'short'}), month: name({month: 'long'}), mon: name({month: 'short'}), day: String(day), year: String(year)};
+  return lookTheme(look).text.day.format.replace(/\{([^{}]*)\}/g, (all, part) => parts[part] || all);
+}
+
+export function splitAddress(location) {
+  const comma = location.indexOf(',');
+  if (comma < 1) {
+    return [location, ''];
+  }
+  return [location.slice(0, comma), location.slice(comma + 1).trim()];
+}
+
+function placeLine(words) {
+  const place = el('p', 'card-place');
+  const [name, address] = words.place ? [words.place, words.location] : splitAddress(words.location);
+  place.append(el('span', 'card-place-name', name));
+  if (address) {
+    place.append(el('span', 'card-place-address', address));
+  }
+  return place;
+}
+
+function detailParts(words) {
+  return {
+    when: [el('p', 'card-day', dayIn(words.look, words.start)), ...(words.hours ? [el('p', 'card-hours', words.hours)] : [])],
+    where: words.place || words.location ? [placeLine(words)] : [],
+  };
+}
+
+function sideBySide({when, where}) {
+  const row = el('div', 'card-details');
+  for (const [icon, nodes] of [['calendar', when], ['map', where]]) {
+    if (!nodes.length) {
+      continue;
+    }
+    const column = el('div', 'card-detail');
+    column.append(svg(icon), ...nodes);
+    row.append(column);
+  }
+  return row;
+}
+
 function shell(look, className) {
   const env = wrapped(el('div', `envelope ${className || ''}`), look);
   env.append(el('div', 'env-back'), el('div', 'env-peek'), el('div', 'env-pocket'));
@@ -61,19 +111,11 @@ export function inviteCard(words) {
     body.append(el('p', 'card-subtitle', words.subtitle));
   }
   body.append(el('div', 'card-rule'));
-  body.append(el('p', 'card-day', words.day));
-  if (words.hours) {
-    body.append(el('p', 'card-hours', words.hours));
-  }
-  if (words.place || words.location) {
-    const place = el('p', 'card-place');
-    if (words.place) {
-      place.append(el('span', 'card-place-name', words.place));
-    }
-    if (words.location) {
-      place.append(el('span', 'card-place-address', words.location));
-    }
-    body.append(place);
+  const parts = detailParts(words);
+  if (lookTheme(words.look).card.details === 'side-by-side') {
+    body.append(sideBySide(parts));
+  } else {
+    body.append(...parts.when, ...parts.where);
   }
   if (words.description) {
     body.append(el('p', 'card-message', words.description));

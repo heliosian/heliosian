@@ -149,6 +149,14 @@ func (iv *Invitations) linkFor(m *Model, g store.Row, person, token string) stri
 	return iv.config.Origin(app) + g["path"]
 }
 
+func (iv *Invitations) guestLink(m *Model, g store.Row, person, token string) string {
+	p, _ := m.Table("PERSON").Get(person)
+	if p["source"] == "guest" || len(m.Table("GROUP").Referencing("invitation", g["id"])) == 0 {
+		return iv.linkFor(m, g, person, token)
+	}
+	return iv.config.Origin("celebrate") + "/"
+}
+
 func (m *Model) namesOf(people []string) []string {
 	out := []string{}
 	for _, p := range people {
@@ -203,6 +211,15 @@ func dayAndHours(g store.Row) (string, string) {
 	return from.Format("Monday, January 2, 2006"), from.Format("3:04 PM") + " – " + until.Format("3:04 PM")
 }
 
+func themedDayAndHours(card map[string]any, g store.Row) (string, string) {
+	day, hours := dayAndHours(g)
+	from, until, allDay, ok := mail.Span(g["start"], g["end"], School)
+	if !ok || allDay && until.AddDate(0, 0, -1).After(from) {
+		return day, hours
+	}
+	return themedDay(card, from), hours
+}
+
 func (iv *Invitations) calendarEvent(m *Model, g store.Row, person, token, link string) (mail.Event, bool) {
 	from, until, allDay, ok := mail.Span(g["start"], g["end"], School)
 	if !ok {
@@ -249,7 +266,7 @@ func (iv *Invitations) sendCopy(ctx context.Context, m *Model, g, msg, r store.R
 	if err != nil {
 		return nil, err
 	}
-	link := iv.linkFor(m, g, person, r["token"])
+	link := iv.guestLink(m, g, person, r["token"])
 	cc := m.addresses(m.studentCC(person, msg))
 	hosts := m.hostsOf(g)
 	replyTo := append(m.addresses(hosts), iv.organizer(r["token"]))
@@ -303,6 +320,13 @@ func (m *Model) addresses(people []string) []string {
 
 func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, link string, attached bool) (mail.Message, error) {
 	day, hours := dayAndHours(g)
+	if g["theme"] != "" {
+		card, err := cardDesign(m, lookOf(g))
+		if err != nil {
+			return mail.Message{}, err
+		}
+		day, hours = themedDayAndHours(card, g)
+	}
 	names := []string{}
 	for _, p := range m.householdOnList(g, person) {
 		names = append(names, m.shortName(p))
@@ -651,7 +675,7 @@ func (iv *Invitations) passNote(ctx context.Context, m *Model, note store.Row) {
 		return
 	}
 	guest := asked["person"]
-	l := iv.letter(g, iv.linkFor(m, g, guest, m.copiesOf(g["id"])[guest]["token"]))
+	l := iv.letter(g, iv.guestLink(m, g, guest, m.copiesOf(g["id"])[guest]["token"]))
 	l.Heading = writer + " replied"
 	l.Intro = fmt.Sprintf("%s replied to your note about %s, “%s”:", writer, g["name"], asked["text"])
 	l.Note = note["text"]
@@ -721,7 +745,7 @@ func (iv *Invitations) calendarInvite(ctx context.Context, m *Model, g store.Row
 	if original, ok := m.copiesOf(g["id"])[person]; ok {
 		token = original["token"]
 	}
-	link := iv.linkFor(m, g, person, token)
+	link := iv.guestLink(m, g, person, token)
 	e, ok := iv.calendarEvent(m, g, person, "", link)
 	if !ok {
 		return

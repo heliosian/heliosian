@@ -84,6 +84,25 @@ func TestThemedInvitationsLinkToGather(t *testing.T) {
 	}
 }
 
+func TestCelebrationInvitationsSendFamiliesToCelebrate(t *testing.T) {
+	iv, _, _, group := queuedInvitations(t, parent)
+	apply(t, iv.s, []Edit{
+		{Set: group, Cells: map[string]any{"theme": larpTheme}},
+		{Set: "grp00000000520", Cells: map[string]any{"invitation": group}},
+	})
+	m := iv.s.Model()
+	g, _ := m.Table("GROUP").Get(group)
+	if got := iv.guestLink(m, g, parent, "tok"); got != "https://celebrate.test/" {
+		t.Errorf("family: got %s", got)
+	}
+	if got := iv.guestLink(m, g, guest, "tok"); got != "https://gather.test/ext/tok" {
+		t.Errorf("outside guest: got %s", got)
+	}
+	if got := iv.linkFor(m, g, staff, ""); got != "https://gather.test"+g["path"] {
+		t.Errorf("host notice: got %s", got)
+	}
+}
+
 func TestThemedInvitationMailIsDrawnInItsDesign(t *testing.T) {
 	iv, _, _, group := queuedInvitations(t, parent)
 	apply(t, iv.s, []Edit{{Set: group, Cells: map[string]any{"theme": larpTheme, "hosted_by": "The Movie Crew"}}})

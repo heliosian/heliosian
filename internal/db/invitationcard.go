@@ -27,7 +27,7 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 		return
 	}
 	backdrop, cardArt := p.coverPicture(m, g, card, "backdrop_picture", "page.backdrop"), p.coverPicture(m, g, card, "card_picture", "card.art")
-	day, hours := dayAndHours(g)
+	day, hours := themedDayAndHours(card, g)
 	hosts := cmp.Or(g["hosted_by"], joinNames(m.namesOf(m.hostsOf(g))))
 	if hosts != "" {
 		hosts = "Hosted by " + hosts
@@ -40,7 +40,7 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 	v := sharecard.Invitation{
 		Kicker: designValue(card, "text.kicker.words"), KickerUpper: designValue(card, "text.kicker.case") == "uppercase",
 		Title: g["name"], Day: day, Hours: hours, Place: g["place"], Address: g["location"], Hosts: hosts,
-		Wordless: g["card_picture"] != "" && designAt(card, "card.words") == false,
+		Wordless: g["card_picture"] != "" && designAt(card, "card.words") == false, SideBySide: designValue(card, "card.details") == "side-by-side",
 	}
 	for _, c := range []struct {
 		into *color.RGBA

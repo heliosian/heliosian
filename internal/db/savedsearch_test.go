@@ -45,8 +45,8 @@ func TestAWordIsForAnEventsAudience(t *testing.T) {
 		{Insert: "RULE", Row: map[string]any{"group": "@audience", "order": "j", "target": "grp00000020015", "replace_with": "household"}},
 	})
 	for search, want := range map[string][]string{
-		`[["hummingbirds"]]`:         {"grp00000000040", "grp00000000521", "grp00000009001", "grp00000009011"},
-		`[["hummingbirds-parents"]]`: {"grp00000000040", "grp00000000521", "grp00000009001", "grp00000009011"},
+		`[["hummingbirds"]]`:         {"grp00000000040", "grp00000000521", "grp00000009001", "grp00000009011", "grp00000009041", "grp00000009101"},
+		`[["hummingbirds-parents"]]`: {"grp00000000040", "grp00000000521", "grp00000009001", "grp00000009011", "grp00000009041", "grp00000009101"},
 		`[["community"]]`:            {"grp00000000040"},
 	} {
 		lists, err := searchWords(search)
@@ -101,7 +101,7 @@ func TestAPagesWordsRunAsDefinitionCalls(t *testing.T) {
 		got := s.Model().Run(t.Context(), mustParse(t, `(from GROUP @e (where (in kind "event" "party" "activity") (!= status "closed") (not (blank start)) `+words+` (not (hidden_by_viewer @e))) (order start asc))`), Env{Viewer: viewer, Now: testNow})
 		return got.IDs, got.Err
 	}
-	if got, err := ask(""); err != nil || !slices.Equal(got, []string{"grp00000000040", "grp00000009001", "grp00000009011", "grp00000000512", "grp00000000521"}) {
+	if got, err := ask(""); err != nil || !slices.Equal(got, []string{"grp00000000040", "grp00000009001", "grp00000009011", "grp00000009041", "grp00000000512", "grp00000009101", "grp00000000521"}) {
 		t.Fatalf("no words answered %v %v", got, err)
 	}
 	if got, err := ask(`(or (searched_for @e "community"))`); err != nil || !slices.Equal(got, []string{"grp00000000040"}) {

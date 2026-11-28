@@ -203,6 +203,7 @@ func NewCore(cfg Config) *Core {
 	gatherMux := http.NewServeMux()
 	serve.Pages(gatherMux, "web/gather/index.html", "/{$}", "/g/{key}", "/g/{key}/{section...}")
 	whenPages.RegisterGather(gatherMux)
+	whenPages.RegisterThemes(celebrateMux)
 	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, GatherSender: cfg.CalendarMail.GatherSender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})

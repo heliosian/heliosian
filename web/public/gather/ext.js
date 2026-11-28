@@ -1,9 +1,9 @@
 import {el, svg} from '/elements.js';
-import {loadThemes, themed, sidebarIn} from '/themes.js';
+import {loadThemes, themed, sidebarIn, lookWords, lookFrom} from '/themes.js';
 import {inviteHead, madeWith} from '/sidebar.js';
 import {andList} from '/andlist.js';
 import {sealedEnvelope, inviteCard} from '/envelope.js';
-import {replyKey, personBlock, familyBlock, missingNote} from '/questionfields.js';
+import {replyKey, replyRows} from '/questionfields.js';
 import {openSheet, fillDeck} from '/sheets.js';
 const token = location.pathname.split('/').filter(Boolean).pop();
 const preview = location.pathname.startsWith('/preview/');
@@ -83,9 +83,10 @@ function answerRow(p, status) {
   const row = el('div', 'reply-row');
   row.append(el('span', 'reply-name', p.key === view.key ? `${p.name} (you)` : p.name));
   const choices = el('div', 'reply-choices');
-  for (const [word, label] of [['yes', 'Yes'], ...(view.maybe ? [['maybe', 'Maybe']] : []), ['no', 'No']]) {
+  const words = lookWords(lookOf());
+  for (const [word, label] of [['yes', words.yes], ...(view.maybe ? [['maybe', words.maybe]] : []), ['no', words.no]]) {
     const on = p.answer === word;
-    const b = el('button', 'reply-choice' + (on ? ' is-on' : ''));
+    const b = el('button', `reply-choice is-${word}` + (on ? ' is-on' : ''));
     b.type = 'button';
     b.setAttribute('aria-pressed', String(on));
     if (on) {
@@ -149,20 +150,8 @@ function rsvpPanel() {
   const waiting = people().some(p => !p.answer);
   panel.append(el('h2', 'invite-panel-title', view.past ? 'This event has passed' : waiting ? 'Will you be there?' : 'Your RSVP'));
   const status = el('p', 'reply-status');
-  const d = details();
-  for (const p of people()) {
-    panel.append(answerRow(p, status));
-    const block = personBlock(d, d.household.find(h => h.id === p.key), load);
-    if (block) {
-      panel.append(block);
-    }
-  }
-  for (const node of [familyBlock(d, load), missingNote(d)]) {
-    if (node) {
-      panel.append(node);
-    }
-  }
-  panel.append(status);
+  const everyone = people();
+  panel.append(...replyRows(details(), h => answerRow(everyone.find(p => p.key === h.id), status), load), status);
   if (view.guests) {
     panel.append(guestForm(status));
   }
@@ -201,23 +190,20 @@ function notesPanel() {
 }
 
 function lookOf() {
-  return {
-    theme: view.theme, envelope: view.envelope || '', seal: view.seal || '', liner: view.liner || '', design: view.design ? JSON.parse(view.design) : {},
-    cardPicture: view.cardPicture || '', backdrop: view.backdrop || '',
-  };
+  return lookFrom(view);
 }
 
 function card() {
   return inviteCard({
-    look: lookOf(), name: view.title, subtitle: view.subtitle || '', cancelled: view.cancelled, day: view.day, hours: view.hours || '',
+    look: lookOf(), name: view.title, subtitle: view.subtitle || '', cancelled: view.cancelled, start: view.start || '', hours: view.hours || '',
     location: view.location || '', place: view.place || '', description: view.description || '', hosts: view.hosts, hostedBy: view.hostedBy || '',
   });
 }
 
 function sideHead(show) {
   const head = inviteHead({
-    href: location.pathname, name: view.title, look: lookOf(), day: view.day, hours: view.hours || '', calendar: view.calendar || '',
-    place: view.place || '', location: view.location || '', hostedBy: view.hostedBy || andList(view.hosts),
+    href: location.pathname, name: view.title, look: lookOf(), start: view.start || '', hours: view.hours || '', calendar: view.calendar || '',
+    place: view.place || '', location: view.location || '', hostedBy: view.hostedBy || '', hosts: view.hosts,
   });
   head.querySelector('.nav-invite-top').addEventListener('click', ev => {
     ev.preventDefault();

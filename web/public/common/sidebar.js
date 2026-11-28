@@ -1,15 +1,7 @@
 import {el, link, svg} from '/elements.js';
 import {themed, sealMark} from '/themes.js';
-import {mapQuery} from '/envelope.js';
+import {mapQuery, splitAddress, dayIn, hostLine} from '/envelope.js';
 import {appOrigin} from '/origins.js';
-
-function splitAddress(location) {
-  const comma = location.indexOf(',');
-  if (comma < 1) {
-    return [location, ''];
-  }
-  return [location.slice(0, comma), location.slice(comma + 1).trim()];
-}
 
 function outLink(href, words, title) {
   const a = link(href, 'nav-invite-map');
@@ -22,7 +14,7 @@ function outLink(href, words, title) {
   return a;
 }
 
-export function inviteHead({href, name, look, day, hours, calendar, place, location, hostedBy}) {
+export function inviteHead({href, name, look, start, hours, calendar, place, location, hostedBy, hosts}) {
   const head = el('div', 'nav-invite-head');
   const top = link(href, 'nav-invite-top');
   const tile = themed(el('span', 'nav-invite-tile'), look);
@@ -42,13 +34,14 @@ export function inviteHead({href, name, look, day, hours, calendar, place, locat
     return row;
   };
   const when = calendar ? outLink(calendar, hours || 'Add to calendar', 'Add to Google Calendar') : hours ? el('div', 'nav-invite-second', hours) : null;
-  head.append(line('calendar', day, when));
+  head.append(line('calendar', dayIn(look, start), when));
   if (place || location) {
     const [street, town] = place ? [place, location.split(',').slice(0, 2).join(',')] : splitAddress(location);
     head.append(line('map', street, outLink('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(mapQuery({place, location})), town || 'Map')));
   }
-  if (hostedBy) {
-    head.append(el('div', 'nav-invite-sub', 'Hosted by ' + hostedBy));
+  const by = hostLine(hostedBy, hosts);
+  if (by) {
+    head.append(el('div', 'nav-invite-sub', 'Hosted by ' + by));
   }
   return head;
 }

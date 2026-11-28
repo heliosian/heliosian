@@ -110,6 +110,16 @@ function picture(url) {
   return `url("${url}") center / cover no-repeat`;
 }
 
+export function lookFrom({theme = '', envelope = '', seal = '', liner = '', design = '', cardPicture = '', backdrop = ''}) {
+  return {theme, envelope, seal, liner, design: design ? JSON.parse(design) : {}, cardPicture, backdrop};
+}
+
+export const standardWords = {coming: 'Who’s coming', yes: 'Yes', maybe: 'Maybe', no: 'No', none: 'No response'};
+
+export function lookWords(look) {
+  return lookTheme(look).words;
+}
+
 export function lookTheme(look) {
   const t = merged(themeOf(look.theme), look.design || {});
   const over = {};

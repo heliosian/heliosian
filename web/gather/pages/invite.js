@@ -1,24 +1,21 @@
-import {el, button, svg} from '/elements.js';
-import {googleCalendarLink} from '/datecard.js';
+import {el, button} from '/elements.js';
 import {setTitle, renderChrome, pageHead} from '/shell.js';
 import {loadRow, load, navigate} from '/router.js';
 import {appOrigin} from '/origins.js';
 import {openSheet, fillDeck} from '/sheets.js';
 import {fetchInvites as fetchGuestList} from '/guestlist.js';
 import {guestListSection, inviteHostCall, comingCard} from '/invites.js';
-import {findInvite, fetchInvite, loadDetails, noteOpened, me, asEvent, dayWords, hourWords, loadPages, pagesOf, state} from '../state.js';
-import {answerButtons} from '/inviteparts.js';
+import {findInvite, fetchInvite, me, loadPages, pagesOf, state} from '../state.js';
+import {loadDetails, noteOpened, asEvent, rsvpPanel, guestListWords, deckOf, cardWords} from '/invitation.js';
 import {openPageEditor} from '../pageeditor.js';
 import {andList} from '/andlist.js';
-import {sealedEnvelope, inviteCard, whereWords} from '/envelope.js';
+import {sealedEnvelope, inviteCard} from '/envelope.js';
 import {openEditor} from '../editor.js';
 import {themed, sidebarIn} from '/themes.js';
 import {hostQuestions} from '../questions.js';
-import {personBlock, familyBlock, missingNote} from '/questionfields.js';
 import {notesPanel} from '/hostnotes.js';
 
 const opened = new Set();
-const showing = new Map();
 
 export function invitePage(key, section, pageId) {
   return loadRow(key, {find: findInvite, load: fetchInvite, show: inv => drawSection(inv, key, section, pageId), missing: 'That invitation'});
@@ -32,7 +29,7 @@ function drawSection(inv, key, section, pageId) {
   sidebarIn(inv.look);
   loadPages(inv).then(renderChrome);
   if (section === 'guests') {
-    return sectionPage(inv, inv.host ? 'Guest list' : 'Who’s coming', guestsBody(inv));
+    return sectionPage(inv, guestListWords(inv), guestsBody(inv));
   }
   if (section === 'questions' && inv.host) {
     const body = el('div');
@@ -74,25 +71,13 @@ function guestsBody(inv) {
   return body;
 }
 
-function deckOf(inv) {
-  return [{id: '', title: inv.name, card: true}, ...pagesOf(inv)];
-}
-
 function openPage(inv, key, p) {
   return openSheet(inv.look, p, ...(inv.host ? [button('Edit', 'edit', 'invite-sheet-edit', () => openPageEditor(inv, p, key))] : []));
 }
 
 function deck(inv, key, focus, above, below) {
   const base = `/g/${encodeURIComponent(key)}`;
-  return fillDeck(inv.look, deckOf(inv), focus, above, below, item => navigate(item.card ? base : `${base}/p/${item.id}`));
-}
-
-function turnIn(inv, node, shown) {
-  if (showing.has(inv.id) && showing.get(inv.id) !== shown) {
-    node.classList.add('is-turning');
-    setTimeout(() => node.classList.remove('is-turning'), 900);
-  }
-  showing.set(inv.id, shown);
+  return fillDeck(inv.look, deckOf(inv, pagesOf(inv)), focus, above, below, item => navigate(item.card ? base : `${base}/p/${item.id}`));
 }
 
 function addressedTo(inv, details) {
@@ -104,55 +89,8 @@ function addressedTo(inv, details) {
   return inv.host ? 'How your guests will see it' : 'For you';
 }
 
-function answerRow(inv, person, redraw) {
-  const row = el('div', 'reply-row');
-  row.append(el('span', 'reply-name', person.id === me().id ? `${person.name} (you)` : person.name));
-  const guest = {
-    key: person.id, answer: person.answer ? person.answer.word : '', answerRow: person.answer ? person.answer.row : '', mine: true,
-    answerGroups: {yes: inv.rsvpYes, no: inv.rsvpNo, maybe: inv.maybe ? inv.rsvpMaybe : ''},
-  };
-  row.append(answerButtons(guest, asEvent(inv), () => redraw(), {small: false}));
-  return row;
-}
-
-function rsvpPanel(inv, details, redraw) {
-  const panel = el('section', 'side-card reply-panel');
-  panel.id = 'rsvp';
-  const waiting = details.household.filter(p => !p.answer).length;
-  panel.append(el('div', 'side-title', waiting ? 'Will you be there?' : 'Your RSVP'));
-  if (!inv.rsvpYes || !inv.rsvpNo) {
-    panel.append(el('p', 'hint', 'This invitation takes answers once it goes out.'));
-    return panel;
-  }
-  for (const person of details.household) {
-    panel.append(answerRow(inv, person, redraw));
-    const block = personBlock(details, person, redraw);
-    if (block) {
-      panel.append(block);
-    }
-  }
-  for (const node of [familyBlock(details, redraw), missingNote(details)]) {
-    if (node) {
-      panel.append(node);
-    }
-  }
-  const add = googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, location.href].filter(Boolean).join('\n\n')});
-  if (add) {
-    const a = el('a', 'button button-secondary reply-calendar');
-    a.href = add;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.append(svg('calendar-plus'), el('span', '', 'Add to Calendar'));
-    panel.append(a);
-  }
-  return panel;
-}
-
 function showCard(inv, details, stage, from) {
-  const card = inviteCard({
-    look: inv.look, name: inv.name, subtitle: inv.subtitle, cancelled: inv.status === 'cancelled', day: dayWords(inv), hours: hourWords(inv),
-    location: inv.location, place: inv.place, description: inv.description, hosts: details.hosts, hostedBy: inv.hostedBy,
-  });
+  const card = inviteCard(cardWords(inv, details));
   if (!from) {
     stage.replaceChildren(card);
     return;
@@ -214,7 +152,6 @@ function draw(inv, key, focus) {
         } else {
           stage.replaceChildren(openPage(inv, key, item));
         }
-        turnIn(inv, stage.firstChild, item.id);
         fillSide(details);
       });
       return;
@@ -225,7 +162,6 @@ function draw(inv, key, focus) {
       page.classList.remove('is-sealed');
       showCard(inv, details, stage, from);
       fillSide(details);
-      showing.set(inv.id, '');
       setTimeout(() => loadPages(inv).then(() => deck(inv, key, '', above, below)), 900);
       noteOpened(inv, details);
     });

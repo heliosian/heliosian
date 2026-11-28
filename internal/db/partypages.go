@@ -20,7 +20,7 @@ const (
 	partiesShell  = "web/celebrate/index.html"
 )
 
-var partiesPages = []string{"/{$}", "/g/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/admin"}
+var partiesPages = []string{"/{$}", "/g/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/guests", "/parties", "/admin"}
 
 func PartyCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{

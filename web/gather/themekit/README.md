@@ -2,6 +2,8 @@
 
 A Helios Gather invitation arrives as an envelope. Tapping its seal opens it to a card. A **theme** is the design for all of it: the envelope, its liner and seal, the card, its fonts and the page behind it.
 
+When Helios Celebrate draws a celebration from an invitation, the invitation's theme dresses the whole Celebrate site too: `page.backdrop` behind every page, `page.ink` and `page.muted` for the words on it, the `sidebar` colors on Celebrate's sidebar and top bar, `card.accent` and `card.accentInk` on its buttons and highlights, and the title font and rule on its page headings. Party cards and panels stay white, so the backdrop needs a wash dark or light enough for `page.ink` to read on it. A Celebrate admin can also upload a theme in Edit Celebration and pick it as the celebration's site theme, dressing Celebrate in it while the invitation keeps its own.
+
 This kit holds everything needed to make one:
 
 | In the kit | What it is |
@@ -49,7 +51,7 @@ The page around the envelope and card, and the invitation's pages.
 
 ### `sidebar`
 
-The invitation's sidebar and top bar in Gather.
+The invitation's sidebar and top bar in Gather, and Celebrate's when a celebration is drawn from the invitation.
 
 - `background`: a CSS `background`.
 - `ink`: its text color.
@@ -78,6 +80,7 @@ The sticker that closes the envelope.
 - `accentInk`: text on the accent color.
 - `radius`, `padding`, `width`, `minHeight`: its shape and size. `padding` keeps the words clear of the art. Raise its top or bottom when pictures sit there.
 - `align`: `center` or `left`.
+- `details`: how the date and the place sit under the line beneath the title. `stacked` puts the day, the hours and the place one under another. `side-by-side` puts them in two columns with a thin line between: the day and the hours under a calendar icon, and the place's name and address (or the street and the town) under a map pin, the icons in the kicker's color. On a phone the two columns stack. The link preview picture lays them out the same way. The text settings `day`, `hours` and `place` style them either way.
 - `border`, `shadow`: CSS `border` and `box-shadow`.
 - `art`: a CSS `background` drawn over the paper and under the words: patterns, drawings and pictures.
 - `artMask`: a CSS `mask` over the art, to fade it where the words go, or `none`.
@@ -90,7 +93,7 @@ One setting each for the card's lines:
 
 - `kicker`: the small line above the title. Its `words` say what it says, like `You’re invited to`.
 - `title`: the invitation's name.
-- `day`, `hours`, `place`: when and where.
+- `day`, `hours`, `place`: when and where. `day` also has a `format`: how the date is written, with `{weekday}` (Saturday), `{wkd}` (Sat), `{month}` (March), `{mon}` (Mar), `{day}` (6) and `{year}` (2027) standing for its parts and anything else written as it is. The standard is `{weekday}, {month} {day}, {year}`; `{wkd} · {mon} {day}` writes "Sat · Mar 6", and `{weekday}, {month} {day}` leaves out the year. The invitation's sidebar, its email and its link preview write the date this way too.
 - `message`: the hosts' words to their guests.
 - `hosts`: the "Hosted by" line.
 
@@ -99,6 +102,16 @@ Each has `font` (`display`, `body` or a stack), `size`, `weight`, `style` (`norm
 `rule` is the line under the title: `width`, `height`, `style` (a CSS border style such as `solid`, `dashed`, `dotted` or `double`) and `color`.
 
 A text `color` is `ink`, `accent`, or a `#rrggbb` color.
+
+### `words`
+
+What the invitation's pages call things, in the theme's own voice. They show on Gather, on Helios Celebrate and on the page a guest from outside opens; the invitation email keeps the standard words.
+
+- `coming`: the guest list's title for the guests, standard `Who’s coming` (the hosts' own stays Guest list). A space party might say `Who’s beaming down`.
+- `yes`, `maybe`, `no`: the answers, on the RSVP buttons, the guest list's sections and the answers in the hosts' table, like `I’m in`, `Maybe`, `Can’t make it`.
+- `none`: a guest who hasn't answered yet, standard `No response`, like `Still orbiting`.
+
+Keep each short; they sit on buttons.
 
 ## The rules
 
@@ -110,8 +123,10 @@ Gather checks a theme when it's uploaded and refuses it with the reason if:
 - `seal.picture` isn't `none` or picture layers with no color of their own.
 - Any of these has no `#rrggbb` color in it: `page.backdrop`, `page.ink`, `page.muted`, `envelope.body`, `envelope.side`, `envelope.front`, `envelope.flap`, `envelope.liner`, `seal.color`, `seal.ink`, `card.background`, `card.ink`, `card.accent` and `card.accentInk`. Gather draws the invitation email and the link preview from these, and those can't show gradients or pictures. A gradient or picture works when it ends with a color layer, like `url("liner.jpg") center / cover, #1d4e89`.
 - A `text` color isn't `ink`, `accent` or `#rrggbb`.
+- `text.day.format` names a part in braces that isn't one of `{weekday}`, `{wkd}`, `{month}`, `{mon}`, `{day}` or `{year}`.
 - A `url(...)` points anywhere but a picture in the theme's folder or a `data:` address. Write a picture by its file name alone, like `url("card-top.jpg")`. No web addresses.
-- A picture the theme names is missing, or two pictures share its name.- `theme.json` is longer than 50,000 characters once its JPEG, PNG, GIF and WebP pictures are moved into files (Pictures, below). Inline SVG drawings stay in it, so keep them small.
+- A picture the theme names is missing, or two pictures share its name.
+- `theme.json` is longer than 50,000 characters once its JPEG, PNG, GIF and WebP pictures are moved into files (Pictures, below). Inline SVG drawings stay in it, so keep them small.
 - There's no theme file, or more than one. Drop one theme at a time.
 
 ## Pictures

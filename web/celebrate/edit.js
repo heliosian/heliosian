@@ -1,5 +1,5 @@
-import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, celebration, category, categoriesOf} from './state.js';
-import {write} from '/rail.js';
+import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, partiesPath, party, celebration, category, categoriesOf} from './state.js';
+import {write, queries, rowsOf} from '/rail.js';
 import {sheetStamp} from '/stamp.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
@@ -8,14 +8,18 @@ import {openPersonCard} from '/personcard.js';
 import {api} from '/api.js';
 import {keyBetween} from '/order.js';
 import {el, svg, toast, button} from '/elements.js';
+import {appOrigin} from '/origins.js';
 import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
 import {imageTools, postFlyer, setPicture} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
-import {field, text, textarea, select, checkbox, segmented, whenPickers} from '/form.js';
+import {field, text, textarea, select, fillSelect, checkbox, segmented, whenPickers} from '/form.js';
+import {themeUpload, postTheme} from '/themeupload.js';
+import {themeOf} from '/themes.js';
 import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
+import {gatherInvitation, mineOrHousehold, invitationRow, dayWords} from '/invitation.js';
 
 export const {uploadImage, openImageSearch, imagePicker} = imageTools('/api/celebrate');
 
@@ -988,7 +992,7 @@ export function openParty(p) {
     },
     onDelete: p && curates ? () => write(deleteEdits(p)) : null,
     confirmDelete: p ? `Delete ${p.title}? This cannot be undone.` : '',
-    afterDelete: () => navigate('/'),
+    afterDelete: () => navigate(partiesPath()),
   });
 }
 
@@ -1213,68 +1217,174 @@ export async function openContacts(p) {
   openModal(`Who's coming to ${p.title}`, [tools, holder], {wide: 'table'});
 }
 
+async function invitationAt(address) {
+  const g = await invitationRow(decodeURIComponent((address.trim().match(/\/g\/([^/?#]+)/) || [])[1] || address.trim()));
+  if (!g || !g.theme) {
+    throw new Error('There’s no Gather invitation you can see at that link.');
+  }
+  return g;
+}
+
+async function myInvitations() {
+  const columns = '(order start desc) (columns name start path)';
+  const gathered = `${gatherInvitation} (!= status "closed")`;
+  const a = await queries({
+    hosting: `(from GROUP (where ${gathered} (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))) ${columns})`,
+    invited: `(from GROUP (where ${gathered} (in id (select EFFECTIVE_MEMBER.group ${mineOrHousehold}))) ${columns})`,
+  });
+  const linked = new Set(state.model.celebrations.map(c => c.invitation).filter(Boolean));
+  const hosting = rowsOf(a.hosting, 'GROUP').map(g => ({...g, hosting: true}));
+  const invited = rowsOf(a.invited, 'GROUP').filter(g => !hosting.some(h => h.id === g.id));
+  return [...hosting, ...invited].filter(g => !linked.has(g.id));
+}
+
+function fillInvitationChoices(box, list, address) {
+  box.replaceChildren();
+  if (!list.length) {
+    box.append(el('p', 'hint', 'None of your Gather invitations is waiting for a celebration. Paste a link below.'));
+    return;
+  }
+  for (const g of list) {
+    const choice = el('button', 'invite-choice');
+    choice.type = 'button';
+    choice.append(svg('mail'), el('span', 'invite-choice-name', g.name), el('span', 'invite-choice-line', [dayWords({start: g.start || ''}, true), g.hosting ? 'Hosting' : 'Invited'].join(' · ')));
+    choice.addEventListener('click', () => {
+      address.value = appOrigin('gather') + g.path;
+      for (const other of box.children) {
+        other.classList.toggle('is-on', other === choice);
+      }
+    });
+    box.append(choice);
+  }
+}
+
+function openNewCelebration() {
+  const address = text('', {required: true, maxLength: 300, placeholder: 'https://gather.heliosian.com/g/earthlings'});
+  const choices = el('div', 'invite-choices');
+  choices.append(el('p', 'hint', 'Looking for your invitations…'));
+  myInvitations().then(list => fillInvitationChoices(choices, list, address), err => {
+    choices.replaceChildren(el('p', 'hint', 'Couldn’t load your invitations: ' + err.message));
+  });
+  const hosting = checkbox('Takes parties', true, 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
+  const current = checkbox('This is the current celebration', true, 'Its parties are what the parties page lists first.');
+  const banner = checkbox('Show it at the top', true, 'Celebrate is drawn from its invitation: the invitation’s page, its pages in the sidebar, the guest list and its theme.');
+  openModal('Add a celebration', [
+    field('Your Gather invitations', choices, 'Pick one, or paste the link to another below. Its name, date, place and everything else come from there, and follow it when it changes.'),
+    field('Gather invitation link', address, '', true),
+    current.wrap, banner.wrap, hosting.wrap,
+  ], {
+    submit: async () => {
+      const top = state.model.top;
+      if (!top) {
+        throw new Error('There is no Celebrate category to file a celebration under.');
+      }
+      const g = await invitationAt(address.value);
+      const slug = [g.slug || 'celebration', (g.start || '').slice(0, 4)].filter(Boolean).join('-');
+      const {result: [id]} = await write([{insert: 'GROUP', row: {
+        kind: 'celebration', parent: top.id, status: 'open', added_by: me().id, visible_to: top.visible_to || '', members_visible_to: top.members_visible_to || '',
+        name: g.name, slug, invitation: g.id, adding: hosting.input.checked ? 'approval' : '',
+      }}]);
+      const settings = [...(current.input.checked ? [settingEdit('Current', id)] : []), ...(banner.input.checked ? [settingEdit('Banner', id)] : [])];
+      if (settings.length) {
+        await write(settings);
+      }
+    },
+  });
+}
+
 export function openCelebration(c) {
-  const code = text(c ? c.code : '', {required: true, maxLength: 20, placeholder: 'SC-2027'});
-  const title = text(c ? c.title : '', {required: true, maxLength: 120, placeholder: 'Helios Spring Celebration 2027'});
-  const subtitle = text(c ? c.subtitle : '', {maxLength: 120, placeholder: 'The theme'});
-  const start = whenPickers('Starts', c ? c.start : '', null, 'No start time');
-  const end = whenPickers('Ends', c ? c.end : '', null, 'No end time');
+  if (!c) {
+    openNewCelebration();
+    return;
+  }
+  const loading = id => (id ? [{label: 'Loading…', value: id}] : []);
+  const invitation = select([{label: 'None', value: ''}, ...loading(c.invitation)], c.invitation);
+  const themeOptions = [{label: 'The invitation’s', value: ''}];
+  const theme = select([...themeOptions, ...loading(c.row.theme)], c.row.theme || '');
+  queries({
+    invites: `(from GROUP (where ${gatherInvitation} (!= status "closed")) (order start desc) (columns name))`,
+    themes: '(from THEME (where (or (blank added_by) (= added_by @viewer))) (order name asc) (columns key name))',
+  }).then(a => {
+    fillSelect(invitation, [{label: 'None', value: ''}, ...rowsOf(a.invites, 'GROUP').map(g => ({label: g.name, value: g.id}))], invitation.value);
+    themeOptions.push(...rowsOf(a.themes, 'THEME').map(t => ({label: t.name, value: t.id})));
+    fillSelect(theme, themeOptions, theme.value);
+  }, err => toast('Couldn’t load the invitations and themes: ' + err.message));
+  const themeRow = el('div', 'celebration-theme');
+  themeRow.append(theme, button('Upload a theme', 'upload', 'button button-secondary button-small', () => themeUpload(postTheme, id => {
+    if (!themeOptions.some(o => o.value === id)) {
+      themeOptions.push({label: themeOf(id).name, value: id});
+      fillSelect(theme, themeOptions, id);
+    }
+    theme.value = id;
+  })));
+  const code = text(c.code, {required: true, maxLength: 40, placeholder: 'SC-2027'});
+  const title = text(c.title, {required: true, maxLength: 120, placeholder: 'Helios Spring Celebration 2027'});
+  const subtitle = text(c.subtitle, {maxLength: 120, placeholder: 'The theme'});
+  const start = whenPickers('Starts', c.start, null, 'No start time');
+  const end = whenPickers('Ends', c.end, null, 'No end time');
   const whenWrap = el('div', 'field-when');
   whenWrap.append(start.wrap, end.wrap);
-  const place = text(c ? c.location : '', {maxLength: 120});
-  const address = text(c ? c.row.address_override || '' : '', {maxLength: 200});
-  const description = textarea(c ? c.description : '', 4);
-  const hosting = checkbox('Takes parties', c ? c.adding === 'approval' : false, 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
-  const current = checkbox('This is the current celebration', c ? c.current : true, 'Its parties are what the parties page lists first.');
-  const banner = checkbox('Show its banner at the top', c ? c.id === state.model.banner : false, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
-  const image = imagePicker(c ? c.image : '', c ? c.imageUrl : '', {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
-  openModal(c ? `Edit ${c.title}` : 'Add a celebration', [
-    field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true), field('Title', title, 'The banner\u2019s big line: "Helios Spring Celebration 2026".', true),
-    field('Subtitle', subtitle, 'The banner\u2019s small line above it: the theme.'),
+  const place = text(c.location, {maxLength: 120});
+  const address = text(c.row.address_override || '', {maxLength: 200});
+  const description = textarea(c.description, 4);
+  const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
+  const current = checkbox('This is the current celebration', c.current, 'Its parties are what the parties page lists first.');
+  const banner = checkbox('Show its banner at the top', c.id === state.model.banner, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
+  const image = imagePicker(c.image, c.imageUrl, {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
+  const own = el('div', 'celebration-own');
+  own.append(
+    field('Title', title, 'The banner’s big line: "Helios Spring Celebration 2026".', true),
+    field('Subtitle', subtitle, 'The banner’s small line above it: the theme.'),
     field('When', whenWrap), field('Where', place), field('Address', address),
     field('Description', description, 'Markdown works. Each link in it, like [Learn More](https://celebrate.heliosschool.org), is a button on the banner; Add to Calendar is there while the celebration is still to come.'),
-    current.wrap, banner.wrap, hosting.wrap, image.wrap,
+    image.wrap,
+  );
+  const showOwn = () => {
+    own.hidden = Boolean(invitation.value);
+    title.required = !invitation.value;
+  };
+  invitation.addEventListener('change', showOwn);
+  showOwn();
+  openModal(`Edit ${c.title}`, [
+    field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true),
+    field('Invitation', invitation, 'The Gather invitation it is drawn from: its name, date and place, its card and pages, RSVPs and who\u2019s coming, in its design. Its invitation mail sends families here to answer. None draws it from the fields below.'),
+    field('Site theme', themeRow, 'What Celebrate is dressed in while this celebration is the banner: the backdrop, sidebar, colors and heading font. The invitation’s card keeps its own design.'),
+    own, current.wrap, banner.wrap, hosting.wrap,
   ], {
     submit: async () => {
       const cells = {
-        slug: code.value.trim().toLowerCase(), name: title.value.trim(), subtitle: subtitle.value.trim(), ...whenCells({start: start.value(), end: end.value()}),
-        location: place.value.trim(), address_override: address.value.trim(), description: description.value.trim(), adding: hosting.input.checked ? 'approval' : '',
+        slug: code.value.trim().toLowerCase(), adding: hosting.input.checked ? 'approval' : '', invitation: invitation.value, theme: theme.value,
+        ...(invitation.value ? {} : {
+          name: title.value.trim(), subtitle: subtitle.value.trim(), ...whenCells({start: start.value(), end: end.value()}),
+          location: place.value.trim(), address_override: address.value.trim(), description: description.value.trim(),
+        }),
       };
-      let id = c ? c.id : '@c';
       const edits = [];
-      if (c) {
-        const diff = changed(cells, c.row);
-        if (Object.keys(diff).length) {
-          edits.push({set: c.id, cells: diff});
-        }
-      } else {
-        const top = state.model.top;
-        if (!top) {
-          throw new Error('There is no Celebrate category to file a celebration under.');
-        }
-        edits.push({insert: 'GROUP', as: 'c', row: {...cells, kind: 'celebration', parent: top.id, status: 'open', added_by: me().id, visible_to: top.visible_to || '', members_visible_to: top.members_visible_to || ''}});
+      const diff = changed(cells, c.row);
+      if (Object.keys(diff).length) {
+        edits.push({set: c.id, cells: diff});
       }
-      if (current.input.checked && state.model.current !== (c && c.id)) {
-        edits.push(settingEdit('Current', id));
+      if (current.input.checked && state.model.current !== c.id) {
+        edits.push(settingEdit('Current', c.id));
       }
-      if (banner.input.checked && state.model.banner !== (c && c.id)) {
-        edits.push(settingEdit('Banner', id));
+      if (banner.input.checked && state.model.banner !== c.id) {
+        edits.push(settingEdit('Banner', c.id));
       }
       if (edits.length) {
-        const written = await write(edits);
-        if (!c) {
-          id = written.result[0];
-        }
+        await write(edits);
+      }
+      if (invitation.value) {
+        return;
       }
       const picked = image.value();
-      if (picked && picked !== (c ? c.image : '')) {
-        await setPicture(id, picked, c ? c.image : '');
-      } else if (!picked && c && c.image) {
+      if (picked && picked !== c.image) {
+        await setPicture(c.id, picked, c.image);
+      } else if (!picked && c.image) {
         await write([{delete: c.image}]);
       }
     },
-    onDelete: c ? () => write([...(c.image ? [{delete: c.image}] : []), {delete: c.id}]) : null,
-    confirmDelete: c ? `Delete ${c.title}? Only a celebration with no parties or categories can be deleted.` : '',
+    onDelete: () => write([...(c.image ? [{delete: c.image}] : []), {delete: c.id}]),
+    confirmDelete: `Delete ${c.title}? Only a celebration with no parties or categories can be deleted.`,
   });
 }
 

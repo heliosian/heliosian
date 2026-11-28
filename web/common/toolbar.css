@@ -1117,3 +1117,27 @@ html { scrollbar-width: thin; scrollbar-color: rgba(14, 77, 84, 0.28) transparen
 .sidebar::-webkit-scrollbar-thumb, .sidebar .app-nav::-webkit-scrollbar-thumb, .sidebar-scroll::-webkit-scrollbar-thumb, .drawer::-webkit-scrollbar-thumb, .drawer .app-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.22); background-clip: padding-box; }
 
 .sidebar::-webkit-scrollbar-thumb:hover, .sidebar .app-nav::-webkit-scrollbar-thumb:hover, .sidebar-scroll::-webkit-scrollbar-thumb:hover, .drawer::-webkit-scrollbar-thumb:hover, .drawer .app-nav::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.4); background-clip: padding-box; }
+
+body.is-themed .app-shell { background: var(--side-behind); }
+
+body.is-themed .topbar { --toolbar: rgba(0, 0, 0, 0.45); background: var(--side-bg); background-size: 100% 100vh; border-bottom-color: rgba(255, 255, 255, 0.1); }
+
+body.is-themed .topbar .spoof-button, body.is-themed .topbar .app-switch-button, body.is-themed .topbar .topbar-menu { color: var(--side-ink); }
+
+body.is-themed .topbar .topbar-alert:hover { background: rgba(255, 255, 255, 0.12); }
+
+body.is-themed .topbar :is(.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert, .topbar-alert.alerts-summary) { background: var(--side-active); color: var(--side-ink); }
+
+body.is-themed .topbar :is(.rsvp-alert, .approvals-alert, .late-alert, .topbar-alert.stale-alert, .topbar-alert.privacy-alert, .topbar-alert.alerts-summary):hover { background: var(--side-active); filter: brightness(1.35); }
+
+body.is-themed .topbar .app-switch-button img { border-color: rgba(255, 255, 255, 0.2); }
+
+body.is-themed .topbar .topbar-key { background: var(--input); }
+
+.topbar-subtitle { min-width: 0; overflow: hidden; color: var(--side-ink, var(--ink)); font-size: 15px; white-space: nowrap; text-overflow: ellipsis; }
+
+.topbar-title { font-weight: 700; }
+
+.topbar-subtitle-words { margin-left: 10px; padding-left: 10px; border-left: 1px solid color-mix(in srgb, currentColor 35%, transparent); opacity: 0.75; }
+
+.brand[hidden] { display: none; }

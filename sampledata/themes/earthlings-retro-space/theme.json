@@ -1,0 +1,95 @@
+{
+  "key": "earthlings-retro-space",
+  "name": "Earthlings · Retro Space",
+  "blurb": "A cosmic desert party in deep teal, sunshine yellow and neon pink, framed by saucers and stars.",
+  "fonts": {
+    "display": "'Archivo Black', 'Arial Black', sans-serif",
+    "body": "'Nunito Sans', Arial, sans-serif",
+    "load": [
+      "Archivo Black",
+      "Nunito Sans:wght@400;500;600;700;800"
+    ]
+  },
+  "page": {
+    "backdrop": "linear-gradient(rgba(0, 25, 28, 0.58), rgba(0, 25, 28, 0.68)), url(\"backdrop.jpg\") center / cover fixed, #071c21",
+    "ink": "#fff2d9",
+    "muted": "#bbd9d4"
+  },
+  "sidebar": {
+    "background": "linear-gradient(180deg, rgba(7, 28, 33, 0.96), rgba(16, 55, 62, 0.94)), url(\"backdrop.jpg\") 20% center / auto 100%, #071c21",
+    "ink": "#fff2d9",
+    "active": "rgba(255, 145, 196, 0.18)"
+  },
+  "envelope": {
+    "body": "#17616a",
+    "side": "#12535b",
+    "front": "#227580",
+    "flap": "#0d424b",
+    "liner": "url(\"backdrop.jpg\") center / cover no-repeat, #071c21",
+    "radius": "14px"
+  },
+  "seal": {
+    "color": "#ff3d8f",
+    "ink": "#071c21",
+    "picture": "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 12 C75 12 87 31 85 50 C83 71 64 90 50 90 C36 90 17 71 15 50 C13 31 25 12 50 12Z' fill='%237be36b' stroke='%233f9a3a' stroke-width='3'/%3E%3Cellipse cx='35' cy='53' rx='11' ry='18' transform='rotate(32 35 53)' fill='%230d1717'/%3E%3Cellipse cx='65' cy='53' rx='11' ry='18' transform='rotate(-32 65 53)' fill='%230d1717'/%3E%3Ccircle cx='31' cy='46' r='3' fill='%23ffffff'/%3E%3Ccircle cx='61' cy='46' r='3' fill='%23ffffff'/%3E%3Cpath d='M44 76 Q50 80 56 76' stroke='%230d1717' stroke-width='2.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E\") center / 78% no-repeat",
+    "text": "👽"
+  },
+  "card": {
+    "background": "#00342e",
+    "ink": "#fff2d9",
+    "accent": "#ff91c4",
+    "accentInk": "#10242a",
+    "radius": "14px",
+    "padding": "64px clamp(28px, 6vw, 86px) 142px",
+    "width": "740px",
+    "minHeight": "733px",
+    "border": "1px solid #73c9bb",
+    "shadow": "0 16px 50px rgba(0, 0, 0, 0.35)",
+    "art": "url(\"card.jpg\") center / 100% 100% no-repeat",
+    "details": "side-by-side"
+  },
+  "text": {
+    "kicker": {
+      "words": "You’re invited",
+      "size": "12px",
+      "weight": "800",
+      "color": "#90e5db"
+    },
+    "title": {
+      "size": "clamp(30px, 5.2vw, 54px)",
+      "case": "uppercase",
+      "color": "#ffce43",
+      "lineHeight": "1.05",
+      "spacing": "0.015em"
+    },
+    "day": {
+      "size": "20px",
+      "weight": "800",
+      "format": "{weekday}, {month} {day}"
+    },
+    "hours": {
+      "size": "18px"
+    },
+    "place": {
+      "style": "normal"
+    },
+    "message": {
+      "lineHeight": "1.65"
+    },
+    "hosts": {
+      "size": "16px",
+      "spacing": "0"
+    },
+    "rule": {
+      "width": "58px",
+      "height": "3px"
+    }
+  },
+  "words": {
+    "coming": "Who’s beaming down",
+    "yes": "Beaming down",
+    "maybe": "Might beam down",
+    "no": "Can’t land",
+    "none": "Awaiting signal"
+  }
+}

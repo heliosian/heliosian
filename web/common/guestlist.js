@@ -133,7 +133,7 @@ export async function fetchInvites(e) {
   const myRow = memberOf[viewer];
   const mayInvite = host || a.inviters.result.length > 0;
   return {
-    id: e.id, group: g, host, sent, rules, mine, mayInvite, memberRows: Object.values(memberOf).filter(m => people[m.person]),
+    id: e.id, answerWords: e.answerWords, group: g, host, sent, rules, mine, mayInvite, memberRows: Object.values(memberOf).filter(m => people[m.person]),
     list: host ? listed_ : listed_.filter(r => r.answer !== 'no'),
     coming: host ? listed_ : listed_.map(r => (r.answer === 'no' ? {...r, answer: ''} : r)),
     counts: {yes: listed_.filter(r => r.answer === 'yes').length, maybe: listed_.filter(r => r.answer === 'maybe').length, no: listed_.filter(r => r.answer === 'no').length},

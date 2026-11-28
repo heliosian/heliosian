@@ -84,20 +84,20 @@ button { font: inherit; }
 
 
 .nav-count {
-  margin-left: auto;
+  margin: 0 -4px 0 auto;
   min-width: 20px;
-  padding: 1px 6px;
+  padding: 0 6px;
   border-radius: 999px;
-  background: rgba(36, 77, 83, 0.14);
-  color: var(--brand);
-  font-size: 11.5px;
+  background: rgba(255, 255, 255, 0.16);
+  color: inherit;
+  font-size: 11px;
   font-weight: 700;
+  line-height: 17px;
   text-align: center;
 }
 
 .nav-count.is-alert { background: var(--alert); color: #fff; }
 
-/* Sub-lists under a rail item: the parties list's tabs, the household. */
 .nav-sub {
   display: flex;
   flex-direction: column;
@@ -127,7 +127,6 @@ button { font: inherit; }
 
 .nav-sub-item:hover { background: rgba(255, 255, 255, 0.1); }
 
-/* The one the page is on: the same wash and lime bar as a section. */
 .nav-sub-item.is-on { background: var(--nav-active); color: #fff; position: relative; font-weight: 700; border-radius: 0 10px 10px 0; overflow: hidden; }
 
 .app-nav a.nav-family-item { min-height: 36px; padding: 3px 10px; gap: 8px; border-radius: 7px; font-size: 14px; font-weight: 500; box-shadow: none; }
@@ -247,7 +246,16 @@ main {
 
 .gala-band .gala-button:hover { background: #ffea4a; border-color: #ffea4a; }
 
-/* The list bar: the tabs on the left, the category filter on the right. */
+.invitation-section { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; margin-bottom: 28px; }
+
+.invitation-column { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+
+.invitation-stage { display: flex; justify-content: center; width: 100%; }
+
+.invitation-side { display: flex; flex-direction: column; gap: 16px; }
+
+.invitation-side:empty { display: none; }
+
 .list-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
 
 .select-pill {
@@ -533,8 +541,6 @@ main {
 /* The rail. */
 .detail-side { display: flex; flex-direction: column; gap: 16px; position: sticky; top: 0; }
 
-.side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
-
 .side-card-help { background: var(--teal-wash, #eaf4f3); border-color: var(--teal-line, #d3e7e5); }
 
 /* A host's word on the invitation: the card's yellow, so it stands out. */
@@ -542,19 +548,6 @@ main {
 
 .side-card-invite .side-line { color: var(--soft-ink, #4d4a2e); }
 
-.side-row { display: flex; gap: 12px; }
-
-.side-row + .side-row { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
-
-.side-icon { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 9px; background: var(--input); color: var(--brand); flex-shrink: 0; }
-
-.side-icon svg { width: 18px; height: 18px; }
-
-.side-row-body { min-width: 0; flex: 1; }
-
-.side-title { font-weight: 700; font-size: 14.5px; color: var(--brand); }
-
-.side-line { font-size: 13.5px; color: var(--muted); margin-top: 2px; word-break: break-word; }
 
 .side-button { margin-top: 10px; width: 100%; justify-content: center; }
 
@@ -990,6 +983,8 @@ body.is-admin main { background-image: none; }
 
   .gala-words { max-width: 100%; }
   .gala-title { font-size: 21px; }
+  .invitation-section { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .invitation-side { order: -1; }
   .row { gap: 10px; padding: 10px; }
   .thumb { width: 60px; height: 60px; }
   .row-actions .button span { display: none; }
@@ -1028,3 +1023,215 @@ body.is-admin main { background-image: none; }
   width: 5px;
   background: var(--lime);
 }
+
+.invite-choices { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+
+.invite-choice { display: grid; grid-template-columns: 20px 1fr; align-items: center; gap: 2px 12px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+
+.invite-choice:hover { border-color: var(--accent); }
+
+.invite-choice.is-on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+
+.invite-choice svg { grid-row: span 2; width: 18px; height: 18px; color: var(--brand); }
+
+.invite-choice-name { font-weight: 700; }
+
+.invite-choice-line { font-size: 12.5px; color: var(--muted); }
+
+.celebration-theme { display: flex; align-items: center; gap: 10px; }
+
+.celebration-theme select { flex: 1; min-width: 0; }
+
+.year-switch-holder { align-self: center; margin: -8px 0 -14px; }
+
+.year-switch { display: inline-flex; padding: 2px 12px; border: 0; background: none; color: var(--side-ink, #fff); opacity: 0.3; cursor: pointer; }
+
+.year-switch:hover, .year-switch:focus-visible { opacity: 0.85; }
+
+.year-switch svg { width: 16px; height: 16px; }
+
+.year-switch-holder .hero-image-menu { top: calc(100% + 4px); bottom: auto; left: 50%; right: auto; transform: translateX(-50%); }
+
+body.is-themed .sidebar { position: relative; background: none; backdrop-filter: blur(3px); border-right-color: rgba(255, 255, 255, 0.1); }
+
+body.is-themed .sidebar::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--side-bg); opacity: 0.55; }
+
+body.is-themed :is(.app-nav a, .nav-sub-item) { color: var(--side-ink); }
+
+body.is-themed :is(.app-nav a.is-active, .nav-sub-item.is-on, .app-nav a.nav-family-item.is-on) { background: var(--side-active); color: var(--side-ink); }
+
+body.is-themed :is(.app-nav a.is-active, .nav-sub-item.is-on, .app-nav a.nav-family-item.is-on)::before { background: var(--accent); }
+
+body.is-themed .app-nav a.is-active svg { color: var(--accent); }
+
+body.is-themed .app-nav a.is-active::after { border-color: var(--accent); }
+
+body.is-themed .nav-sub { border-left-color: color-mix(in srgb, var(--side-ink) 20%, transparent); }
+
+body.is-themed .app-shell .page-title { color: var(--backdrop-ink); font-family: var(--title-font); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-case); letter-spacing: var(--title-spacing); }
+
+body.is-themed .app-shell .page-title::after { left: 0; right: auto; bottom: 0; width: var(--rule-width); height: 0; background: none; border-top: var(--rule-height) var(--rule-style) var(--rule-color); }
+
+body.is-themed .app-shell .page-intro { color: var(--backdrop-muted); }
+
+body.is-themed .app-shell .page-head-switch { color: var(--backdrop-ink); }
+
+body.is-themed .app-shell .button:not(.button-secondary) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+body.is-themed .app-shell .button:not(.button-secondary):hover { filter: brightness(1.1); }
+
+.themed-panel {
+  --ink: var(--paper-ink);
+  --muted: color-mix(in srgb, var(--paper-ink) 75%, transparent);
+  --line: color-mix(in srgb, var(--paper-ink) 22%, transparent);
+  --card: color-mix(in srgb, var(--paper-ink) 4%, var(--paper));
+  --control-line: color-mix(in srgb, var(--paper-ink) 30%, transparent);
+  --yes-text: #5ad08f;
+  --yes-wash: color-mix(in srgb, #5ad08f 18%, transparent);
+  --no-text: #ff6b6b;
+  --no-wash: color-mix(in srgb, #ff6b6b 18%, transparent);
+  --maybe-text: #f5c84b;
+  --maybe-wash: color-mix(in srgb, #f5c84b 18%, transparent);
+}
+
+.themed-panel { position: relative; padding: 40px 40px 36px; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: var(--card-radius); background: var(--paper); color: var(--paper-ink); box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45); overflow: hidden; }
+
+.themed-panel::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--kicker-color), var(--title-color)); }
+
+.themed-panel > .page-head { position: relative; }
+
+.themed-panel > .page-head:has(.page-kicker):not(:has(> .button))::after { content: '✦'; position: absolute; top: 50%; right: 0; transform: translateY(-50%); color: var(--title-color); font-size: 30px; line-height: 1; }
+
+.themed-panel .page-kicker { margin: 0 0 12px; font-family: var(--kicker-font); font-size: 13px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--kicker-color); }
+
+body.is-themed .app-shell .themed-panel .page-title { color: var(--title-color); font-size: 44px; line-height: 1.08; }
+
+body.is-themed .app-shell .themed-panel .page-intro { margin-top: 10px; color: var(--paper-ink); }
+
+body.is-themed .app-shell .themed-panel .page-head-switch { color: var(--paper-ink); }
+
+.themed-panel .panel-empty a { color: var(--kicker-color); }
+
+.themed-panel .list-bar { margin-top: 12px; }
+
+.themed-panel .tab-strip { position: static; background: none; border-bottom-color: color-mix(in srgb, var(--paper-ink) 20%, transparent); }
+
+.themed-panel .tab-strip-item { color: var(--muted); font-weight: 600; }
+
+.themed-panel .tab-strip-item.active { background: color-mix(in srgb, var(--paper-ink) 8%, transparent); color: var(--paper-ink); }
+
+.themed-panel .tab-strip-item.active::after { height: 3px; background: var(--accent); }
+
+.themed-panel .tab-strip-count { background: color-mix(in srgb, var(--paper-ink) 14%, transparent); color: var(--paper-ink); }
+
+.themed-panel .select-pill svg:last-child { color: inherit; }
+
+.themed-panel .select-pill option { color: var(--ink); }
+
+.themed-panel .panel { border-color: color-mix(in srgb, var(--paper-ink) 20%, transparent); background: color-mix(in srgb, var(--paper-ink) 5%, transparent); color: var(--paper-ink); }
+
+.themed-panel :is(.panel-empty, .card-text, .card-note, .row-text, .rsvps-pending-sub, .person-card-line, .ticket-left, .ticket-kid-note, .section-note, .side-line, .side-card-invite .side-line, .family-row-line, .family-member-line) { color: var(--muted); }
+
+.themed-panel .card-slot::before { background: color-mix(in srgb, var(--accent) 45%, var(--paper)); }
+
+.themed-panel :is(.card, .person-card, .side-card, .family-row) { border-color: var(--line); background: var(--card); color: var(--ink); }
+
+.themed-panel :is(.thumb.initial, .card-media .thumb.card-image.initial, .detail-hero .thumb.detail-hero-image.initial) { background: var(--card-art); background-color: var(--paper); color: var(--paper-ink); font-family: var(--title-font); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5); }
+
+.themed-panel :is(.select-pill, .button-secondary, .rule-search) { border-color: var(--control-line); background: color-mix(in srgb, var(--paper-ink) 4%, transparent); color: var(--ink); }
+
+.themed-panel .card-title { color: var(--title-color); font-family: var(--title-font); font-size: 22px; }
+
+.themed-panel .card-subtitle { color: var(--kicker-color); }
+
+.themed-panel .card-stamp-month { background: var(--accent); color: var(--accent-ink); }
+
+.themed-panel .card-stamp-day { color: var(--paper); }
+
+.themed-panel .row { border-top-color: color-mix(in srgb, var(--paper-ink) 18%, transparent); }
+
+.themed-panel .row.is-link:hover { background: color-mix(in srgb, var(--paper-ink) 6%, transparent); }
+
+.themed-panel .row-title { color: var(--title-color); font-family: var(--title-font); font-size: 19px; }
+
+.themed-panel .row-actions :is(svg, .icon-button) { color: var(--paper-ink); }
+
+.themed-panel .coming-section { margin: 0; }
+
+.themed-panel .coming-section h2.section-swoosh { padding-bottom: 18px; color: var(--title-color); font-size: 44px; line-height: 1.08; }
+
+.themed-panel .coming-privacy { margin: 14px 0 18px; color: var(--paper-ink); font-size: 15px; }
+
+.themed-panel .link-button { color: var(--kicker-color); }
+
+.themed-panel .button-secondary:hover { background: color-mix(in srgb, var(--paper-ink) 10%, transparent); }
+
+.themed-panel .rsvps-pending { margin-bottom: 36px; border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--paper-ink) 4%, var(--paper)); box-shadow: none; }
+
+.themed-panel .rsvps-pending-mark { background: color-mix(in srgb, var(--title-color) 14%, transparent); color: var(--title-color); }
+
+.themed-panel .rsvps-pending-title { color: var(--title-color); font-family: var(--title-font); }
+
+.themed-panel .rule-search::placeholder { color: color-mix(in srgb, var(--paper-ink) 60%, transparent); }
+
+.themed-panel .family-switch { border-color: var(--control-line); background: none; }
+
+.themed-panel .family-switch-choice { color: var(--muted); }
+
+.themed-panel .family-switch-choice.is-on { background: var(--paper-ink); color: var(--paper); }
+
+.themed-panel .rsvps-head { display: flex; align-items: center; gap: 12px; margin: 22px 0 12px; font-size: 13px; letter-spacing: 0.18em; }
+
+.themed-panel .rsvps-head::after { content: ''; flex: 1; border-top: 1px solid color-mix(in srgb, var(--paper-ink) 18%, transparent); }
+
+.themed-panel .person-card-mine { color: var(--kicker-color); }
+
+.themed-panel .detail-back { color: var(--kicker-color); }
+
+.themed-panel .detail-title { color: var(--title-color); font-family: var(--title-font); font-weight: var(--title-weight); text-transform: var(--title-case); letter-spacing: var(--title-spacing); font-size: 40px; }
+
+.themed-panel .detail-subtitle { color: var(--kicker-color); }
+
+.themed-panel .audience-chip:not(.hosting-chip) { background: color-mix(in srgb, var(--paper-ink) 12%, transparent); color: var(--paper-ink); }
+
+.themed-panel .markdown { color: var(--paper-ink); }
+
+.themed-panel .markdown a { color: var(--kicker-color); }
+
+.themed-panel .ticket-band, .themed-panel .ticket-band:is(.avail-band-available, .avail-band-waitlist) { border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--paper-ink) 4%, var(--paper)); }
+
+.themed-panel .ticket-words { color: var(--title-color); font-family: var(--title-font); }
+
+.themed-panel h2.section-swoosh { color: var(--title-color); }
+
+.themed-panel .section-title { color: var(--title-color); }
+
+.themed-panel .side-card-invite { border-color: color-mix(in srgb, var(--title-color) 55%, transparent); }
+
+.themed-panel .side-title { color: var(--title-color); }
+
+.themed-panel .side-row + .side-row { border-top-color: color-mix(in srgb, var(--paper-ink) 18%, transparent); }
+
+.themed-panel .side-icon { background: color-mix(in srgb, var(--paper-ink) 10%, transparent); color: var(--kicker-color); }
+
+.themed-panel :is(.person-tile, .person-tile-name) { color: var(--ink); }
+
+.themed-panel .family-row-head:hover .family-row-name { color: var(--title-color); }
+
+.themed-panel .chip-toggle { background: none; color: var(--muted); box-shadow: inset 0 0 0 1px var(--control-line); font-weight: 600; }
+
+.themed-panel .chip-toggle:hover { background: color-mix(in srgb, var(--paper-ink) 8%, transparent); }
+
+.themed-panel .chip-toggle.active { --chip: var(--paper-ink); background: color-mix(in srgb, var(--chip) 16%, transparent); color: var(--chip); box-shadow: inset 0 0 0 1.5px var(--chip); }
+
+.themed-panel .filter-button { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px var(--control-line); border-radius: 999px; }
+
+.themed-panel .filter-button.open { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+.themed-panel .chip-toggle-student.active { --chip: var(--kicker-color); }
+
+.themed-panel .chip-toggle-parent.active { --chip: var(--title-color); }
+
+.themed-panel .chip-toggle-staff.active { --chip: var(--accent); }
+
+.themed-panel .family-said:is(.is-none, .is-invited) { background: color-mix(in srgb, var(--paper-ink) 10%, transparent); color: var(--muted); }

@@ -3,7 +3,7 @@ import {popup} from '/modal.js';
 import {mailList} from '/guestlist.js';
 import {chipToggle, filterControl} from '/rules.js';
 import {dataGrid} from '/datagrid.js';
-import {answerLabel, answerIcon, answerButtons, ticketWords, stamp} from '/inviteparts.js';
+import {answerLabel, answerIcon, answerButtons, ticketWords, stamp, answerWords} from '/inviteparts.js';
 import {host} from '/guesthost.js';
 import {personRow} from '/personrow.js';
 import {writeGuestWords} from '/aiwrite.js';
@@ -48,7 +48,8 @@ export function listFilters(all, view, onChange, {answer = '', opened = '', rsvp
   }
   const sections = [];
   if (rsvp) {
-    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: 'Yes'}, ...(view.maybe || view.counts.maybe ? [{value: 'maybe', label: 'Maybe'}] : []), ...(view.host ? [{value: 'no', label: 'No'}] : []), {value: 'none', label: view.host ? 'No response' : 'Invited'}], chosen: answers});
+    const words = answerWords(view);
+    sections.push({label: 'RSVP', icon: 'check', values: [{value: 'yes', label: words.yes}, ...(view.maybe || view.counts.maybe ? [{value: 'maybe', label: words.maybe}] : []), ...(view.host ? [{value: 'no', label: words.no}] : []), {value: 'none', label: view.host ? words.none : 'Invited'}], chosen: answers});
   }
   if (gradeValues.length) {
     sections.push({label: 'Grade', icon: 'school', values: gradeValues, chosen: grades});
@@ -190,11 +191,12 @@ export function openMessage(e, view, refresh, preset = {}) {
     pickNote.textContent = picked.size ? `${picked.size} picked` : 'Select specific people';
   };
   pickTile.addEventListener('click', () => openPick(e, view, picked, paintPick));
+  const said = answerWords(view);
   tiles.append(
-    tile('yes', 'Yes', counts.yes || 0, 'is-yes'),
-    ...(view.maybe || counts.maybe ? [tile('maybe', 'Maybe', counts.maybe || 0, 'is-maybe')] : []),
-    tile('no', 'No', counts.no || 0, 'is-no'),
-    tile('none', 'No response', view.list.filter(r => r.invited && r.sent && !r.answer).length, 'is-waiting'),
+    tile('yes', said.yes, counts.yes || 0, 'is-yes'),
+    ...(view.maybe || counts.maybe ? [tile('maybe', said.maybe, counts.maybe || 0, 'is-maybe')] : []),
+    tile('no', said.no, counts.no || 0, 'is-no'),
+    tile('none', said.none, view.list.filter(r => r.invited && r.sent && !r.answer).length, 'is-waiting'),
     pickTile,
   );
   box.append(tiles);
@@ -265,7 +267,8 @@ function openPick(e, view, picked, onDone) {
   search.placeholder = 'Search the guest list';
   const kinds = new Set();
   const chips = el('div', 'filter-chips picker-roles');
-  for (const [key, label] of [['yes', 'Yes'], ['no', 'No'], ['none', 'No response']]) {
+  const words = answerWords(view);
+  for (const [key, label] of [['yes', words.yes], ['no', words.no], ['none', words.none]]) {
     const chip = el('button', 'filter-chip pick-chip is-' + key, label);
     chip.type = 'button';
     chip.addEventListener('click', () => {

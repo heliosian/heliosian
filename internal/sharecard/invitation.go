@@ -23,7 +23,7 @@ type Invitation struct {
 	Backdrop, Paper, Accent                          color.RGBA
 	KickerInk, TitleInk, DayInk, PlaceInk, HostsInk  color.RGBA
 	BackdropPicture, CardPicture                     image.Image
-	Wordless, KickerUpper                            bool
+	Wordless, KickerUpper, SideBySide                bool
 	Kicker, Title, Day, Hours, Place, Address, Hosts string
 	DisplayFont, BodyFont, KickerFont, PlaceFont     *opentype.Font
 }
@@ -66,6 +66,75 @@ type textLine struct {
 	ink    color.RGBA
 	text   string
 	height int
+	dx     int
+	beside bool
+}
+
+type lineSpec struct {
+	f    *opentype.Font
+	size float64
+	ink  color.RGBA
+	text string
+	gap  int
+}
+
+type lineBuilder func(s lineSpec, within int) ([]textLine, error)
+
+func built(build lineBuilder, within int, specs ...lineSpec) ([]textLine, error) {
+	out := []textLine{}
+	for _, s := range specs {
+		more, err := build(s, within)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, more...)
+	}
+	return out, nil
+}
+
+func (v Invitation) details(build lineBuilder, width int) ([]textLine, error) {
+	day := lineSpec{v.BodyFont, 26, v.DayInk, v.Day, 40}
+	hours := lineSpec{v.BodyFont, 22, v.DayInk, v.Hours, 0}
+	place := lineSpec{v.PlaceFont, 22, v.PlaceInk, v.Place, 14}
+	address := lineSpec{v.PlaceFont, 20, v.PlaceInk, v.Address, 0}
+	if !v.SideBySide || strings.TrimSpace(v.Place+v.Address) == "" {
+		return built(build, width, day, hours, place, address)
+	}
+	day.size, hours.size, place.size, address.size = 21, 18, 19, 17
+	place.gap, address.gap = day.gap, 0
+	if strings.TrimSpace(v.Place) == "" {
+		address.gap = day.gap
+	}
+	half := (width + 40 - 24) / 2
+	left, err := built(build, half, day, hours)
+	if err != nil {
+		return nil, err
+	}
+	right, err := built(build, half, place, address)
+	if err != nil {
+		return nil, err
+	}
+	rows := []textLine{}
+	for i := range max(len(left), len(right)) {
+		row := []textLine{}
+		if i < len(left) {
+			row = append(row, left[i])
+			row[len(row)-1].dx = -(half + 24) / 2
+		}
+		if i < len(right) {
+			row = append(row, right[i])
+			row[len(row)-1].dx = (half + 24) / 2
+		}
+		height := 0
+		for _, l := range row {
+			height = max(height, l.height)
+		}
+		for j := range row {
+			row[j].height, row[j].beside = height, j > 0
+		}
+		rows = append(rows, row...)
+	}
+	return rows, nil
 }
 
 func DrawInvitation(v Invitation) ([]byte, error) {
@@ -98,37 +167,30 @@ func DrawInvitation(v Invitation) ([]byte, error) {
 }
 
 func drawWords(img *image.RGBA, card image.Rectangle, v Invitation) error {
-	width := fixed.I(card.Dx() - 72)
+	width := card.Dx() - 72
 	d := &font.Drawer{Dst: img}
-	lines := []textLine{}
-	add := func(f *opentype.Font, size float64, ink color.RGBA, text string, gap int, wrap bool) error {
-		if strings.TrimSpace(text) == "" {
-			return nil
+	build := func(s lineSpec, within int) ([]textLine, error) {
+		if strings.TrimSpace(s.text) == "" {
+			return nil, nil
 		}
-		fc, err := face(f, size)
+		fc, err := face(s.f, s.size)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		d.Face = fc
-		parts := []string{text}
-		if wrap {
-			parts = Wrap(d, text, width)
-		}
-		for i, part := range parts {
-			height := int(size * 1.25)
+		out := []textLine{}
+		for i, part := range Wrap(d, s.text, fixed.I(within)) {
+			height := int(s.size * 1.25)
 			if i == 0 {
-				height += gap
+				height += s.gap
 			}
-			lines = append(lines, textLine{face: fc, ink: ink, text: part, height: height})
+			out = append(out, textLine{face: fc, ink: s.ink, text: part, height: height})
 		}
-		return nil
+		return out, nil
 	}
 	kicker := v.Kicker
 	if v.KickerUpper {
 		kicker = strings.ToUpper(kicker)
-	}
-	if err := add(v.KickerFont, 20, v.KickerInk, kicker, 0, true); err != nil {
-		return err
 	}
 	titleSize := 56.0
 	for ; titleSize > 30; titleSize -= 2 {
@@ -137,45 +199,42 @@ func drawWords(img *image.RGBA, card image.Rectangle, v Invitation) error {
 			return err
 		}
 		d.Face = fc
-		if len(Wrap(d, v.Title, width)) <= 3 {
+		if len(Wrap(d, v.Title, fixed.I(width))) <= 3 {
 			break
 		}
 	}
-	if err := add(v.DisplayFont, titleSize, v.TitleInk, v.Title, 12, true); err != nil {
+	lines, err := built(build, width, lineSpec{v.KickerFont, 20, v.KickerInk, kicker, 0}, lineSpec{v.DisplayFont, titleSize, v.TitleInk, v.Title, 12})
+	if err != nil {
 		return err
 	}
 	rule := len(lines)
-	for _, l := range []struct {
-		f    *opentype.Font
-		size float64
-		ink  color.RGBA
-		text string
-		gap  int
-	}{
-		{v.BodyFont, 26, v.DayInk, v.Day, 40},
-		{v.BodyFont, 22, v.DayInk, v.Hours, 0},
-		{v.PlaceFont, 22, v.PlaceInk, v.Place, 14},
-		{v.PlaceFont, 20, v.PlaceInk, v.Address, 0},
-		{v.BodyFont, 18, v.HostsInk, v.Hosts, 22},
-	} {
-		if err := add(l.f, l.size, l.ink, l.text, l.gap, true); err != nil {
-			return err
-		}
+	details, err := v.details(build, width)
+	if err != nil {
+		return err
 	}
+	hosts, err := build(lineSpec{v.BodyFont, 18, v.HostsInk, v.Hosts, 22}, width)
+	if err != nil {
+		return err
+	}
+	lines = append(append(lines, details...), hosts...)
 	total := 0
 	for _, l := range lines {
-		total += l.height
+		if !l.beside {
+			total += l.height
+		}
 	}
 	cx := (card.Min.X + card.Max.X) / 2
 	y := card.Min.Y + (card.Dy()-total)/2
 	for i, l := range lines {
-		y += l.height
+		if !l.beside {
+			y += l.height
+		}
 		if i == rule {
 			ry := float32(y - l.height + 8)
 			fill(img, v.Accent, func(p iconPath) { p.roundRect(float32(cx-40), ry, 80, 3, 1.5, true) })
 		}
 		d.Face, d.Src = l.face, image.NewUniform(l.ink)
-		centered(d, l.text, cx, y-int(float64(l.height)*0.25))
+		centered(d, l.text, cx+l.dx, y-int(float64(l.height)*0.25))
 	}
 	return nil
 }

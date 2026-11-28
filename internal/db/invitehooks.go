@@ -55,6 +55,7 @@ type extPerson struct {
 type extView struct {
 	Title       string        `json:"title"`
 	Day         string        `json:"day"`
+	Start       string        `json:"start,omitempty"`
 	Hours       string        `json:"hours,omitempty"`
 	Location    string        `json:"location,omitempty"`
 	Place       string        `json:"place,omitempty"`
@@ -225,7 +226,7 @@ func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) 
 		Title: g["name"], Day: day, Hours: hours, Location: g["location"], Place: g["place"], Description: withoutMarkers(g["description"]), Hosts: m.namesOf(m.hostsOf(g)),
 		Brought: []extPerson{}, Family: []extPerson{}, Pages: []extPage{}, Notes: []extNote{}, Questions: []extQuestion{}, Replies: []extReply{},
 		Past: m.ended(g, now), Cancelled: g["status"] == "cancelled", Theme: g["theme"], Envelope: g["envelope"], Maybe: g["maybe"] == "Yes",
-		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"],
+		Seal: g["seal"], Liner: g["liner"], Design: g["design"], HostedBy: g["hosted_by"], Subtitle: g["subtitle"], Start: g["start"],
 	}
 	for part, into := range map[string]*string{"card": &view.CardPicture, "backdrop": &view.Backdrop} {
 		if g[part+"_picture"] != "" {

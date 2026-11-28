@@ -1,26 +1,62 @@
-import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
 import {parseWhen} from '/datecard.js';
 import {navigate, setPath} from '/router.js';
 import {openParty} from './edit.js';
+import {invitationHead, topbarLine, guestListWords, guestListShown} from '/invitation.js';
+import {dropMenu} from '/invites.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Parties'},
-  {href: '/my', icon: 'home', label: "My Family's Parties"},
+  {href: '/my', icon: 'home', label: "My Family's Parties", count: () => familyParties().length, quiet: true},
   {href: '/hosting', icon: 'star', label: 'Hosting', count: () => hostedParties().length},
   {href: '/approvals', icon: 'hourglass', label: 'Approval Needed', admin: true, count: () => pendingParties().length},
 ];
 
+function familyParties() {
+  return state.model.parties.filter(p => familyShown(p) && myTickets(p).length);
+}
+
 function navItems() {
-  return primary.filter(item => !item.admin || anyAllowance());
+  return primary.map(item => ({...item, n: item.count ? item.count() : 0})).filter(item => (!item.admin || anyAllowance()) && (!item.count || item.n));
+}
+
+export function shownTabs(onList) {
+  return listTabs.map(t => ({...t, count: parties().filter(p => inTab(p, t.key)).length})).filter(t => t.count || (onList && state.tab === t.key));
+}
+
+export function themedPage(className = '') {
+  return el('div', [className, state.model.siteLook ? 'themed-panel' : ''].filter(Boolean).join(' '));
+}
+
+export function pageHeadMain(title, kicker) {
+  const main = el('div', 'page-head-main');
+  if (state.model.siteLook && kicker) {
+    main.append(el('p', 'page-kicker', kicker));
+  }
+  main.append(el('h1', 'page-title', title));
+  return main;
+}
+
+export function siteName() {
+  const listed = celebration(state.model.listed);
+  return state.model.invitation ? state.model.invitation.name : listed ? listed.title : '';
+}
+
+function onPartiesList() {
+  return location.pathname === partiesPath() || location.pathname.startsWith('/celebrations/');
+}
+
+function onInvitation() {
+  return Boolean(state.model.invitation) && location.pathname === '/';
 }
 
 function active(href) {
   const path = location.pathname;
   if (href === '/') {
-    return path === '/' || path.startsWith('/g/') || path.startsWith('/celebrations/');
+    return onPartiesList() || path.startsWith('/g/');
   }
   if (href === '/approvals') {
     return path === '/hosting' && hostingShown() === 'approvals';
@@ -29,13 +65,6 @@ function active(href) {
     return path === '/hosting' && hostingShown() !== 'approvals';
   }
   return path === href || path.startsWith(href + '/');
-}
-
-export function partiesPath() {
-  if (state.celebration === state.model.current) {
-    return '/';
-  }
-  return `/celebrations/${encodeURIComponent(celebration(state.celebration).code)}`;
 }
 
 function slug(words) {
@@ -77,9 +106,8 @@ function navLink(item) {
   }
   const a = link(href, active(item.href) ? 'is-active' : '');
   a.append(item.icon === 'app' ? appSymbol() : svg(item.icon), el('span', '', item.label));
-  const n = item.count ? item.count() : 0;
-  if (n) {
-    a.append(el('span', item.admin ? 'nav-count is-alert' : 'nav-count', String(n)));
+  if (item.n && !item.quiet) {
+    a.append(el('span', item.admin ? 'nav-count is-alert' : 'nav-count', String(item.n)));
   }
   return a;
 }
@@ -109,13 +137,12 @@ export function inTab(p, tab) {
 
 function tabLinks() {
   const wrap = el('div', 'nav-sub');
-  const onList = location.pathname === '/' || location.pathname.startsWith('/celebrations/');
-  for (const t of listTabs) {
-    const n = parties().filter(p => inTab(p, t.key)).length;
+  const onList = onPartiesList();
+  for (const t of shownTabs(onList)) {
     const on = onList && state.tab === t.key;
     const item = el('button', 'nav-sub-item' + (on ? ' is-on' : ''));
     item.type = 'button';
-    item.append(el('span', 'nav-sub-name', t.label), el('span', 'nav-sub-count', String(n)));
+    item.append(el('span', 'nav-sub-name', t.label), el('span', 'nav-sub-count', String(t.count)));
     item.addEventListener('click', () => navigate(listPath(t.key, onList ? state.category : '')));
     wrap.append(item);
   }
@@ -135,16 +162,65 @@ function familyLinks() {
     a.append(el('span', 'nav-sub-name', name), el('span', 'nav-sub-count', String(n)));
     wrap.append(a);
   };
-  const listed = state.model.parties.filter(familyShown);
-  entry('/my', 'My Family', listed.filter(p => myTickets(p).length).length, current[0] === 'my' && !current[1]);
+  const listed = familyParties();
+  entry('/my', 'My Family', listed.length, current[0] === 'my' && !current[1]);
   people.forEach((person, i) => {
-    const n = listed.filter(p => [...p.attendees, ...p.waitlisted].some(a => a.email === person.email)).length;
+    const n = listed.filter(p => ticketFor(p, person.email)).length;
+    if (!n) {
+      return;
+    }
     entry(myPath(person), i === 0 ? 'Me' : person.name, n, Boolean(shown && shown.email === person.email));
   });
   return wrap;
 }
 
+function yearSwitch() {
+  const toggle = el('button', 'year-switch');
+  toggle.type = 'button';
+  toggle.title = 'Another year';
+  toggle.append(svg('chevron-down'));
+  const items = state.model.celebrations.filter(c => c.id === state.celebration || parties(c.id).length).map(c => ({
+    icon: c.id === state.celebration ? 'check' : 'calendar',
+    words: c.title,
+    run: () => {
+      state.celebration = c.id;
+      navigate(partiesPath());
+    },
+  }));
+  const holder = dropMenu(toggle, items);
+  holder.classList.add('year-switch-holder');
+  return holder;
+}
+
+function invitationNav(nav, inv) {
+  const head = invitationHead(inv, invitationPath(''));
+  if (state.model.celebrations.length > 1) {
+    head.prepend(yearSwitch());
+  }
+  nav.append(head);
+  const pages = el('div', 'nav-pages');
+  const card = link(invitationPath(''), onInvitation() && !invitationPageId() ? 'is-active' : '');
+  card.append(svg('mail'), el('span', '', 'Invitation'));
+  pages.append(card);
+  for (const page of inv.pages) {
+    const a = link(invitationPath(page.id), onInvitation() && invitationPageId() === page.id ? 'is-active' : '');
+    a.append(svg('doc'), el('span', '', page.title));
+    pages.append(a);
+  }
+  if (guestListShown(inv)) {
+    const a = link('/guests', location.pathname === '/guests' ? 'is-active' : '');
+    a.append(svg('groups'), el('span', '', guestListWords(inv)));
+    pages.append(a);
+  }
+  nav.append(pages);
+}
+
 function fillNav(nav) {
+  const inv = state.model.invitation;
+  topbarLine(inv);
+  if (inv) {
+    invitationNav(nav, inv);
+  }
   for (const item of navItems()) {
     nav.append(navLink(item));
     if (item.href === '/') {
@@ -163,7 +239,7 @@ function fillNav(nav) {
 }
 
 function fillTabbar(bar) {
-  for (const item of primary.filter(i => !i.admin)) {
+  for (const item of navItems().filter(i => !i.admin)) {
     bar.append(navLink(item));
   }
 }

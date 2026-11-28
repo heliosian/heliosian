@@ -1,7 +1,7 @@
 import {state, allows, canApprove, hostedParties, pendingParties, partyPath, whenLine, money, canHost} from '../state.js';
 import {el, link, button, imageThumb, svg} from '/elements.js';
 import {tabStrip} from '/tabs.js';
-import {hostingShown} from '../chrome.js';
+import {hostingShown, themedPage, pageHeadMain, siteName} from '../chrome.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {openParty, setPartyStatus} from '../edit.js';
 import {availabilityBadge} from '../cards.js';
@@ -44,10 +44,9 @@ function hostRow(p) {
 
 export function hostingPage() {
   setTitle('Hosting');
-  const page = el('div');
+  const page = themedPage();
   const head = el('div', 'page-head');
-  const main = el('div', 'page-head-main');
-  main.append(el('h1', 'page-title', 'Hosting'));
+  const main = pageHeadMain('Hosting', siteName() && `${siteName()} · Your parties`);
   main.append(el('p', 'page-intro', 'The parties you run. Open one to see who is coming, offer waitlist places, and change its settings.'));
   head.append(main);
   if (canHost()) {

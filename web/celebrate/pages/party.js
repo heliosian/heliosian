@@ -1,7 +1,7 @@
 import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {render as markdown} from '/markdown.js';
-import {listPath} from '../chrome.js';
+import {listPath, themedPage} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, givePlace, setPartyStatus, openContacts, savePartyFields, uploadImage, openImageSearch} from '../edit.js';
 import {statusBadges} from '../cards.js';
@@ -377,7 +377,7 @@ function helpCard(p) {
 export function partyPage(p) {
   setTitle(p.title);
   const save = changes => savePartyFields(p, changes);
-  const page = el('div', 'party-page');
+  const page = themedPage('party-page');
   const top = el('div', 'detail-top');
   const back = link(listPath(state.tab, state.category), 'detail-back');
   back.append(svg('chevron-left'), el('span', '', 'Back to Parties'));

@@ -2,15 +2,20 @@ import {host} from '/guesthost.js';
 import {el, svg, toast} from '/elements.js';
 import {listed} from '/directory.js';
 import {answerFor as answerOnList} from '/guestlist.js';
+import {standardWords} from '/themes.js';
 
-export const answerWords = {yes: 'Yes', maybe: 'Maybe', no: 'No'};
+export function answerWords(holder) {
+  return {...standardWords, ...holder.answerWords};
+}
 
-export function answerChoices(row) {
-  return Object.entries(answerWords).filter(([word]) => word !== 'maybe' || (row.answerGroups && row.answerGroups.maybe));
+export function answerChoices(row, e) {
+  const words = answerWords(e);
+  return ['yes', 'maybe', 'no'].filter(word => word !== 'maybe' || (row.answerGroups && row.answerGroups.maybe)).map(word => [word, words[word]]);
 }
 
 export function answerLabel(row, view) {
-  return answerWords[row.answer] || (view.host || row.mine ? 'No response' : 'Invited');
+  const words = answerWords(view);
+  return row.answer ? words[row.answer] : view.host || row.mine ? words.none : 'Invited';
 }
 
 export function firstName(p) {
@@ -33,7 +38,7 @@ export function answerButtons(row, e, onChange, {small = true} = {}) {
   const wrap = el('div', 'rsvp-mini' + (small ? ' is-small' : ''));
   const paint = () => {
     wrap.replaceChildren();
-    for (const [word, label] of answerChoices(row)) {
+    for (const [word, label] of answerChoices(row, e)) {
       const b = el('button', 'rsvp-mini-choice rsvp-mini-' + word + (row.answer === word ? ' is-on' : ''));
       b.type = 'button';
       b.append(svg(answerIcon(word)), el('span', '', label));

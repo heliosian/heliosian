@@ -58,17 +58,17 @@
 
 .card-art { position: absolute; inset: var(--frame-inset); pointer-events: none; border: var(--frame-border); border-radius: 2px; box-shadow: var(--frame-shadow); background: var(--card-art); opacity: var(--art-opacity); -webkit-mask: var(--art-mask); mask: var(--art-mask); }
 
-.card-body { position: relative; display: flex; flex-direction: column; align-items: var(--card-items); padding: var(--card-padding); }
+.invite-card .card-body { position: relative; display: flex; flex-direction: column; align-items: var(--card-items); padding: var(--card-padding); }
 
 .card-cancelled { margin: 0 0 18px; padding: 6px 14px; border-radius: 999px; background: var(--alert); color: #fff; font-family: Roboto, sans-serif; font-size: 13px; font-weight: 700; }
 
-.card-kicker, .card-title, .card-day, .card-hours, .card-place, .card-message, .card-hosts { font-family: var(--role-font); font-size: var(--role-size); font-weight: var(--role-weight); font-style: var(--role-style); text-transform: var(--role-case); letter-spacing: var(--role-spacing); line-height: var(--role-line); color: var(--role-color); }
+.invite-card :is(.card-kicker, .card-title, .card-day, .card-hours, .card-place, .card-message, .card-hosts) { font-family: var(--role-font); font-size: var(--role-size); font-weight: var(--role-weight); font-style: var(--role-style); text-transform: var(--role-case); letter-spacing: var(--role-spacing); line-height: var(--role-line); color: var(--role-color); }
 
 .card-kicker { --role-font: var(--kicker-font); --role-size: var(--kicker-size); --role-weight: var(--kicker-weight); --role-style: var(--kicker-style); --role-case: var(--kicker-case); --role-spacing: var(--kicker-spacing); --role-line: var(--kicker-line); --role-color: var(--kicker-color); margin: 0 0 10px; }
 
-.card-subtitle { margin: 8px 0 0; font-family: var(--title-font); font-size: calc(var(--title-size) * 0.46); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-case); letter-spacing: var(--title-spacing); line-height: 1.2; color: var(--title-color); opacity: 0.85; overflow-wrap: anywhere; }
+.invite-card .card-subtitle { margin: 8px 0 0; font-family: var(--title-font); font-size: calc(var(--title-size) * 0.46); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-case); letter-spacing: var(--title-spacing); line-height: 1.2; color: var(--title-color); opacity: 0.85; overflow-wrap: anywhere; }
 
-.card-title { --role-font: var(--title-font); --role-size: var(--title-size); --role-weight: var(--title-weight); --role-style: var(--title-style); --role-case: var(--title-case); --role-spacing: var(--title-spacing); --role-line: var(--title-line); --role-color: var(--title-color); margin: 0; overflow-wrap: anywhere; }
+.invite-card .card-title { --role-font: var(--title-font); --role-size: var(--title-size); --role-weight: var(--title-weight); --role-style: var(--title-style); --role-case: var(--title-case); --role-spacing: var(--title-spacing); --role-line: var(--title-line); --role-color: var(--title-color); margin: 0; overflow-wrap: anywhere; }
 
 .card-rule { width: var(--rule-width); margin: 26px 0; border-top: var(--rule-height) var(--rule-style) var(--rule-color); }
 
@@ -79,6 +79,20 @@
 .card-place { --role-font: var(--place-font); --role-size: var(--place-size); --role-weight: var(--place-weight); --role-style: var(--place-style); --role-case: var(--place-case); --role-spacing: var(--place-spacing); --role-line: var(--place-line); --role-color: var(--place-color); margin: 18px 0 0; }
 
 .card-place-name, .card-place-address { display: block; }
+
+.invite-card .card-details { display: grid; grid-template-columns: 1fr 1fr; align-self: stretch; margin: 0; }
+
+.invite-card .card-details:has(> :only-child) { grid-template-columns: 1fr; }
+
+.card-detail { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 20px; text-align: center; }
+
+.card-detail + .card-detail { border-left: 1px solid color-mix(in srgb, var(--paper-ink) 25%, transparent); }
+
+.card-detail > svg { width: 22px; height: 22px; margin-bottom: 8px; color: var(--kicker-color); }
+
+.invite-card .card-details :is(.card-day, .card-hours, .card-place) { margin: 0; }
+
+.card-details .card-place-address { opacity: 0.85; }
 
 .card-place-name { font-weight: bolder; }
 
@@ -93,8 +107,10 @@
 .card-words-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 @media (max-width: 600px) {
-  .card-body { padding: 56px 26px 48px; }
-  .card-title { font-size: min(var(--title-size), 44px); }
+  .invite-card .card-body { padding: 56px 26px 48px; }
+  .invite-card .card-title { font-size: min(var(--title-size), 44px); }
+  .invite-card .card-details { grid-template-columns: 1fr; gap: 16px; }
+  .card-detail + .card-detail { padding-top: 16px; border-left: 0; border-top: 1px solid color-mix(in srgb, var(--paper-ink) 25%, transparent); }
   .invite-card { min-height: 0; }
   .env-seal { width: 56px; height: 56px; margin: -28px 0 0 -28px; font-size: 24px; }
 }
@@ -163,20 +179,13 @@
 
 .invite-sheet-fold { position: absolute; right: 0; bottom: 0; width: var(--fold); height: var(--fold); pointer-events: none; border-top-left-radius: 4px; background: linear-gradient(to bottom right, color-mix(in srgb, var(--paper-ink) 16%, var(--paper)) 0%, color-mix(in srgb, var(--paper-ink) 5%, var(--paper)) 50%, transparent 50%); filter: drop-shadow(-2px -2px 3px rgba(0, 0, 0, 0.18)); }
 
-.invite-sheet.is-turning { animation: sheet-turn 0.9s cubic-bezier(0.2, 0.8, 0.2, 1); }
-
 @keyframes sheet-curl {
   0%, 55%, 100% { --fold: 30px; transform: none; }
   72% { --fold: 74px; transform: rotateY(-5deg); }
 }
 
-@keyframes sheet-turn {
-  from { transform: rotateY(-100deg); opacity: 0.2; }
-  to { transform: none; opacity: 1; }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .invite-sheet.is-folded, .invite-sheet.is-turning { animation: none; }
+  .invite-sheet.is-folded { animation: none; }
 }
 
 @media (max-width: 900px) {

@@ -1,6 +1,7 @@
 import {el, link, button} from '/elements.js';
 import {pageHead, setTitle, setSearch} from '/shell.js';
-import {state, dayWords, hourWords} from '../state.js';
+import {state} from '../state.js';
+import {dayWords, hourWords} from '/invitation.js';
 import {andList} from '/andlist.js';
 import {miniEnvelope} from '/envelope.js';
 import {openEditor} from '../editor.js';

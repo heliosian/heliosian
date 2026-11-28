@@ -4,7 +4,7 @@ import {popup} from '/modal.js';
 import {checkbox, field, select} from '/form.js';
 import {createPersonPicker} from '/picker.js';
 import {known} from '/directory.js';
-import {answerChoices, answerLabel, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople} from '/inviteparts.js';
+import {answerChoices, answerLabel, answerIcon, answerFor, firstName, ticketWords, stamp, pickerPeople, answerWords} from '/inviteparts.js';
 import {openGuestForm, openGuestCard, openPending, sendInvites, openCancel} from '/guestpopups.js';
 import {listFilters, openTable, openMessage} from '/guesttable.js';
 import {openPicker, guestAdders} from '/addpeople.js';
@@ -71,7 +71,7 @@ function hideButton(e, refresh) {
 
 function bigChoices(e, r, refresh) {
   const wrap = el('div', 'rsvp-choices');
-  for (const [word, label] of answerChoices(r)) {
+  for (const [word, label] of answerChoices(r, e)) {
     const b = el('button', 'rsvp-choice is-' + word + (r.answer === word ? ' is-on' : ''));
     b.type = 'button';
     b.disabled = !r.mine;
@@ -100,7 +100,7 @@ function answerItems(e, r, refresh, clear) {
       toast(err.message);
     }
   };
-  const items = answerChoices(r).map(([word, words]) => ({icon: answerIcon(word), words, word, run: run(word)}));
+  const items = answerChoices(r, e).map(([word, words]) => ({icon: answerIcon(word), words, word, run: run(word)}));
   if (clear) {
     items.push({icon: answerIcon(''), words: clear, word: 'none', run: run('')});
   }
@@ -211,7 +211,7 @@ export function rsvpRow(e, view, refresh) {
   return row;
 }
 
-export function comingCard(e, view, refresh) {
+export function comingCard(e, view, refresh, kicker = '') {
   const card = el('section', 'rsvps-card coming-section');
   if (view.host) {
     const unsent = view.list.filter(r => r.pending && r.email);
@@ -230,7 +230,11 @@ export function comingCard(e, view, refresh) {
   }
   const rows = (view.host ? view.list : view.coming).filter(r => r.answer === 'yes' || r.answer === 'maybe' || (view.host && r.answer === 'no') || (r.invited && !r.answer));
   const head = el('div', 'rsvps-card-head');
-  head.append(el('h2', 'section section-swoosh', 'Who’s coming'));
+  const words = answerWords(e);
+  head.append(el('h2', 'section section-swoosh', words.coming));
+  if (kicker) {
+    card.append(el('p', 'page-kicker', kicker));
+  }
   card.append(head);
   if (view.host) {
     card.append(el('div', 'side-line coming-privacy', view.listPrivate ? 'Only the hosts see this list.' : 'Everyone who opens the event sees this list.'));
@@ -240,10 +244,10 @@ export function comingCard(e, view, refresh) {
   let current = rows;
   const unsent = r => view.host && r.pending && r.email && !r.answer;
   const groups = [
-    {key: 'yes', label: 'Yes', cls: 'is-yes', has: r => r.answer === 'yes'},
-    {key: 'maybe', label: 'Maybe', cls: 'is-maybe', has: r => r.answer === 'maybe'},
-    ...(view.host ? [{key: 'no', label: 'No', cls: 'is-no', has: r => r.answer === 'no'}] : []),
-    {key: 'waiting', label: view.host ? 'No response' : 'Invited', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
+    {key: 'yes', label: words.yes, cls: 'is-yes', has: r => r.answer === 'yes'},
+    {key: 'maybe', label: words.maybe, cls: 'is-maybe', has: r => r.answer === 'maybe'},
+    ...(view.host ? [{key: 'no', label: words.no, cls: 'is-no', has: r => r.answer === 'no'}] : []),
+    {key: 'waiting', label: view.host ? words.none : 'Invited', cls: 'is-waiting', has: r => r.invited && !r.answer && !unsent(r)},
     ...(view.host ? [{key: 'pending', label: 'Pending (Unsent)', cls: 'is-pending', has: unsent}] : []),
   ];
   const familyRank = ['yes', 'maybe', 'waiting', 'pending', 'no'];
@@ -308,7 +312,7 @@ function ticketMark(view, p) {
 function guestFamilyRow(e, view, family, refresh) {
   return familyRow(family, family.map(r => {
     const unsent = view.host && r.pending && r.email && !r.answer;
-    const said = familySaid(unsent ? 'pending' : r.answer || (view.host ? '' : 'invited'), r.mine);
+    const said = familySaid(unsent ? 'pending' : r.answer || (view.host ? '' : 'invited'), r.mine, answerWords(view));
     const send = {icon: 'mail', words: 'Send Now', cls: 'is-send', run: async () => {
       try {
         await guests.sendTo(e, [r.key]);
@@ -448,7 +452,7 @@ export function menuButton(label, icon, items) {
   return dropMenu(toggle, items);
 }
 
-function dropMenu(toggle, items, below = false) {
+export function dropMenu(toggle, items, below = false) {
   const holder = el('div', below ? 'rsvp-member-holder' : 'hero-image-menu-holder');
   toggle.setAttribute('aria-haspopup', 'menu');
   const menu = el('div', 'hero-image-menu' + (below ? ' rsvp-member-menu' : ''));

@@ -149,6 +149,23 @@ export function familyBlock(details, redraw) {
   return block;
 }
 
+export function replyRows(details, rowOf, redraw) {
+  const nodes = [];
+  for (const person of details.household) {
+    nodes.push(rowOf(person));
+    const block = personBlock(details, person, redraw);
+    if (block) {
+      nodes.push(block);
+    }
+  }
+  for (const node of [familyBlock(details, redraw), missingNote(details)]) {
+    if (node) {
+      nodes.push(node);
+    }
+  }
+  return nodes;
+}
+
 export function missingNote(details) {
   const missing = missingAnswers(details);
   if (!missing.length) {

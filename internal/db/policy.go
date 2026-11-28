@@ -501,7 +501,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by design card_picture backdrop_picture priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by invitation design card_picture backdrop_picture priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location place added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -1144,6 +1144,10 @@ const PolicySource = `
 (read GROUP (and (admin_of "celebrate") (in kind "party" "celebration")))
 ; open, cancel or close a party or celebration
 (set GROUP.status (and (admin_of "celebrate") (in @old.kind "party" "celebration")))
+; dress Celebrate for a celebration in one of the site's themes or one the admin uploaded
+(set GROUP.theme (and (admin_of "celebrate") (= @old.kind "celebration") (usable_theme @new.theme)))
+; name the event a celebration is drawn from
+(set GROUP.invitation (and (admin_of "celebrate") (= @old.kind "celebration") (or (blank @new.invitation) (= @new.invitation.kind "event"))))
 ; name the group of those coming to a party
 (set GROUP.rsvp_yes (and (admin_of "celebrate") (= @old.kind "party")))
 ; name the group of those not coming to a party

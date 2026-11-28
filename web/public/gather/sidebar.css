@@ -25,8 +25,6 @@
 
 .app-nav a svg { width: 20px; height: 20px; flex-shrink: 0; }
 
-.nav-pages { display: flex; flex-direction: column; gap: 2px; }
-
 .app-nav a:hover { background: rgba(255, 255, 255, 0.1); }
 
 .app-nav a.is-active { background: var(--side-active, var(--nav-active)); position: relative; border-radius: 0 10px 10px 0; overflow: hidden; }
@@ -36,38 +34,6 @@
 .app-nav a.is-active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--lime); }
 
 .app-nav a.is-active::after { content: ''; width: 8px; height: 8px; margin-left: auto; border-right: 2.5px solid var(--lime); border-bottom: 2.5px solid var(--lime); transform: rotate(-45deg); flex-shrink: 0; }
-
-.nav-invite-head { display: flex; flex-direction: column; gap: 18px; margin: 4px 0 12px; padding: 8px 4px 22px; border-bottom: 1px solid color-mix(in srgb, var(--side-ink, #fff) 22%, transparent); color: var(--side-ink, #fff); }
-
-.app-nav a.nav-invite-top { align-items: center; gap: 14px; min-height: 0; padding: 0; font-size: inherit; }
-
-.app-nav a.nav-invite-top:hover { background: none; }
-
-.nav-invite-tile { display: flex; flex-shrink: 0; }
-
-.nav-invite-tile .env-seal { position: static; width: 58px; height: 58px; margin: 0; font-size: 28px; box-shadow: 0 0 0 3px color-mix(in srgb, var(--seal) 70%, #000) inset, 0 3px 8px rgba(0, 0, 0, 0.3); outline-offset: -7px; }
-
-.nav-invite-tile .env-seal:hover { transform: none; }
-
-.nav-invite-heading { display: flex; align-items: center; min-width: 0; min-height: 58px; }
-
-.nav-invite-title { font-size: 19px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
-
-.nav-invite-sub { margin-top: -6px; padding: 0 2px 0 36px; font-size: 13px; line-height: 1.35; opacity: 0.65; }
-
-.nav-invite-line { display: flex; align-items: flex-start; gap: 14px; padding: 0 2px; font-size: 15px; line-height: 1.45; }
-
-.app-nav .nav-invite-line svg { width: 20px; height: 20px; margin-top: 1px; flex-shrink: 0; opacity: 0.7; }
-
-.nav-invite-words { min-width: 0; overflow-wrap: anywhere; }
-
-.nav-invite-first { font-weight: 600; }
-
-.nav-invite-second { opacity: 0.65; }
-
-.app-nav a.nav-invite-map { display: inline-flex; gap: 4px; min-height: 0; padding: 0; border-radius: 0; font-size: inherit; font-weight: 400; opacity: 0.65; }
-
-.app-nav a.nav-invite-map:hover { background: none; opacity: 1; text-decoration: underline; }
 
 .nav-made-with { display: flex; flex-direction: column; gap: 2px; margin-top: auto; padding: 16px 4px 4px; color: var(--side-ink, #fff); }
 

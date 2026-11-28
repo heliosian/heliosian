@@ -4,6 +4,10 @@ import {queries, rowsOf} from '/rail.js';
 import {availabilityOf} from '/calendar.js';
 import {directory, emailOf, photoOf, isStudent, isParent, isStaff, gradeOf, relativesOf} from '/directory.js';
 import {chipsOf, withoutChips, plain} from '/markdown.js';
+import {invitationColumns, gatherInvitation, inviteOf, lookThemes, pageOf} from '/invitation.js';
+import {loadThemes, lookFrom} from '/themes.js';
+
+const linkedInvitation = `${gatherInvitation} (in id (select GROUP.invitation (= kind "celebration") (!= status "closed")))`;
 
 export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
@@ -37,6 +41,13 @@ function linksOf(markdown) {
   return [...(markdown || '').matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)].map(m => ({text: m[1], url: m[2]}));
 }
 
+function siteLookOf(bannerRow, invitation) {
+  if (bannerRow && bannerRow.row.theme) {
+    return lookFrom({theme: bannerRow.row.theme});
+  }
+  return invitation ? invitation.look : null;
+}
+
 export async function loadModel() {
   const [a, dir] = await Promise.all([queries({
     viewer: '(from PERSON (where (= id @viewer)))',
@@ -60,6 +71,10 @@ export async function loadModel() {
     families: '(from GROUP (where (= kind "family")) (columns name slug who_href))',
     guests: '(from PERSON (where (= source "guest")) (order name_sort asc) (columns name_show))',
     settings: '(from SETTING (where (= app "celebrate")))',
+    linked: `(from GROUP @g (where ${linkedInvitation}) ${invitationColumns})`,
+    linkedHosted: `(from GROUP @g (where ${linkedInvitation} (runs_list @g)) (columns kind))`,
+    linkedPages: `(from INVITE_PAGE (where (in group (select GROUP.id ${linkedInvitation}))) (order order asc) (columns group order title body background picture))`,
+    linkedHosts: `(from EFFECTIVE_MEMBER (where (in group (select GROUP.managed_by ${linkedInvitation}))) (columns group person))`,
   }), directory()]);
   const viewer = rowsOf(a.viewer, 'PERSON')[0];
   const admin = a.admin.result.length > 0;
@@ -88,8 +103,17 @@ export async function loadModel() {
   const celebrations = rowsOf(a.celebrations, 'GROUP').map(c => ({
     id: c.id, code: c.slug || c.id, title: c.name, subtitle: c.subtitle || '', start: c.start || '', end: c.end || '',
     location: c.location || '', address: c.address || '', description: c.description || '', links: linksOf(c.description),
-    image: picture[c.id] || '', imageUrl: imageOf(c.id), current: c.id === settings['Current'], adding: c.adding || '', row: c,
+    image: picture[c.id] || '', imageUrl: imageOf(c.id), current: c.id === settings['Current'], adding: c.adding || '', invitation: c.invitation || '', row: c,
   }));
+  const bannerRow = celebrations.find(c => c.id === (settings['Banner'] || settings['Current']));
+  const invitationRow = bannerRow ? rowsOf(a.linked, 'GROUP').find(g => g.id === bannerRow.invitation) : null;
+  const invitation = invitationRow ? inviteOf(invitationRow, a.linkedHosted.result.includes(invitationRow.id)) : null;
+  if (invitation) {
+    invitation.pages = rowsOf(a.linkedPages, 'INVITE_PAGE').filter(p => p.group === invitation.id).map(pageOf);
+    invitation.hostNames = rowsOf(a.linkedHosts, 'EFFECTIVE_MEMBER').filter(m => m.group === invitation.managers).map(m => nameOf(m.person)).filter(Boolean);
+  }
+  const siteLook = siteLookOf(bannerRow, invitation);
+  await loadThemes([...(invitation ? lookThemes(invitation) : []), ...(siteLook ? [siteLook.theme] : [])]);
   const celebrationIds = new Set(celebrations.map(c => c.id));
   const categoryRows = rowsOf(a.categories, 'GROUP');
   const categoryIds = new Set(categoryRows.map(c => c.id));
@@ -226,7 +250,10 @@ export async function loadModel() {
     settings: {partiesIntro: settings['Parties Intro'] || '', ticketNote: settings['Ticket Note'] || ''},
     settingRows: rowsOf(a.settings, 'SETTING'),
     current,
+    listed: invitation ? bannerRow.id : current,
     banner: settings['Banner'] || '',
+    invitation,
+    siteLook,
     billable: [user, ...user.adults].filter(x => !x.isStudent && x.email).map(x => x.email),
     celebrations,
     categories,
@@ -244,7 +271,7 @@ function applyModel(model) {
     byId.set(p.id, p);
   }
   if (!state.celebration || !model.celebrations.some(c => c.id === state.celebration)) {
-    state.celebration = model.current || (model.celebrations[0] ? model.celebrations[0].id : '');
+    state.celebration = model.listed || (model.celebrations[0] ? model.celebrations[0].id : '');
   }
 }
 
@@ -297,6 +324,20 @@ export function partyPath(p) {
   return p.path;
 }
 
+export function partiesPath() {
+  if (state.celebration === state.model.listed) {
+    return state.model.invitation ? '/parties' : '/';
+  }
+  return `/celebrations/${encodeURIComponent(celebration(state.celebration).code)}`;
+}
+
+export function invitationPageId() {
+  return new URLSearchParams(location.search).get('page') || '';
+}
+
+export function invitationPath(pageId) {
+  return '/' + (pageId ? '?page=' + encodeURIComponent(pageId) : '');
+}
 export function partyAt(segment) {
   const want = segment.toLowerCase();
   return state.model.parties.find(p => p.partyId === segment || p.prettyId === want) || null;

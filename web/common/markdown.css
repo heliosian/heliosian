@@ -20,7 +20,7 @@
 
 .markdown table { border-collapse: collapse; margin: 12px 0; }
 
-.markdown th, .markdown td { padding: 6px 12px; border: 1px solid var(--line); text-align: left; }
+.markdown th, .markdown td { padding: 6px 12px; text-align: left; }
 
 .markdown .md-image { display: block; max-width: 100%; height: auto; margin: 8px 0; border-radius: 10px; }
 

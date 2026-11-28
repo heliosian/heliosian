@@ -4,8 +4,9 @@ import {field, text} from '/form.js';
 import {queries, rowsOf, write} from '/rail.js';
 import {loadThemes, refreshThemes} from '/themes.js';
 import {miniEnvelope} from '/envelope.js';
-import {me, removeTheme} from './state.js';
-import {themeUpload, deleteThemeWords, cardOnBackdrop} from './editor.js';
+import {me, removeTheme, uploadTheme} from './state.js';
+import {deleteThemeWords, cardOnBackdrop} from './editor.js';
+import {themeUpload} from '/themeupload.js';
 
 async function allThemes() {
   const a = await queries({
@@ -103,7 +104,7 @@ export function openThemeManager() {
   const head = el('div', 'theme-manage-head');
   head.append(
     el('p', 'theme-hint', 'Every theme on Gather: the site’s own, which every host picks from, and the ones hosts uploaded for themselves. A theme you upload starts private to you; make it public here. Plain is what Create Your Own starts from, so it stays public.'),
-    button('Upload a theme', 'upload', 'button', () => themeUpload(id => {
+    button('Upload a theme', 'upload', 'button', () => themeUpload(uploadTheme, id => {
       toast('Uploaded. It’s private to you until you make it public.');
       redraw().then(() => list.querySelector(`[data-theme="${id}"]`)?.scrollIntoView({block: 'nearest'}));
     })),

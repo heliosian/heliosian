@@ -83,23 +83,23 @@
 
 .invite-line { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Yes, Maybe and No as one small set, the one given filled in its color;
-   grayed for someone the viewer may not answer for. */
 .rsvp-mini { display: inline-flex; gap: 4px; }
 
-.rsvp-mini-choice { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1.5px solid var(--dash-line, var(--line)); border-radius: 999px; background: var(--glass-soft, #fff); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--muted); cursor: pointer; }
+.rsvp-mini-choice { --tone: var(--muted); display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border: 1.5px solid color-mix(in srgb, var(--tone) 45%, transparent); border-radius: 999px; background: var(--glass-soft, #fff); font: inherit; font-size: 12.5px; font-weight: 600; color: var(--tone); cursor: pointer; }
+
+.rsvp-mini-yes { --tone: #2f9e6a; }
+
+.rsvp-mini-maybe { --tone: var(--amber); }
+
+.rsvp-mini-no { --tone: var(--no-fill, #b3261e); }
 
 .rsvp-mini-choice svg { width: 13px; height: 13px; }
 
 .rsvp-mini-choice:disabled { cursor: default; opacity: 0.55; }
 
-.rsvp-mini-choice:not(:disabled):hover { border-color: var(--ink); color: var(--ink); }
+.rsvp-mini-choice:not(:disabled):hover { border-color: var(--tone); background: color-mix(in srgb, var(--tone) 10%, var(--glass-soft, #fff)); }
 
-.rsvp-mini-yes.is-on { background: #2f9e6a; border-color: #2f9e6a; color: #fff; }
-
-.rsvp-mini-maybe.is-on { background: var(--amber); border-color: var(--amber); color: #fff; }
-
-.rsvp-mini-no.is-on { background: var(--ink); border-color: var(--ink); color: var(--page); }
+.rsvp-mini-choice.is-on { background: var(--tone); border-color: var(--tone); color: #fff; }
 
 .rsvp-mini-choice.is-on:disabled { opacity: 0.85; }
 
@@ -435,6 +435,20 @@ button.rsvp-row-said:hover strong { text-decoration: underline; text-underline-o
 .hero-image-menu-item .invite-said.is-none .invite-said-mark svg { color: var(--muted); }
 
 .side-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+
+:is(.invite-backdrop .coming-section, .themed-panel) h2.section-swoosh { padding-bottom: 12px; font-family: var(--title-font); font-weight: var(--title-weight); font-style: var(--title-style); text-transform: var(--title-case); letter-spacing: var(--title-spacing); }
+
+:is(.invite-backdrop .coming-section, .themed-panel) h2.section-swoosh::after { left: 0; right: auto; bottom: 0; width: var(--rule-width); height: 0; background: none; border-top: var(--rule-height) var(--rule-style) var(--rule-color); }
+
+.reply-panel .side-title { margin-bottom: 8px; }
+
+.reply-row { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 0; border-top: 1px solid var(--line); }
+
+.reply-name { min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+.reply-calendar { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; margin-top: 12px; text-decoration: none; }
+
+.reply-calendar svg { width: 18px; height: 18px; }
 
 /* The RSVPs card, for admins: the yeses and the nos as face tiles, the
    way HCA-Team draws its volunteers - the face, a student's grade badged

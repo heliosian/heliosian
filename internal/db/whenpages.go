@@ -50,6 +50,10 @@ func (p *WhenPages) RegisterGather(mux *http.ServeMux) {
 	mux.HandleFunc("GET /ext/{token}", p.extPage("web/public/gather/ext.html"))
 	mux.HandleFunc("GET /preview/{token}", p.extPage("web/public/gather/ext.html"))
 	mux.HandleFunc("GET /open/envelope/{id}", p.envelopePicture)
+	p.RegisterThemes(mux)
+}
+
+func (p *WhenPages) RegisterThemes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /open/themes", p.themes)
 	mux.HandleFunc("GET /open/theme-kit.zip", p.themeKit)
 	mux.HandleFunc("GET "+themePictureRoute+"{id}", p.themePicture)

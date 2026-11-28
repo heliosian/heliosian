@@ -1,8 +1,9 @@
-import {state, me, household, familyShown, myTickets} from '../state.js';
+import {state, me, household, familyShown, myTickets, ticketFor, partiesPath} from '../state.js';
 import {el, link} from '/elements.js';
 import {setTitle, setSearch, renderChrome} from '/shell.js';
 import {partyCard} from '../cards.js';
 import {checkbox} from '/form.js';
+import {themedPage, pageHeadMain, siteName} from '../chrome.js';
 
 let query = '';
 
@@ -11,10 +12,9 @@ export function myPage(email) {
   const self = only && only.email === me().email;
   const title = self ? 'My Parties' : only ? `${only.name}'s Parties` : "My Family's Parties";
   setTitle(title);
-  const page = el('div');
+  const page = themedPage();
   const head = el('div', 'page-head');
-  const main = el('div', 'page-head-main');
-  main.append(el('h1', 'page-title', title));
+  const main = pageHeadMain(title, siteName() && `${siteName()} · Your tickets`);
   main.append(el('p', 'page-intro', self
     ? 'The parties you hold a ticket to or wait for.'
     : only
@@ -35,9 +35,7 @@ export function myPage(email) {
 
   const paint = () => {
     body.replaceChildren();
-    const on = p => only
-      ? [...p.attendees, ...p.waitlisted].some(a => a.email === only.email)
-      : myTickets(p).length > 0;
+    const on = p => (only ? Boolean(ticketFor(p, only.email)) : myTickets(p).length > 0);
     const list = state.model.parties.filter(p => familyShown(p) && on(p) && (!query || p.title.toLowerCase().includes(query)));
     if (list.length) {
       const grid = el('div', 'card-grid');
@@ -51,7 +49,7 @@ export function myPage(email) {
     const empty = el('div', 'panel-empty');
     const hidden = !state.showPast && state.model.parties.some(p => !familyShown(p) && on(p));
     empty.append(hidden ? 'Nothing coming up. Turn on Show past parties for the ones that have been, or ' : 'No parties yet. ',
-      link('/', '', hidden ? 'see what\'s available' : 'See what\'s available'), '.');
+      link(partiesPath(), '', hidden ? 'see what\'s available' : 'See what\'s available'), '.');
     panel.append(empty);
     body.append(panel);
   };

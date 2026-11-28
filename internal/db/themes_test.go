@@ -182,6 +182,12 @@ func TestAThemeKeepsTheStandard(t *testing.T) {
 		{`{"seal": {"picture": "url(\"seal.png\") center / cover, #ffffff"}}`, false},
 		{`{"seal": {"picture": "gold"}}`, false},
 		{`{"card": {"align": "right"}}`, false},
+		{`{"card": {"details": "side-by-side"}}`, true},
+		{`{"card": {"details": "grid"}}`, false},
+		{`{"text": {"day": {"format": "{wkd} · {mon} {day}"}}}`, true},
+		{`{"text": {"day": {"format": "{weekday} {date}"}}}`, false},
+		{`{"words": {"coming": "Who’s beaming down", "yes": "I’m in"}}`, true},
+		{`{"words": {"none": ""}}`, false},
 		{`{"envelope": {"body": "tomato"}}`, false},
 		{`{"text": {"title": {"color": "tomato"}}}`, false},
 	} {
@@ -321,10 +327,10 @@ func TestAHostUploadsAThemeOnlyTheirInvitationsUse(t *testing.T) {
 	if rec := postTheme(t, s, pics, host, theme, map[string][]byte{"ball.png": pngOf(t, 12)}); rec.Code != http.StatusOK {
 		t.Fatalf("the host uploads it again: %d %s", rec.Code, rec.Body)
 	}
-	if again, _ := s.Model().Table("THEME").Get(row["id"]); again["name"] != "Disco Night" || len(s.Model().Table("THEME").All()) != 5 {
+	if again, _ := s.Model().Table("THEME").Get(row["id"]); again["name"] != "Disco Night" || len(s.Model().Table("THEME").All()) != 6 {
 		t.Errorf("uploading the same key again gives %v, %d themes", again, len(s.Model().Table("THEME").All()))
 	}
-	for viewer, want := range map[string]int{staff: 5, parent: 4} {
+	for viewer, want := range map[string]int{staff: 6, parent: 5} {
 		if got := len(as(t, s, viewer, `(from THEME)`)); got != want {
 			t.Errorf("%s reads %d themes, want %d", viewer, got, want)
 		}

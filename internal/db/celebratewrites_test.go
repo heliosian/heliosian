@@ -248,6 +248,32 @@ func TestCelebrateAdminsKeepACelebrationsCategories(t *testing.T) {
 	}
 }
 
+func TestCelebrateAdminsDressACelebrationInATheme(t *testing.T) {
+	_, write := celebrateSample(t)
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"theme": larpTheme}}); err != nil {
+		t.Errorf("a Celebrate admin can't give a celebration a site theme: %v", err)
+	}
+	if _, err := write(parent, Edit{Set: celebration, Cells: map[string]any{"theme": "thm00000000002"}}); err == nil {
+		t.Error("someone who isn't a Celebrate admin gave a celebration a site theme")
+	}
+}
+
+func TestACelebrationTakesItsDetailsFromItsInvitation(t *testing.T) {
+	s, write := celebrateSample(t)
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"invitation": "grp00000009041"}}); err != nil {
+		t.Fatalf("a Celebrate admin can't link a celebration to its invitation: %v", err)
+	}
+	c, _ := s.Model().Table("GROUP").Get(celebration)
+	if c["name"] != "Greetings, Earthlings" || c["start"] != "2027-01-16 17:00" || c["address_override"] != "51 Mirada Rd, Half Moon Bay" {
+		t.Errorf("linking didn't bring the invitation's details: %v", c)
+	}
+	apply(t, s, []Edit{{Set: "grp00000009041", Cells: map[string]any{"place": "The Mothership", "start": "2027-01-17 17:00"}}})
+	c, _ = s.Model().Table("GROUP").Get(celebration)
+	if c["location"] != "The Mothership" || c["start"] != "2027-01-17 17:00" {
+		t.Errorf("a change to the invitation didn't reach the celebration: %v", c)
+	}
+}
+
 func TestAHostMovesSomeoneFromTheWaitlistOntoTheParty(t *testing.T) {
 	s, write := celebrateSample(t)
 	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": parent, "member": "yes"}}})

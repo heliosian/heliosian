@@ -166,7 +166,7 @@ export function openGuestCard(e, p, view, refresh) {
   const ask = el('div', 'guest-card-ask');
   ask.append(el('div', 'rsvps-head', 'Their answer'));
   ask.append(answerButtons(p, e, () => {
-    toast(p.answer ? `${firstName(p)}: ${answerWords[p.answer]}` : `${firstName(p)}’s answer cleared`);
+    toast(p.answer ? `${firstName(p)}: ${answerWords(e)[p.answer]}` : `${firstName(p)}’s answer cleared`);
     refresh();
   }, {small: false}));
   if (p.answer) {

@@ -1,13 +1,40 @@
-import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty} from './state.js';
+import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty, me, state} from './state.js';
+import {setGuestHost} from '/guesthost.js';
+import {answerAs, dayWords, hourWords} from '/invitation.js';
+import {themed, sidebarIn} from '/themes.js';
 import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {initModal} from '/modal.js';
 import {startApp, load, loadRow, notFound} from '/router.js';
-import {partiesPage} from './pages/parties.js';
+import {partiesPage, invitationPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
 import {myPage} from './pages/my.js';
 import {hostingPage} from './pages/hosting.js';
 import {adminPage} from './pages/admin.js';
+import {guestsPage} from './pages/guests.js';
+
+setGuestHost({
+  me,
+  answer: (e, word) => answerAs(state.model.invitation, word),
+  isParty: () => false,
+  dayLabel: date => dayWords({start: date}, true),
+  gradeColors: () => ({}),
+  whenWords: () => {
+    const day = dayWords(state.model.invitation);
+    const hours = hourWords(state.model.invitation);
+    return {day, when: hours ? `${day}, ${hours}` : day};
+  },
+});
+
+function siteTheme() {
+  const look = state.model.siteLook;
+  const shell = document.querySelector('.app-shell');
+  shell.removeAttribute('style');
+  sidebarIn(look);
+  if (look) {
+    themed(shell, look);
+  }
+}
 
 function party(parts) {
   const segment = parts.length === 2 ? parts[1] : '';
@@ -25,7 +52,8 @@ function party(parts) {
 }
 
 const routes = {
-  '': () => partiesPage(null),
+  '': () => (state.model.invitation ? invitationPage() : partiesPage(null)),
+  parties: () => partiesPage(null),
   celebrations: parts => {
     const c = celebrationByCode(parts[1]);
     return c ? partiesPage(c.id) : notFound('That celebration');
@@ -39,6 +67,7 @@ const routes = {
     return person ? myPage(person.email) : notFound('That person');
   },
   hosting: () => hostingPage(),
+  guests: () => guestsPage(),
   admin: () => adminPage(),
 };
 
@@ -48,6 +77,9 @@ startApp({
   model: loadModel,
   routes,
   missing: 'is not on the site, or is not something you can see.',
-  prepare: clearSearch,
+  prepare: () => {
+    clearSearch();
+    siteTheme();
+  },
   show: showPage,
 });
