@@ -86,12 +86,23 @@ func TestThemedInvitationsLinkToGather(t *testing.T) {
 
 func TestCelebrationInvitationsSendFamiliesToCelebrate(t *testing.T) {
 	iv, _, _, group := queuedInvitations(t, parent)
-	apply(t, iv.s, []Edit{
-		{Set: group, Cells: map[string]any{"theme": larpTheme}},
-		{Set: "grp00000000520", Cells: map[string]any{"invitation": group}},
+	ids := apply(t, iv.s, []Edit{
+		{Insert: "GROUP", Row: map[string]any{"kind": "group", "name": "Plain group", "status": "open", "invitation": group}},
+		{Set: group, Cells: map[string]any{"theme": larpTheme, "place": "The Picnic Lawn"}},
 	})
 	m := iv.s.Model()
 	g, _ := m.Table("GROUP").Get(group)
+	if got := iv.guestLink(m, g, parent, "tok"); got != "https://gather.test"+g["path"] {
+		t.Errorf("a plain group changed an invitation's link to %s", got)
+	}
+	if plain, _ := m.Table("GROUP").Get(ids[0]); plain["name"] != "Plain group" || plain["location"] != "" {
+		t.Fatal("an event change copied details into a plain group")
+	}
+	apply(t, iv.s, []Edit{
+		{Set: "grp00000000520", Cells: map[string]any{"invitation": group}},
+	})
+	m = iv.s.Model()
+	g, _ = m.Table("GROUP").Get(group)
 	if got := iv.guestLink(m, g, parent, "tok"); got != "https://celebrate.test/" {
 		t.Errorf("family: got %s", got)
 	}

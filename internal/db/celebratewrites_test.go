@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -329,6 +331,42 @@ func TestACelebrationTakesItsDetailsFromItsInvitation(t *testing.T) {
 	c, _ = s.Model().Table("GROUP").Get(celebration)
 	if c["location"] != "The Mothership" || c["start"] != "2027-01-17 17:00" {
 		t.Errorf("a change to the invitation didn't reach the celebration: %v", c)
+	}
+}
+
+func TestCelebrationInvitationWritesRequireTheAdminsView(t *testing.T) {
+	s, write := celebrateSample(t)
+	const event = "grp00000009041"
+	apply(t, s, []Edit{{Set: event, Cells: map[string]any{"visible_to": ""}}})
+	add := Edit{Insert: "GROUP", Row: map[string]any{
+		"kind": "celebration", "parent": "grp00000000013", "name": "New Celebration",
+		"status": "open", "added_by": student, "visible_to": "grp00000000004", "invitation": event,
+	}}
+	link := Edit{Set: celebration, Cells: map[string]any{"invitation": event}}
+	for _, edit := range []Edit{add, link} {
+		_, err := write(student, edit)
+		var refusal *access.Refusal
+		if !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+			t.Fatalf("linking an unreadable invitation returned %v", err)
+		}
+	}
+	if c, _ := s.Model().Table("GROUP").Get(celebration); c["invitation"] != gala {
+		t.Fatal("a refused write changed the existing celebration's link")
+	}
+	apply(t, s, []Edit{{Set: event, Cells: map[string]any{"visible_to": event}}})
+	if _, err := write(student, add); err != nil {
+		t.Fatalf("adding a celebration for a readable Gather invitation: %v", err)
+	}
+}
+
+func TestPlainGroupsCannotLinkCelebrationInvitations(t *testing.T) {
+	_, write := celebrateSample(t)
+	_, err := write(parent, Edit{Insert: "GROUP", Row: map[string]any{
+		"kind": "group", "name": "My group", "status": "open", "added_by": parent, "invitation": "grp00000009041",
+	}})
+	var refusal *access.Refusal
+	if !errors.As(err, &refusal) || refusal.Status != http.StatusForbidden {
+		t.Fatalf("assigning an invitation to a plain group returned %v", err)
 	}
 }
 

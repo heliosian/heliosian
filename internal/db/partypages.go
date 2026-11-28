@@ -52,6 +52,12 @@ func (m *Model) celebrations() []store.Row {
 	return out
 }
 
+func (m *Model) celebrationsForInvitation(id string) []store.Row {
+	return slices.DeleteFunc(m.Table("GROUP").Referencing("invitation", id), func(g store.Row) bool {
+		return g["kind"] != "celebration"
+	})
+}
+
 func (m *Model) celebrationAt(path string) store.Row {
 	all := m.celebrations()
 	if len(all) == 0 {
@@ -74,7 +80,7 @@ func (m *Model) celebrationInvitation(c store.Row) store.Row {
 		return nil
 	}
 	inv, ok := m.Table("GROUP").Get(c["invitation"])
-	if !ok || inv["theme"] == "" {
+	if !ok || inv["kind"] != "event" || inv["theme"] == "" {
 		return nil
 	}
 	return inv

@@ -151,7 +151,7 @@ func (iv *Invitations) linkFor(m *Model, g store.Row, person, token string) stri
 
 func (iv *Invitations) guestLink(m *Model, g store.Row, person, token string) string {
 	p, _ := m.Table("PERSON").Get(person)
-	if p["source"] == "guest" || len(m.Table("GROUP").Referencing("invitation", g["id"])) == 0 {
+	if p["source"] == "guest" || g["kind"] != "event" || len(m.celebrationsForInvitation(g["id"])) == 0 {
 		return iv.linkFor(m, g, person, token)
 	}
 	return iv.config.Origin("celebrate") + "/"

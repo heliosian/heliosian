@@ -269,7 +269,7 @@ func celebrationFromInvitation(m *Model, c Change) ([]Edit, error) {
 	pairs := [][2]store.Row{}
 	switch c.New["kind"] {
 	case "event":
-		for _, celebration := range groups.Referencing("invitation", c.New["id"]) {
+		for _, celebration := range m.celebrationsForInvitation(c.New["id"]) {
 			pairs = append(pairs, [2]store.Row{celebration, c.New})
 		}
 	case "celebration":
@@ -277,7 +277,7 @@ func celebrationFromInvitation(m *Model, c Change) ([]Edit, error) {
 			return nil, nil
 		}
 		event, ok := groups.Get(c.New["invitation"])
-		if !ok {
+		if !ok || event["kind"] != "event" {
 			return nil, nil
 		}
 		pairs = append(pairs, [2]store.Row{c.New, event})

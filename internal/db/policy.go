@@ -1155,7 +1155,8 @@ const PolicySource = `
 ; dress Celebrate for a celebration in one of the site's themes or one the admin uploaded
 (set GROUP.theme (and (admin_of "celebrate") (= @old.kind "celebration") (usable_theme @new.theme)))
 ; name the event a celebration is drawn from
-(set GROUP.invitation (and (admin_of "celebrate") (= @old.kind "celebration") (or (blank @new.invitation) (= @new.invitation.kind "event"))))
+(set GROUP.invitation (and (admin_of "celebrate") (= @new.kind "celebration")
+                           (or (blank @new.invitation) (and (= @new.invitation.kind "event") (not (blank @new.invitation.theme))))))
 ; put a celebration's party tickets on sale or take them off
 (set GROUP.sales_closed (and (admin_of "celebrate") (= @old.kind "celebration")))
 ; name the group of those coming to a party
@@ -2112,17 +2113,20 @@ func (m *Model) Authorize(env Env, c Change) error {
 	}
 	r := m.newRun(env)
 	old := &frame{table: t, row: c.Old, name: "old", run: r}
+	changed := &frame{table: t, row: c.New, name: "new", outer: old, run: r}
 	switch {
 	case c.Old == nil:
-		if !holds(policies.insert[t.Name], &frame{table: t, row: c.New, name: "new", run: r}, nil) {
+		if !holds(policies.insert[t.Name], changed, nil) {
 			return access.Forbidden("you may not add to %s", t.Name)
+		}
+		if c.Table == "GROUP" && c.New["invitation"] != "" && !holds(policies.set["GROUP.invitation"], changed, nil) {
+			return access.Forbidden("you may not assign a celebration's invitation")
 		}
 	case c.New == nil:
 		if !holds(policies.delete[t.Name], old, nil) {
 			return access.Forbidden("you may not remove from %s", t.Name)
 		}
 	default:
-		changed := &frame{table: t, row: c.New, name: "new", outer: old, run: r}
 		for _, col := range t.Columns {
 			if col.Generated || strings.TrimSpace(c.Old[col.Name]) == strings.TrimSpace(c.New[col.Name]) {
 				continue
@@ -2130,6 +2134,11 @@ func (m *Model) Authorize(env Env, c Change) error {
 			if !holds(policies.set[t.Name+"."+col.Name], changed, nil) {
 				return access.Forbidden("you may not change %s.%s", t.Name, col.Name)
 			}
+		}
+	}
+	if c.Table == "GROUP" {
+		if id := c.New["invitation"]; id != "" && id != c.Old["invitation"] && !r.idReadable(id) {
+			return access.Forbidden("you may not link to an invitation you cannot see")
 		}
 	}
 	if c.New != nil && !m.superAdmin(env.Viewer) {
