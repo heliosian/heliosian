@@ -98,27 +98,32 @@ func registerDo(mux *http.ServeMux, s *Store, pics *Pictures, tokens auth.Tokens
 		slog.InfoContext(r.Context(), "added a photo", "viewer", env.Viewer, "of", of, "photo", ids[len(ids)-1], "hash", hash)
 		serve.Write(w, r, http.StatusOK, stored{Result: ids[len(ids)-1:], Hash: hash})
 	})
-	mux.HandleFunc("POST /api/do/flyer", func(w http.ResponseWriter, r *http.Request) {
-		env, actor, ok := caller(w, r, s.Model(), tokens)
-		if !ok {
-			return
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
-		if err := r.ParseMultipartForm(photoLimit); err != nil {
-			serve.Error(w, r, access.Invalid("send the flyer as multipart form data: %v", err))
-			return
-		}
-		id := r.FormValue("group")
-		ids, hash, err := setUpload(r, s, pics, actor, env, "GROUP", id, "flyer_original", func(m *Model) (upload, error) {
-			return pictureOf(r, m, "flyer")
+	for _, u := range []struct{ path, field, column string }{
+		{"/api/do/flyer", "flyer", "flyer_original"},
+		{"/api/do/share-picture", "picture", "share_picture_original"},
+	} {
+		mux.HandleFunc("POST "+u.path, func(w http.ResponseWriter, r *http.Request) {
+			env, actor, ok := caller(w, r, s.Model(), tokens)
+			if !ok {
+				return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, photoLimit)
+			if err := r.ParseMultipartForm(photoLimit); err != nil {
+				serve.Error(w, r, access.Invalid("send the %s as multipart form data: %v", u.field, err))
+				return
+			}
+			id := r.FormValue("group")
+			ids, hash, err := setUpload(r, s, pics, actor, env, "GROUP", id, u.column, func(m *Model) (upload, error) {
+				return pictureOf(r, m, u.field)
+			})
+			if err != nil {
+				serve.Error(w, r, err)
+				return
+			}
+			slog.InfoContext(r.Context(), "set a picture", "viewer", env.Viewer, "group", id, "column", u.column, "hash", hash)
+			serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
 		})
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		slog.InfoContext(r.Context(), "set a flyer", "viewer", env.Viewer, "group", id, "hash", hash)
-		serve.Write(w, r, http.StatusOK, stored{Result: ids, Hash: hash})
-	})
+	}
 	mux.HandleFunc("POST /api/do/design-picture", func(w http.ResponseWriter, r *http.Request) {
 		env, actor, ok := caller(w, r, s.Model(), tokens)
 		if !ok {

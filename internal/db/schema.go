@@ -397,6 +397,8 @@ var Tables = []Table{
 			col("color", Text).about("A classroom's or grade's color."),
 			ref("flyer_original", "CONTENT").private().about("A poster as uploaded, which can carry location tags."),
 			ref("flyer", "CONTENT").about("The poster to show, whole: the original turned upright, its tags dropped, as a JPEG at most 2048 pixels on its long side. Made by the server; blanked when the original changes."),
+			ref("share_picture_original", "CONTENT").private().about("A celebration's or party's own link preview picture, as uploaded, which can carry location tags."),
+			ref("share_picture", "CONTENT").about("The picture a link to a celebration or party shows in place of the drawn share card, cropped to fill it: the original turned upright, its tags dropped, as a JPEG at most 2048 pixels on its long side. Made by the server; blanked when the original changes."),
 			ref("pronunciation_original", "CONTENT").private().about("The recording of how a family's name is said, as uploaded."),
 			ref("pronunciation", "CONTENT").about("The recording of how a family's name is said, as an AAC M4A, mono, 48 kHz, 64 kbps. Made by the server; blanked when the original changes."),
 			col("url", URL).about("A page elsewhere that it stands for, so a link is a group like any other."),

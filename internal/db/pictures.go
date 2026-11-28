@@ -44,6 +44,7 @@ var (
 		{"PERSON", "pronunciation_original", "pronunciation"},
 		{"GROUP", "pronunciation_original", "pronunciation"},
 		{"GROUP", "flyer_original", "flyer"},
+		{"GROUP", "share_picture_original", "share_picture"},
 		{"GROUP", "card_picture_original", "card_picture"},
 		{"GROUP", "backdrop_picture_original", "backdrop_picture"},
 		{"INVITE_PAGE", "picture_original", "picture"},

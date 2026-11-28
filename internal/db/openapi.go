@@ -356,6 +356,22 @@ func spec() schema {
 				"responses": refusals(schema{"200": answers("The GROUP and the flyer's hash.", "Stored"), "400": failure("Not an image, or no picture imported for the stock ID.")}),
 			},
 		},
+		"/api/do/share-picture": schema{
+			"post": schema{
+				"tags":    []string{"do"},
+				"summary": "Set a celebration's or party's own link preview picture",
+				"requestBody": schema{"required": true, "content": schema{"multipart/form-data": schema{"schema": schema{
+					"type":     "object",
+					"required": []string{"group"},
+					"properties": schema{
+						"group":   schema{"type": "string", "pattern": idPattern(GroupPrefix)},
+						"picture": schema{"type": "string", "contentMediaType": "application/octet-stream", "description": "Kept as sent in share_picture_original; the server then makes share_picture, a JPEG with every tag dropped, from it."},
+						"stock":   schema{"type": "string", "pattern": idPattern(StockPrefix), "description": "A stock picture someone imported, in place of picture."},
+					},
+				}}}},
+				"responses": refusals(schema{"200": answers("The GROUP and the picture's hash.", "Stored"), "400": failure("Not an image, or no picture imported for the stock ID.")}),
+			},
+		},
 		"/api/do/design-picture": schema{
 			"post": schema{
 				"tags":    []string{"do"},

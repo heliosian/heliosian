@@ -1115,6 +1115,18 @@ html { scrollbar-width: thin; scrollbar-color: rgba(14, 77, 84, 0.28) transparen
 
 body.is-themed .app-shell { background: var(--side-behind); }
 
+@media (max-width: 900px) {
+  body.is-themed.phone-chrome main { background: var(--side-behind); }
+
+  body.is-themed.phone-chrome > .mobile-top { background: var(--side-bg); background-size: 100% 100vh; background-position: 0 calc(-48px - var(--safe-top)); color: var(--side-ink); border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
+
+  body.is-themed.phone-chrome > .tabbar { background: var(--side-bg); background-size: 100% 100vh; background-position: bottom; border-top-color: rgba(255, 255, 255, 0.1); }
+
+  body.is-themed.phone-chrome > .tabbar a { color: color-mix(in srgb, var(--side-ink) 60%, transparent); }
+
+  body.is-themed.phone-chrome > .tabbar a.is-active { color: var(--side-ink); }
+}
+
 body.is-themed .topbar { --toolbar: rgba(0, 0, 0, 0.45); background: var(--side-bg); background-size: 100% 100vh; border-bottom-color: rgba(255, 255, 255, 0.1); }
 
 body.is-themed .topbar .spoof-button, body.is-themed .topbar .app-switch-button, body.is-themed .topbar .topbar-menu { color: var(--side-ink); }

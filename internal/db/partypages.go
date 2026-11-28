@@ -146,10 +146,19 @@ func (p *PartyPages) PreviewHead(r *http.Request) string {
 	if g != nil {
 		return p.style.PreviewTags(g["name"], eventBlurb(g), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
 	}
-	if inv := m.celebrationInvitation(m.celebrationAt(r.URL.Path)); inv != nil {
-		return p.style.PreviewTags(inv["name"], eventBlurb(inv), origin+r.URL.Path, origin+"/open/share/"+inv["id"]+".png")
+	c := m.celebrationAt(r.URL.Path)
+	shown := c
+	if inv := m.celebrationInvitation(c); inv != nil {
+		shown = inv
 	}
-	return p.upcomingHead(m, origin)
+	if shown == nil || shown["id"] == c["id"] && c["share_picture"] == "" {
+		return p.upcomingHead(m, origin)
+	}
+	picture := shown["id"]
+	if c["share_picture"] != "" {
+		picture = c["id"]
+	}
+	return p.style.PreviewTags(shown["name"], eventBlurb(shown), origin+r.URL.Path, origin+"/open/share/"+picture+".png")
 }
 
 func (m *Model) upcomingParties(at time.Time) []store.Row {
@@ -213,10 +222,26 @@ func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	p.style.Serve(w, r, card, words...)
 }
 
+func (p *PartyPages) sharePicture(w http.ResponseWriter, r *http.Request, m *Model, content string) {
+	if sharecard.PictureAnswered(w, r, content) {
+		return
+	}
+	picture, err := p.cards.decoded(r.Context(), m, content)
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	sharecard.ServePicture(w, r, picture, content)
+}
+
 func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	m := p.s.Model()
 	key := strings.TrimSuffix(r.PathValue("id"), ".png")
 	for _, c := range m.celebrations() {
+		if c["id"] == key && c["share_picture"] != "" {
+			p.sharePicture(w, r, m, c["share_picture"])
+			return
+		}
 		if inv := m.celebrationInvitation(c); inv != nil && inv["id"] == key {
 			l := lookOf(inv)
 			if c["theme"] != "" {
@@ -229,6 +254,10 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	g := m.party(key)
 	if g == nil {
 		http.NotFound(w, r)
+		return
+	}
+	if g["share_picture"] != "" {
+		p.sharePicture(w, r, m, g["share_picture"])
 		return
 	}
 	name, whole := g["flyer"], true

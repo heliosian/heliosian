@@ -47,6 +47,23 @@ func ServeInvitation(w http.ResponseWriter, r *http.Request, v Invitation, parts
 	writeCard(w, etag, png)
 }
 
+func PictureAnswered(w http.ResponseWriter, r *http.Request, content string) bool {
+	return answer(w, r, ETag(content, "picture"))
+}
+
+func ServePicture(w http.ResponseWriter, r *http.Request, picture image.Image, content string) {
+	img := image.NewRGBA(image.Rect(0, 0, Width, Height))
+	cover(img, img.Bounds(), picture)
+	var out bytes.Buffer
+	if err := png.Encode(&out, img); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	etag := ETag(content, "picture")
+	cardCache.Put(etag, out.Bytes())
+	writeCard(w, etag, out.Bytes())
+}
+
 func cover(dst draw.Image, at image.Rectangle, src image.Image) {
 	b := src.Bounds()
 	want := float64(at.Dx()) / float64(at.Dy())

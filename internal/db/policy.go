@@ -507,7 +507,7 @@ const PolicySource = `
 (read GROUP (answers_visible @row))
 ; every column of a group but what its family's form shares
 (read GROUP
-  (id parent kind status slug name subtitle description color flyer pronunciation url listed
+  (id parent kind status slug name subtitle description color flyer share_picture pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
    eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by invitation sales_closed design card_picture backdrop_picture priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location place added_by added path href who_href loop_href when_href team_href celebrate_href)
@@ -729,7 +729,7 @@ const PolicySource = `
 ; how the name of a person the viewer may see is said
 (read CONTENT (exists PERSON @p (= pronunciation @row) (person_visible @p)))
 ; the flyer of a group the viewer may see, and how a family's name is said
-(read CONTENT (exists GROUP @g (or (= flyer @row) (= pronunciation @row) (= card_picture @row) (= backdrop_picture @row)) (visible @g)))
+(read CONTENT (exists GROUP @g (or (= flyer @row) (= share_picture @row) (= pronunciation @row) (= card_picture @row) (= backdrop_picture @row)) (visible @g)))
 ; the background picture of an invitation page the viewer may see
 (read CONTENT (exists INVITE_PAGE @p (= picture @row) (visible @p.group)))
 ; the screenshot of a report the viewer sent
@@ -1282,6 +1282,10 @@ const PolicySource = `
   (and (runs_list @old) (= @old.kind "party") (or (blank @new.waitlist) (= @new.waitlist.parent @old.id))))
 ; a group's managers give it a poster
 (set GROUP.flyer_original (runs_list @old))
+; a party's hosts and Celebrate's admins give a party or celebration its own link preview picture
+(set GROUP.share_picture_original
+  (or (and (= @old.kind "party") (runs_list @old))
+      (and (in @old.kind "party" "celebration") (admin_of "celebrate"))))
 ; a group's managers say whether whoever newly comes onto its guest list is sent the invitation at once
 (set GROUP.auto_invite (runs_list @old))
 ; a group's managers say how many days before it those who have not answered get a reminder, and how many days after the invitation those who have not opened it get it again

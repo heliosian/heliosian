@@ -54,6 +54,13 @@ export async function postFlyer(group, name) {
   return api('POST', '/api/do/flyer', form);
 }
 
+export async function postSharePicture(group, name) {
+  const form = new FormData();
+  form.append('group', group);
+  appendPicture(form, 'picture', name);
+  return api('POST', '/api/do/share-picture', form);
+}
+
 export async function setPicture(groupId, name, old) {
   await postPhoto({group: groupId}, name);
   if (old) {

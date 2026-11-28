@@ -3,6 +3,8 @@ package db
 import (
 	"bytes"
 	"context"
+	"image"
+	_ "image/png"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -53,6 +55,42 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 	apply(t, s, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "none"}}})
 	testkit.Previews(t, pages.PreviewHead, testkit.Preview{URL: "https://celebrate.heliosian.com/", Want: []string{
 		`og:description" content="Fun(d)raiser parties for the Helios community."`}})
+}
+
+func TestACelebrationsOwnPictureIsItsLinkPreview(t *testing.T) {
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000009", "person": staff, "member": "yes"}}})
+	pictureFreeGala(t, s)
+	bucket := blob.NewMemoryBucket()
+	pics := NewPictures(s, bucket)
+	go pics.run()
+	if rec := postFile(t, s, pics, s.Model().addressOf(parent), "share-picture", map[string]string{"group": celebration}, "picture", pngOf(t, 40)); rec.Code == http.StatusOK {
+		t.Fatal("someone who isn't a Celebrate admin set a celebration's link preview picture")
+	}
+	if rec := postFile(t, s, pics, s.Model().addressOf(staff), "share-picture", map[string]string{"group": celebration}, "picture", pngOf(t, 40)); rec.Code != http.StatusOK {
+		t.Fatalf("a Celebrate admin can't set a celebration's link preview picture: %d %s", rec.Code, rec.Body)
+	}
+	if err := pics.make(celebration); err != nil {
+		t.Fatal(err)
+	}
+	pages := partyPagesOf(s, bucket)
+	mux := http.NewServeMux()
+	pages.Register(mux)
+	t.Chdir("../..")
+	testkit.Previews(t, pages.PreviewHead, testkit.Preview{URL: "https://celebrate.heliosian.com/celebrations/" + celebration, Want: []string{
+		`og:title" content="Greetings, Earthlings"`, `og:image" content="https://celebrate.heliosian.com/open/share/` + celebration + `.png"`}})
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/"+celebration+".png", nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
+		t.Fatalf("the celebration's picture: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	img, _, err := image.Decode(rec.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := img.Bounds(); b.Dx() != 1200 || b.Dy() != 630 {
+		t.Errorf("the celebration's picture is %v, not 1200 × 630", b)
+	}
 }
 
 func TestACelebrationsSiteThemeDressesItsShareCard(t *testing.T) {

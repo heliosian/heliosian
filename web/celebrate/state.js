@@ -55,6 +55,10 @@ function linksOf(markdown) {
   return [...(markdown || '').matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)].map(m => ({text: m[1], url: m[2]}));
 }
 
+function sharePictureOf(g) {
+  return {sharePicture: g.share_picture || '', sharePictureUrl: g.share_picture ? `/api/blob/${g.id}/share_picture` : ''};
+}
+
 export async function loadModel() {
   const [a, dir] = await Promise.all([queries({
     viewer: '(from PERSON (where (= id @viewer)))',
@@ -110,7 +114,7 @@ export async function loadModel() {
   const celebrations = rowsOf(a.celebrations, 'GROUP').map(c => ({
     id: c.id, code: c.slug || c.id, title: c.name, subtitle: c.subtitle || '', start: c.start || '', end: c.end || '',
     location: c.location || '', address: c.address || '', description: c.description || '', links: linksOf(c.description),
-    image: picture[c.id] || '', imageUrl: imageOf(c.id), salesClosed: c.sales_closed === 'Yes', adding: c.adding || '', invitation: c.invitation || '', row: c,
+    image: picture[c.id] || '', imageUrl: imageOf(c.id), salesClosed: c.sales_closed === 'Yes', ...sharePictureOf(c), adding: c.adding || '', invitation: c.invitation || '', row: c,
   }));
   const linkedRows = rowsOf(a.linked, 'GROUP');
   const pageRows = rowsOf(a.linkedPages, 'INVITE_PAGE');
@@ -225,7 +229,7 @@ export async function loadModel() {
       hosts: '', hostRows, hostPeople: hostIds.map(id => ({id, email: emailOfId(id), name: nameOf(id), photoUrl: dir.byId[id] ? photoOf(dir.byId[id]) : ''})),
       category: categoryIds.has(g.parent) ? g.parent : '', celebration: under,
       start: g.start || '', end: g.end || '', location: g.location || '', address: g.address || '',
-      image: picture[g.id] || '', imageUrl: imageOf(g.id), flyer: g.flyer || '', flyerUrl: g.flyer ? `/api/blob/${g.id}/flyer` : '',
+      image: picture[g.id] || '', imageUrl: imageOf(g.id), flyer: g.flyer || '', flyerUrl: g.flyer ? `/api/blob/${g.id}/flyer` : '', ...sharePictureOf(g),
       price: Number(g.price) || 0, unit: g.unit || '', capacity, minimum: Number(g.minimum) || 0,
       ticketsOpen: g.join === 'direct', waitlist: Boolean(g.waitlist), waitlistGroup: g.waitlist || '',
       adults: g.eligible !== students, students: !g.eligible || g.eligible === students,

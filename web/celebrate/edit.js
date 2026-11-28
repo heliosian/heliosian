@@ -11,7 +11,7 @@ import {el, svg, toast, button} from '/elements.js';
 import {appOrigin} from '/origins.js';
 import {personRow} from '/personrow.js';
 import {tabbedFields} from '/tabs.js';
-import {imageTools, postFlyer, setPicture} from '/images.js';
+import {imageTools, postFlyer, postSharePicture, setPicture} from '/images.js';
 import {openModal, closeModal, popup} from '/modal.js';
 import {load, navigate} from '/router.js';
 import {field, text, textarea, select, fillSelect, checkbox, segmented, whenPickers} from '/form.js';
@@ -919,6 +919,10 @@ export function openParty(p) {
     })), 'Markdown works: **bold**, *italic*, - a list, [words](https://a.link). The first paragraph is the card’s summary; a line "> [!chip] Adults" puts a chip above the title, and "> [!note] 📣 Good to know" starts a tinted callout.'),
     ...(curates ? [prettyField] : []),
   ];
+  const share = p ? sharePicker(p, () => title.value) : null;
+  if (share) {
+    basics.push(share.wrap);
+  }
 
   const start = whenPickers('Starts', p ? p.start : '', null, 'No start time');
   const end = whenPickers('Ends', p ? p.end : '', null, 'No end time');
@@ -988,6 +992,7 @@ export function openParty(p) {
         made = await hostParty(f, tickets.values(), curates);
         return made;
       }
+      await saveSharePicture(p, share.value());
       const edits = partyEdits(p, f, curates);
       return edits.length ? write(edits) : null;
     },
@@ -1334,6 +1339,7 @@ export function openCelebration(c) {
   const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
   const onSale = checkbox('Tickets are on sale', !c.salesClosed, 'Turn this off to close ticket sales and waitlist requests for families. Party hosts and admins can still add attendees.');
   const image = imagePicker(c.image, c.imageUrl, {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
+  const share = sharePicker(c, () => title.value);
   const own = el('div', 'celebration-own');
   own.append(
     field('Title', title, 'The banner’s big line: "Helios Spring Celebration 2026".', true),
@@ -1352,9 +1358,10 @@ export function openCelebration(c) {
     field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true),
     field('Invitation', invitation, 'The Gather invitation it is drawn from: its name, date and place, its card and pages, RSVPs and who\u2019s coming, in its design. Its invitation mail sends families here to answer. None draws it from the fields below.'),
     field('Site theme', themeRow, 'What Celebrate is dressed in on this celebration’s pages: the backdrop, sidebar, colors and heading font. The invitation’s card keeps its own design.'),
-    own, onSale.wrap, hosting.wrap,
+    own, share.wrap, onSale.wrap, hosting.wrap,
   ], {
     submit: async () => {
+      await saveSharePicture(c, share.value());
       const cells = {
         slug: code.value.trim().toLowerCase(), adding: hosting.input.checked ? 'approval' : '', sales_closed: !onSale.input.checked, invitation: invitation.value, theme: theme.value,
         ...(invitation.value ? {} : {
@@ -1379,6 +1386,24 @@ export function openCelebration(c) {
     onDelete: () => write([...(c.image ? [{delete: c.image}] : []), {delete: c.id}]),
     confirmDelete: `Delete ${c.title}? Only a celebration with no parties or categories can be deleted.`,
   });
+}
+
+function sharePicker(x, query) {
+  return imagePicker(x.sharePicture, x.sharePictureUrl, {
+    plain: true, query, label: 'Link preview picture',
+    hint: 'What a link to it shows when shared in a message or post, cropped to a wide 1200 × 630. None draws the preview from its details.',
+  });
+}
+
+async function saveSharePicture(x, picked) {
+  if (picked === x.sharePicture) {
+    return;
+  }
+  if (picked) {
+    await postSharePicture(x.id, picked);
+    return;
+  }
+  await write([{set: x.id, cells: {share_picture_original: ''}}]);
 }
 
 function settingEdit(key, value) {
