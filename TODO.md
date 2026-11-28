@@ -14,10 +14,10 @@ Last verified: bff8f634
 
 # Issues
 
-- Wiki: keep each page's edit history
+- Wiki page edit history
   Wiki saves overwrite the page's content and the old version is swept away. Record every save as a revision, with a History view, diffs between revisions, and restore.
   Issue: https://github.com/heliosian/heliosian/issues/184
-- Show a loop email's actual message to the list's members and managers
+- Show Loop email messages
   Loop pages show only an email's metadata, though the raw message is stored. Show the rendered message and its attachments to the list's members and managers.
   Issue: https://github.com/heliosian/heliosian/issues/168
 - Add public view for Celebrate
