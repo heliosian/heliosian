@@ -740,7 +740,7 @@ func spec() schema {
 			"post": schema{
 				"tags":        []string{"do"},
 				"summary":     "Preview an invitation as a guest from outside",
-				"description": "For the hosts (runs_list). Answers the page a guest from outside sees, made out to a household no one is in: Piper and Wren McTweet, with their kids Jay and Raven McTweet when the event asks kids or adults a question of their own or has a kid on its list. Nothing is written; the page keeps the household's answers itself.",
+				"description": "For the hosts (runs_list). Answers the page a guest from outside sees, made out to a household no one is in: Piper and Wren McBird, with their kids Jay and Raven McBird when the event asks kids or adults a question of their own or has a kid on its list. Nothing is written; the page keeps the household's answers itself.",
 				"requestBody": jsonBody([]string{"group"}, schema{"group": schema{"type": "string", "pattern": idPattern(GroupPrefix)}}),
 				"responses": refusals(schema{
 					"200": object("The guest's page.", []string{}, schema{}),

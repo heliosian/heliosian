@@ -4,10 +4,9 @@ import {me, findInvite, pagesOf, movePage, dayWords, hourWords, state} from './s
 import {openThemeManager} from './thememanager.js';
 import {load, navigate} from '/router.js';
 import {openPageEditor} from './pageeditor.js';
-import {themed, sealMark} from '/themes.js';
 import {parseWhen, googleCalendarLink} from '/datecard.js';
-import {andList, whereWords, mapQuery} from '/envelope.js';
-import {appOrigin} from '/origins.js';
+import {andList, whereWords} from '/envelope.js';
+import {inviteHead, madeWith} from '/sidebar.js';
 
 function navLink(href, label, icon, active) {
   const a = link(href, active ? 'is-active' : '');
@@ -135,70 +134,13 @@ function inviteNav(nav, key, inv) {
 
 const headDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'long', day: 'numeric', year: 'numeric'});
 
-function placeLines(location) {
-  const comma = location.indexOf(',');
-  if (comma < 1) {
-    return [location, ''];
-  }
-  return [location.slice(0, comma), location.slice(comma + 1).trim()];
-}
-
-function inviteHead(key, inv) {
-  const head = el('div', 'nav-invite-head');
-  const top = link(`/g/${encodeURIComponent(key)}`, 'nav-invite-top');
-  const tile = themed(el('span', 'nav-invite-tile'), inv.look);
-  tile.append(el('span', 'env-seal', sealMark(inv.look, inv.name)));
-  const words = el('span', 'nav-invite-heading');
-  words.append(el('span', 'nav-invite-title', inv.name));
-  top.append(tile, words);
-  head.append(top);
-  const line = (icon, first, second) => {
-    const row = el('div', 'nav-invite-line');
-    const text = el('div', 'nav-invite-words');
-    text.append(el('div', 'nav-invite-first', first));
-    if (second) {
-      text.append(second);
-    }
-    row.append(svg(icon), text);
-    return row;
-  };
+function headOf(key, inv) {
   const from = parseWhen(inv.start);
-  const hours = hourWords(inv);
-  const add = googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, `${location.origin}/g/${encodeURIComponent(key)}`].filter(Boolean).join('\n\n')});
-  let when = hours ? el('div', 'nav-invite-second', hours) : null;
-  if (add) {
-    when = link(add, 'nav-invite-map');
-    when.target = '_blank';
-    when.rel = 'noopener';
-    when.title = 'Add to Google Calendar';
-    when.append(el('span', '', hours || 'Add to calendar'), el('span', 'nav-invite-arrow', '↗'));
-  }
-  head.append(line('calendar', from ? headDay.format(from.date) : dayWords(inv), when));
-  if (inv.place || inv.location) {
-    const [street, town] = inv.place ? [inv.place, inv.location.split(',').slice(0, 2).join(',')] : placeLines(inv.location);
-    const map = link('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(mapQuery(inv)), 'nav-invite-map');
-    map.target = '_blank';
-    map.rel = 'noopener';
-    map.append(el('span', '', town || 'Map'), el('span', 'nav-invite-arrow', '↗'));
-    head.append(line('map', street, map));
-  }
-  const by = inv.hostedBy || andList(inv.hostNames);
-  if (by) {
-    head.append(el('div', 'nav-invite-sub', 'Hosted by ' + by));
-  }
-  return head;
-}
-
-function madeWith() {
-  const box = el('div', 'nav-made-with');
-  const home = link('/', 'nav-made-with-gather');
-  home.append(el('span', 'nav-made-with-words', 'Made with'), svg('mail-open'), el('span', 'nav-made-with-name', 'Gather'));
-  const helios = el('a', 'nav-made-with-helios', 'Helios Community Apps');
-  helios.href = appOrigin('home');
-  const from = el('div', 'nav-made-with-from');
-  from.append('from ', helios);
-  box.append(home, from);
-  return box;
+  return inviteHead({
+    href: `/g/${encodeURIComponent(key)}`, name: inv.name, look: inv.look, day: from ? headDay.format(from.date) : dayWords(inv), hours: hourWords(inv),
+    calendar: googleCalendarLink({title: inv.name, start: inv.start, end: inv.end, allDay: inv.allDay, location: whereWords(inv), details: [inv.description, `${location.origin}/g/${encodeURIComponent(key)}`].filter(Boolean).join('\n\n')}),
+    place: inv.place, location: inv.location, hostedBy: inv.hostedBy || andList(inv.hostNames),
+  });
 }
 
 function brandFor(inv) {
@@ -235,7 +177,7 @@ function fillNav(nav, sidebar) {
       phoneNav(nav, parts[1], inv);
       return;
     }
-    nav.append(inviteHead(parts[1], inv));
+    nav.append(headOf(parts[1], inv));
     inviteNav(nav, parts[1], inv);
     nav.append(madeWith());
     return;

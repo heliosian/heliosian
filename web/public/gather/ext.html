@@ -16,17 +16,24 @@
 <link rel="stylesheet" href="/palette.css">
 <link rel="stylesheet" href="/questions.css">
 <link rel="stylesheet" href="/envelope.css">
+<link rel="stylesheet" href="/sidebar.css">
 <link rel="modulepreload" href="/elements.js">
 <link rel="modulepreload" href="/themes.js">
 <link rel="modulepreload" href="/envelope.js">
 <link rel="modulepreload" href="/questionfields.js">
 <link rel="modulepreload" href="/sheets.js">
-<link rel="modulepreload" href="/markdown.js"><style>
+<link rel="modulepreload" href="/markdown.js">
+<link rel="modulepreload" href="/sidebar.js">
+<link rel="modulepreload" href="/origins.js">
+<style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body { font-family: Roboto, -apple-system, BlinkMacSystemFont, system-ui, sans-serif; font-size: 15px; line-height: 1.4; color: var(--ink); background: var(--page); -webkit-font-smoothing: antialiased; }
 button { font: inherit; }
+.ext-shell { display: flex; min-height: 100dvh; background: var(--side-behind, none); }
+.ext-shell .sidebar { position: sticky; top: 0; height: 100dvh; }
+.ext-shell .invite-page { flex: 1; min-width: 0; }
 .invite-page { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 28px; align-items: start; padding: 48px max(24px, calc((100% - 1120px) / 2)) 96px; background: var(--backdrop); }
 .invite-page.is-sealed { grid-template-columns: minmax(0, 1fr); }
 .invite-page.is-sealed .invite-side { display: none; }
@@ -69,6 +76,12 @@ button { font: inherit; }
 @media (max-width: 980px) {
   .invite-page { grid-template-columns: minmax(0, 1fr); padding: 24px 16px 60px; }
   .invite-side { position: static; max-width: 560px; width: 100%; margin: 0 auto; }
+}
+@media (max-width: 900px) {
+  .ext-shell .sidebar { display: none; }
+  .invite-side { display: contents; }
+  .invite-side > * { order: 1; width: 100%; max-width: 560px; margin: 0 auto; }
+  .invite-side > :first-child { order: -1; }
 }
 </style>
 </head>

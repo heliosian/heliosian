@@ -12,7 +12,7 @@ import (
 	"heliosian/internal/testkit"
 )
 
-func TestAHostPreviewsTheirInvitationAsTheMcTweets(t *testing.T) {
+func TestAHostPreviewsTheirInvitationAsTheMcBirds(t *testing.T) {
 	h := newInviteHarness(t)
 	household := func() []string {
 		t.Helper()
@@ -30,11 +30,11 @@ func TestAHostPreviewsTheirInvitationAsTheMcTweets(t *testing.T) {
 		}
 		return names
 	}
-	if got := household(); len(got) != 2 || got[0] != "Piper McTweet" || got[1] != "Wren McTweet" {
+	if got := household(); len(got) != 2 || got[0] != "Piper McBird" || got[1] != "Wren McBird" {
 		t.Errorf("a party with no kids previewed as %v", got)
 	}
 	h.setup([]Edit{{Insert: "QUESTION", Row: map[string]any{"group": h.event, "text": "Any allergies?", "kind": "text", "asked": "kids", "order": "1"}}})
-	if got := household(); len(got) != 4 || got[2] != "Jay McTweet" || got[3] != "Raven McTweet" {
+	if got := household(); len(got) != 4 || got[2] != "Jay McBird" || got[3] != "Raven McBird" {
 		t.Errorf("a party asking the kids a question previewed as %v", got)
 	}
 	before := len(h.s.Model().Table("MEMBER").Referencing("group", h.event))

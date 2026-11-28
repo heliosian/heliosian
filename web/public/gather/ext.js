@@ -1,5 +1,6 @@
 import {el, svg} from '/elements.js';
-import {loadThemes, themed} from '/themes.js';
+import {loadThemes, themed, sidebarIn} from '/themes.js';
+import {inviteHead, madeWith} from '/sidebar.js';
 import {sealedEnvelope, inviteCard, andList} from '/envelope.js';
 import {replyKey, personBlock, familyBlock, missingNote} from '/questionfields.js';
 import {openSheet, fillDeck} from '/sheets.js';
@@ -212,6 +213,31 @@ function card() {
   });
 }
 
+function sideHead(show) {
+  const head = inviteHead({
+    href: location.pathname, name: view.title, look: lookOf(), day: view.day, hours: view.hours || '', calendar: view.calendar || '',
+    place: view.place || '', location: view.location || '', hostedBy: view.hostedBy || andList(view.hosts),
+  });
+  head.querySelector('.nav-invite-top').addEventListener('click', ev => {
+    ev.preventDefault();
+    if (show) {
+      show({id: ''});
+    }
+  });
+  return head;
+}
+
+function sideLink(item, show) {
+  const a = el('a', item.id === shownPage ? 'is-active' : '');
+  a.href = '#';
+  a.append(svg(item.card ? 'mail' : 'doc'), el('span', '', item.card ? 'Invitation' : item.title));
+  a.addEventListener('click', ev => {
+    ev.preventDefault();
+    show(item);
+  });
+  return a;
+}
+
 function paint() {
   document.title = view.title + ' · You’re invited';
   const page = themed(el('div', 'invite-page'), lookOf());
@@ -222,7 +248,14 @@ function paint() {
   const side = el('div', 'invite-side');
   column.append(above, stage, below);
   page.append(column, side);
-  root.replaceChildren(...(preview ? [previewBar()] : []), page);
+  const nav = el('nav', 'app-nav');
+  const sidebar = el('aside', 'sidebar');
+  sidebar.append(nav);
+  const shell = el('div', 'ext-shell');
+  shell.append(sidebar, page);
+  root.replaceChildren(...(preview ? [previewBar()] : []), shell);
+  sidebarIn(lookOf());
+  nav.replaceChildren(sideHead(null), madeWith());
   const deck = [{id: '', title: view.title, card: true}, ...view.pages.map(p => ({...p, pictureUrl: p.picture || ''}))];
   const show = item => {
     shownPage = item.id;
@@ -232,6 +265,7 @@ function paint() {
   const paintDeck = () => {
     const item = fillDeck(lookOf(), deck, shownPage, above, below, show);
     stage.replaceChildren(item.card ? card() : openSheet(lookOf(), item));
+    nav.replaceChildren(sideHead(show), ...deck.map(p => sideLink(p, show)), madeWith());
   };
   const fill = () => {
     paintDeck();
@@ -263,7 +297,7 @@ function previewBar() {
   const again = el('button', 'preview-bar-again', 'Start over');
   again.type = 'button';
   again.addEventListener('click', () => location.reload());
-  bar.append(el('span', '', `Preview as the McTweets: ${andList([view.name, ...view.family.map(p => p.name)].map(n => n.split(' ')[0]))}. Nothing here is saved or sent.`), again, back);
+  bar.append(el('span', '', `Preview as the McBirds: ${andList([view.name, ...view.family.map(p => p.name)].map(n => n.split(' ')[0]))}. Nothing here is saved or sent.`), again, back);
   return bar;
 }
 

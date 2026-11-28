@@ -80,6 +80,7 @@ type extView struct {
 	HostedBy    string        `json:"hostedBy,omitempty"`
 	Subtitle    string        `json:"subtitle,omitempty"`
 	Maybe       bool          `json:"maybe,omitempty"`
+	Calendar    string        `json:"calendar,omitempty"`
 	Pages       []extPage     `json:"pages"`
 	Notes       []extNote     `json:"notes"`
 	Questions   []extQuestion `json:"questions"`
@@ -231,6 +232,9 @@ func (m *Model) eventView(g store.Row, now time.Time, picture func(part string) 
 			*into = picture(part)
 		}
 	}
+	if from, until, allDay, ok := mail.Span(g["start"], g["end"], School); ok {
+		view.Calendar = mail.Event{Start: from, End: until, AllDay: allDay, Summary: g["name"], Description: withoutMarkers(g["description"]), Location: whereWords(g)}.GoogleLink()
+	}
 	for _, p := range m.invitePages(g) {
 		page := extPage{ID: p["id"], Title: p["title"], Body: p["body"], Background: p["background"]}
 		if p["picture"] != "" {
@@ -262,14 +266,14 @@ func (iv *Invitations) previewInvitation(ctx context.Context, m *Model, env Env,
 	}, func(p store.Row) string {
 		return "/api/blob/" + p["id"] + "/picture?c=" + p["picture"]
 	})
-	view.Name, view.Key = "Piper McTweet", "preview-piper"
+	view.Name, view.Key = "Piper McBird", "preview-piper"
 	view.Guests = g["kind"] != "activity" && g["join"] == "others"
 	view.Questions = m.questionViews(g)
-	view.Family = append(view.Family, extPerson{Key: "preview-wren", Name: "Wren McTweet"})
+	view.Family = append(view.Family, extPerson{Key: "preview-wren", Name: "Wren McBird"})
 	if m.hasKids(g, view.Questions) {
-		view.Family = append(view.Family, extPerson{Key: "preview-jay", Name: "Jay McTweet", Kid: true}, extPerson{Key: "preview-raven", Name: "Raven McTweet", Kid: true})
+		view.Family = append(view.Family, extPerson{Key: "preview-jay", Name: "Jay McBird", Kid: true}, extPerson{Key: "preview-raven", Name: "Raven McBird", Kid: true})
 	}
-	view.FamilyGroup = &extFamily{ID: "preview-family", Name: "The McTweets"}
+	view.FamilyGroup = &extFamily{ID: "preview-family", Name: "The McBirds"}
 	return view, nil
 }
 

@@ -1,4 +1,4 @@
-import {el} from '/elements.js';
+import {el, svg} from '/elements.js';
 
 export function replyKey(question, person, family) {
   return `${question}|${person || ''}|${family || ''}`;
@@ -95,18 +95,33 @@ function control(q, value, save) {
   return input;
 }
 
+let justSaved = '';
+
+function savedMark() {
+  const mark = el('span', 'question-saved');
+  mark.append(svg('check'), el('span', '', 'Saved'));
+  return mark;
+}
+
 export function questionField(q, target, details, redraw) {
-  const existing = details.replies[replyKey(q.id, target.person, target.family)] || null;
+  const key = replyKey(q.id, target.person, target.family);
+  const existing = details.replies[key] || null;
   const value = existing ? existing.value : '';
   const wrap = el('div', 'question' + (q.required ? ' is-required' : '') + (q.required && !value ? ' is-missing' : ''));
   const status = el('span', 'question-status');
+  if (justSaved === key) {
+    justSaved = '';
+    status.append(savedMark());
+  }
   const save = async next => {
-    status.textContent = 'Saving…';
+    status.replaceChildren('Saving…');
     try {
       await details.save(q, target, next, existing);
+      justSaved = key;
       await redraw();
     } catch (err) {
-      status.textContent = err.message;
+      justSaved = '';
+      status.replaceChildren(err.message);
     }
   };
   wrap.append(el('span', 'question-text', q.text), control(q, value, save), status);
