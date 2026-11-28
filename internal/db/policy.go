@@ -199,6 +199,19 @@ const PolicySource = `
   (not (or (and (= @p.parent.kind "celebration") @p.parent.sales_closed)
            (and (= @p.parent.kind "category") @p.parent.parent.sales_closed))))
 
+; @c is a celebration a later one has followed
+(define (superseded @c)
+  (exists GROUP (= kind "celebration") (!= status "closed") (> start @c.start)))
+
+; @g is a party of a superseded celebration, or such a party's waitlist
+(define (past_celebration_party @g)
+  (or (and (= @g.kind "party")
+           (or (and (= @g.parent.kind "celebration") (superseded @g.parent))
+               (and (= @g.parent.kind "category") (= @g.parent.parent.kind "celebration") (superseded @g.parent.parent))))
+      (exists GROUP @p (= waitlist @g) (= kind "party")
+        (or (and (= @p.parent.kind "celebration") (superseded @p.parent))
+            (and (= @p.parent.kind "category") (= @p.parent.parent.kind "celebration") (superseded @p.parent.parent))))))
+
 ; the viewer may change @ph: a picture of themselves or someone in their family, of a group they manage or run, or, unless a guest, of a wiki page
 (define (edits_photo @ph)
   (or (and (not (blank @ph.person)) (self_or_household @ph.person))
@@ -583,14 +596,15 @@ const PolicySource = `
 (read INVITE_PAGE (visible group))
 ; every column of an invitation's page but its uploaded picture
 (read INVITE_PAGE (id group order title body background picture) true)
-; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown, but never who hid something
+; the viewer's own, household's and guests' memberships, those in groups they manage, the managers of visible groups, and everyone where members are shown, but never who hid something, nor a past celebration's party guests to anyone but its hosts
 (read MEMBER
   (or (self_or_household person)
       (= guest_of @viewer)
       (and (not (hides group))
            (or (manages group)
                (and (not (declines group))
-                    (or (manages_visible group) (sees_members group)))))
+                    (or (manages_visible group)
+                        (and (sees_members group) (not (past_celebration_party group)))))))
       (and (answers_visible group) (answers_for @row))
       (runs_answers group)))
 ; every column of a membership
@@ -1446,9 +1460,10 @@ const PolicySource = `
 (set RULE.order (runs_list @old.group))
 ; a mail list's managers take a rule away
 (delete RULE (runs_list @old.group))
-; a mail list's managers put someone on it by hand, or keep someone off it; an admins group's members follow its own rules
+; a mail list's managers put someone on it by hand, or keep someone off it; an admins group's members follow its own rules, and a past celebration's party takes nobody new once it has happened
 (insert MEMBER
-  (and (blank @new.invited) (runs_list @new.group) (!= @new.group.kind "admins") (in @new.member "yes" "excluded")))
+  (and (blank @new.invited) (runs_list @new.group) (!= @new.group.kind "admins") (in @new.member "yes" "excluded")
+       (not (and (past_celebration_party @new.group) (< @new.group.start now)))))
 ; a mail list's managers turn a hand addition into a keeping off, or back
 (set MEMBER.member (and (runs_list @old.group) (!= @old.group.kind "admins") (in @new.member "yes" "excluded")))
 ; a mail list's managers take away a hand addition or a keeping off

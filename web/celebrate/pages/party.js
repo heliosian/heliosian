@@ -24,7 +24,7 @@ function heroStamp(p) {
     stamp.textContent = 'Date to come';
     return stamp;
   }
-  return dateCard({start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p)});
+  return dateCard({start: p.start, end: p.end, location: p.location || '', add: partyCalendarLink(p), year: true});
 }
 
 function hero(p, save) {
@@ -73,7 +73,7 @@ function ticketBand(p) {
     if (selling && !p.salesClosed && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
-  } else if (selling || p.can.edit) {
+  } else if (selling || p.can.add) {
     const label = !selling || p.salesClosed ? 'Add Attendee'
       : p.availability !== 'waitlist' ? 'Get Tickets'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
@@ -430,10 +430,12 @@ export function partyPage(p) {
   if (mine) {
     main.append(mine);
   }
-  main.append(attendeesSection(p));
-  const wait = waitlistSection(p);
-  if (wait) {
-    main.append(wait);
+  if (p.can.edit || !p.pastCelebration) {
+    main.append(attendeesSection(p));
+    const wait = waitlistSection(p);
+    if (wait) {
+      main.append(wait);
+    }
   }
   if (canApprove(p)) {
     main.append(approvalBand(p));

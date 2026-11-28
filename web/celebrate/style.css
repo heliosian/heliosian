@@ -1141,6 +1141,8 @@ body.is-themed .app-shell .themed-panel .page-head-switch { color: var(--paper-i
 
 .themed-panel .card-slot::before { background: color-mix(in srgb, var(--accent) 45%, var(--paper)); }
 
+.themed-panel .hero-image-menu { background: linear-gradient(var(--card-tint), var(--card-tint)), var(--paper); }
+
 .themed-panel :is(.card, .person-card, .side-card, .family-row) { border-color: var(--line); background: linear-gradient(var(--card-tint), var(--card-tint)), var(--paper); color: var(--ink); }
 
 .themed-panel :is(.thumb.initial, .card-media .thumb.card-image.initial, .detail-hero .thumb.detail-hero-image.initial) { background: var(--card-art); background-color: var(--paper); color: var(--paper-ink); font-family: var(--title-font); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5); }
@@ -1189,7 +1191,7 @@ body.is-themed .app-shell .themed-panel .page-head-switch { color: var(--paper-i
 
 .themed-panel .family-switch-choice { color: var(--muted); }
 
-.themed-panel .family-switch-choice.is-on { background: var(--paper-ink); color: var(--paper); }
+.themed-panel .family-switch-choice.is-on { background: var(--accent); color: var(--accent-ink); }
 
 .themed-panel .rsvps-head { display: flex; align-items: center; gap: 12px; margin: 22px 0 12px; font-size: 13px; letter-spacing: 0.18em; }
 

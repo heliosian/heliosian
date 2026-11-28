@@ -136,6 +136,7 @@ export async function loadModel() {
   const categoryIds = new Set(categoryRows.map(c => c.id));
   const categories = categoryRows.map(c => ({id: c.id, title: c.name, celebration: c.parent, order: c.order, row: c}));
   const categoryParent = Object.fromEntries(categoryRows.map(c => [c.id, c.parent]));
+  const latestId = celebrations[0] ? celebrations[0].id : '';
 
   const members = groupBy(rowsOf(a.tickets, 'MEMBER'), 'group');
   const hostsOf = groupBy(rowsOf(a.hosts, 'MEMBER'), 'group');
@@ -189,6 +190,8 @@ export async function loadModel() {
     const sold = tickets.length;
     const capacity = Number(g.capacity) || 0;
     const availability = availabilityOf(g, sold, now);
+    const pastCelebration = under !== latestId;
+    const closedForGood = pastCelebration && availability === 'past';
     const isInvited = invited.has(g.id);
     const attendee = (m, status) => {
       const d = dir.byId[m.person] || null;
@@ -239,10 +242,10 @@ export async function loadModel() {
       attendees: tickets.map(m => attendee(m, 'Ticket')), waitlisted: waiting,
       hosting: hostIds.includes(viewer.id), started: isInvited, invited: isInvited,
       admits: [...household].filter(id => !g.eligible || eligibleHas.has(g.eligible + '/' + id)).map(emailOfId).filter(Boolean),
-      salesClosed: closedSales.has(under),
+      salesClosed: closedSales.has(under), pastCelebration,
       can: {
-        edit, status: admin,
-        buy: !viewerIsStudent && (edit || (availability === 'available' && !closedSales.has(under))),
+        edit, status: admin, add: edit && !closedForGood,
+        buy: !viewerIsStudent && ((edit && !closedForGood) || (availability === 'available' && !closedSales.has(under))),
         'join-waitlist': !viewerIsStudent && availability === 'waitlist' && !closedSales.has(under),
       },
       row: g,

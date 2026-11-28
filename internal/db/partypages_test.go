@@ -7,10 +7,12 @@ import (
 	_ "image/png"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
+	"heliosian/internal/access"
 	"heliosian/internal/blob"
 	"heliosian/internal/testkit"
 )
@@ -90,6 +92,40 @@ func TestACelebrationsOwnPictureIsItsLinkPreview(t *testing.T) {
 	}
 	if b := img.Bounds(); b.Dx() != 1200 || b.Dy() != 630 {
 		t.Errorf("the celebration's picture is %v, not 1200 × 630", b)
+	}
+}
+
+func TestAPastCelebrationsGuestsAreForItsHostsAlone(t *testing.T) {
+	const teacher = "per00000020007"
+	s := sample(t)
+	apply(t, s, []Edit{{Insert: "MEMBER", Row: map[string]any{"group": "grp00000000522", "person": guest, "member": "yes"}}})
+	guests := func(viewer string) []string {
+		t.Helper()
+		return ids(as(t, s, viewer, `(from MEMBER (where (= group "`+tacoNight+`")))`), "person")
+	}
+	if got := guests(teacher); !slices.Equal(got, []string{parent}) {
+		t.Fatalf("the latest celebration's party shows its guests as %v", got)
+	}
+	apply(t, s, []Edit{{Insert: "GROUP", Row: map[string]any{"kind": "celebration", "parent": "grp00000000013", "name": "Spring Celebration 2028", "status": "open", "start": "2028-03-04 17:30"}}})
+	if got := guests(teacher); len(got) != 0 {
+		t.Errorf("a past celebration's party shows its guests to someone not hosting: %v", got)
+	}
+	if got := guests(guest); !slices.Equal(got, []string{parent}) {
+		t.Errorf("a past celebration's party hides its guests from its host: %v", got)
+	}
+	if got := guests(parent); !slices.Equal(got, []string{parent}) {
+		t.Errorf("a past celebration's party hides a family's own ticket: %v", got)
+	}
+	add := func() error {
+		_, err := Write(t.Context(), s, access.Actor{Email: "maya.lindqvist@example.org"}, Env{Viewer: guest, Now: testNow}, Batch{Batch: []Edit{{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": teacher, "member": "yes", "added_by": guest}}}})
+		return err
+	}
+	if err := add(); err != nil {
+		t.Fatalf("a host can't add an attendee to a past celebration's party still to come: %v", err)
+	}
+	apply(t, s, []Edit{{Delete: ids(as(t, s, staff, `(from MEMBER (where (= group "`+tacoNight+`") (= person "`+teacher+`")))`), "id")[0]}, {Set: tacoNight, Cells: map[string]any{"start": "2026-03-07 18:00", "end": "2026-03-07 21:00"}}})
+	if err := add(); err == nil {
+		t.Error("a host added an attendee to a past celebration's party that has happened")
 	}
 }
 

@@ -15,6 +15,8 @@
 
 .hero-num { font-family: Montserrat, Roboto, sans-serif; font-size: 24px; font-weight: 800; line-height: 1; color: var(--brand-fill); }
 
+.hero-year { margin-top: 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: #5b6b6d; }
+
 .hero-sun { display: block; width: 32px; height: 19px; margin-top: 4px; }
 
 .hero-sun svg { display: block; width: 100%; height: 100%; }

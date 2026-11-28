@@ -67,7 +67,7 @@ function placeLines(location) {
   return [location.slice(0, comma), location.slice(comma + 1).trim()];
 }
 
-export function dateCard({start, end, allDay = false, location = '', add = ''}) {
+export function dateCard({start, end, allDay = false, location = '', add = '', year = false}) {
   const from = parseWhen(start);
   if (!from) {
     return null;
@@ -79,6 +79,9 @@ export function dateCard({start, end, allDay = false, location = '', add = ''}) 
   const tile = (when, cls) => {
     const t = el('div', 'hero-tile ' + cls);
     t.append(el('span', 'hero-dow', weekdayFormat.format(when.date)), el('span', 'hero-mon', monthFormat.format(when.date)), el('span', 'hero-num', String(when.date.getDate())));
+    if (year) {
+      t.append(el('span', 'hero-year', String(when.date.getFullYear())));
+    }
     const sun = el('span', 'hero-sun');
     sun.innerHTML = sunArt[timed ? timeOfDay(when) : 'afternoon'];
     t.append(sun);
