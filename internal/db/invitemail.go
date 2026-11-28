@@ -354,7 +354,11 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, li
 	if message != "" {
 		fmt.Fprintf(&text, "%s\n\n", message)
 	}
-	fmt.Fprintf(&text, "%s\n\n%s\n%s\n", intro, g["name"], day)
+	fmt.Fprintf(&text, "%s\n\n%s\n", intro, g["name"])
+	if g["subtitle"] != "" {
+		fmt.Fprintf(&text, "%s\n", g["subtitle"])
+	}
+	fmt.Fprintf(&text, "%s\n", day)
 	if hours != "" {
 		fmt.Fprintf(&text, "%s\n", hours)
 	}
@@ -387,6 +391,9 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, li
 	fmt.Fprintf(&h, `<p style="margin:0 0 24px"><a href="%s" style="display:block"><img src="%s" width="536" alt="%s" style="display:block;width:100%%;height:auto;border:0;border-radius:4px"></a></p>`, esc(link), esc(iv.cardOf(g)), esc(g["name"]))
 	fmt.Fprintf(&h, `<p style="margin:0 0 14px;font-size:16px;line-height:1.4;text-align:center">%s</p>`, esc(intro))
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:26px;line-height:1.25;text-align:center">%s</p>`, esc(g["name"]))
+	if g["subtitle"] != "" {
+		fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:18px;line-height:1.3;text-align:center">%s</p>`, esc(g["subtitle"]))
+	}
 	fmt.Fprintf(&h, `<p style="margin:0 0 28px;font-size:15px;text-align:center;color:#444">%s</p>`, esc(day))
 	if description != "" {
 		fmt.Fprintf(&h, `<p style="margin:0 0 24px;font-size:15px;line-height:1.55;color:#444;white-space:pre-wrap">%s</p>`, esc(description))
@@ -477,6 +484,9 @@ func (iv *Invitations) gatherLetter(m *Model, g store.Row, l gatherLetter) (stri
 	fmt.Fprintf(&h, `<table role="presentation" width="100%%" cellpadding="0" cellspacing="0" border="0" bgcolor="%s" style="margin-top:30px;background:%s;border-radius:%s;color:%s"><tr><td style="padding:36px 32px 30px">`, colors["paper"], colors["paper"], esc(radius), colors["ink"])
 	fmt.Fprintf(&h, `<p style="margin:0 0 10px;font-size:12px;line-height:1.4;letter-spacing:0.2em;text-transform:uppercase;text-align:center;color:%s">%s</p>`, colors["kicker"], esc(designValue(card, "text.kicker.words")))
 	fmt.Fprintf(&h, `<p style="margin:0;font-family:%s;font-size:32px;line-height:1.15;text-align:center;color:%s">%s</p>`, fontStack(display), colors["ink"], esc(g["name"]))
+	if g["subtitle"] != "" {
+		fmt.Fprintf(&h, `<p style="margin:8px 0 0;font-family:%s;font-size:19px;line-height:1.3;text-align:center;color:%s">%s</p>`, fontStack(display), colors["ink"], esc(g["subtitle"]))
+	}
 	if l.hosting != "" {
 		fmt.Fprintf(&h, `<p style="margin:10px 0 0;font-size:15px;line-height:1.4;text-align:center;color:%s">%s</p>`, rgba(colors["ink"], 0.62), esc(l.hosting))
 	}

@@ -21,7 +21,7 @@ const (
 
 type Envelope struct {
 	Backdrop, Body, Side, Front, Flap, Liner, Seal, SealInk, Paper, Ink, Accent color.RGBA
-	Kicker, Title, Mark                                                         string
+	Kicker, Title, Subtitle, Mark                                               string
 }
 
 func fill(dst draw.Image, c color.Color, shape func(p iconPath)) {
@@ -94,7 +94,31 @@ func DrawEnvelope(e Envelope) ([]byte, error) {
 	for i, line := range lines {
 		centered(d, line, cx, 246+i*62)
 	}
-	fill(img, e.Accent, func(p iconPath) { p.roundRect(cx-42, float32(270+(len(lines)-1)*62), 84, 4, 2, true) })
+	rule := 270 + (len(lines)-1)*62
+	if e.Subtitle != "" {
+		sub, err := face(medium, 26)
+		if err != nil {
+			return nil, err
+		}
+		d.Face = sub
+		width := fixed.I(card.Dx() - 96)
+		subs := Wrap(d, e.Subtitle, width)
+		if len(subs) > 2 {
+			words := []rune(strings.Join(subs[1:], " "))
+			subs = subs[:2]
+			for d.MeasureString(subs[1]+"…") > width && len(words) > 1 {
+				words = words[:len(words)-1]
+				subs[1] = strings.TrimSpace(string(words))
+			}
+			subs[1] += "…"
+		}
+		for _, line := range subs {
+			centered(d, line, cx, rule+24)
+			rule += 34
+		}
+		rule += 10
+	}
+	fill(img, e.Accent, func(p iconPath) { p.roundRect(cx-42, float32(rule), 84, 4, 2, true) })
 
 	mid := float32(y0+y1) / 2
 	fill(img, e.Side, polygon(x0, y0+6, x0, y1, cx-10, mid+40))

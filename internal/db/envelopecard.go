@@ -221,6 +221,7 @@ func (p *WhenPages) envelopePicture(w http.ResponseWriter, r *http.Request) {
 		serve.Error(w, r, err)
 		return
 	}
+	e.Subtitle = g["subtitle"]
 	picture, err := sharecard.DrawEnvelope(e)
 	if err != nil {
 		serve.Error(w, r, err)

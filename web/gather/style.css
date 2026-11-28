@@ -87,6 +87,18 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .invite-tile-match[hidden] { display: none; }
 
+.home-section.is-small .home-section-title { font-size: 16px; color: var(--muted); }
+
+.home-section.is-small .invite-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+
+.home-section.is-small .invite-tile { gap: 8px; padding: 10px 10px 9px; border-radius: 10px; opacity: 0.75; }
+
+.home-section.is-small .invite-tile:hover { opacity: 1; }
+
+.home-section.is-small .invite-tile-title { font-size: 13px; }
+
+.home-section.is-small .invite-tile-day { font-size: 12px; }
+
 .search-hit { padding: 0 1px; border-radius: 3px; background: color-mix(in srgb, var(--lime) 55%, transparent); color: inherit; }
 
 .field { display: block; margin: 14px 0; }

@@ -74,8 +74,8 @@ function highlight(a, terms) {
   match.replaceChildren(marked(snippet(text, missing[0]), terms));
 }
 
-function section(title, invites, empty) {
-  const wrap = el('section', 'home-section');
+function section(title, invites, empty, small) {
+  const wrap = el('section', 'home-section' + (small ? ' is-small' : ''));
   wrap.append(el('h2', 'home-section-title', title));
   if (!invites.length) {
     wrap.append(el('p', 'invite-empty', empty));
@@ -115,11 +115,16 @@ export function homePage() {
   page.append(pageHead('Invitations', [button('New invitation', 'plus', 'button', () => openEditor(null))]));
   const nothing = el('p', 'invite-empty');
   nothing.hidden = true;
+  const live = list => list.filter(inv => inv.status !== 'cancelled');
+  const cancelled = [...state.model.invited, ...state.model.hosting].filter(inv => inv.status === 'cancelled');
   page.append(
     nothing,
-    section('Invited to', state.model.invited, 'No invitations yet. When someone sends you one, it arrives here.'),
-    section('Hosting', state.model.hosting, 'Nothing you’re hosting yet. Make an invitation and choose its design.'),
+    section('Invited to', live(state.model.invited), 'No invitations yet. When someone sends you one, it arrives here.'),
+    section('Hosting', live(state.model.hosting), 'Nothing you’re hosting yet. Make an invitation and choose its design.'),
   );
+  if (cancelled.length) {
+    page.append(section('Cancelled', cancelled, '', true));
+  }
   setSearch('Search invitations…', query => filter(page, nothing, query));
   return page;
 }
