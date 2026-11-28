@@ -273,7 +273,7 @@ func celebrationFromInvitation(m *Model, c Change) ([]Edit, error) {
 			pairs = append(pairs, [2]store.Row{celebration, c.New})
 		}
 	case "celebration":
-		if c.New["invitation"] == "" || (c.Old != nil && c.Old["invitation"] == c.New["invitation"]) {
+		if c.New["invitation"] == "" {
 			return nil, nil
 		}
 		event, ok := groups.Get(c.New["invitation"])

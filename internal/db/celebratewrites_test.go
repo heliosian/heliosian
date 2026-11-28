@@ -332,6 +332,12 @@ func TestACelebrationTakesItsDetailsFromItsInvitation(t *testing.T) {
 	if c["location"] != "The Mothership" || c["start"] != "2027-01-17 17:00" {
 		t.Errorf("a change to the invitation didn't reach the celebration: %v", c)
 	}
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"name": "Something Else"}}); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ = s.Model().Table("GROUP").Get(celebration); c["name"] != "Greetings, Earthlings" {
+		t.Errorf("a linked celebration's own name drifted from its invitation's: %q", c["name"])
+	}
 }
 
 func TestCelebrationInvitationWritesRequireTheAdminsView(t *testing.T) {
