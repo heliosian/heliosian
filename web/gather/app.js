@@ -11,14 +11,12 @@ import {imageTools} from '/images.js';
 import {sidebarIn} from '/themes.js';
 import {discardEditorOpen} from './editor.js';
 
-const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
-
 setGuestHost({
   me,
   answer: answerAsMe,
   isParty: () => false,
   gradebands,
-  dayLabel: date => dayFormat.format(new Date(date + 'T12:00')),
+  dayLabel: date => dayWords({start: date}, true),
   uploadImage: imageTools('/api/when').uploadImage,
   gradeColors: () => ({}),
   classroomColors: () => Object.fromEntries(state.model.classrooms.map(c => [c.name, c.color])),

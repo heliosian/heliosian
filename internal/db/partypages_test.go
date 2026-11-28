@@ -13,9 +13,22 @@ import (
 	"heliosian/internal/testkit"
 )
 
+func partyPagesOf(s *Store, bucket *blob.Bucket) *PartyPages {
+	return NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }), NewWhenPages(s, NewPictures(s, bucket), nil))
+}
+
+const gala = "grp00000009101"
+
+func pictureFreeGala(t *testing.T, s *Store) {
+	t.Helper()
+	googleFonts()
+	apply(t, s, []Edit{{Set: gala, Cells: map[string]any{"theme": larpTheme}}})
+}
+
 func TestPartyPreviewsAndShareCards(t *testing.T) {
 	s := sample(t)
-	pages := NewPartyPages(s, blob.NewMemoryBucket(), PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	pictureFreeGala(t, s)
+	pages := partyPagesOf(s, blob.NewMemoryBucket())
 	mux := http.NewServeMux()
 	pages.Register(mux)
 	t.Chdir("../..")
@@ -25,10 +38,38 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 			`og:image" content="https://celebrate.heliosian.com/open/share/` + tacoNight + `.png"`, `Saturday, March 6 · 6:00 – 9:00 PM — Montara — A taco bar`}},
 		testkit.Preview{URL: "https://celebrate.heliosian.com/g/" + tacoNight, Want: []string{`og:title" content="Taco Night"`}},
 		testkit.Preview{URL: "https://celebrate.heliosian.com/my", Want: []string{
-			`og:title" content="Upcoming Parties"`, `og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
-			`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}},
+			`og:title" content="Greetings, Earthlings"`, `og:url" content="https://celebrate.heliosian.com/"`,
+			`og:image" content="https://celebrate.heliosian.com/open/share/` + gala + `.png"`}},
 	)
-	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png")
+	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png", "/open/share/" + gala + ".png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png", "/open/share/grp00000009041.png")
+	apply(t, s, []Edit{{Set: celebration, Cells: map[string]any{"invitation": ""}}})
+	testkit.Previews(t, pages.PreviewHead, testkit.Preview{URL: "https://celebrate.heliosian.com/my", Want: []string{
+		`og:title" content="Upcoming Parties"`, `og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
+		`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}})
+}
+
+func TestACelebrationsSiteThemeDressesItsShareCard(t *testing.T) {
+	s := sample(t)
+	pictureFreeGala(t, s)
+	pages := partyPagesOf(s, blob.NewMemoryBucket())
+	mux := http.NewServeMux()
+	pages.Register(mux)
+	t.Chdir("../..")
+	get := func() *httptest.ResponseRecorder {
+		t.Helper()
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest("GET", "/open/share/"+gala+".png", nil))
+		if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "image/png" {
+			t.Fatalf("the invitation's card: %d %s", rec.Code, rec.Header().Get("Content-Type"))
+		}
+		return rec
+	}
+	invitations := get()
+	apply(t, s, []Edit{{Set: celebration, Cells: map[string]any{"theme": plainTheme}}})
+	dressed := get()
+	if invitations.Header().Get("ETag") == dressed.Header().Get("ETag") || bytes.Equal(invitations.Body.Bytes(), dressed.Body.Bytes()) {
+		t.Fatal("the celebration's own theme did not change its share card")
+	}
 }
 
 var missedPictureRun int
@@ -37,7 +78,7 @@ func TestAMissedPictureIsDrawnAfterTheReadWorks(t *testing.T) {
 	missedPictureRun++
 	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pages := NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	pages := partyPagesOf(s, bucket)
 	picture := pngOf(t, 48)
 	hash := blob.Hash(picture)
 	apply(t, s, []Edit{
@@ -77,7 +118,7 @@ func TestAMissedPictureIsDrawnAfterTheReadWorks(t *testing.T) {
 func TestAPhotoAndAFlyerOfTheSamePictureDrawDifferentCards(t *testing.T) {
 	s := sample(t)
 	bucket := blob.NewMemoryBucket()
-	pages := NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	pages := partyPagesOf(s, bucket)
 	picture := pngOf(t, 64)
 	hash := blob.Hash(picture)
 	if _, err := bucket.Put(context.Background(), "content/"+hash, "image/png", picture, 0); err != nil {
@@ -117,7 +158,7 @@ func TestPartyAddressesRedirectAndServeTheShell(t *testing.T) {
 		{Insert: "REDIRECT", Row: map[string]any{"app": "celebrate", "old": "/parties/ha725m8r", "new": "/g/taco-night"}},
 		{Insert: "REDIRECT", Row: map[string]any{"app": "team", "old": "/parties/teamonly", "new": "/g/taco-night"}},
 	})
-	pages := NewPartyPages(s, blob.NewMemoryBucket(), PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }))
+	pages := partyPagesOf(s, blob.NewMemoryBucket())
 	handler := pages.Redirected(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusTeapot) }))
 	for _, c := range []struct {
 		path   string

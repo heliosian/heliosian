@@ -109,15 +109,20 @@ export async function loadModel() {
     location: c.location || '', address: c.address || '', description: c.description || '', links: linksOf(c.description),
     image: picture[c.id] || '', imageUrl: imageOf(c.id), current: c.id === settings['Current'], adding: c.adding || '', invitation: c.invitation || '', row: c,
   }));
+  const linkedRows = rowsOf(a.linked, 'GROUP');
+  for (const c of celebrations) {
+    const row = linkedRows.find(g => g.id === c.invitation);
+    c.look = row ? inviteOf(row, false).look : null;
+  }
   const bannerRow = celebrations.find(c => c.id === (settings['Banner'] || settings['Current']));
-  const invitationRow = bannerRow ? rowsOf(a.linked, 'GROUP').find(g => g.id === bannerRow.invitation) : null;
+  const invitationRow = bannerRow ? linkedRows.find(g => g.id === bannerRow.invitation) : null;
   const invitation = invitationRow ? inviteOf(invitationRow, a.linkedHosted.result.includes(invitationRow.id)) : null;
   if (invitation) {
     invitation.pages = rowsOf(a.linkedPages, 'INVITE_PAGE').filter(p => p.group === invitation.id).map(pageOf);
     invitation.hostNames = rowsOf(a.linkedHosts, 'EFFECTIVE_MEMBER').filter(m => m.group === invitation.managers).map(m => nameOf(m.person)).filter(Boolean);
   }
   const siteLook = siteLookOf(bannerRow, invitation);
-  await loadThemes([...(invitation ? lookThemes(invitation) : []), ...(siteLook ? [siteLook.theme] : [])]);
+  await loadThemes([...celebrations.filter(c => c.look).flatMap(c => lookThemes(c)), ...(siteLook ? [siteLook.theme] : [])]);
   const celebrationIds = new Set(celebrations.map(c => c.id));
   const categoryRows = rowsOf(a.categories, 'GROUP');
   const categoryIds = new Set(categoryRows.map(c => c.id));

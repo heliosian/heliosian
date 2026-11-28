@@ -7,6 +7,7 @@ import {navigate, setPath} from '/router.js';
 import {openParty} from './edit.js';
 import {invitationHead, topbarLine, guestListWords, guestListShown} from '/invitation.js';
 import {dropMenu} from '/invites.js';
+import {themed, sealMark} from '/themes.js';
 
 const primary = [
   {href: '/', icon: 'app', label: 'Parties'},
@@ -174,14 +175,26 @@ function familyLinks() {
   return wrap;
 }
 
+function sticker(c) {
+  if (!c.look) {
+    return null;
+  }
+  const mark = themed(el('span', 'year-sticker'), c.look);
+  mark.append(el('span', 'env-seal', sealMark(c.look, c.title)));
+  return mark;
+}
+
 function yearSwitch() {
   const toggle = el('button', 'year-switch');
   toggle.type = 'button';
   toggle.title = 'Another year';
   toggle.append(svg('chevron-down'));
   const items = state.model.celebrations.filter(c => c.id === state.celebration || parties(c.id).length).map(c => ({
-    icon: c.id === state.celebration ? 'check' : 'calendar',
+    icon: 'calendar',
+    mark: sticker(c),
     words: c.title,
+    note: c.start.slice(0, 4) || 'Date to come',
+    cls: c.id === state.celebration ? 'is-on' : '',
     run: () => {
       state.celebration = c.id;
       navigate(partiesPath());

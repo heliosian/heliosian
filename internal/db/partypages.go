@@ -1,6 +1,8 @@
 package db
 
 import (
+	"cmp"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -34,10 +36,32 @@ type PartyPages struct {
 	s      *Store
 	bucket *blob.Bucket
 	style  *sharecard.Style
+	cards  *WhenPages
 }
 
-func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style) *PartyPages {
-	return &PartyPages{s: s, bucket: bucket, style: style}
+func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style, cards *WhenPages) *PartyPages {
+	return &PartyPages{s: s, bucket: bucket, style: style, cards: cards}
+}
+
+func (m *Model) celebrationInvitation() store.Row {
+	groups := m.Table("GROUP")
+	c, ok := groups.Get(cmp.Or(m.Setting("celebrate", "Banner"), m.Setting("celebrate", "Current")))
+	if !ok || c["invitation"] == "" {
+		return nil
+	}
+	inv, ok := groups.Get(c["invitation"])
+	if !ok || inv["theme"] == "" {
+		return nil
+	}
+	if c["theme"] == "" {
+		return inv
+	}
+	dressed := maps.Clone(inv)
+	for _, column := range []string{"envelope", "seal", "liner", "design", "card_picture", "backdrop_picture"} {
+		dressed[column] = ""
+	}
+	dressed["theme"] = c["theme"]
+	return dressed
 }
 
 func (p *PartyPages) Register(mux *http.ServeMux) {
@@ -97,10 +121,13 @@ func (p *PartyPages) PreviewHead(r *http.Request) string {
 	if len(parts) == 2 && parts[0] == "g" {
 		g = m.party(parts[1])
 	}
-	if g == nil {
-		return p.upcomingHead(m, origin)
+	if g != nil {
+		return p.style.PreviewTags(g["name"], eventBlurb(g), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
 	}
-	return p.style.PreviewTags(g["name"], eventBlurb(g), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
+	if inv := m.celebrationInvitation(); inv != nil {
+		return p.style.PreviewTags(inv["name"], eventBlurb(inv), origin+"/", origin+"/open/share/"+inv["id"]+".png")
+	}
+	return p.upcomingHead(m, origin)
 }
 
 func (m *Model) upcomingParties(at time.Time) []store.Row {
@@ -166,7 +193,12 @@ func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 
 func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	m := p.s.Model()
-	g := m.party(strings.TrimSuffix(r.PathValue("id"), ".png"))
+	key := strings.TrimSuffix(r.PathValue("id"), ".png")
+	if inv := m.celebrationInvitation(); inv != nil && inv["id"] == key {
+		p.cards.invitationCard(w, r, m, inv)
+		return
+	}
+	g := m.party(key)
 	if g == nil {
 		http.NotFound(w, r)
 		return

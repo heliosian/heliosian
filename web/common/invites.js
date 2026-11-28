@@ -466,6 +466,10 @@ export function dropMenu(toggle, items, below = false) {
       mark.append(svg(item.icon));
       said.append(mark, el('span', '', item.words));
       b.append(said);
+    } else if (item.note) {
+      const words = el('span', 'hero-image-menu-words');
+      words.append(el('span', '', item.words), el('span', 'hero-image-menu-note', item.note));
+      b.append(item.mark || svg(item.icon), words);
     } else {
       b.append(svg(item.icon), el('span', '', item.words));
     }

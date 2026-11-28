@@ -1050,7 +1050,21 @@ body.is-admin main { background-image: none; }
 
 .year-switch svg { width: 16px; height: 16px; }
 
-.year-switch-holder .hero-image-menu { top: calc(100% + 4px); bottom: auto; left: 50%; right: auto; transform: translateX(-50%); }
+.year-switch-holder .hero-image-menu { top: calc(100% + 4px); bottom: auto; left: 50%; right: auto; transform: translateX(-50%); min-width: 240px; }
+
+.year-switch-holder .hero-image-menu-item { gap: 12px; }
+
+.year-switch-holder .hero-image-menu-item.is-on { background: color-mix(in srgb, var(--brand) 8%, transparent); font-weight: 700; }
+
+.hero-image-menu-words { display: flex; flex-direction: column; min-width: 0; text-align: left; }
+
+.hero-image-menu-note { font-size: 12px; font-weight: 600; color: var(--muted); }
+
+.year-sticker { display: flex; flex-shrink: 0; }
+
+.year-sticker .env-seal { position: static; width: 32px; height: 32px; margin: 0; font-size: 15px; cursor: inherit; box-shadow: 0 0 0 2px color-mix(in srgb, var(--seal) 70%, #000) inset, 0 2px 4px rgba(0, 0, 0, 0.2); }
+
+.year-sticker .env-seal:hover { transform: none; }
 
 body.is-themed .sidebar { position: relative; background: none; backdrop-filter: blur(3px); border-right-color: rgba(255, 255, 255, 0.1); }
 
@@ -1147,6 +1161,10 @@ body.is-themed .app-shell .themed-panel .page-head-switch { color: var(--paper-i
 .themed-panel .card-stamp-month { background: var(--accent); color: var(--accent-ink); }
 
 .themed-panel .card-stamp-day { color: var(--paper); }
+
+.themed-panel .card-stamp-dow { color: color-mix(in srgb, var(--paper) 60%, transparent); }
+
+.themed-panel .card-under-item { color: var(--kicker-color); }
 
 .themed-panel .row { border-top-color: color-mix(in srgb, var(--paper-ink) 18%, transparent); }
 

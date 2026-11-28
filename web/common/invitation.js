@@ -148,7 +148,7 @@ export async function noteOpened(inv, details) {
 }
 
 const longDay = new Intl.DateTimeFormat('en-US', {weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'});
-const shortDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
+const shortDay = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'});
 const clock = new Intl.DateTimeFormat('en-US', {hour: 'numeric', minute: '2-digit'});
 
 export function dayWords(inv, short) {

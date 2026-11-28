@@ -1,6 +1,7 @@
 import {el, link, button} from '/elements.js';
 import {pageHead, setTitle, setSearch} from '/shell.js';
 import {state} from '../state.js';
+import {sheetStamp} from '/stamp.js';
 import {dayWords, hourWords} from '/invitation.js';
 import {andList} from '/andlist.js';
 import {miniEnvelope} from '/envelope.js';
@@ -115,13 +116,20 @@ export function homePage() {
   page.append(pageHead('Invitations', [button('New invitation', 'plus', 'button', () => openEditor(null))]));
   const nothing = el('p', 'invite-empty');
   nothing.hidden = true;
-  const live = list => list.filter(inv => inv.status !== 'cancelled');
-  const cancelled = [...state.model.invited, ...state.model.hosting].filter(inv => inv.status === 'cancelled');
+  const today = sheetStamp().slice(0, 10);
+  const past = inv => Boolean(inv.start) && (inv.end || inv.start).slice(0, 10) < today;
+  const live = list => list.filter(inv => inv.status !== 'cancelled' && !past(inv));
+  const all = [...state.model.invited, ...state.model.hosting];
+  const cancelled = all.filter(inv => inv.status === 'cancelled');
+  const earlier = all.filter(inv => inv.status !== 'cancelled' && past(inv)).sort((a, b) => b.start.localeCompare(a.start));
   page.append(
     nothing,
     section('Invited to', live(state.model.invited), 'No invitations yet. When someone sends you one, it arrives here.'),
     section('Hosting', live(state.model.hosting), 'Nothing you’re hosting yet. Make an invitation and choose its design.'),
   );
+  if (earlier.length) {
+    page.append(section('Past', earlier, '', true));
+  }
   if (cancelled.length) {
     page.append(section('Cancelled', cancelled, '', true));
   }
