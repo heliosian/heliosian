@@ -853,6 +853,14 @@ main {
 
 .image-placeholder { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
 
+.image-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+
+.image-row img, .image-row .image-placeholder { width: 240px; max-width: 100%; aspect-ratio: 1200 / 630; border-radius: 10px; }
+
+.image-row img { object-fit: cover; }
+
+.image-row .image-placeholder { justify-content: center; border: 1.5px dashed rgba(36, 77, 83, 0.3); background: var(--hollow, #f4f8f8); }
+
 .image-placeholder svg { width: 32px; height: 32px; }
 
 .image-drop-buttons { display: flex; gap: 8px; margin-top: 6px; }
