@@ -93,7 +93,7 @@ One setting each for the card's lines:
 
 - `kicker`: the small line above the title. Its `words` say what it says, like `You’re invited to`.
 - `title`: the invitation's name.
-- `day`, `hours`, `place`: when and where. `day` also has a `format`: how the date is written, with `{weekday}` (Saturday), `{wkd}` (Sat), `{month}` (March), `{mon}` (Mar), `{day}` (6) and `{year}` (2027) standing for its parts and anything else written as it is. The standard is `{weekday}, {month} {day}, {year}`; `{wkd} · {mon} {day}` writes "Sat · Mar 6", and `{weekday}, {month} {day}` leaves out the year. The invitation's sidebar, its email and its link preview write the date this way too.
+- `day`, `hours`, `place`: when and where. `day` also has a `format`: how the date is written, with `{weekday}` (Saturday), `{wkd}` (Sat), `{month}` (March), `{mon}` (Mar), `{day}` (6) and `{year}` (2027) standing for its parts and anything else written as it is. The standard is `{weekday}, {month} {day}, {year}`. A format that never names `{year}` gets `, {year}` on the end, so `{wkd} · {mon} {day}` writes "Sat · Mar 6, 2027". The invitation's card, its sidebar, its email and its link preview write the date this way.
 - `message`: the hosts' words to their guests.
 - `hosts`: the "Hosted by" line.
 

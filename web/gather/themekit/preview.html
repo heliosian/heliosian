@@ -258,7 +258,11 @@ function part(title, node) {
 
 function draw(theme, urls) {
   const {key, name, blurb, ...design} = theme;
-  const whole = resolved(merged(standard, design), urls);
+  let whole = resolved(merged(standard, design), urls);
+  const format = whole.text && whole.text.day && whole.text.day.format;
+  if (format && !format.includes('{year}')) {
+    whole = {...whole, text: {...whole.text, day: {...whole.text.day, format: format + ', {year}'}}};
+  }
   const id = `preview-${++previews}`;
   addThemes([{...whole, id, key, name, blurb}]);
   const look = {theme: id, envelope: '', seal: '', liner: '', design: {}};

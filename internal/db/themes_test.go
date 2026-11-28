@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"heliosian/internal/access"
 	"heliosian/internal/blob"
@@ -80,6 +81,34 @@ func TestTheSampleThemesAreTheirPackages(t *testing.T) {
 				t.Errorf("%s's package is missing %s", key, name)
 			}
 		}
+	}
+}
+
+func TestADateFormatWithoutAYearStillNamesTheYear(t *testing.T) {
+	m := sample(t).Model()
+	row, ok := m.Table("THEME").Find("earthlings-retro-space", "")
+	if !ok {
+		t.Fatal("no earthlings theme")
+	}
+	if strings.Contains(row["design"], "{year}") {
+		t.Fatalf("the stored theme names the year: %s", row["design"])
+	}
+	card, err := cardDesign(m, look{theme: row["id"], design: `{"text":{"kicker":{"words":"Come"}}}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := designValue(card, "text.day.format"); got != "{weekday}, {month} {day}, {year}" {
+		t.Errorf("resolved format %q", got)
+	}
+	if got := themedDay(card, time.Date(2006, 1, 2, 0, 0, 0, 0, time.UTC)); got != "Monday, January 2, 2006" {
+		t.Errorf("date line %q", got)
+	}
+	plain, err := themeDesign(m, plainTheme)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := designValue(plain, "text.day.format"); got != "{weekday}, {month} {day}, {year}" {
+		t.Errorf("another theme's format is %q", got)
 	}
 }
 

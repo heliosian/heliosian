@@ -1172,7 +1172,7 @@ const PolicySource = `
 (set PAYMENT.person (admin_of "celebrate"))
 ; say which Stripe invoice bills a payment
 (set PAYMENT.stripe_invoice (admin_of "celebrate"))
-; Celebrate's introduction, ticket note, current celebration and banner
+; Celebrate's introduction and ticket note
 (set SETTING.value (and (admin_of "celebrate") (= @old.app "celebrate")))
 ; a Celebrate setting not yet written
 (insert SETTING (and (admin_of "celebrate") (= @new.app "celebrate")))

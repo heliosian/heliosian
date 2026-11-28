@@ -330,7 +330,21 @@ func themeDesign(m *Model, id string) (map[string]any, error) {
 	}
 	d := mergedDesign(themeBase, over)
 	d["id"], d["key"], d["name"], d["blurb"] = row["id"], row["key"], row["name"], row["blurb"]
+	withYear(d)
 	return d, nil
+}
+
+func withYear(design map[string]any) {
+	format := designValue(design, "text.day.format")
+	if format == "" || strings.Contains(format, "{year}") {
+		return
+	}
+	text, _ := design["text"].(map[string]any)
+	day, _ := text["day"].(map[string]any)
+	if day == nil {
+		return
+	}
+	day["format"] = format + ", {year}"
 }
 
 func resolvedPictures(v any, pictures map[string]string) any {
