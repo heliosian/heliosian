@@ -2,9 +2,11 @@ import {queries, rowsOf, write} from '/rail.js';
 import {sheetStamp} from '/stamp.js';
 import {api} from '/api.js';
 import {parseWhen, timeRange} from '/datecard.js';
+import {gradebandsOf} from '/gradebands.js';
 import {loadThemes, refreshThemes, forgetThemes} from '/themes.js';
 import {keyBetween} from '/order.js';
-import {whereWords} from '/envelope.js';import {questionQueries, questionParts} from '/rsvpquestions.js';
+import {whereWords} from '/envelope.js';
+import {questionQueries, questionParts} from '/rsvpquestions.js';
 
 export const state = {model: null, pages: {}};
 
@@ -106,16 +108,7 @@ export async function loadModel() {
 }
 
 export function gradebands() {
-  const out = [];
-  for (const c of state.model.classrooms) {
-    let band = out.find(b => b.name === (c.gradeband || c.name));
-    if (!band) {
-      band = {name: c.gradeband || c.name, classrooms: []};
-      out.push(band);
-    }
-    band.classrooms.push(c);
-  }
-  return out;
+  return gradebandsOf(state.model.classrooms);
 }
 
 export function asEvent(inv) {

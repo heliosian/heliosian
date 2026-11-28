@@ -1,4 +1,5 @@
 import {parseWhen} from '/datecard.js';
+import {gradebandsOf} from '/gradebands.js';
 import {queries, rowsOf} from '/rail.js';
 import {api} from '/api.js';
 import {render} from '/router.js';
@@ -249,16 +250,7 @@ export function classroomIds() {
 }
 
 export function gradebands() {
-  const out = [];
-  for (const c of state.model.classrooms) {
-    let gradeband = out.find(b => b.name === (c.gradeband || c.name));
-    if (!gradeband) {
-      gradeband = {name: c.gradeband || c.name, classrooms: []};
-      out.push(gradeband);
-    }
-    gradeband.classrooms.push(c);
-  }
-  return out;
+  return gradebandsOf(state.model.classrooms);
 }
 
 export function myClassrooms() {
