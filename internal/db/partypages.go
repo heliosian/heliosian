@@ -226,7 +226,7 @@ func (p *PartyPages) sharePicture(w http.ResponseWriter, r *http.Request, m *Mod
 	if sharecard.PictureAnswered(w, r, content) {
 		return
 	}
-	picture, err := p.cards.decoded(r.Context(), m, content)
+	picture, err := p.art.decoded(r.Context(), m, content)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
