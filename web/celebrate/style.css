@@ -1095,6 +1095,7 @@ body.is-themed .app-shell .button:not(.button-secondary):hover { filter: brightn
   --muted: color-mix(in srgb, var(--paper-ink) 75%, transparent);
   --line: color-mix(in srgb, var(--paper-ink) 22%, transparent);
   --card: color-mix(in srgb, var(--paper-ink) 4%, var(--paper));
+  --card-tint: color-mix(in srgb, var(--paper-ink) 4%, transparent);
   --control-line: color-mix(in srgb, var(--paper-ink) 30%, transparent);
   --yes-text: #5ad08f;
   --yes-wash: color-mix(in srgb, #5ad08f 18%, transparent);
@@ -1144,7 +1145,7 @@ body.is-themed .app-shell .themed-panel .page-head-switch { color: var(--paper-i
 
 .themed-panel .card-slot::before { background: color-mix(in srgb, var(--accent) 45%, var(--paper)); }
 
-.themed-panel :is(.card, .person-card, .side-card, .family-row) { border-color: var(--line); background: var(--card); color: var(--ink); }
+.themed-panel :is(.card, .person-card, .side-card, .family-row) { border-color: var(--line); background: linear-gradient(var(--card-tint), var(--card-tint)), var(--paper); color: var(--ink); }
 
 .themed-panel :is(.thumb.initial, .card-media .thumb.card-image.initial, .detail-hero .thumb.detail-hero-image.initial) { background: var(--card-art); background-color: var(--paper); color: var(--paper-ink); font-family: var(--title-font); text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5); }
 
