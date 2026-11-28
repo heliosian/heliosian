@@ -11,8 +11,12 @@ const linkedInvitation = `${gatherInvitation} (in id (select GROUP.invitation (=
 
 export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
+export function shownCelebration() {
+  return state.celebration || state.model.listed;
+}
+
 export function familyShown(p) {
-  return state.showPast || p.availability !== 'past';
+  return p.celebration === shownCelebration() && (state.showPast || p.availability !== 'past');
 }
 
 const byId = new Map();
@@ -421,7 +425,7 @@ export function canApprove(p) {
 }
 
 export function hostedParties() {
-  return state.model.parties.filter(p => p.hosting);
+  return state.model.parties.filter(p => p.hosting && p.celebration === shownCelebration());
 }
 
 export function matches(p, query) {
