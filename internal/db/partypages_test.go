@@ -14,7 +14,8 @@ import (
 )
 
 func partyPagesOf(s *Store, bucket *blob.Bucket) *PartyPages {
-	return NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }), NewWhenPages(s, NewPictures(s, bucket), nil))
+	art := NewInvitationArt(NewPictures(s, bucket))
+	return NewPartyPages(s, bucket, PartyCardStyle(func() string { return "Helios Celebrate" }, func() string { return "Fun(d)raiser Parties" }), art)
 }
 
 const gala = "grp00000009101"

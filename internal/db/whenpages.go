@@ -30,14 +30,13 @@ func WhenCardStyle(name, tagline func() string) *sharecard.Style {
 
 type WhenPages struct {
 	s      *Store
-	pics   *Pictures
 	bucket *blob.Bucket
 	style  *sharecard.Style
-	fonts  *themeFonts
+	art    *InvitationArt
 }
 
-func NewWhenPages(s *Store, pics *Pictures, style *sharecard.Style) *WhenPages {
-	return &WhenPages{s: s, pics: pics, bucket: pics.bucket, style: style, fonts: newThemeFonts(pics.bucket)}
+func NewWhenPages(s *Store, bucket *blob.Bucket, style *sharecard.Style, art *InvitationArt) *WhenPages {
+	return &WhenPages{s: s, bucket: bucket, style: style, art: art}
 }
 
 func (p *WhenPages) Register(mux *http.ServeMux) {
@@ -49,14 +48,8 @@ func (p *WhenPages) RegisterGather(mux *http.ServeMux) {
 	p.registerCards(mux)
 	mux.HandleFunc("GET /ext/{token}", p.extPage("web/public/gather/ext.html"))
 	mux.HandleFunc("GET /preview/{token}", p.extPage("web/public/gather/ext.html"))
-	mux.HandleFunc("GET /open/envelope/{id}", p.envelopePicture)
-	p.RegisterThemes(mux)
-}
-
-func (p *WhenPages) RegisterThemes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /open/themes", p.themes)
-	mux.HandleFunc("GET /open/theme-kit.zip", p.themeKit)
-	mux.HandleFunc("GET "+themePictureRoute+"{id}", p.themePicture)
+	mux.HandleFunc("GET /open/envelope/{id}", p.art.envelopePicture)
+	p.art.RegisterThemes(mux)
 }
 
 func (p *WhenPages) registerCards(mux *http.ServeMux) {
@@ -140,7 +133,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if g["slug"] != "" && g["theme"] != "" {
-		p.invitationCard(w, r, m, g, true)
+		p.art.invitationCard(w, r, m, g, lookOf(g), true)
 		return
 	}
 	name, whole := m.sharedPicture(g)

@@ -167,8 +167,9 @@ func NewCore(cfg Config) *Core {
 	celebrateSearch := cfg.ImageSearch
 	celebrateSearch.UserAgent = "Helios Celebrate image search (+https://celebrate.heliosian.com)"
 	celebrateSearch.Register(api, "/api/celebrate")
-	whenPages := db.NewWhenPages(dataStore, pictures, calendarStyle)
-	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle, whenPages)
+	invitationArt := db.NewInvitationArt(pictures)
+	whenPages := db.NewWhenPages(dataStore, cfg.Bucket, calendarStyle, invitationArt)
+	partyPages := db.NewPartyPages(dataStore, cfg.Bucket, celebrateStyle, invitationArt)
 	partyPages.Register(celebrateMux)
 	askMux := http.NewServeMux()
 	db.RegisterMailHook(askMux, dataStore, pictures, cfg.ArtifactsMail.SigningKey)
@@ -203,7 +204,7 @@ func NewCore(cfg Config) *Core {
 	gatherMux := http.NewServeMux()
 	serve.Pages(gatherMux, "web/gather/index.html", "/{$}", "/g/{key}", "/g/{key}/{section...}")
 	whenPages.RegisterGather(gatherMux)
-	whenPages.RegisterThemes(celebrateMux)
+	invitationArt.RegisterThemes(celebrateMux)
 	invitations := db.RegisterInvitations(calendarMux, api, dataStore, pictures, tokens, db.InvitationConfig{
 		Sender: cfg.CalendarMail.Sender, GatherSender: cfg.CalendarMail.GatherSender, ReplyTo: cfg.CalendarMail.ReplyTo, SigningKey: cfg.CalendarMail.SigningKey, Origin: hosts.Origin(cfg.Domain),
 	})

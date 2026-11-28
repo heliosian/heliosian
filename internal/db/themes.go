@@ -379,8 +379,14 @@ type shownTheme struct {
 	Design  map[string]any `json:"design"`
 }
 
-func (p *WhenPages) themes(w http.ResponseWriter, r *http.Request) {
-	m := p.s.Model()
+func (a *InvitationArt) RegisterThemes(mux *http.ServeMux) {
+	mux.HandleFunc("GET /open/themes", a.themes)
+	mux.HandleFunc("GET /open/theme-kit.zip", a.themeKit)
+	mux.HandleFunc("GET "+themePictureRoute+"{id}", a.themePicture)
+}
+
+func (a *InvitationArt) themes(w http.ResponseWriter, r *http.Request) {
+	m := a.pics.s.Model()
 	out := []shownTheme{}
 	for _, id := range strings.Split(r.URL.Query().Get("ids"), ",") {
 		if id == "" {
@@ -402,14 +408,14 @@ func (p *WhenPages) themes(w http.ResponseWriter, r *http.Request) {
 	serve.Write(w, r, http.StatusOK, map[string]any{"themes": out})
 }
 
-func (p *WhenPages) themePicture(w http.ResponseWriter, r *http.Request) {
+func (a *InvitationArt) themePicture(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	row, err := p.pics.waitMade(r.Context(), madeColumn{"THEME_PICTURE", "original", "picture"}, id)
+	row, err := a.pics.waitMade(r.Context(), madeColumn{"THEME_PICTURE", "original", "picture"}, id)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	data, mimeType, err := p.s.Model().contentBytes(r.Context(), p.bucket, row["picture"])
+	data, mimeType, err := a.pics.s.Model().contentBytes(r.Context(), a.pics.bucket, row["picture"])
 	if err != nil {
 		serve.Error(w, r, err)
 		return

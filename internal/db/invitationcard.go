@@ -20,13 +20,23 @@ import (
 	"heliosian/internal/store"
 )
 
-func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Model, g store.Row, hosted bool) {
-	card, err := cardDesign(m, lookOf(g))
+type InvitationArt struct {
+	pics  *Pictures
+	fonts *themeFonts
+}
+
+func NewInvitationArt(pics *Pictures) *InvitationArt {
+	return &InvitationArt{pics: pics, fonts: newThemeFonts(pics.bucket)}
+}
+
+func (a *InvitationArt) invitationCard(w http.ResponseWriter, r *http.Request, m *Model, g store.Row, l look, hosted bool) {
+	card, err := cardDesign(m, l)
 	if err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	backdrop, cardArt := p.coverPicture(m, g, card, "backdrop_picture", "page.backdrop"), p.coverPicture(m, g, card, "card_picture", "card.art")
+	backdrop := coverPicture(m, l.theme, l.backdropPicture, designValue(card, "page.backdrop"))
+	cardArt := coverPicture(m, l.theme, l.cardPicture, designValue(card, "card.art"))
 	day, hours := themedDayAndHours(card, g)
 	hosts := ""
 	if names := cmp.Or(g["hosted_by"], joinNames(m.namesOf(m.hostsOf(g)))); hosted && names != "" {
@@ -40,7 +50,7 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 	v := sharecard.Invitation{
 		Kicker: designValue(card, "text.kicker.words"), KickerUpper: designValue(card, "text.kicker.case") == "uppercase",
 		Title: g["name"], Day: day, Hours: hours, Place: g["place"], Address: g["location"], Hosts: hosts,
-		Wordless: g["card_picture"] != "" && designAt(card, "card.words") == false, SideBySide: designValue(card, "card.details") == "side-by-side",
+		Wordless: l.cardPicture != "" && designAt(card, "card.words") == false, SideBySide: designValue(card, "card.details") == "side-by-side",
 	}
 	for _, c := range []struct {
 		into *color.RGBA
@@ -62,11 +72,11 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 		}
 		*c.into = hexRGBA(hex)
 	}
-	if v.BackdropPicture, err = p.decoded(r.Context(), m, backdrop); err != nil {
+	if v.BackdropPicture, err = a.decoded(r.Context(), m, backdrop); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
-	if v.CardPicture, err = p.decoded(r.Context(), m, cardArt); err != nil {
+	if v.CardPicture, err = a.decoded(r.Context(), m, cardArt); err != nil {
 		serve.Error(w, r, err)
 		return
 	}
@@ -89,7 +99,7 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 			continue
 		}
 		wg.Go(func() {
-			*f.into, failed[i] = p.fonts.font(r.Context(), face)
+			*f.into, failed[i] = a.fonts.font(r.Context(), face)
 		})
 	}
 	wg.Wait()
@@ -105,11 +115,11 @@ func hexRGBA(hex string) color.RGBA {
 	return color.RGBA{uint8(n >> 16), uint8(n >> 8), uint8(n), 0xff}
 }
 
-func (p *WhenPages) coverPicture(m *Model, g store.Row, card map[string]any, column, path string) string {
-	if g[column] != "" {
-		return g[column]
+func coverPicture(m *Model, theme, picture, layers string) string {
+	if picture != "" {
+		return picture
 	}
-	for _, layer := range strings.Split(designValue(card, path), "),") {
+	for _, layer := range strings.Split(layers, "),") {
 		if !strings.Contains(layer, "cover") {
 			continue
 		}
@@ -117,18 +127,18 @@ func (p *WhenPages) coverPicture(m *Model, g store.Row, card map[string]any, col
 		if found == nil {
 			continue
 		}
-		if picture, ok := m.Table("THEME_PICTURE").Find(g["theme"], found[1]+found[2]+found[3]); ok && picture["picture"] != "" {
+		if picture, ok := m.Table("THEME_PICTURE").Find(theme, found[1]+found[2]+found[3]); ok && picture["picture"] != "" {
 			return picture["picture"]
 		}
 	}
 	return ""
 }
 
-func (p *WhenPages) decoded(ctx context.Context, m *Model, content string) (image.Image, error) {
+func (a *InvitationArt) decoded(ctx context.Context, m *Model, content string) (image.Image, error) {
 	if content == "" {
 		return nil, nil
 	}
-	data, _, err := m.contentBytes(ctx, p.bucket, content)
+	data, _, err := m.contentBytes(ctx, a.pics.bucket, content)
 	if err != nil {
 		return nil, err
 	}

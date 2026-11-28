@@ -320,8 +320,10 @@ func (m *Model) addresses(people []string) []string {
 
 func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, link string, attached bool) (mail.Message, error) {
 	day, hours := dayAndHours(g)
+	var card map[string]any
 	if g["theme"] != "" {
-		card, err := cardDesign(m, lookOf(g))
+		var err error
+		card, err = cardDesign(m, lookOf(g))
 		if err != nil {
 			return mail.Message{}, err
 		}
@@ -377,8 +379,8 @@ func (iv *Invitations) invitation(m *Model, g store.Row, kind, person, token, li
 	if attached {
 		text.WriteString("\nThe invite attached puts it on your calendar.\n")
 	}
-	if g["theme"] != "" {
-		h, err := iv.gatherLetter(m, g, gatherLetter{kind: kind, intro: intro, message: message, day: day, hours: hours, description: description, hosting: hosting, person: person, token: token, link: link, names: names, attached: attached})
+	if card != nil {
+		h, err := iv.gatherLetter(m, g, card, gatherLetter{kind: kind, intro: intro, message: message, day: day, hours: hours, description: description, hosting: hosting, person: person, token: token, link: link, names: names, attached: attached})
 		return mail.Message{Subject: subject, Text: text.String(), HTML: h}, err
 	}
 	esc := html.EscapeString
@@ -435,11 +437,8 @@ type gatherLetter struct {
 	attached                                                                    bool
 }
 
-func (iv *Invitations) gatherLetter(m *Model, g store.Row, l gatherLetter) (string, error) {
-	card, err := cardDesign(m, lookOf(g))
-	if err != nil {
-		return "", err
-	}
+func (iv *Invitations) gatherLetter(m *Model, g store.Row, card map[string]any, l gatherLetter) (string, error) {
+	var err error
 	colors := map[string]string{}
 	for name, path := range map[string]string{"backdrop": "page.backdrop", "pageInk": "page.ink", "muted": "page.muted", "paper": "card.background", "ink": "card.ink", "accent": "card.accent", "accentInk": "card.accentInk"} {
 		if colors[name], err = designHex(card, path); err != nil {

@@ -96,8 +96,8 @@ func themePreview() ([]byte, error) {
 	return []byte(out), nil
 }
 
-func (p *WhenPages) themeKit(w http.ResponseWriter, r *http.Request) {
-	m := p.s.Model()
+func (a *InvitationArt) themeKit(w http.ResponseWriter, r *http.Request) {
+	m := a.pics.s.Model()
 	files := map[string][]byte{"standard.json": themeBaseJSON}
 	for name, from := range map[string]string{"README.md": "README.md", "my-theme/theme.json": "starter.json"} {
 		raw, err := os.ReadFile(themeKitDir + from)
@@ -134,7 +134,7 @@ func (p *WhenPages) themeKit(w http.ResponseWriter, r *http.Request) {
 		folder := "examples/" + row["key"] + "/"
 		files[folder+"theme.json"] = raw
 		for _, pic := range m.Table("THEME_PICTURE").Referencing("theme", row["id"]) {
-			data, _, err := m.contentBytes(r.Context(), p.bucket, pic["picture"])
+			data, _, err := m.contentBytes(r.Context(), a.pics.bucket, pic["picture"])
 			if err != nil {
 				serve.Error(w, r, err)
 				return

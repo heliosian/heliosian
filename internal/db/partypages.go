@@ -1,7 +1,6 @@
 package db
 
 import (
-	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -35,11 +34,11 @@ type PartyPages struct {
 	s      *Store
 	bucket *blob.Bucket
 	style  *sharecard.Style
-	cards  *WhenPages
+	art    *InvitationArt
 }
 
-func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style, cards *WhenPages) *PartyPages {
-	return &PartyPages{s: s, bucket: bucket, style: style, cards: cards}
+func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style, art *InvitationArt) *PartyPages {
+	return &PartyPages{s: s, bucket: bucket, style: style, art: art}
 }
 
 func (m *Model) celebrations() []store.Row {
@@ -78,15 +77,7 @@ func (m *Model) celebrationInvitation(c store.Row) store.Row {
 	if !ok || inv["theme"] == "" {
 		return nil
 	}
-	if c["theme"] == "" {
-		return inv
-	}
-	dressed := maps.Clone(inv)
-	for _, column := range []string{"envelope", "seal", "liner", "design", "card_picture", "backdrop_picture"} {
-		dressed[column] = ""
-	}
-	dressed["theme"] = c["theme"]
-	return dressed
+	return inv
 }
 
 func (p *PartyPages) Register(mux *http.ServeMux) {
@@ -221,7 +212,11 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSuffix(r.PathValue("id"), ".png")
 	for _, c := range m.celebrations() {
 		if inv := m.celebrationInvitation(c); inv != nil && inv["id"] == key {
-			p.cards.invitationCard(w, r, m, inv, false)
+			l := lookOf(inv)
+			if c["theme"] != "" {
+				l = look{theme: c["theme"]}
+			}
+			p.art.invitationCard(w, r, m, inv, l, false)
 			return
 		}
 	}

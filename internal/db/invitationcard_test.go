@@ -44,7 +44,8 @@ func TestAnInvitationWithACustomURLSharesItsOwnLook(t *testing.T) {
 	fetched := googleFonts()
 	s, other := sample(t), sample(t)
 	t.Chdir("../..")
-	pages := NewWhenPages(s, newPictures(s), whenStyle())
+	pics := newPictures(s)
+	pages := NewWhenPages(s, pics.bucket, whenStyle(), NewInvitationArt(pics))
 	mux := http.NewServeMux()
 	pages.RegisterGather(mux)
 	if cfg := shareImage(t, mux, theoParty); cfg.Width != sharecard.InvitationWidth || cfg.Height != sharecard.InvitationHeight {
@@ -53,12 +54,12 @@ func TestAnInvitationWithACustomURLSharesItsOwnLook(t *testing.T) {
 	if fetched.Load() == 0 {
 		t.Error("Theo's share image was drawn without fetching LARP Quest's fonts")
 	}
-	if exists, err := pages.bucket.Exists(t.Context(), "fonts/cinzel-decorative-700.ttf"); err != nil || !exists {
+	if exists, err := pics.bucket.Exists(t.Context(), "fonts/cinzel-decorative-700.ttf"); err != nil || !exists {
 		t.Errorf("the title font wasn't kept in the bucket: %v %v", exists, err)
 	}
 
 	before := fetched.Load()
-	if _, err := newThemeFonts(pages.bucket).font(t.Context(), fontFace{family: "Cinzel Decorative", weight: 700}); err != nil {
+	if _, err := newThemeFonts(pics.bucket).font(t.Context(), fontFace{family: "Cinzel Decorative", weight: 700}); err != nil {
 		t.Fatal(err)
 	}
 	if fetched.Load() != before {
@@ -70,7 +71,8 @@ func TestAnInvitationWithACustomURLSharesItsOwnLook(t *testing.T) {
 	}
 	before = fetched.Load()
 	mux = http.NewServeMux()
-	NewWhenPages(other, newPictures(other), whenStyle()).RegisterGather(mux)
+	otherPics := newPictures(other)
+	NewWhenPages(other, otherPics.bucket, whenStyle(), NewInvitationArt(otherPics)).RegisterGather(mux)
 	shareImage(t, mux, theoParty)
 	if fetched.Load() != before {
 		t.Error("an invitation without a Custom URL was drawn in its theme")

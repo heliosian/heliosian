@@ -157,10 +157,14 @@ func sealLetter(design map[string]any, title string) string {
 
 type look struct {
 	theme, envelope, seal, liner, design string
+	cardPicture, backdropPicture         string
 }
 
 func lookOf(g map[string]string) look {
-	return look{theme: g["theme"], envelope: g["envelope"], seal: g["seal"], liner: g["liner"], design: g["design"]}
+	return look{
+		theme: g["theme"], envelope: g["envelope"], seal: g["seal"], liner: g["liner"], design: g["design"],
+		cardPicture: g["card_picture"], backdropPicture: g["backdrop_picture"],
+	}
 }
 
 func cardDesign(m *Model, l look) (map[string]any, error) {
@@ -209,8 +213,8 @@ func envelopeOf(m *Model, l look, title string) (sharecard.Envelope, error) {
 	return e, nil
 }
 
-func (p *WhenPages) envelopePicture(w http.ResponseWriter, r *http.Request) {
-	m := p.s.Model()
+func (a *InvitationArt) envelopePicture(w http.ResponseWriter, r *http.Request) {
+	m := a.pics.s.Model()
 	g := m.sharedGroup(strings.TrimSuffix(r.PathValue("id"), ".png"))
 	if g == nil || g["theme"] == "" {
 		http.NotFound(w, r)

@@ -333,7 +333,7 @@ func TestAHostUploadsAThemeOnlyTheirInvitationsUse(t *testing.T) {
 		t.Errorf("the theme's pictures are %v, want only ball.png", got)
 	}
 	open := http.NewServeMux()
-	NewWhenPages(s, pics, nil).RegisterGather(open)
+	NewInvitationArt(pics).RegisterThemes(open)
 	rec := httptest.NewRecorder()
 	open.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/open/themes?ids="+row["id"], nil))
 	var shown struct {
@@ -538,9 +538,8 @@ func TestTheThemeKitHoldsAPreviewAndTheSitesThemes(t *testing.T) {
 	if err := bucket.FillFrom("sampledata/bucket"); err != nil {
 		t.Fatal(err)
 	}
-	p := NewWhenPages(s, NewPictures(s, bucket), nil)
 	mux := http.NewServeMux()
-	p.RegisterGather(mux)
+	NewInvitationArt(NewPictures(s, bucket)).RegisterThemes(mux)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/open/theme-kit.zip", nil))
 	if rec.Code != http.StatusOK {
@@ -583,9 +582,8 @@ func TestTheThemeKitHoldsAPreviewAndTheSitesThemes(t *testing.T) {
 
 func TestTheOpenThemesResolveTheirPictures(t *testing.T) {
 	s := sample(t)
-	p := NewWhenPages(s, newPictures(s), nil)
 	mux := http.NewServeMux()
-	p.RegisterGather(mux)
+	NewInvitationArt(newPictures(s)).RegisterThemes(mux)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/open/themes?ids="+areaTheme+","+skatingTheme, nil))
 	var got struct {
