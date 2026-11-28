@@ -647,9 +647,10 @@ func spec() schema {
 		"/api/do/describe-event": schema{
 			"post": schema{
 				"tags":        []string{"do"},
-				"summary":     "Have Claude write an invitation's summary",
-				"description": "Rewrites the hosts' notes, or writes from the details alone, into a few sentences to the guests in the mood of the design's kicker line.",
+				"summary":     "Have Claude write an invitation's summary or a party's description",
+				"description": "Rewrites the hosts' notes, or writes from the details alone, into a few sentences to the guests in the mood of the design's kicker line; with kind party, into a fundraiser party's description on Helios Celebrate, in Markdown, keeping its chip and callout lines.",
 				"requestBody": jsonBody([]string{}, schema{
+					"kind":  schema{"type": "string", "enum": []string{"", "party"}},
 					"title": schema{"type": "string"}, "subtitle": schema{"type": "string"}, "when": schema{"type": "string"},
 					"where": schema{"type": "string"}, "hosts": schema{"type": "string"}, "kicker": schema{"type": "string"}, "notes": schema{"type": "string"},
 				}),

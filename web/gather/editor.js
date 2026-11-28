@@ -277,6 +277,30 @@ function hostsField(inv, hostedBy) {
   return wrap;
 }
 
+function sharingField(anyoneWithLink) {
+  let open = anyoneWithLink;
+  const wrap = el('div', 'field');
+  const choices = el('div', 'sharing-choices');
+  const choice = (label, note, value) => {
+    const b = el('button', 'sharing-choice' + (open === value ? ' is-on' : ''));
+    b.type = 'button';
+    b.append(el('span', 'sharing-choice-title', label), el('span', 'sharing-choice-note', note));
+    b.addEventListener('click', () => {
+      open = value;
+      for (const c of choices.children) {
+        c.classList.toggle('is-on', c === b);
+      }
+    });
+    return b;
+  };
+  choices.append(
+    choice('Invite only', 'Only the people you invite. Nobody else can open it, even with the link.', false),
+    choice('Anyone with the link', 'The people you invite, and anyone you send the link to, who can pass it on.', true),
+  );
+  wrap.append(el('span', '', 'Who can see it'), choices);
+  return {wrap, value: () => open};
+}
+
 function hostedByField(current) {
   const input = text(current, {placeholder: 'The host names'});
   let names = '';
@@ -593,6 +617,7 @@ export async function openEditor(inv) {
   const lookNow = () => ({...chosen, design: designOf(), cardPicture: pictures.card, backdrop: pictures.backdrop});
   const template = () => lookTheme({theme: chosen.theme});
   const hostedBy = hostedByField(inv ? inv.hostedBy : '');
+  const sharing = sharingField(Boolean(inv && inv.anyoneWithLink));
   const sample = () => ({start: inv ? inv.start : '2026-12-12 14:00', hours: inv ? hourWords(inv) : '2:00 – 4:00 PM', location: '', description: '', hosts: [], hostedBy: ''});
   const fallback = {
     envelope: () => chosen.theme,
@@ -689,7 +714,7 @@ export async function openEditor(inv) {
     }
     return {
       name: name.value.trim(), subtitle: subtitle.value.trim(), start, end, place: place.value.trim(), location: location.value.trim(), description: summary.value.trim(),
-      theme: chosen.theme, envelope: chosen.envelope, seal: chosen.seal, liner: chosen.liner, design: designOf(), hostedBy: hostedBy.value(),
+      theme: chosen.theme, envelope: chosen.envelope, seal: chosen.seal, liner: chosen.liner, design: designOf(), hostedBy: hostedBy.value(), anyoneWithLink: sharing.value(),
     };
   };
   let changed = [];
@@ -739,7 +764,7 @@ export async function openEditor(inv) {
         where: whereWords({place: place.value.trim(), location: location.value.trim()}), hosts: hostedBy.words(), kicker: kickerWords(lookNow()),
       };
     }))]},
-    {label: 'Essentials', icon: 'groups', fields: [hostsField(inv, hostedBy), hostedBy.wrap]},
+    {label: 'Essentials', icon: 'groups', fields: [hostsField(inv, hostedBy), hostedBy.wrap, sharing.wrap]},
     {label: 'Theme', icon: 'doc', fields: [themeArea], onShow: paintTheme, onToggle: () => {
       subsOpen = !subsOpen;
       revealSubs();

@@ -268,7 +268,10 @@ func RegisterDrafts(mux *http.ServeMux, s *Store, describer *describe.Describer,
 		return map[string]string{"description": description}, nil
 	}))
 	mux.HandleFunc("POST /api/do/describe-event", modelAction(s, tokens, func(ctx context.Context, _ *Model, _ Env, actor access.Actor, body eventDraft) (map[string]string, error) {
-		facts := describe.InvitationFacts{Title: body.Title, Subtitle: body.Subtitle, When: body.When, Where: body.Where, Hosts: body.Hosts, Kicker: body.Kicker, Notes: body.Notes}
+		if body.Kind != "" && body.Kind != "party" {
+			return nil, access.Invalid("kind is party or blank, not %q", body.Kind)
+		}
+		facts := describe.InvitationFacts{Kind: body.Kind, Title: body.Title, Subtitle: body.Subtitle, When: body.When, Where: body.Where, Hosts: body.Hosts, Kicker: body.Kicker, Notes: body.Notes}
 		description, err := describer.Invitation(ctx, actor.Email, facts)
 		if errors.Is(err, claude.ErrTooMany) {
 			return nil, access.Refuse(http.StatusTooManyRequests, "%v", err)
@@ -343,6 +346,7 @@ type charityDraft struct {
 }
 
 type eventDraft struct {
+	Kind     string `json:"kind"`
 	Title    string `json:"title"`
 	Subtitle string `json:"subtitle"`
 	When     string `json:"when"`

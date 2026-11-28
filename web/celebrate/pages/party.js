@@ -69,7 +69,9 @@ function ticketBand(p) {
   const selling = p.availability === 'available' || p.availability === 'waitlist';
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status === 'Waitlist');
   if (!mayTake(p)) {
-    if (selling && !mine.length) {
+    if (selling && p.salesClosed) {
+      actions.append(el('span', 'ticket-kid-note', 'Tickets go on sale soon.'));
+    } else if (selling && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
   } else if (selling || p.can.edit) {

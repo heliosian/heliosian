@@ -197,12 +197,12 @@ export async function createInvite(body) {
     {set: '@hosts', cells: {managed_by: '@hosts'}},
     {insert: 'MEMBER', row: {group: '@hosts', person: me().id, member: 'yes'}},
     {set: '@event', cells: {managed_by: '@hosts'}},
-    {set: '@event', cells: {visible_to: '@event', resend_days: '3'}},
+    {set: '@event', cells: {visible_to: body.anyoneWithLink ? state.model.everyone : '@event', resend_days: '3'}},
     {insert: 'MEMBER', row: {group: '@event', person: me().id, member: 'yes', added_by: me().id, added: sheetStamp()}},
   ]);
   return id;
 }
 
 export async function editInvite(inv, body) {
-  await write([{set: inv.id, cells: inviteCells(body)}]);
+  await write([{set: inv.id, cells: {...inviteCells(body), visible_to: body.anyoneWithLink ? state.model.everyone : inv.id}}]);
 }

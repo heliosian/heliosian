@@ -10,7 +10,8 @@ export function dayIn(look, start) {
   const date = new Date(year, month - 1, day);
   const name = options => date.toLocaleDateString('en-US', options);
   const parts = {weekday: name({weekday: 'long'}), wkd: name({weekday: 'short'}), month: name({month: 'long'}), mon: name({month: 'short'}), day: String(day), year: String(year)};
-  return lookTheme(look).text.day.format.replace(/\{([^{}]*)\}/g, (all, part) => parts[part] || all);
+  const format = lookTheme(look).text.day.format;
+  return (format.includes('{year}') ? format : format + ', {year}').replace(/\{([^{}]*)\}/g, (all, part) => parts[part] || all);
 }
 
 export function splitAddress(location) {

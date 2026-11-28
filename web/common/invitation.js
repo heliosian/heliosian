@@ -10,7 +10,7 @@ import {whereWords} from '/envelope.js';
 import {inviteHead} from '/sidebar.js';
 import {lookWords, lookFrom} from '/themes.js';
 
-export const invitationColumns = '(columns name subtitle managed_by start end all_day location place description theme envelope seal liner design card_picture backdrop_picture hosted_by path slug status rsvp_yes rsvp_no rsvp_maybe maybe members_visible_to when_href)';
+export const invitationColumns = '(columns name subtitle managed_by start end all_day location place description theme envelope seal liner design card_picture backdrop_picture hosted_by path slug status rsvp_yes rsvp_no rsvp_maybe maybe visible_to members_visible_to when_href)';
 export const mineOrHousehold = '(or (= person @viewer) (in person (household @viewer)))';
 export const gatherInvitation = '(= kind "event") (not (blank theme))';
 
@@ -58,7 +58,7 @@ export function inviteOf(g, hosting) {
     look: lookFrom({theme: g.theme, envelope: g.envelope, seal: g.seal, liner: g.liner, design: g.design, cardPicture: pictureOf(g, 'card_picture'), backdrop: pictureOf(g, 'backdrop_picture')}),
     path: g.path || `/g/${g.id}`,
     slug: g.slug || '', status: g.status || '', rsvpYes: g.rsvp_yes || '', rsvpNo: g.rsvp_no || '', rsvpMaybe: g.rsvp_maybe || '', maybe: g.maybe === 'Yes' && Boolean(g.rsvp_maybe),
-    listShown: Boolean(g.members_visible_to), whenHref: g.when_href || '', host: hosting, managers: g.managed_by || '', hostNames: [], pageWords: '',
+    listShown: Boolean(g.members_visible_to), anyoneWithLink: Boolean(g.visible_to) && g.visible_to !== g.id, whenHref: g.when_href || '', host: hosting, managers: g.managed_by || '', hostNames: [], pageWords: '',
   };
 }
 

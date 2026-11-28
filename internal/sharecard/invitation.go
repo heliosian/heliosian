@@ -96,11 +96,13 @@ func (v Invitation) details(build lineBuilder, width int) ([]textLine, error) {
 	day := lineSpec{v.BodyFont, 26, v.DayInk, v.Day, 40}
 	hours := lineSpec{v.BodyFont, 22, v.DayInk, v.Hours, 0}
 	place := lineSpec{v.PlaceFont, 22, v.PlaceInk, v.Place, 14}
-	address := lineSpec{v.PlaceFont, 20, v.PlaceInk, v.Address, 0}
+	street, town, _ := strings.Cut(v.Address, ", ")
+	address := lineSpec{v.PlaceFont, 20, v.PlaceInk, street, 0}
+	city := lineSpec{v.PlaceFont, 20, v.PlaceInk, town, 0}
 	if !v.SideBySide || strings.TrimSpace(v.Place+v.Address) == "" {
-		return built(build, width, day, hours, place, address)
+		return built(build, width, day, hours, place, address, city)
 	}
-	day.size, hours.size, place.size, address.size = 21, 18, 19, 17
+	day.size, hours.size, place.size, address.size, city.size = 21, 18, 19, 17, 17
 	place.gap, address.gap = day.gap, 0
 	if strings.TrimSpace(v.Place) == "" {
 		address.gap = day.gap
@@ -110,7 +112,7 @@ func (v Invitation) details(build lineBuilder, width int) ([]textLine, error) {
 	if err != nil {
 		return nil, err
 	}
-	right, err := built(build, half, place, address)
+	right, err := built(build, half, place, address, city)
 	if err != nil {
 		return nil, err
 	}

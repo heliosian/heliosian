@@ -134,7 +134,7 @@ func TestLingoReadsTheModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3, Grade 4; Hummingbirds, Ravens)", "- Hummingbirds (https://who.heliosian.com/g/hummingbirds; Jayvens; 3, 4; teachers Maya Lindqvist; crews Robins, Thrushes)", "- Ravens (https://who.heliosian.com/g/ravens; Jayvens; 3, 4; teachers Ines Carvalho; crews Juncos, Towhees)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Spring Celebration 2027."} {
+	for _, want := range []string{"- Grade 3: Jayvens", "- Jayvens (Grade 3, Grade 4; Hummingbirds, Ravens)", "- Hummingbirds (https://who.heliosian.com/g/hummingbirds; Jayvens; 3, 4; teachers Maya Lindqvist; crews Robins, Thrushes)", "- Ravens (https://who.heliosian.com/g/ravens; Jayvens; 3, 4; teachers Ines Carvalho; crews Juncos, Towhees)", "- Community: ", "- Regular: A full school day with aftercare.", "The current celebration on Helios Celebrate is Greetings, Earthlings."} {
 		if !strings.Contains(words, want) {
 			t.Errorf("lingo lacks %q:\n%s", want, words)
 		}

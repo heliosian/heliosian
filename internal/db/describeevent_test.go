@@ -37,4 +37,13 @@ func TestClaudeWritesAnInvitationsSummaryFromItsNotes(t *testing.T) {
 	if rec := doCall(t, mux, "rowan.ashdown@example.org", "/api/do/describe-event", `{"title": `); rec.Code != http.StatusBadRequest {
 		t.Errorf("an invitation that is not JSON answered %d", rec.Code)
 	}
+	if rec := doCall(t, mux, "rowan.ashdown@example.org", "/api/do/describe-event", `{"kind": "party", "title": "Taco Night", "notes": "> [!chip] Adults\n\ntacos, games"}`); rec.Code != http.StatusOK {
+		t.Fatalf("describing a party answered %d %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(asked, "Current description:\n> [!chip] Adults") {
+		t.Errorf("claude wasn't given the party's description: %s", asked)
+	}
+	if rec := doCall(t, mux, "rowan.ashdown@example.org", "/api/do/describe-event", `{"kind": "sonnet", "title": "Taco Night"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown kind answered %d", rec.Code)
+	}
 }

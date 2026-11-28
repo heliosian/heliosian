@@ -196,10 +196,7 @@ func (p *PartyPages) upcomingHead(m *Model, origin string) string {
 func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	m := p.s.Model()
 	parties := m.upcomingParties(time.Now().In(School))
-	card := sharecard.Card{
-		Title:   "New parties are on the way",
-		Listing: &sharecard.Listing{Heading: "Upcoming Parties", Empty: "Nothing is on sale just now - check back soon."},
-	}
+	card := sharecard.Card{Title: "New parties are on the way", Subtitle: "Tickets go on sale soon."}
 	words := []string{}
 	if len(parties) > 0 {
 		next := parties[0]
@@ -207,10 +204,13 @@ func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 		card.Kicker, card.Title, card.Subtitle = "Next party", next["name"], next["subtitle"]
 		card.Lines = whenCardLines(day, hours, next["location"])
 		words = append(words, next["name"], next["subtitle"], day, hours, next["location"])
-		for _, g := range parties[1:min(len(parties), 1+partiesListed)] {
-			day, _ := whenLines(g)
-			card.Listing.Items = append(card.Listing.Items, sharecard.Item{Title: g["name"], Note: day})
-			words = append(words, g["name"], g["start"])
+		if rest := parties[1:min(len(parties), 1+partiesListed)]; len(rest) > 0 {
+			card.Listing = &sharecard.Listing{Heading: "Also coming"}
+			for _, g := range rest {
+				day, _ := whenLines(g)
+				card.Listing.Items = append(card.Listing.Items, sharecard.Item{Title: g["name"], Note: day})
+				words = append(words, g["name"], g["start"])
+			}
 		}
 	}
 	p.style.Serve(w, r, card, words...)
@@ -221,7 +221,7 @@ func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSuffix(r.PathValue("id"), ".png")
 	for _, c := range m.celebrations() {
 		if inv := m.celebrationInvitation(c); inv != nil && inv["id"] == key {
-			p.cards.invitationCard(w, r, m, inv)
+			p.cards.invitationCard(w, r, m, inv, false)
 			return
 		}
 	}

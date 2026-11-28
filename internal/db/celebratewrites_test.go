@@ -258,6 +258,29 @@ func TestCelebrateAdminsDressACelebrationInATheme(t *testing.T) {
 	}
 }
 
+func TestNobodyBuysATicketWhileACelebrationsSalesAreClosed(t *testing.T) {
+	_, write := celebrateSample(t)
+	if _, err := write(parent, Edit{Set: celebration, Cells: map[string]any{"sales_closed": true}}); err == nil {
+		t.Fatal("someone who isn't a Celebrate admin closed a celebration's ticket sales")
+	}
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"sales_closed": true}}); err != nil {
+		t.Fatalf("a Celebrate admin can't close a celebration's ticket sales: %v", err)
+	}
+	buy := []Edit{
+		{Insert: "PAYMENT", Row: map[string]any{"person": parent, "for": avery, "group": tacoNight, "amount": "40", "added": "2026-10-15 09:00"}},
+		{Insert: "MEMBER", Row: map[string]any{"group": tacoNight, "person": avery, "member": "yes", "added_by": parent, "guest_of": parent}},
+	}
+	if _, err := write(parent, buy...); err == nil {
+		t.Fatal("someone bought a ticket while the celebration's sales were closed")
+	}
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"sales_closed": false}}); err != nil {
+		t.Fatalf("a Celebrate admin can't open a celebration's ticket sales: %v", err)
+	}
+	if _, err := write(parent, buy...); err != nil {
+		t.Fatalf("someone couldn't buy a ticket once sales opened: %v", err)
+	}
+}
+
 func TestACelebrationTakesItsDetailsFromItsInvitation(t *testing.T) {
 	s, write := celebrateSample(t)
 	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"invitation": "grp00000009041"}}); err != nil {

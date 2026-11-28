@@ -48,6 +48,9 @@ function dateStamp(p) {
 }
 
 function footButton(p, mine) {
+  if (p.salesClosed && !p.can.edit && (p.availability === 'available' || p.availability === 'waitlist')) {
+    return link(partyPath(p), 'button button-secondary button-small', 'On sale soon');
+  }
   if (p.availability === 'available' && p.can.buy) {
     return button('Get Tickets', null, 'button button-small', () => openBuy(p));
   }

@@ -10,7 +10,7 @@ import {dropMenu} from '/invites.js';
 import {themed, sealMark} from '/themes.js';
 
 const primary = [
-  {href: '/', icon: 'app', label: 'Parties'},
+  {href: '/', icon: 'app', label: 'Parties', shown: () => parties().length || !shownInvitation()},
   {href: '/my', icon: 'home', label: "My Family's Parties", count: () => familyParties().length, quiet: true},
   {href: '/hosting', icon: 'star', label: 'Hosting', count: () => hostedParties().length},
   {href: '/approvals', icon: 'hourglass', label: 'Approval Needed', admin: true, count: () => pendingParties().length},
@@ -21,7 +21,7 @@ function familyParties() {
 }
 
 function navItems() {
-  return primary.map(item => ({...item, n: item.count ? item.count() : 0})).filter(item => (!item.admin || anyAllowance()) && (!item.count || item.n));
+  return primary.map(item => ({...item, n: item.count ? item.count() : 0})).filter(item => (!item.admin || anyAllowance()) && (!item.count || item.n) && (!item.shown || item.shown()));
 }
 
 export function shownTabs(onList) {
@@ -203,7 +203,7 @@ function yearSwitch() {
 }
 
 function invitationNav(nav, inv) {
-  const head = invitationHead(inv, invitationPath(''));
+  const head = invitationHead({...inv, hostedBy: '', hostNames: []}, invitationPath(''));
   if (state.model.celebrations.length > 1) {
     head.prepend(yearSwitch());
   }

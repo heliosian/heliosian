@@ -353,21 +353,12 @@ func (t *turn) lingo(s schoolData) (string, error) {
 			fmt.Fprintf(b, "- %s: first day %s, last day %s\n", year, years[year][0], years[year][1])
 		}
 	}
-	settings, _, err := t.rows(`(from SETTING (where (= app "celebrate") (= key "Current")))`)
+	latest, _, err := t.rows(`(from GROUP (where (= kind "celebration") (!= status "closed")) (order start desc) (limit 1))`)
 	if err != nil {
 		return "", err
 	}
-	for _, setting := range settings {
-		if table, ok := db.TableOf(setting["value"]); !ok || table != "GROUP" {
-			continue
-		}
-		current, _, err := t.rows(`(from GROUP (where (= id %q)))`, setting["value"])
-		if err != nil {
-			return "", err
-		}
-		for _, c := range current {
-			fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s.\n", c["name"])
-		}
+	for _, c := range latest {
+		fmt.Fprintf(b, "\nThe current celebration on Helios Celebrate is %s.\n", c["name"])
 	}
 	fmt.Fprintf(b, "\nHelios Loop's addresses end in @%s.\n", listDomain)
 	return b.String(), nil

@@ -64,7 +64,7 @@ function invitationSection(inv) {
       showDeck(details);
       renderChrome();
     });
-    stage.replaceChildren(item.card ? inviteCard(cardWords(inv, details)) : openSheet(inv.look, item));
+    stage.replaceChildren(item.card ? inviteCard({...cardWords(inv, details), hostedBy: '', hosts: []}) : openSheet(inv.look, item));
   };
   const fillSide = details => {
     side.replaceChildren();

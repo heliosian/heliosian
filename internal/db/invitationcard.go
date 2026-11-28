@@ -20,7 +20,7 @@ import (
 	"heliosian/internal/store"
 )
 
-func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Model, g store.Row) {
+func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Model, g store.Row, hosted bool) {
 	card, err := cardDesign(m, lookOf(g))
 	if err != nil {
 		serve.Error(w, r, err)
@@ -28,9 +28,9 @@ func (p *WhenPages) invitationCard(w http.ResponseWriter, r *http.Request, m *Mo
 	}
 	backdrop, cardArt := p.coverPicture(m, g, card, "backdrop_picture", "page.backdrop"), p.coverPicture(m, g, card, "card_picture", "card.art")
 	day, hours := themedDayAndHours(card, g)
-	hosts := cmp.Or(g["hosted_by"], joinNames(m.namesOf(m.hostsOf(g))))
-	if hosts != "" {
-		hosts = "Hosted by " + hosts
+	hosts := ""
+	if names := cmp.Or(g["hosted_by"], joinNames(m.namesOf(m.hostsOf(g)))); hosted && names != "" {
+		hosts = "Hosted by " + names
 	}
 	design, _ := json.Marshal(card)
 	parts := []string{g["id"], string(design), backdrop, cardArt, g["name"], day, hours, g["place"], g["location"], hosts}

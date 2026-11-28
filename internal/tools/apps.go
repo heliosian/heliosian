@@ -293,10 +293,12 @@ var parties = define("helios_parties", "Looking at the parties", "The fun(d)rais
 		return nil, err
 	}
 	answer := map[string]any{"intro": settings["Parties Intro"], "ticketNote": settings["Ticket Note"], "parties": out}
-	if current, ok, err := c.row("GROUP", settings["Current"]); err != nil {
+	latest, _, err := c.rows(scan("GROUP", where(eq("kind", "celebration"), tree{"!=", path("status"), "closed"}), tree{"order", "start", "desc"}, tree{"limit", 1}))
+	if err != nil {
 		return nil, err
-	} else if ok {
-		answer["currentCelebration"] = current["name"]
+	}
+	if len(latest) > 0 {
+		answer["currentCelebration"] = latest[0]["name"]
 	}
 	return answer, nil
 })

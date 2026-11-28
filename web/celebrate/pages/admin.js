@@ -33,9 +33,6 @@ function celebrationsCard() {
     if (c.id === state.model.latest) {
       name.append(el('span', 'admin-tag is-on', 'Latest'));
     }
-    if (c.current) {
-      name.append(el('span', 'admin-tag is-on', 'Current'));
-    }
     if (c.adding === 'approval') {
       name.append(el('span', 'admin-tag is-on', 'Takes parties'));
     }
@@ -150,7 +147,7 @@ function paymentsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Payments'));
   card.append(el('div', 'hint', 'One row for every place billed, and for anything sold outside the app. The rows sharing a Stripe invoice are that invoice. Once you send one, record its ID on the payer’s owed rows it bills, which marks them Requested. Set where each stands, or who pays; nothing is charged here.'));
-  let shown = state.model.current || (state.model.celebrations[0] || {}).id;
+  let shown = state.model.latest;
   const partyPick = el('select');
   const status = el('select');
   for (const [label, value] of [['Every status', 'all'], ['Owed', ''], ['Requested', 'requested'], ['Paid', 'paid'], ['Cancelled', 'cancelled']]) {

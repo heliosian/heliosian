@@ -255,6 +255,12 @@ Write to the guests, warmly, in two to four short sentences, in the mood the des
 
 Plain text; no headings, no markdown, no bullet points, no emoji. Return the summary alone.`
 
+const partySystem = `You write the description of a fundraiser party on a school parent community's party site, where families buy tickets to parties parents host to raise money for the school. You are given the party's title and subtitle, when and where it is, who is hosting, and the hosts' current description, which is often rough notes.
+
+Write to the families, warmly and clearly, as a host parent would. The first paragraph is the party's summary on its card: two or three sentences on what the party is and why to come. Then, as the notes give them, what there will be, what to bring or wear, who it suits, and any cost, limit or deadline. Keep every fact, request and caveat in the notes and fix their spelling and capitalization. Add nothing the notes and details don't support: no invented activities, food, times, places or people. Don't restate the date, time or place unless the notes say more about them; the page shows them.
+
+Markdown is allowed: **bold**, *italic*, lists starting with "- ", and [words](https://links) the notes give. Keep, unchanged and where they are, any line starting "> [!chip]" (a label shown above the title) and any callout starting "> [!note]" with the lines under it. No headings, no emoji beyond those already in the notes. Return the description alone.`
+
 func (d *Describer) Invitation(ctx context.Context, actor string, facts InvitationFacts) (string, error) {
 	if !d.limit.Allow(actor, time.Now()) {
 		return "", claude.ErrTooMany
@@ -281,6 +287,8 @@ func (d *Describer) Invitation(ctx context.Context, actor string, facts Invitati
 	case "mail":
 		system, current = mailSystem, "Current message"
 		line("The email", facts.Heading)
+	case "party":
+		system, current = partySystem, "Current description"
 	}
 	fmt.Fprintf(prompt, "%s:\n%s\n", current, strings.TrimSpace(facts.Notes))
 	if prompt.Len() > maxPrompt {

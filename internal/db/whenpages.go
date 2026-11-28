@@ -140,7 +140,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if g["slug"] != "" && g["theme"] != "" {
-		p.invitationCard(w, r, m, g)
+		p.invitationCard(w, r, m, g, true)
 		return
 	}
 	name, whole := m.sharedPicture(g)

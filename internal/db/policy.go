@@ -191,6 +191,11 @@ const PolicySource = `
            (or (= @g.parent.kind "celebration")
                (and (= @g.parent.kind "category") (= @g.parent.parent.kind "celebration"))))))
 
+; @p is a party whose celebration has its tickets on sale
+(define (on_sale @p)
+  (not (or (and (= @p.parent.kind "celebration") @p.parent.sales_closed)
+           (and (= @p.parent.kind "category") @p.parent.parent.sales_closed))))
+
 ; the viewer may change @ph: a picture of themselves or someone in their family, of a group they manage or run, or, unless a guest, of a wiki page
 (define (edits_photo @ph)
   (or (and (not (blank @ph.person)) (self_or_household @ph.person))
@@ -501,7 +506,7 @@ const PolicySource = `
 (read GROUP
   (id parent kind status slug name subtitle description color flyer pronunciation url listed
    default order visible_to members_visible_to managed_by address phone posting replying unsubscribed join adding
-   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by invitation design card_picture backdrop_picture priority price unit parent_ticket_required
+   eligible notify capacity minimum waitlist rsvp_yes rsvp_no rsvp_maybe maybe chair_offers leads audience hidden_for guests_invited_by auto_invite remind_days remind_after_days resend_days invite_subject invite_message theme envelope seal liner hosted_by invitation sales_closed design card_picture backdrop_picture priority price unit parent_ticket_required
    drop_off_allowed start end all_day timing location place added_by added path href who_href loop_href when_href team_href celebrate_href)
   true)
 ; whether a family's adults all share their address and phone, to its members
@@ -654,14 +659,14 @@ const PolicySource = `
 (read PAYMENT (id person for group name amount added stripe_invoice status) true)
 ; pay for a place at a party at its price, owed and not yet invoiced: the viewer, not a student, for themselves or an adult in their household, for someone they may buy a place for
 (insert PAYMENT
-  (and (= @new.group.kind "party") (visible @new.group) (in @new.group.join "direct" "others") (not (student @viewer))
+  (and (= @new.group.kind "party") (visible @new.group) (in @new.group.join "direct" "others") (not (student @viewer)) (on_sale @new.group)
        (self_or_household @new.person) (not (student @new.person))
        (= @new.amount @new.group.price) (blank @new.status) (blank @new.stripe_invoice) (blank @new.name)
        (not (blank @new.for)) (buys_for @new.group @new.for)))
 ; take a paid place at a party that takes joining and has room, once its payment is in: the viewer, not a student, for someone they may buy a place for, a guest of theirs brought as theirs
 (insert MEMBER
   (and (blank @new.invited) (visible @new.group) (= @new.group.kind "party") (in @new.group.join "direct" "others") (not (blank @new.group.price))
-       (= @new.member "yes") (= @new.added_by @viewer) (not (student @viewer))
+       (on_sale @new.group) (= @new.member "yes") (= @new.added_by @viewer) (not (student @viewer))
        (buys_for @new.group @new.person)
        (or (!= @new.person.source "guest") (= @new.guest_of @viewer))
        (or (blank @new.group.capacity)
@@ -669,7 +674,7 @@ const PolicySource = `
        (exists PAYMENT (= group @new.group) (= for @new.person) (blank status))))
 ; ask for another place on a party's waitlist: a guest, brought by the viewer or someone in their household, or someone the viewer may buy a place for, brought by the viewer
 (insert MEMBER
-  (and (blank @new.invited) (party_waitlist @new.group) (visible @new.group) (= @new.member "yes") (= @new.added_by @viewer)
+  (and (blank @new.invited) (party_waitlist @new.group) (visible @new.group) (on_sale @new.group.parent) (= @new.member "yes") (= @new.added_by @viewer)
        (or (and (= @new.person.source "guest") (self_or_household @new.guest_of))
            (and (= @new.guest_of @viewer) (not (student @viewer)) (buys_for @new.group @new.person)))))
 ; pass a party ticket to someone else: its holder, their household, whoever brought them, or the party's hosts
@@ -1148,6 +1153,8 @@ const PolicySource = `
 (set GROUP.theme (and (admin_of "celebrate") (= @old.kind "celebration") (usable_theme @new.theme)))
 ; name the event a celebration is drawn from
 (set GROUP.invitation (and (admin_of "celebrate") (= @old.kind "celebration") (or (blank @new.invitation) (= @new.invitation.kind "event"))))
+; put a celebration's party tickets on sale or take them off
+(set GROUP.sales_closed (and (admin_of "celebrate") (= @old.kind "celebration")))
 ; name the group of those coming to a party
 (set GROUP.rsvp_yes (and (admin_of "celebrate") (= @old.kind "party")))
 ; name the group of those not coming to a party

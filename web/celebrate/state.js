@@ -110,7 +110,7 @@ export async function loadModel() {
   const celebrations = rowsOf(a.celebrations, 'GROUP').map(c => ({
     id: c.id, code: c.slug || c.id, title: c.name, subtitle: c.subtitle || '', start: c.start || '', end: c.end || '',
     location: c.location || '', address: c.address || '', description: c.description || '', links: linksOf(c.description),
-    image: picture[c.id] || '', imageUrl: imageOf(c.id), current: c.id === settings['Current'], adding: c.adding || '', invitation: c.invitation || '', row: c,
+    image: picture[c.id] || '', imageUrl: imageOf(c.id), salesClosed: c.sales_closed === 'Yes', adding: c.adding || '', invitation: c.invitation || '', row: c,
   }));
   const linkedRows = rowsOf(a.linked, 'GROUP');
   const pageRows = rowsOf(a.linkedPages, 'INVITE_PAGE');
@@ -127,6 +127,7 @@ export async function loadModel() {
   }
   await loadThemes([...celebrations.filter(c => c.inv).flatMap(c => lookThemes(c.inv)), ...celebrations.filter(c => c.siteLook).map(c => c.siteLook.theme)]);
   const celebrationIds = new Set(celebrations.map(c => c.id));
+  const closedSales = new Set(celebrations.filter(c => c.salesClosed).map(c => c.id));
   const categoryRows = rowsOf(a.categories, 'GROUP');
   const categoryIds = new Set(categoryRows.map(c => c.id));
   const categories = categoryRows.map(c => ({id: c.id, title: c.name, celebration: c.parent, order: c.order, row: c}));
@@ -234,10 +235,11 @@ export async function loadModel() {
       attendees: tickets.map(m => attendee(m, 'Ticket')), waitlisted: waiting,
       hosting: hostIds.includes(viewer.id), started: isInvited, invited: isInvited,
       admits: [...household].filter(id => !g.eligible || eligibleHas.has(g.eligible + '/' + id)).map(emailOfId).filter(Boolean),
+      salesClosed: closedSales.has(under),
       can: {
         edit, status: admin,
-        buy: !viewerIsStudent && (edit || availability === 'available'),
-        'join-waitlist': !viewerIsStudent && availability === 'waitlist',
+        buy: !viewerIsStudent && (edit || (availability === 'available' && !closedSales.has(under))),
+        'join-waitlist': !viewerIsStudent && availability === 'waitlist' && !closedSales.has(under),
       },
       row: g,
     };
@@ -251,18 +253,16 @@ export async function loadModel() {
   const others = a.household.result.filter(id => id !== viewer.id).map(person);
   const user = {...person(viewer.id), name: viewer.name_show, initial: (viewer.name_show || '?')[0].toUpperCase(),
     adults: others.filter(o => !o.isStudent), children: others.filter(o => o.isStudent)};
-  const current = settings['Current'] || '';
-  const currentCelebration = celebrations.find(c => c.id === current);
+  const latest = celebrations[0] || null;
   applyModel({
     user,
     admin,
     roleGroups: {adults: a.adults.result[0] || '', students},
     allowances: admin ? ['celebrate.see-all', 'celebrate.curate', 'celebrate.configure', 'celebrate.act-as-host'] : [],
-    can: {host: admin || Boolean(currentCelebration && currentCelebration.adding === 'approval')},
+    can: {host: admin || Boolean(latest && latest.adding === 'approval')},
     settings: {partiesIntro: settings['Parties Intro'] || '', ticketNote: settings['Ticket Note'] || ''},
     settingRows: rowsOf(a.settings, 'SETTING'),
-    current,
-    latest: celebrations.length ? celebrations[0].id : '',
+    latest: latest ? latest.id : '',
     billable: [user, ...user.adults].filter(x => !x.isStudent && x.email).map(x => x.email),
     celebrations,
     categories,

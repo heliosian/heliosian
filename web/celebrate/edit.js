@@ -20,6 +20,7 @@ import {themeOf} from '/themes.js';
 import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
 import {gatherInvitation, mineOrHousehold, invitationRow, dayWords} from '/invitation.js';
+import {writeWithAI} from '/aiwrite.js';
 
 export const {uploadImage, openImageSearch, imagePicker} = imageTools('/api/celebrate');
 
@@ -886,6 +887,12 @@ function partyEdits(p, f, curates) {
   return edits;
 }
 
+function withAI(box, facts) {
+  const wrap = el('div');
+  wrap.append(box, writeWithAI(box, '/api/do/describe-event', facts));
+  return wrap;
+}
+
 export function openParty(p) {
   const adding = !p;
   const user = me();
@@ -903,10 +910,13 @@ export function openParty(p) {
   paintPretty();
   const prettyField = field('Friendly address', pretty);
   prettyField.append(prettyHint);
+  const curates = allows('celebrate.curate');
   const basics = [
     field('Title', title, '', true), field('Subtitle', subtitle),
-    field('Description', description, 'Markdown works: **bold**, *italic*, - a list, [words](https://a.link). The first paragraph is the card’s summary; a line "> [!chip] Adults" puts a chip above the title, and "> [!note] 📣 Good to know" starts a tinted callout.'),
-    prettyField,
+    field('Description', withAI(description, () => ({
+      kind: 'party', title: title.value, subtitle: subtitle.value, when: start.value() || '', where: [place.value, address.value].filter(Boolean).join(', '),
+    })), 'Markdown works: **bold**, *italic*, - a list, [words](https://a.link). The first paragraph is the card’s summary; a line "> [!chip] Adults" puts a chip above the title, and "> [!note] 📣 Good to know" starts a tinted callout.'),
+    ...(curates ? [prettyField] : []),
   ];
 
   const start = whenPickers('Starts', p ? p.start : '', null, 'No start time');
@@ -923,7 +933,7 @@ export function openParty(p) {
     field('Street address', address, 'Shown only to signed-in Helios members, with a map link.'),
   ];
 
-  const tickets = adding ? ticketFields(null) : null;
+  const tickets = adding ? ticketFields(null, curates) : null;
 
   const initialHosts = p ? p.hostPeople : [{id: user.id, email: user.email, name: user.name, photoUrl: user.photoUrl}];
   const hostIds = hostChips(initialHosts);
@@ -940,7 +950,6 @@ export function openParty(p) {
   let status = null;
   let celebrationPick = null;
   let category = null;
-  const curates = allows('celebrate.curate');
   if (curates) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
     const shownCelebration = p ? p.celebration : (currentCelebration() || {}).id;
@@ -963,7 +972,7 @@ export function openParty(p) {
   const fields = () => ({
     title: title.value, subtitle: subtitle.value, description: description.value, hostIds: hostIds.value(),
     start: start.value(), end: end.value(), location: place.value, address: address.value, prettyId: pretty.value,
-    status: curates ? status.value : '', celebration: curates ? celebrationPick.value : state.celebration, category: curates ? category.value : '',
+    status: curates ? status.value : '', celebration: curates ? celebrationPick.value : state.model.latest, category: curates ? category.value : '',
   });
   let made = '';
   openModal(adding ? 'Host a Party' : `Edit ${p.title}`, [...intro, tabbedFields(panels)], {
@@ -1014,7 +1023,7 @@ function deleteEdits(p) {
   return edits;
 }
 
-function ticketFields(p) {
+function ticketFields(p, saleSwitches) {
   const price = text(p ? p.price : '', {type: 'number', min: 0, step: '0.01', required: true, placeholder: '65'});
   const unit = text(p ? p.unit : '', {maxLength: 40, placeholder: 'person, adult, child, family'});
   const capacity = text(p && p.capacity ? p.capacity : '', {type: 'number', min: 1, step: 1, placeholder: 'Leave blank for no limit'});
@@ -1088,7 +1097,7 @@ function ticketFields(p) {
     fields: [
       priceBox,
       field('One ticket covers', unitBox, 'e.g. Adult, Child, or a description like “Family (up to 4)”.'),
-      counts, sale, who,
+      counts, ...(saleSwitches ? [sale] : []), who,
     ],
     values: () => ({
       unit: unit.value, price: Number(price.value || 0), capacity: Number(capacity.value || 0), minimum: Number(minimum.value || 0),
@@ -1099,7 +1108,7 @@ function ticketFields(p) {
 }
 
 export function openTickets(p) {
-  const tickets = ticketFields(p);
+  const tickets = ticketFields(p, true);
   openModal(`Edit tickets for ${p.title}`, tickets.fields, {
     submit: () => {
       const t = tickets.values();
@@ -1266,11 +1275,10 @@ function openNewCelebration() {
     choices.replaceChildren(el('p', 'hint', 'Couldn’t load your invitations: ' + err.message));
   });
   const hosting = checkbox('Takes parties', true, 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
-  const current = checkbox('This is the current celebration', true, 'Its parties are what the parties page lists first.');
   openModal('Add a celebration', [
     field('Your Gather invitations', choices, 'Pick one, or paste the link to another below. Its name, date, place and everything else come from there, and follow it when it changes.'),
     field('Gather invitation link', address, '', true),
-    current.wrap, hosting.wrap,
+    hosting.wrap,
   ], {
     submit: async () => {
       const top = state.model.top;
@@ -1279,13 +1287,10 @@ function openNewCelebration() {
       }
       const g = await invitationAt(address.value);
       const slug = [g.slug || 'celebration', (g.start || '').slice(0, 4)].filter(Boolean).join('-');
-      const {result: [id]} = await write([{insert: 'GROUP', row: {
+      await write([{insert: 'GROUP', row: {
         kind: 'celebration', parent: top.id, status: 'open', added_by: me().id, visible_to: top.visible_to || '', members_visible_to: top.members_visible_to || '',
         name: g.name, slug, invitation: g.id, adding: hosting.input.checked ? 'approval' : '',
       }}]);
-      if (current.input.checked) {
-        await write([settingEdit('Current', id)]);
-      }
     },
   });
 }
@@ -1326,7 +1331,7 @@ export function openCelebration(c) {
   const address = text(c.row.address_override || '', {maxLength: 200});
   const description = textarea(c.description, 4);
   const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
-  const current = checkbox('This is the current celebration', c.current, 'Its parties are what the parties page lists first.');
+  const onSale = checkbox('Tickets are on sale', !c.salesClosed, 'Families may buy places and join waitlists at its parties. Off, its parties say tickets go on sale soon, and only their hosts and admins add anyone.');
   const image = imagePicker(c.image, c.imageUrl, {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   const own = el('div', 'celebration-own');
   own.append(
@@ -1346,26 +1351,19 @@ export function openCelebration(c) {
     field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true),
     field('Invitation', invitation, 'The Gather invitation it is drawn from: its name, date and place, its card and pages, RSVPs and who\u2019s coming, in its design. Its invitation mail sends families here to answer. None draws it from the fields below.'),
     field('Site theme', themeRow, 'What Celebrate is dressed in on this celebration’s pages: the backdrop, sidebar, colors and heading font. The invitation’s card keeps its own design.'),
-    own, current.wrap, hosting.wrap,
+    own, onSale.wrap, hosting.wrap,
   ], {
     submit: async () => {
       const cells = {
-        slug: code.value.trim().toLowerCase(), adding: hosting.input.checked ? 'approval' : '', invitation: invitation.value, theme: theme.value,
+        slug: code.value.trim().toLowerCase(), adding: hosting.input.checked ? 'approval' : '', sales_closed: !onSale.input.checked, invitation: invitation.value, theme: theme.value,
         ...(invitation.value ? {} : {
           name: title.value.trim(), subtitle: subtitle.value.trim(), ...whenCells({start: start.value(), end: end.value()}),
           location: place.value.trim(), address_override: address.value.trim(), description: description.value.trim(),
         }),
       };
-      const edits = [];
       const diff = changed(cells, c.row);
       if (Object.keys(diff).length) {
-        edits.push({set: c.id, cells: diff});
-      }
-      if (current.input.checked && state.model.current !== c.id) {
-        edits.push(settingEdit('Current', c.id));
-      }
-      if (edits.length) {
-        await write(edits);
+        await write([{set: c.id, cells: diff}]);
       }
       if (invitation.value) {
         return;
