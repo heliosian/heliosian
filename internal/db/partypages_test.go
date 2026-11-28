@@ -38,7 +38,10 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 			`og:image" content="https://celebrate.heliosian.com/open/share/` + tacoNight + `.png"`, `Saturday, March 6 · 6:00 – 9:00 PM — Montara — A taco bar`}},
 		testkit.Preview{URL: "https://celebrate.heliosian.com/g/" + tacoNight, Want: []string{`og:title" content="Taco Night"`}},
 		testkit.Preview{URL: "https://celebrate.heliosian.com/my", Want: []string{
-			`og:title" content="Greetings, Earthlings"`, `og:url" content="https://celebrate.heliosian.com/"`,
+			`og:title" content="Greetings, Earthlings"`, `og:url" content="https://celebrate.heliosian.com/my"`,
+			`og:image" content="https://celebrate.heliosian.com/open/share/` + gala + `.png"`}},
+		testkit.Preview{URL: "https://celebrate.heliosian.com/celebrations/" + celebration, Want: []string{
+			`og:title" content="Greetings, Earthlings"`, `og:url" content="https://celebrate.heliosian.com/celebrations/` + celebration + `"`,
 			`og:image" content="https://celebrate.heliosian.com/open/share/` + gala + `.png"`}},
 	)
 	testkit.Cards(t, mux, []string{"/open/share/" + tacoNight + ".png", "/open/share/upcoming.png", "/open/share/" + gala + ".png"}, "/open/share/"+celebration+".png", "/open/share/grp00000000040.png", "/open/share/grp00000009041.png")

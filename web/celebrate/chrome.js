@@ -1,4 +1,4 @@
-import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId, shownCelebration, shownInvitation, shownLook, celebrationPath, guestsPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -29,12 +29,12 @@ export function shownTabs(onList) {
 }
 
 export function themedPage(className = '') {
-  return el('div', [className, state.model.siteLook ? 'themed-panel' : ''].filter(Boolean).join(' '));
+  return el('div', [className, shownLook() ? 'themed-panel' : ''].filter(Boolean).join(' '));
 }
 
 export function pageHeadMain(title, kicker) {
   const main = el('div', 'page-head-main');
-  if (state.model.siteLook && kicker) {
+  if (shownLook() && kicker) {
     main.append(el('p', 'page-kicker', kicker));
   }
   main.append(el('h1', 'page-title', title));
@@ -42,16 +42,16 @@ export function pageHeadMain(title, kicker) {
 }
 
 export function siteName() {
-  const listed = celebration(state.model.listed);
-  return state.model.invitation ? state.model.invitation.name : listed ? listed.title : '';
+  const c = celebration(shownCelebration());
+  return c ? c.title : '';
 }
 
 function onPartiesList() {
-  return location.pathname === partiesPath() || location.pathname.startsWith('/celebrations/');
+  return location.pathname === partiesPath();
 }
 
 function onInvitation() {
-  return Boolean(state.model.invitation) && location.pathname === '/';
+  return Boolean(shownInvitation()) && location.pathname === invitationPath('');
 }
 
 function active(href) {
@@ -189,16 +189,13 @@ function yearSwitch() {
   toggle.type = 'button';
   toggle.title = 'Another year';
   toggle.append(svg('chevron-down'));
-  const items = state.model.celebrations.filter(c => c.id === state.celebration || parties(c.id).length).map(c => ({
+  const items = state.model.celebrations.map(c => ({
     icon: 'calendar',
     mark: sticker(c),
     words: c.title,
     note: c.start.slice(0, 4) || 'Date to come',
     cls: c.id === state.celebration ? 'is-on' : '',
-    run: () => {
-      state.celebration = c.id;
-      navigate(partiesPath());
-    },
+    run: () => navigate(celebrationPath(c.id)),
   }));
   const holder = dropMenu(toggle, items);
   holder.classList.add('year-switch-holder');
@@ -221,7 +218,7 @@ function invitationNav(nav, inv) {
     pages.append(a);
   }
   if (guestListShown(inv)) {
-    const a = link('/guests', location.pathname === '/guests' ? 'is-active' : '');
+    const a = link(guestsPath(), location.pathname === guestsPath() ? 'is-active' : '');
     a.append(svg('groups'), el('span', '', guestListWords(inv)));
     pages.append(a);
   }
@@ -229,7 +226,7 @@ function invitationNav(nav, inv) {
 }
 
 function fillNav(nav) {
-  const inv = state.model.invitation;
+  const inv = shownInvitation();
   topbarLine(inv);
   if (inv) {
     invitationNav(nav, inv);

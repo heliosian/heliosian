@@ -12,7 +12,17 @@ const linkedInvitation = `${gatherInvitation} (in id (select GROUP.invitation (=
 export const state = {model: null, celebration: '', tab: 'upcoming', hostingTab: 'mine', category: '', showPast: true};
 
 export function shownCelebration() {
-  return state.celebration || state.model.listed;
+  return state.celebration || state.model.latest;
+}
+
+export function shownInvitation() {
+  const c = celebration(shownCelebration());
+  return c ? c.inv : null;
+}
+
+export function shownLook() {
+  const c = celebration(shownCelebration());
+  return c ? c.siteLook : null;
 }
 
 export function familyShown(p) {
@@ -43,13 +53,6 @@ export function summaryOf(description) {
 
 function linksOf(markdown) {
   return [...(markdown || '').matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)].map(m => ({text: m[1], url: m[2]}));
-}
-
-function siteLookOf(bannerRow, invitation) {
-  if (bannerRow && bannerRow.row.theme) {
-    return lookFrom({theme: bannerRow.row.theme});
-  }
-  return invitation ? invitation.look : null;
 }
 
 export async function loadModel() {
@@ -110,19 +113,19 @@ export async function loadModel() {
     image: picture[c.id] || '', imageUrl: imageOf(c.id), current: c.id === settings['Current'], adding: c.adding || '', invitation: c.invitation || '', row: c,
   }));
   const linkedRows = rowsOf(a.linked, 'GROUP');
+  const pageRows = rowsOf(a.linkedPages, 'INVITE_PAGE');
+  const hostRows = rowsOf(a.linkedHosts, 'EFFECTIVE_MEMBER');
   for (const c of celebrations) {
     const row = linkedRows.find(g => g.id === c.invitation);
-    c.look = row ? inviteOf(row, false).look : null;
+    c.inv = row ? inviteOf(row, a.linkedHosted.result.includes(row.id)) : null;
+    if (c.inv) {
+      c.inv.pages = pageRows.filter(p => p.group === c.inv.id).map(pageOf);
+      c.inv.hostNames = hostRows.filter(m => m.group === c.inv.managers).map(m => nameOf(m.person)).filter(Boolean);
+    }
+    c.look = c.inv ? c.inv.look : null;
+    c.siteLook = c.row.theme ? lookFrom({theme: c.row.theme}) : c.look;
   }
-  const bannerRow = celebrations.find(c => c.id === (settings['Banner'] || settings['Current']));
-  const invitationRow = bannerRow ? linkedRows.find(g => g.id === bannerRow.invitation) : null;
-  const invitation = invitationRow ? inviteOf(invitationRow, a.linkedHosted.result.includes(invitationRow.id)) : null;
-  if (invitation) {
-    invitation.pages = rowsOf(a.linkedPages, 'INVITE_PAGE').filter(p => p.group === invitation.id).map(pageOf);
-    invitation.hostNames = rowsOf(a.linkedHosts, 'EFFECTIVE_MEMBER').filter(m => m.group === invitation.managers).map(m => nameOf(m.person)).filter(Boolean);
-  }
-  const siteLook = siteLookOf(bannerRow, invitation);
-  await loadThemes([...celebrations.filter(c => c.look).flatMap(c => lookThemes(c)), ...(siteLook ? [siteLook.theme] : [])]);
+  await loadThemes([...celebrations.filter(c => c.inv).flatMap(c => lookThemes(c.inv)), ...celebrations.filter(c => c.siteLook).map(c => c.siteLook.theme)]);
   const celebrationIds = new Set(celebrations.map(c => c.id));
   const categoryRows = rowsOf(a.categories, 'GROUP');
   const categoryIds = new Set(categoryRows.map(c => c.id));
@@ -259,10 +262,7 @@ export async function loadModel() {
     settings: {partiesIntro: settings['Parties Intro'] || '', ticketNote: settings['Ticket Note'] || ''},
     settingRows: rowsOf(a.settings, 'SETTING'),
     current,
-    listed: invitation ? bannerRow.id : current,
-    banner: settings['Banner'] || '',
-    invitation,
-    siteLook,
+    latest: celebrations.length ? celebrations[0].id : '',
     billable: [user, ...user.adults].filter(x => !x.isStudent && x.email).map(x => x.email),
     celebrations,
     categories,
@@ -280,7 +280,7 @@ function applyModel(model) {
     byId.set(p.id, p);
   }
   if (!state.celebration || !model.celebrations.some(c => c.id === state.celebration)) {
-    state.celebration = model.listed || (model.celebrations[0] ? model.celebrations[0].id : '');
+    state.celebration = model.latest;
   }
 }
 
@@ -333,11 +333,28 @@ export function partyPath(p) {
   return p.path;
 }
 
+export function celebrationLabel(c) {
+  return c.start ? `${c.title} (${c.start.slice(0, 4)})` : c.title;
+}
+
+function celebrationBase(c) {
+  return c.id === state.model.latest ? '' : `/celebrations/${encodeURIComponent(c.code)}`;
+}
+
+export function celebrationPath(id) {
+  return celebrationBase(celebration(id)) || '/';
+}
+
 export function partiesPath() {
-  if (state.celebration === state.model.listed) {
-    return state.model.invitation ? '/parties' : '/';
+  const c = celebration(shownCelebration());
+  if (!c) {
+    return '/';
   }
-  return `/celebrations/${encodeURIComponent(celebration(state.celebration).code)}`;
+  return c.inv ? celebrationBase(c) + '/parties' : celebrationBase(c) || '/';
+}
+
+export function guestsPath() {
+  return celebrationBase(celebration(shownCelebration())) + '/guests';
 }
 
 export function invitationPageId() {
@@ -345,7 +362,23 @@ export function invitationPageId() {
 }
 
 export function invitationPath(pageId) {
-  return '/' + (pageId ? '?page=' + encodeURIComponent(pageId) : '');
+  return celebrationPath(shownCelebration()) + (pageId ? '?page=' + encodeURIComponent(pageId) : '');
+}
+
+export function celebrationAt(path) {
+  const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+  if (parts[0] === 'celebrations') {
+    const c = celebrationByCode(parts[1]);
+    return c ? c.id : state.celebration;
+  }
+  if (parts[0] === 'g') {
+    const p = partyAt(parts[1] || '');
+    return p ? p.celebration : state.celebration;
+  }
+  if (!parts.length || parts[0] === 'parties' || parts[0] === 'guests') {
+    return state.model.latest;
+  }
+  return state.celebration;
 }
 export function partyAt(segment) {
   const want = segment.toLowerCase();

@@ -391,6 +391,7 @@ func Production(domain, site string) (*http.Server, *db.Store) {
 			db.StartFetcher(core.Data, bucket)
 			db.StartThumbnailer(core.Data, bucket)
 			db.StartGeocoder(core.Data, geocoder)
+			db.StartCelebrationClosing(core.Data)
 		}()
 	} else {
 		db.StartIdleWorkers(core.Data)

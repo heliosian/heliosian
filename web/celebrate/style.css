@@ -931,10 +931,6 @@ body.is-admin main { background-image: none; }
 
 .add-row input { flex: 1; min-width: 200px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 
-/* The banner as Admin Tools previews it: the band itself, at the card's width. */
-.banner-preview { margin: 6px 0 4px; }
-
-.banner-preview .gala-band { margin-bottom: 0; }
 
 .invoice-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 

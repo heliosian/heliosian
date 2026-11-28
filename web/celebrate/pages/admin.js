@@ -1,10 +1,9 @@
-import {state, anyAllowance, me, money, whenLine, celebration, categoriesOf, parties, party} from '../state.js';
+import {state, anyAllowance, me, money, whenLine, celebration, categoriesOf, parties, party, celebrationLabel} from '../state.js';
 import {write} from '/rail.js';
 import {el, button} from '/elements.js';
-import {openCelebration, openCategory, openSettings, saveSetting} from '../edit.js';
+import {openCelebration, openCategory, openSettings} from '../edit.js';
 import {load} from '/router.js';
 import {keyBetween} from '/order.js';
-import {celebrationBand} from './parties.js';
 import {adminPage as buildAdminPage, adminsCard, groupMembers} from '/admin.js';
 import {openModal} from '/modal.js';
 import {field, text, checkbox} from '/form.js';
@@ -14,7 +13,7 @@ import {listed, isStudent} from '/directory.js';
 function celebrationPicker(shown, onPick) {
   const pick = el('select');
   for (const c of state.model.celebrations) {
-    const o = new Option(c.title, c.id);
+    const o = new Option(celebrationLabel(c), c.id);
     o.selected = c.id === shown;
     pick.append(o);
   }
@@ -22,49 +21,20 @@ function celebrationPicker(shown, onPick) {
   return pick;
 }
 
-function bannerCard() {
-  const card = el('div', 'card');
-  card.append(el('h2', '', 'Banner'));
-  card.append(el('div', 'hint', 'The band across the top of the parties page: a celebration’s background picture, title and theme, date and place, and the links in its description as buttons. Which celebration it advertises is separate from which one’s parties are listed, so next year’s gala can sit over this season’s parties.'));
-  const c = celebration(state.model.banner);
-  if (!c) {
-    card.append(el('div', 'notice', 'No celebration to show yet - add one under Celebrations.'));
-    return card;
-  }
-  const pick = celebrationPicker(c.id, async id => {
-    try {
-      await saveSetting('Banner', id);
-      await load();
-    } catch (err) {
-      alert(err.message);
-    }
-  });
-  const row = el('label', 'field');
-  row.append(el('span', '', 'Show the banner for'), pick);
-  card.append(row);
-  const preview = el('div', 'banner-preview');
-  preview.append(celebrationBand(c));
-  card.append(preview);
-  const add = el('div', 'add-row');
-  add.append(button('Edit Banner', 'edit', 'button', () => openCelebration(c)));
-  card.append(add);
-  return card;
-}
-
 function celebrationsCard() {
   const card = el('div', 'card');
   card.append(el('h2', '', 'Celebrations'));
-  card.append(el('div', 'hint', "Each year's Spring Celebration. Parties are filed under one; the current one's parties lead the parties page, and the banner one is advertised across its top. One that takes parties lets anyone host a party under it, waiting for approval."));
+  card.append(el('div', 'hint', "Each year's Spring Celebration. Parties are filed under one, and the site opens on the latest. One that takes parties lets anyone host a party under it, waiting for approval, until its date has passed."));
   for (const c of state.model.celebrations) {
     const row = el('div', 'admin-row');
     const body = el('div', 'grow');
     const name = el('div', 'admin-row-name');
-    name.append(el('span', '', c.title));
-    if (c.current) {
-      name.append(el('span', 'admin-tag is-on', 'Parties listed'));
+    name.append(el('span', '', celebrationLabel(c)));
+    if (c.id === state.model.latest) {
+      name.append(el('span', 'admin-tag is-on', 'Latest'));
     }
-    if (c.id === state.model.banner) {
-      name.append(el('span', 'admin-tag is-on', 'Banner shown'));
+    if (c.current) {
+      name.append(el('span', 'admin-tag is-on', 'Current'));
     }
     if (c.adding === 'approval') {
       name.append(el('span', 'admin-tag is-on', 'Takes parties'));
@@ -274,7 +244,6 @@ function paymentsCard() {
 
 const sections = [
   {title: 'Display', tabs: [
-    {key: 'banner', label: 'Banner', card: bannerCard},
     {key: 'celebrations', label: 'Celebrations', card: celebrationsCard},
     {key: 'categories', label: 'Categories', card: categoriesCard},
     {key: 'settings', label: 'Settings', card: settingsCard},

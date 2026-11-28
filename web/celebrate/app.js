@@ -1,4 +1,4 @@
-import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty, me, state} from './state.js';
+import {loadModel, celebrationByCode, familyMember, partyAt, fetchParty, me, state, shownInvitation, shownLook, celebrationAt} from './state.js';
 import {setGuestHost} from '/guesthost.js';
 import {answerAs, dayWords, hourWords} from '/invitation.js';
 import {themed, sidebarIn} from '/themes.js';
@@ -15,19 +15,19 @@ import {guestsPage} from './pages/guests.js';
 
 setGuestHost({
   me,
-  answer: (e, word) => answerAs(state.model.invitation, word),
+  answer: (e, word) => answerAs(shownInvitation(), word),
   isParty: () => false,
   dayLabel: date => dayWords({start: date}, true),
   gradeColors: () => ({}),
   whenWords: () => {
-    const day = dayWords(state.model.invitation);
-    const hours = hourWords(state.model.invitation);
+    const day = dayWords(shownInvitation());
+    const hours = hourWords(shownInvitation());
     return {day, when: hours ? `${day}, ${hours}` : day};
   },
 });
 
 function siteTheme() {
-  const look = state.model.siteLook;
+  const look = shownLook();
   const shell = document.querySelector('.app-shell');
   shell.removeAttribute('style');
   sidebarIn(look);
@@ -52,11 +52,17 @@ function party(parts) {
 }
 
 const routes = {
-  '': () => (state.model.invitation ? invitationPage() : partiesPage(null)),
-  parties: () => partiesPage(null),
+  '': () => (shownInvitation() ? invitationPage() : partiesPage()),
+  parties: () => partiesPage(),
   celebrations: parts => {
     const c = celebrationByCode(parts[1]);
-    return c ? partiesPage(c.id) : notFound('That celebration');
+    if (!c) {
+      return notFound('That celebration');
+    }
+    if (!c.inv || parts[2] === 'parties') {
+      return partiesPage();
+    }
+    return parts[2] === 'guests' ? guestsPage() : invitationPage();
   },
   g: party,
   my: parts => {
@@ -79,6 +85,7 @@ startApp({
   missing: 'is not on the site, or is not something you can see.',
   prepare: () => {
     clearSearch();
+    state.celebration = celebrationAt(location.pathname);
     siteTheme();
   },
   show: showPage,

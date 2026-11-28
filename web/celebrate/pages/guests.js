@@ -1,4 +1,4 @@
-import {state} from '../state.js';
+import {shownInvitation} from '../state.js';
 import {el} from '/elements.js';
 import {setTitle} from '/shell.js';
 import {notFound} from '/router.js';
@@ -8,7 +8,7 @@ import {comingCard} from '/invites.js';
 import {themedPage} from '../chrome.js';
 
 export function guestsPage() {
-  const inv = state.model.invitation;
+  const inv = shownInvitation();
   if (!inv || !guestListShown(inv)) {
     return notFound('That page');
   }

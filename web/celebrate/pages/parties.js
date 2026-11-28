@@ -1,4 +1,4 @@
-import {state, parties, celebration, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf, partiesPath, invitationPath, invitationPageId} from '../state.js';
+import {state, parties, whenParts, currentCelebration, celebrationCalendarLink, celebrationUpcoming, categoriesOf, partiesPath, invitationPath, invitationPageId, shownInvitation, celebrationLabel} from '../state.js';
 import {el, svg} from '/elements.js';
 import {selectPill} from '/form.js';
 import {tabStrip} from '/tabs.js';
@@ -82,8 +82,9 @@ function invitationSection(inv) {
 }
 
 export function invitationPage() {
-  setTitle(state.model.invitation.name);
-  return invitationSection(state.model.invitation);
+  const inv = shownInvitation();
+  setTitle(inv.name);
+  return invitationSection(inv);
 }
 
 function grid(id) {
@@ -109,20 +110,14 @@ function grid(id) {
   return wrap;
 }
 
-export function partiesPage(id) {
-  if (id && celebration(id)) {
-    state.celebration = id;
-  } else if (state.model.listed) {
-    state.celebration = state.model.listed;
-  }
+export function partiesPage() {
   state.tab = listTab();
   state.category = listCategory();
   const c = currentCelebration();
   setTitle('Parties');
   const page = themedPage();
-  const banner = celebration(state.model.banner) || c;
-  if (banner && !state.model.invitation) {
-    page.append(celebrationBand(banner));
+  if (c && !c.inv) {
+    page.append(celebrationBand(c));
   }
   const head = el('div', 'page-head');
   const main = pageHeadMain('Community Fun(d)raiser Parties', c ? c.title : '');
@@ -132,8 +127,8 @@ export function partiesPage(id) {
   head.append(main);
   const options = state.model.celebrations
     .filter(x => x.id === state.celebration || parties(x.id).length)
-    .map(x => ({key: x.id, label: x.title}));
-  if (options.length > 1 && !state.model.invitation) {
+    .map(x => ({key: x.id, label: celebrationLabel(x)}));
+  if (options.length > 1 && !(c && c.inv)) {
     head.append(selectPill('calendar', options, state.celebration, picked => {
       state.celebration = picked;
       history.replaceState(null, '', partiesPath());

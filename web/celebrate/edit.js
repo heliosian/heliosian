@@ -1,4 +1,4 @@
-import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, partiesPath, party, celebration, category, categoriesOf} from './state.js';
+import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, partiesPath, party, celebration, category, categoriesOf, celebrationLabel} from './state.js';
 import {write, queries, rowsOf} from '/rail.js';
 import {sheetStamp} from '/stamp.js';
 import {addressSuggest} from '/address.js';
@@ -944,7 +944,7 @@ export function openParty(p) {
   if (curates) {
     status = select([{label: 'Open', value: 'Open'}, {label: 'Pending approval', value: 'Pending'}, {label: 'Hidden', value: 'Hidden'}], p ? p.status : 'Open');
     const shownCelebration = p ? p.celebration : (currentCelebration() || {}).id;
-    celebrationPick = select(state.model.celebrations.map(c => ({label: c.title, value: c.id})), shownCelebration);
+    celebrationPick = select(state.model.celebrations.map(c => ({label: celebrationLabel(c), value: c.id})), shownCelebration);
     category = select([], '');
     const paintCategories = () => {
       const was = category.value || (p ? p.category : '');
@@ -1265,13 +1265,12 @@ function openNewCelebration() {
   myInvitations().then(list => fillInvitationChoices(choices, list, address), err => {
     choices.replaceChildren(el('p', 'hint', 'Couldn’t load your invitations: ' + err.message));
   });
-  const hosting = checkbox('Takes parties', true, 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
+  const hosting = checkbox('Takes parties', true, 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
   const current = checkbox('This is the current celebration', true, 'Its parties are what the parties page lists first.');
-  const banner = checkbox('Show it at the top', true, 'Celebrate is drawn from its invitation: the invitation’s page, its pages in the sidebar, the guest list and its theme.');
   openModal('Add a celebration', [
     field('Your Gather invitations', choices, 'Pick one, or paste the link to another below. Its name, date, place and everything else come from there, and follow it when it changes.'),
     field('Gather invitation link', address, '', true),
-    current.wrap, banner.wrap, hosting.wrap,
+    current.wrap, hosting.wrap,
   ], {
     submit: async () => {
       const top = state.model.top;
@@ -1284,9 +1283,8 @@ function openNewCelebration() {
         kind: 'celebration', parent: top.id, status: 'open', added_by: me().id, visible_to: top.visible_to || '', members_visible_to: top.members_visible_to || '',
         name: g.name, slug, invitation: g.id, adding: hosting.input.checked ? 'approval' : '',
       }}]);
-      const settings = [...(current.input.checked ? [settingEdit('Current', id)] : []), ...(banner.input.checked ? [settingEdit('Banner', id)] : [])];
-      if (settings.length) {
-        await write(settings);
+      if (current.input.checked) {
+        await write([settingEdit('Current', id)]);
       }
     },
   });
@@ -1327,9 +1325,8 @@ export function openCelebration(c) {
   const place = text(c.location, {maxLength: 120});
   const address = text(c.row.address_override || '', {maxLength: 200});
   const description = textarea(c.description, 4);
-  const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval. Off, only admins add parties.');
+  const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
   const current = checkbox('This is the current celebration', c.current, 'Its parties are what the parties page lists first.');
-  const banner = checkbox('Show its banner at the top', c.id === state.model.banner, 'The band across the top of the parties page advertises it, whichever year\u2019s parties are listed. Only one celebration is the banner.');
   const image = imagePicker(c.image, c.imageUrl, {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   const own = el('div', 'celebration-own');
   own.append(
@@ -1348,8 +1345,8 @@ export function openCelebration(c) {
   openModal(`Edit ${c.title}`, [
     field('Code', code, 'Short and unique, like SC-2027: the celebration’s address on the site.', true),
     field('Invitation', invitation, 'The Gather invitation it is drawn from: its name, date and place, its card and pages, RSVPs and who\u2019s coming, in its design. Its invitation mail sends families here to answer. None draws it from the fields below.'),
-    field('Site theme', themeRow, 'What Celebrate is dressed in while this celebration is the banner: the backdrop, sidebar, colors and heading font. The invitation’s card keeps its own design.'),
-    own, current.wrap, banner.wrap, hosting.wrap,
+    field('Site theme', themeRow, 'What Celebrate is dressed in on this celebration’s pages: the backdrop, sidebar, colors and heading font. The invitation’s card keeps its own design.'),
+    own, current.wrap, hosting.wrap,
   ], {
     submit: async () => {
       const cells = {
@@ -1366,9 +1363,6 @@ export function openCelebration(c) {
       }
       if (current.input.checked && state.model.current !== c.id) {
         edits.push(settingEdit('Current', c.id));
-      }
-      if (banner.input.checked && state.model.banner !== c.id) {
-        edits.push(settingEdit('Banner', c.id));
       }
       if (edits.length) {
         await write(edits);
@@ -1391,10 +1385,6 @@ export function openCelebration(c) {
 function settingEdit(key, value) {
   const row = state.model.settingRows.find(s => s.key === key);
   return row ? {set: row.id, cells: {value}} : {insert: 'SETTING', row: {app: 'celebrate', key, value}};
-}
-
-export async function saveSetting(key, value) {
-  await write([settingEdit(key, value)]);
 }
 
 export function openCategory(c, celebrationId, after) {

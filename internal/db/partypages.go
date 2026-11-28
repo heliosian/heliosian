@@ -1,7 +1,6 @@
 package db
 
 import (
-	"cmp"
 	"maps"
 	"net/http"
 	"net/url"
@@ -22,7 +21,7 @@ const (
 	partiesShell  = "web/celebrate/index.html"
 )
 
-var partiesPages = []string{"/{$}", "/g/{key}", "/celebrations/{code}", "/my", "/my/{email}", "/hosting", "/guests", "/parties", "/admin"}
+var partiesPages = []string{"/{$}", "/g/{key}", "/celebrations/{code}", "/celebrations/{code}/{section}", "/my", "/my/{email}", "/hosting", "/guests", "/parties", "/admin"}
 
 func PartyCardStyle(name, tagline func() string) *sharecard.Style {
 	return &sharecard.Style{
@@ -43,13 +42,39 @@ func NewPartyPages(s *Store, bucket *blob.Bucket, style *sharecard.Style, cards 
 	return &PartyPages{s: s, bucket: bucket, style: style, cards: cards}
 }
 
-func (m *Model) celebrationInvitation() store.Row {
-	groups := m.Table("GROUP")
-	c, ok := groups.Get(cmp.Or(m.Setting("celebrate", "Banner"), m.Setting("celebrate", "Current")))
-	if !ok || c["invitation"] == "" {
+func (m *Model) celebrations() []store.Row {
+	out := []store.Row{}
+	for _, g := range m.Table("GROUP").All() {
+		if g["kind"] == "celebration" && g["status"] != "closed" {
+			out = append(out, g)
+		}
+	}
+	slices.SortStableFunc(out, func(x, y store.Row) int { return strings.Compare(y["start"], x["start"]) })
+	return out
+}
+
+func (m *Model) celebrationAt(path string) store.Row {
+	all := m.celebrations()
+	if len(all) == 0 {
 		return nil
 	}
-	inv, ok := groups.Get(c["invitation"])
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) < 2 || parts[0] != "celebrations" {
+		return all[0]
+	}
+	for _, c := range all {
+		if strings.EqualFold(c["slug"], parts[1]) || c["id"] == parts[1] {
+			return c
+		}
+	}
+	return nil
+}
+
+func (m *Model) celebrationInvitation(c store.Row) store.Row {
+	if c == nil || c["invitation"] == "" {
+		return nil
+	}
+	inv, ok := m.Table("GROUP").Get(c["invitation"])
 	if !ok || inv["theme"] == "" {
 		return nil
 	}
@@ -124,8 +149,8 @@ func (p *PartyPages) PreviewHead(r *http.Request) string {
 	if g != nil {
 		return p.style.PreviewTags(g["name"], eventBlurb(g), origin+r.URL.Path, origin+"/open/share/"+g["id"]+".png")
 	}
-	if inv := m.celebrationInvitation(); inv != nil {
-		return p.style.PreviewTags(inv["name"], eventBlurb(inv), origin+"/", origin+"/open/share/"+inv["id"]+".png")
+	if inv := m.celebrationInvitation(m.celebrationAt(r.URL.Path)); inv != nil {
+		return p.style.PreviewTags(inv["name"], eventBlurb(inv), origin+r.URL.Path, origin+"/open/share/"+inv["id"]+".png")
 	}
 	return p.upcomingHead(m, origin)
 }
@@ -194,9 +219,11 @@ func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 func (p *PartyPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	m := p.s.Model()
 	key := strings.TrimSuffix(r.PathValue("id"), ".png")
-	if inv := m.celebrationInvitation(); inv != nil && inv["id"] == key {
-		p.cards.invitationCard(w, r, m, inv)
-		return
+	for _, c := range m.celebrations() {
+		if inv := m.celebrationInvitation(c); inv != nil && inv["id"] == key {
+			p.cards.invitationCard(w, r, m, inv)
+			return
+		}
 	}
 	g := m.party(key)
 	if g == nil {
