@@ -6,7 +6,7 @@ import {initChrome} from './chrome.js';
 import {showPage, clearSearch} from '/shell.js';
 import {initModal} from '/modal.js';
 import {startApp, load, loadRow, notFound} from '/router.js';
-import {partiesPage, invitationPage} from './pages/parties.js';
+import {partiesPage, invitationPage, rsvpPage} from './pages/parties.js';
 import {partyPage} from './pages/party.js';
 import {myPage} from './pages/my.js';
 import {hostingPage} from './pages/hosting.js';
@@ -62,8 +62,12 @@ const routes = {
     if (!c.inv || parts[2] === 'parties') {
       return partiesPage();
     }
+    if (parts[2] === 'rsvp') {
+      return rsvpPage();
+    }
     return parts[2] === 'guests' ? guestsPage() : invitationPage();
   },
+  rsvp: () => (shownInvitation() ? rsvpPage() : partiesPage()),
   g: party,
   my: parts => {
     if (!parts[1]) {

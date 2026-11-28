@@ -1,4 +1,4 @@
-import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, currentCelebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId, shownCelebration, shownInvitation, shownLook, celebrationPath, guestsPath} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, currentCelebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId, shownCelebration, shownInvitation, shownLook, celebrationPath, guestsPath, rsvpPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -252,9 +252,32 @@ function fillNav(nav) {
   }
 }
 
+function tab(href, icon, label, on) {
+  const a = link(href, on ? 'is-active' : '');
+  a.append(icon === 'app' ? appSymbol() : svg(icon), el('span', '', label));
+  return a;
+}
+
 function fillTabbar(bar) {
-  for (const item of navItems().filter(i => !i.admin)) {
-    bar.append(navLink(item));
+  const inv = shownInvitation();
+  if (inv) {
+    bar.append(
+      tab(rsvpPath(), 'check', 'RSVP', location.pathname === rsvpPath()),
+      tab(invitationPath(''), 'mail', 'Invitation', onInvitation()),
+    );
+  }
+  if (parties().length) {
+    bar.append(tab(partiesPath(), 'app', 'Parties', active('/')));
+  }
+  if (hostedParties().length) {
+    bar.append(tab('/hosting', 'star', 'Host', location.pathname === '/hosting'));
+  } else if (canHost()) {
+    const host = tab('#', 'star', 'Host', false);
+    host.addEventListener('click', e => {
+      e.preventDefault();
+      openParty(null);
+    });
+    bar.append(host);
   }
 }
 

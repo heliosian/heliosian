@@ -49,8 +49,8 @@ export function celebrationBand(c) {
   return band;
 }
 
-function invitationSection(inv) {
-  const section = themed(el('section', 'invitation-section'), inv.look);
+function invitationSection(inv, part) {
+  const section = themed(el('section', 'invitation-section is-' + part), inv.look);
   const column = el('div', 'invitation-column invite-column');
   const above = el('div', 'invite-sheets is-above');
   const stage = el('div', 'invitation-stage invite-stage');
@@ -84,7 +84,13 @@ function invitationSection(inv) {
 export function invitationPage() {
   const inv = shownInvitation();
   setTitle(inv.name);
-  return invitationSection(inv);
+  return invitationSection(inv, 'card');
+}
+
+export function rsvpPage() {
+  const inv = shownInvitation();
+  setTitle('RSVP');
+  return invitationSection(inv, 'rsvp');
 }
 
 function grid(id) {

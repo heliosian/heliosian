@@ -364,6 +364,10 @@ export function guestsPath() {
   return celebrationBase(celebration(shownCelebration())) + '/guests';
 }
 
+export function rsvpPath() {
+  return celebrationBase(celebration(shownCelebration())) + '/rsvp';
+}
+
 export function invitationPageId() {
   return new URLSearchParams(location.search).get('page') || '';
 }

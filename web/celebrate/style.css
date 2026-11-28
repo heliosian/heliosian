@@ -985,6 +985,8 @@ body.is-admin main { background-image: none; }
   .gala-title { font-size: 21px; }
   .invitation-section { grid-template-columns: minmax(0, 1fr); gap: 20px; }
   .invitation-side { order: -1; }
+  .invitation-section.is-card .invitation-side { display: none; }
+  .invitation-section.is-rsvp .invitation-column { display: none; }
   .row { gap: 10px; padding: 10px; }
   .thumb { width: 60px; height: 60px; }
   .row-actions .button span { display: none; }
