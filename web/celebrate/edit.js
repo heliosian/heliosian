@@ -1,5 +1,6 @@
 import {state, me, allows, household, billable, admits, inAudience, audienceWords, ticketFor, money, currentCelebration, partyPath, party, celebration, category, categoriesOf} from './state.js';
 import {write} from '/rail.js';
+import {sheetStamp} from '/stamp.js';
 import {addressSuggest} from '/address.js';
 import {createPersonPicker} from '/picker.js';
 import {listed, known, personByEmail, emailOf, photoOf, wordsOf, gradeOf, isStudent, isParent, isStaff, relativesOf} from '/directory.js';
@@ -17,12 +18,6 @@ import {dataGrid} from '/datagrid.js';
 import {familyDropdown} from '/rules.js';
 
 export const {uploadImage, openImageSearch, imagePicker} = imageTools('/api/celebrate');
-
-function stamp() {
-  const d = new Date();
-  const two = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
-}
 
 function inDirectory(p, person) {
   const family = household().find(h => h.id === person.id);
@@ -67,9 +62,9 @@ function guestEdits(as, guest) {
 function paidPlace(p, payer, holder, member) {
   const edits = [];
   if (p.price) {
-    edits.push({insert: 'PAYMENT', row: {person: payer, for: holder, group: p.id, amount: p.row.price, added: stamp()}});
+    edits.push({insert: 'PAYMENT', row: {person: payer, for: holder, group: p.id, amount: p.row.price, added: sheetStamp()}});
   }
-  edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: stamp(), ...member}});
+  edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: sheetStamp(), ...member}});
   return edits;
 }
 
@@ -122,7 +117,7 @@ function buyEdits(p, payer, places, note, editor) {
       sold++;
       return;
     }
-    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: ref, member: 'yes', added_by: viewer, added: stamp(), ...brought, note}});
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: ref, member: 'yes', added_by: viewer, added: sheetStamp(), ...brought, note}});
     waited++;
   });
   return {edits, sold, waited};
@@ -309,7 +304,7 @@ function waitlistEdits(p, have, want, note) {
   const edits = [];
   let extras = have ? have.extra.length : 0;
   if (!have) {
-    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: viewer, member: 'yes', added_by: viewer, added: stamp(), note}});
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: viewer, member: 'yes', added_by: viewer, added: sheetStamp(), note}});
   }
   for (const extra of have ? have.extra.slice(Math.max(0, want - 1)) : []) {
     edits.push({delete: extra.id});
@@ -317,7 +312,7 @@ function waitlistEdits(p, have, want, note) {
   }
   for (let i = 0; extras + 1 < want; i++, extras++) {
     edits.push({insert: 'PERSON', as: 'w' + i, row: {source: 'guest'}});
-    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: '@w' + i, member: 'yes', added_by: viewer, added: stamp(), guest_of: have ? have.person : viewer}});
+    edits.push({insert: 'MEMBER', row: {group: p.waitlistGroup, person: '@w' + i, member: 'yes', added_by: viewer, added: sheetStamp(), guest_of: have ? have.person : viewer}});
   }
   return edits;
 }
@@ -640,7 +635,7 @@ export function openAddTicket(p) {
     if (paid) {
       edits.push(...paidPlace(p, billed ? billed.id : person.guest ? me().id : person.id, holder, person.guest ? {guest_of: me().id} : {}));
     } else {
-      edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: stamp(), note: 'Free ticket from the hosts', ...(person.guest ? {guest_of: host ? host.id : me().id} : {})}});
+      edits.push({insert: 'MEMBER', row: {group: p.id, person: holder, member: 'yes', added_by: me().id, added: sheetStamp(), note: 'Free ticket from the hosts', ...(person.guest ? {guest_of: host ? host.id : me().id} : {})}});
       if (raise && raise.input.checked) {
         edits.push({set: p.id, cells: {capacity: String(p.capacity + 1)}});
       }
@@ -741,7 +736,7 @@ function hostChips(initial) {
 }
 
 function today() {
-  return stamp().slice(0, 10);
+  return sheetStamp().slice(0, 10);
 }
 
 function waitlistGroupEdits(ref, title, visibleTo, eligible) {

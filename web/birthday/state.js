@@ -10,11 +10,6 @@ export const levelValues = {'Skip': 'skip', 'No Newsletter': 'no_newsletter'};
 
 const two = n => String(n).padStart(2, '0');
 
-export function nowMoment() {
-  const d = new Date();
-  return `${dateCell(d)} ${two(d.getHours())}:${two(d.getMinutes())}`;
-}
-
 function dayOf(moment) {
   return (moment || '').slice(0, 10);
 }

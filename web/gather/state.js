@@ -1,4 +1,5 @@
 import {queries, rowsOf, write} from '/rail.js';
+import {sheetStamp} from '/stamp.js';
 import {api} from '/api.js';
 import {parseWhen, timeRange} from '/datecard.js';
 import {loadThemes, refreshThemes, forgetThemes} from '/themes.js';
@@ -130,7 +131,7 @@ export async function answerAsMe(e, word) {
   const a = await queries({mine: `(from MEMBER (where (in group ${groups}) (= person @viewer)) (columns group))`});
   const batch = rowsOf(a.mine, 'MEMBER').map(m => ({delete: m.id}));
   if (answerGroupOf(inv, word)) {
-    batch.push({insert: 'MEMBER', row: {group: answerGroupOf(inv, word), person: me().id, member: 'yes', added_by: me().id, added: stamp()}});
+    batch.push({insert: 'MEMBER', row: {group: answerGroupOf(inv, word), person: me().id, member: 'yes', added_by: me().id, added: sheetStamp()}});
   }
   if (batch.length) {
     await write(batch);
@@ -281,13 +282,6 @@ export async function removeQuestion(q) {
   await write([{delete: q.id}]);
 }
 
-function stamp() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-
 export async function noteOpened(inv, details) {
   if (details.myRow && details.myRow.opened) {
     return;
@@ -295,7 +289,7 @@ export async function noteOpened(inv, details) {
   if (!details.household.some(p => p.id === me().id)) {
     return;
   }
-  const at = stamp();
+  const at = sheetStamp();
   await write([details.myRow ? {set: details.myRow.id, cells: {opened: at}} : {insert: 'MEMBER', row: {group: inv.id, person: me().id, opened: at}}]);
 }
 
@@ -315,7 +309,7 @@ export async function createInvite(body) {
     {insert: 'MEMBER', row: {group: '@hosts', person: me().id, member: 'yes'}},
     {set: '@event', cells: {managed_by: '@hosts'}},
     {set: '@event', cells: {visible_to: '@event', resend_days: '3'}},
-    {insert: 'MEMBER', row: {group: '@event', person: me().id, member: 'yes', added_by: me().id, added: stamp()}},
+    {insert: 'MEMBER', row: {group: '@event', person: me().id, member: 'yes', added_by: me().id, added: sheetStamp()}},
   ]);
   return id;
 }

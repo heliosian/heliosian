@@ -6,6 +6,7 @@ import {nameRulesWith, ruleOf, ruleRow} from '/listrules.js';
 import {keptOff} from '/members.js';
 import {keyBetween} from '/order.js';
 import {host} from '/guesthost.js';
+import {sheetStamp} from '/stamp.js';
 
 const me = () => host.me();
 const isParty = e => host.isParty(e);
@@ -13,12 +14,6 @@ const isParty = e => host.isParty(e);
 const names = {groups: {}, people: {}};
 
 nameRulesWith({group: id => names.groups[id] || null, person: id => names.people[id] || 'Someone'});
-
-function stamp() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
 
 function onGuestList(id) {
   return `(or (in id (select MEMBER.person (= group ${id})))
@@ -157,7 +152,7 @@ export async function fetchInvites(e) {
 }
 
 export async function noteOpened(e, view) {
-  const at = stamp();
+  const at = sheetStamp();
   await write([view.myRow ? {set: view.myRow.id, cells: {opened: at}} : {insert: 'MEMBER', row: {group: e.id, person: me().id, opened: at}}]);
 }
 
@@ -168,7 +163,7 @@ export async function answerFor(row, word) {
     throw new Error('This guest list takes answers once its invitation goes out.');
   }
   if (group) {
-    batch.push({insert: 'MEMBER', row: {group, person: row.key, member: 'yes', added_by: me().id, added: stamp()}});
+    batch.push({insert: 'MEMBER', row: {group, person: row.key, member: 'yes', added_by: me().id, added: sheetStamp()}});
   }
   if (batch.length) {
     await write(batch);
@@ -281,9 +276,9 @@ export async function setNotifyMe(e, view, on) {
 }
 
 export function addHost(e, view, person) {
-  const batch = [{insert: 'MEMBER', row: {group: view.managedBy, person, member: 'yes', added_by: me().id, added: stamp()}}];
+  const batch = [{insert: 'MEMBER', row: {group: view.managedBy, person, member: 'yes', added_by: me().id, added: sheetStamp()}}];
   if (e.hostsAreGuests && !view.list.some(r => r.key === person)) {
-    batch.push({insert: 'MEMBER', row: {group: e.id, person, member: 'yes', added_by: me().id, added: stamp()}});
+    batch.push({insert: 'MEMBER', row: {group: e.id, person, member: 'yes', added_by: me().id, added: sheetStamp()}});
   }
   return write(batch);
 }

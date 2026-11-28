@@ -1,17 +1,13 @@
 import {el} from '/elements.js';
 import {api} from '/api.js';
 import {chrome} from '/chrome.js';
+import {sheetStamp} from '/stamp.js';
 
 chrome('queues');
 
 const body = document.querySelector('#queues tbody');
 const summary = document.getElementById('summary');
 const reload = document.getElementById('reload');
-
-function stamp(d) {
-  const two = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
-}
 
 function row(q, part) {
   const tr = el('tr', [part ? 'part' : 'queue', q.pending > 0 ? 'busy' : 'idle'].join(' '));
@@ -41,8 +37,8 @@ async function show() {
   try {
     const report = await api('GET', '/api/queues');
     body.replaceChildren(...report.queues.flatMap(q => [row(q, false), ...(q.parts ?? []).map(p => row(p, true))]));
-    const refreshed = report.lastRefresh && !report.lastRefresh.startsWith('0001') ? stamp(new Date(report.lastRefresh)) : 'none since this server started';
-    summary.textContent = `as of ${stamp(new Date())} · last refresh ${refreshed}`;
+    const refreshed = report.lastRefresh && !report.lastRefresh.startsWith('0001') ? sheetStamp(new Date(report.lastRefresh)) : 'none since this server started';
+    summary.textContent = `as of ${sheetStamp(new Date())} · last refresh ${refreshed}`;
   } catch (err) {
     summary.replaceChildren(el('span', 'error', err.message));
   } finally {

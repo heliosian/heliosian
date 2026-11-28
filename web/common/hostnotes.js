@@ -1,12 +1,7 @@
 import {el, button, toast} from '/elements.js';
 import {queries, rowsOf, write} from '/rail.js';
 import {host} from '/guesthost.js';
-
-function stamp() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
+import {sheetStamp} from '/stamp.js';
 
 function when(added) {
   const d = new Date((added || '').replace(' ', 'T'));
@@ -25,7 +20,7 @@ async function loadNotes(eventId) {
 }
 
 function send(row) {
-  return write([{insert: 'COMMENT', row: {...row, person: host.me().id, added: stamp()}}]);
+  return write([{insert: 'COMMENT', row: {...row, person: host.me().id, added: sheetStamp()}}]);
 }
 
 function noteLine(n, mine, onRemove) {

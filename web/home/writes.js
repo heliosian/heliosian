@@ -1,4 +1,5 @@
 import {api} from '/api.js';
+import {sheetStamp} from '/stamp.js';
 import {setPicture} from '/images.js';
 import {keyBetween, movedKey} from '/order.js';
 import {ruleRow, ruleSaysSomething} from '/listrules.js';
@@ -255,9 +256,7 @@ export function markToDo(todo, next) {
   if (!next) {
     return write(todo.mark ? [{delete: todo.mark.id}] : []);
   }
-  const now = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  const changed = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const changed = sheetStamp();
   if (todo.mark) {
     return write([{set: todo.mark.id, cells: {state: next, changed}}]);
   }

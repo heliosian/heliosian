@@ -3,6 +3,7 @@ import {el} from '/elements.js';
 import {adminPage as buildAdminPage, adminsCard, groupMembers} from '/admin.js';
 import {queries} from '/rail.js';
 import {api} from '/api.js';
+import {sheetStamp} from '/stamp.js';
 import {render} from '/router.js';
 
 const feedback = {rows: [], people: {}, apps: {}, filter: 'new', open: new URLSearchParams(location.search).get('report') || ''};
@@ -141,9 +142,7 @@ async function fillReport(card, id, redraw) {
   const dismissButton = el('button', 'link-button danger', 'Dismiss');
   dismissButton.type = 'button';
   dismissButton.addEventListener('click', () => run('Dismissing…', () => {
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const handled = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const handled = sheetStamp();
     return api('POST', '/api/q', {batch: [{set: report.id, cells: {status: 'dismissed', handled, handled_by: state.model.user.id}}]});
   }));
   const actions = el('div', 'report-actions');

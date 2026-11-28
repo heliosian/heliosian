@@ -1,4 +1,5 @@
-import {state, me, team, isAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year, nowMoment, levelValues} from './state.js';
+import {state, me, team, isAdmin, settings, charity, charityNamed, charityName, issueDates, newsletterOn, longDate, dateCell, parseDate, year, levelValues} from './state.js';
+import {sheetStamp} from '/stamp.js';
 import {el, button, toast} from '/elements.js';
 import {appOrigin} from '/origins.js';
 import {api} from '/api.js';
@@ -28,7 +29,7 @@ function yearEdit(sv, cells) {
 }
 
 function assignTo(sv, person) {
-  return write([yearEdit(sv, {assigned_to: person, assigned: nowMoment()})]);
+  return write([yearEdit(sv, {assigned_to: person, assigned: sheetStamp()})]);
 }
 
 function unassignWrite(sv) {
@@ -55,12 +56,12 @@ export function openAssign(sv) {
 }
 
 export function markContacted(sv, contacted) {
-  const cells = contacted ? {contacted: nowMoment(), contacted_by: me().id} : {contacted: '', contacted_by: ''};
+  const cells = contacted ? {contacted: sheetStamp(), contacted_by: me().id} : {contacted: '', contacted_by: ''};
   return run(() => write([yearEdit(sv, cells)]), contacted ? 'Marked as contacted' : 'Outreach reopened');
 }
 
 function usedCells(used) {
-  return used ? {published: nowMoment(), published_by: me().id} : {published: '', published_by: ''};
+  return used ? {published: sheetStamp(), published_by: me().id} : {published: '', published_by: ''};
 }
 
 export function markAllUsed(list) {
@@ -72,7 +73,7 @@ export function markUsed(sv, used) {
 }
 
 function donate(sv, chosen, note) {
-  return write([yearEdit(sv, {charity: chosen, note, recorded: nowMoment(), recorded_by: me().id})]);
+  return write([yearEdit(sv, {charity: chosen, note, recorded: sheetStamp(), recorded_by: me().id})]);
 }
 
 export function useDefault(sv) {
@@ -279,7 +280,7 @@ export function openCharity(c, options) {
         cells.not_allowed_reason = allowed.input.checked ? '' : why.value.trim();
       }
       if (!c) {
-        await write([{insert: 'CHARITY', row: {allowed: true, ...cells, added: nowMoment()}}]);
+        await write([{insert: 'CHARITY', row: {allowed: true, ...cells, added: sheetStamp()}}]);
       } else {
         await write([{set: c.id, cells}]);
       }

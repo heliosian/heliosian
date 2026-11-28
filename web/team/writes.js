@@ -1,12 +1,9 @@
-import {state, me, activity, category, descendants, yearGroup, addingValue, formatWhen} from './state.js';
+import {state, me, activity, category, descendants, yearGroup, addingValue} from './state.js';
 import {write} from '/rail.js';
+import {sheetStamp} from '/stamp.js';
 import {known} from '/directory.js';
 import {keyBetween} from '/order.js';
 import {picked, postFlyer, setPicture} from '/images.js';
-
-function now() {
-  return formatWhen(new Date(), true);
-}
 
 function joinOf(direct, complete) {
   if (complete) {
@@ -145,11 +142,11 @@ export async function saveActivity(fields) {
   const cells = activityCells({...fields, directSignUp: 'Yes', volunteersHidden: 'No', allowAdding: fields.allowAdding || 'No'}, null, edits);
   edits.push({insert: 'GROUP', as: 'made', row: {
     ...cells, kind: 'activity', status: live ? 'open' : 'pending',
-    visible_to: state.model.everyone, members_visible_to: state.model.everyone, added_by: me().id, added: now().slice(0, 10),
+    visible_to: state.model.everyone, members_visible_to: state.model.everyone, added_by: me().id, added: sheetStamp().slice(0, 10),
   }});
   const made = edits.length - 1;
   if (fields.signUp && fields.signUp !== 'none') {
-    edits.push({insert: 'MEMBER', row: {group: '@made', person: me().id, member: 'yes', added_by: me().id, added: now()}});
+    edits.push({insert: 'MEMBER', row: {group: '@made', person: me().id, member: 'yes', added_by: me().id, added: sheetStamp()}});
   }
   const ids = await write(edits);
   if (fields.flyer && picked(fields.flyer)) {
@@ -188,7 +185,7 @@ function unchairEdits(node, person) {
 
 function leadEdits(node, person) {
   if (node.row.leads) {
-    return [{insert: 'MEMBER', row: {group: node.row.leads, person, member: 'yes', added_by: me().id, added: now()}}];
+    return [{insert: 'MEMBER', row: {group: node.row.leads, person, member: 'yes', added_by: me().id, added: sheetStamp()}}];
   }
   return [
     {insert: 'GROUP', as: 'leads', row: {
@@ -196,7 +193,7 @@ function leadEdits(node, person) {
       members_visible_to: node.row.visible_to || '', posting: 'none', replying: 'none', added_by: me().id,
     }},
     {set: node.id, cells: {leads: '@leads'}},
-    {insert: 'MEMBER', row: {group: '@leads', person, member: 'yes', added_by: me().id, added: now()}},
+    {insert: 'MEMBER', row: {group: '@leads', person, member: 'yes', added_by: me().id, added: sheetStamp()}},
   ];
 }
 
@@ -209,7 +206,7 @@ export async function signUp(node, {email, position, note, from}) {
   if (existing) {
     edits.push({set: existing.id, cells: {note}});
   } else {
-    edits.push({insert: 'MEMBER', row: {group: node.id, person, member: 'yes', note, added_by: me().id, added: now()}});
+    edits.push({insert: 'MEMBER', row: {group: node.id, person, member: 'yes', note, added_by: me().id, added: sheetStamp()}});
   }
   const led = existing ? existing.lead : '';
   if (lead && !led && node.canEdit) {
@@ -224,7 +221,7 @@ export async function signUp(node, {email, position, note, from}) {
   }
   const offer = existing ? existing.offer : '';
   if (offering && !offer && node.offersOpen) {
-    edits.push({insert: 'MEMBER', row: {group: node.row.chair_offers, person, member: 'yes', added_by: me().id, added: now()}});
+    edits.push({insert: 'MEMBER', row: {group: node.row.chair_offers, person, member: 'yes', added_by: me().id, added: sheetStamp()}});
   } else if (!offering && offer) {
     edits.push({delete: offer});
   }

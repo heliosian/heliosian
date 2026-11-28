@@ -1,6 +1,7 @@
 import {queries, rowsOf, write} from '/rail.js';
 import {host} from '/guesthost.js';
 import {replyKey} from '/questionfields.js';
+import {sheetStamp} from '/stamp.js';
 
 function questionOf(q) {
   return {
@@ -37,22 +38,16 @@ export async function loadQuestions(eventId, people) {
   return {...questionParts(a), household: people.map(p => ({...p, kid: kids.has(p.id)}))};
 }
 
-function stamp() {
-  const d = new Date();
-  const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 async function saveReply(question, target, value, existing) {
   if (existing && !value) {
     await write([{delete: existing.id}]);
     return;
   }
   if (existing) {
-    await write([{set: existing.id, cells: {value, added: stamp(), added_by: host.me().id}}]);
+    await write([{set: existing.id, cells: {value, added: sheetStamp(), added_by: host.me().id}}]);
     return;
   }
   if (value) {
-    await write([{insert: 'ANSWER', row: {question: question.id, ...target, value, added: stamp(), added_by: host.me().id}}]);
+    await write([{insert: 'ANSWER', row: {question: question.id, ...target, value, added: sheetStamp(), added_by: host.me().id}}]);
   }
 }
