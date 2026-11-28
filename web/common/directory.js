@@ -7,7 +7,7 @@ async function load() {
   const {people, emails, photos, members, roles, groups} = await queries({
     people: '(from PERSON (where (in id (members (slug "everyone"))) (not hidden)) (order name_sort asc) (columns name_show grade classroom department job_title pronouns phone who_href))',
     emails: '(from PERSON_EMAIL (where primary) (columns person address))',
-    photos: '(from PHOTO (where ready) (order order asc) (columns person group))',
+    photos: '(from PHOTO (where ready (or (not (blank person)) (in group (select GROUP.id (= kind "family"))))) (order order asc) (columns person group))',
     members: '(from MEMBER (where (= member "yes") (in group (select GROUP.id (= kind "family")))) (columns person group))',
     roles: '(from EFFECTIVE_MEMBER (where (in group (slug "students" "parents" "staff"))) (include group) (columns person group))',
     groups: '(from GROUP (where (in kind "grade" "classroom" "department")) (columns kind name slug))',

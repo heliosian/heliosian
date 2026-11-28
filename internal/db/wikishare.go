@@ -1,6 +1,7 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
@@ -42,8 +43,8 @@ type WikiShare struct {
 }
 
 type wikiShared struct {
-	id, path, name, top, sentence, outlineIntro string
-	outline                                     []string
+	id, path, name, top, sentence, outlineIntro, markdown string
+	outline                                               []string
 }
 
 func NewWikiShare(s *Store, pics *Pictures, name func() string) *WikiShare {
@@ -59,16 +60,17 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 	if !ok {
 		return ""
 	}
-	key := strings.TrimSuffix(rest, "/edit")
-	if w.s.Model().wikiPageAt(rest) != "" {
-		key = rest
+	m := w.s.Model()
+	id := m.wikiPageAt(rest)
+	if key, editing := strings.CutSuffix(rest, "/edit"); id == "" && editing {
+		id = m.wikiPageAt(key)
 	}
-	page, found, err := w.page(r.Context(), key)
-	if err != nil {
-		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "page", key, "error", err)
+	if id == "" {
 		return ""
 	}
-	if !found {
+	page, err := w.page(r.Context(), m, id)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "read a wiki page for its preview", "page", id, "error", err)
 		return ""
 	}
 	desc := page.sentence
@@ -80,26 +82,41 @@ func (w *WikiShare) PreviewHead(r *http.Request) string {
 }
 
 func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
-	id, ok := strings.CutSuffix(r.PathValue("id"), ".png")
+	key, ok := strings.CutSuffix(r.PathValue("id"), ".png")
 	if !ok {
 		http.NotFound(rw, r)
 		return
 	}
-	page, found, err := w.page(r.Context(), id)
-	if err != nil {
-		serve.Error(rw, r, err)
-		return
-	}
-	if !found {
+	m := w.s.Model()
+	id := m.wikiPageAt(key)
+	if id == "" {
 		http.NotFound(rw, r)
 		return
 	}
-	header, picture, err := w.header(r.Context(), page.id)
+	page, err := w.page(r.Context(), m, id)
 	if err != nil {
 		serve.Error(rw, r, err)
 		return
 	}
-	card := sharecard.Card{Section: page.top, Title: page.name, Subtitle: page.sentence, Picture: picture}
+	content, file, err := w.header(r.Context(), m, page)
+	if err != nil {
+		serve.Error(rw, r, err)
+		return
+	}
+	parts := slices.Concat([]string{page.top, page.name, page.sentence, cmp.Or(content, file)}, page.outline)
+	if w.style.Answered(rw, r, parts...) {
+		return
+	}
+	card := sharecard.Card{Section: page.top, Title: page.name, Subtitle: page.sentence}
+	if content != "" {
+		card.Picture, _, err = m.contentBytes(r.Context(), w.pics.bucket, content)
+	} else {
+		card.Picture, err = os.ReadFile(file)
+	}
+	if err != nil {
+		serve.Error(rw, r, err)
+		return
+	}
 	shown := page.outline
 	if len(shown) > wikiShareSubPages {
 		shown = append(shown[:wikiShareSubPages-1:wikiShareSubPages-1], fmt.Sprintf("and %d more", len(page.outline)-wikiShareSubPages+1))
@@ -107,35 +124,34 @@ func (w *WikiShare) serveCard(rw http.ResponseWriter, r *http.Request) {
 	for _, name := range shown {
 		card.Lines = append(card.Lines, sharecard.Line{Icon: "dot", Text: name})
 	}
-	w.style.Serve(rw, r, card, slices.Concat([]string{page.top, page.name, page.sentence, header}, page.outline)...)
+	w.style.Serve(rw, r, card, parts...)
 }
 
-func (w *WikiShare) header(ctx context.Context, id string) (string, []byte, error) {
-	m := w.s.Model()
+func (w *WikiShare) header(ctx context.Context, m *Model, page wikiShared) (content, file string, err error) {
 	docs := m.Table("DOCUMENT")
-	top := id
-	for at := id; at != ""; {
+	top := page.id
+	markdown := page.markdown
+	for at := page.id; at != ""; {
 		row, _ := docs.Get(at)
-		markdown, err := w.markdown(ctx, row)
-		if err != nil {
-			return "", nil, err
+		if at != page.id {
+			markdown, err = w.markdown(ctx, m, row)
+			if err != nil {
+				return "", "", err
+			}
 		}
 		if photo, ok := m.Table("PHOTO").Get(headerImage(markdown)); ok && photo["image"] != "" {
-			picture, _, err := m.contentBytes(ctx, w.pics.bucket, photo["image"])
-			return photo["image"], picture, err
+			return photo["image"], "", nil
 		}
 		top, at = at, row["parent"]
 	}
-	file := wikiBackgrounds + wikiBackgroundNames[backgroundHash(top)%uint32(len(wikiBackgroundNames))] + ".jpg"
-	picture, err := os.ReadFile(file)
-	return file, picture, err
+	return "", wikiBackgrounds + wikiBackgroundNames[backgroundHash(top)%uint32(len(wikiBackgroundNames))] + ".jpg", nil
 }
 
-func (w *WikiShare) markdown(ctx context.Context, row map[string]string) (string, error) {
+func (w *WikiShare) markdown(ctx context.Context, m *Model, row map[string]string) (string, error) {
 	if row["content"] == "" {
 		return "", nil
 	}
-	raw, _, err := w.s.Model().contentBytes(ctx, w.pics.bucket, row["content"])
+	raw, _, err := m.contentBytes(ctx, w.pics.bucket, row["content"])
 	return string(raw), err
 }
 
@@ -168,13 +184,8 @@ func headerImage(markdown string) string {
 	return ""
 }
 
-func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, error) {
-	m := w.s.Model()
+func (w *WikiShare) page(ctx context.Context, m *Model, id string) (wikiShared, error) {
 	docs := m.Table("DOCUMENT")
-	id := m.wikiPageAt(key)
-	if id == "" {
-		return wikiShared{}, false, nil
-	}
 	row, _ := docs.Get(id)
 	page := wikiShared{id: id, path: m.WikiPath(row), name: row["name"], outlineIntro: "In this section", outline: []string{}}
 	for at := row["parent"]; at != ""; {
@@ -184,10 +195,11 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 	for _, child := range m.wikiChildren(id) {
 		page.outline = append(page.outline, child["name"])
 	}
-	markdown, err := w.markdown(ctx, row)
+	markdown, err := w.markdown(ctx, m, row)
 	if err != nil {
-		return wikiShared{}, false, err
+		return wikiShared{}, err
 	}
+	page.markdown = markdown
 	page.sentence = firstSentence(markdown)
 	if len(page.outline) == 0 {
 		page.outlineIntro, page.outline = "On this page", pageOutline(markdown)
@@ -195,7 +207,7 @@ func (w *WikiShare) page(ctx context.Context, key string) (wikiShared, bool, err
 	if len(page.outline) > 0 && strings.HasPrefix(page.outline[0], page.sentence) {
 		page.sentence = ""
 	}
-	return page, true, nil
+	return page, nil
 }
 
 func withoutFrontMatter(markdown string) string {

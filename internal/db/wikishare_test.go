@@ -1,6 +1,7 @@
 package db
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"strconv"
@@ -52,7 +53,7 @@ func TestWikiShare(t *testing.T) {
 
 func TestWikiShareHeader(t *testing.T) {
 	s := sample(t)
-	pics := newPictures(s)
+	pics := NewPictures(s, blob.NewMemoryBucket())
 	ctx := context.Background()
 	save := func(page wikiPage) string {
 		t.Helper()
@@ -78,16 +79,24 @@ func TestWikiShareHeader(t *testing.T) {
 	plain := save(wikiPage{Name: "Plain", Body: "No picture."})
 	t.Chdir("../..")
 	share := NewWikiShare(s, pics, func() string { return "Helios Wiki" })
+	m := s.Model()
 	for id, want := range map[string]string{top: shown, sub: shown, plain: wikiBackgrounds + wikiBackgroundNames[backgroundHash(plain)%uint32(len(wikiBackgroundNames))] + ".jpg"} {
-		got, picture, err := share.header(ctx, id)
-		if err != nil || got != want || len(picture) == 0 {
-			t.Errorf("%s wears %q (%d bytes, %v), want %q", id, got, len(picture), err, want)
+		page, err := share.page(ctx, m, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, file, err := share.header(ctx, m, page)
+		if got := cmp.Or(content, file); err != nil || got != want {
+			t.Errorf("%s wears %q (%v), want %q", id, got, err, want)
 		}
 	}
-	if page, _, _ := share.page(ctx, sub); page.top != "Field Trips" {
+	mux := http.NewServeMux()
+	share.Register(mux)
+	testkit.Cards(t, mux, []string{"/open/share/" + top + ".png", "/open/share/" + sub + ".png", "/open/share/" + plain + ".png"})
+	if page, _ := share.page(ctx, m, sub); page.top != "Field Trips" {
 		t.Errorf("the sub-page's top page reads %q", page.top)
 	}
-	if page, _, _ := share.page(ctx, top); page.top != "" {
+	if page, _ := share.page(ctx, m, top); page.top != "" {
 		t.Errorf("a top page names a page above it: %q", page.top)
 	}
 }

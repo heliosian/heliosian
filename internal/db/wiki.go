@@ -307,7 +307,7 @@ func (m *Model) wikiChildren(parent string) []store.Row {
 	docs := m.Table("DOCUMENT")
 	rows := docs.Referencing("parent", parent)
 	if parent == "" {
-		rows = docs.All()
+		rows = docs.Referencing("kind", "wiki")
 	}
 	children := []store.Row{}
 	for _, row := range rows {
@@ -374,11 +374,10 @@ func (m *Model) wikiPageAt(key string) string {
 
 func (m *Model) lastWikiOrder(parent string) string {
 	keys := []string{}
-	for _, row := range m.Table("DOCUMENT").All() {
-		if row["kind"] == "wiki" && row["parent"] == parent && row["order"] != "" {
+	for _, row := range m.wikiChildren(parent) {
+		if row["order"] != "" {
 			keys = append(keys, row["order"])
 		}
 	}
-	slices.SortFunc(keys, store.CompareKeys)
 	return store.Order(append(keys, ""))[len(keys)]
 }
