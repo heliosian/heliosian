@@ -5,7 +5,8 @@ import {openThemeManager} from './thememanager.js';
 import {load, navigate} from '/router.js';
 import {openPageEditor} from './pageeditor.js';
 import {parseWhen, googleCalendarLink} from '/datecard.js';
-import {andList, whereWords} from '/envelope.js';
+import {andList} from '/andlist.js';
+import {whereWords} from '/envelope.js';
 import {inviteHead, madeWith} from '/sidebar.js';
 
 function navLink(href, label, icon, active) {

@@ -1,4 +1,5 @@
 import {el} from '/elements.js';
+import {andList} from '/andlist.js';
 import {themed, wrapped, wordless, sealMark, kickerWords} from '/themes.js';
 function shell(look, className) {
   const env = wrapped(el('div', `envelope ${className || ''}`), look);
@@ -100,11 +101,4 @@ export function whereWords(w) {
 
 export function mapQuery(w) {
   return w.location || w.place;
-}
-
-export function andList(names) {
-  if (names.length < 3) {
-    return names.join(' and ');
-  }
-  return names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
 }

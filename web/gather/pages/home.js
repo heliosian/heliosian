@@ -1,7 +1,8 @@
 import {el, link, button} from '/elements.js';
 import {pageHead, setTitle, setSearch} from '/shell.js';
 import {state, dayWords, hourWords} from '../state.js';
-import {miniEnvelope, andList} from '/envelope.js';
+import {andList} from '/andlist.js';
+import {miniEnvelope} from '/envelope.js';
 import {openEditor} from '../editor.js';
 
 function wordsOf(inv) {

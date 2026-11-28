@@ -24,7 +24,7 @@ Gather's admins manage every theme, the site's own and every host's private ones
 
 ## The theme kit
 
-`GET /open/theme-kit.zip` (`themeKit` in `internal/db/themekit.go`) builds the kit a theme is made from, which the upload popup links to: the README, the standard, a starter in `my-theme/`, every site theme but `plain` in `examples/` with its pictures, and `preview.html`. The preview works opened from disk: the kit inlines `envelope.css`, the standard, the check's lists, and `elements.js`, `themes.js` and `envelope.js` bundled into one script (`bundledModules`, which takes only `import {…} from '…';` lines), so it draws the envelope and card with Gather's own code. Its check is the upload's, written again in JavaScript in `web/gather/themekit/preview.html`; the Go check decides.
+`GET /open/theme-kit.zip` (`themeKit` in `internal/db/themekit.go`) builds the kit a theme is made from, which the upload popup links to: the README, the standard, a starter in `my-theme/`, every site theme but `plain` in `examples/` with its pictures, and `preview.html`. The preview works opened from disk: the kit inlines `envelope.css`, the standard, the check's lists, and `elements.js`, `andlist.js`, `themes.js` and `envelope.js` bundled into one script (`bundledModules`, which takes only `import {…} from '…';` lines), so it draws the envelope and card with Gather's own code. Its check is the upload's, written again in JavaScript in `web/gather/themekit/preview.html`; the Go check decides.
 
 ## Sample themes
 

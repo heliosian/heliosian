@@ -8,7 +8,8 @@ import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture
 import {offerUpdate, hostsRow, menuButton} from '/invites.js';
 import {fetchInvites as fetchGuestList, cancelEvent} from '/guestlist.js';
 import {deleteInvitation} from '/guestpopups.js';
-import {miniEnvelope, sealedEnvelope, inviteCard, andList, whereWords} from '/envelope.js';
+import {andList} from '/andlist.js';
+import {miniEnvelope, sealedEnvelope, inviteCard, whereWords} from '/envelope.js';
 
 function sidePages(panels) {
   const wrap = el('div', 'editor-pages');

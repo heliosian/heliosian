@@ -18,6 +18,7 @@ const themeKitDir = "web/gather/themekit/"
 var (
 	kitModules = []struct{ file, name string }{
 		{"web/public/common/elements.js", "/elements.js"},
+		{"web/public/common/andlist.js", "/andlist.js"},
 		{"web/public/gather/themes.js", "/themes.js"},
 		{"web/public/gather/envelope.js", "/envelope.js"},
 	}

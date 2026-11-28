@@ -1,7 +1,8 @@
 import {el, svg} from '/elements.js';
 import {loadThemes, themed, sidebarIn} from '/themes.js';
 import {inviteHead, madeWith} from '/sidebar.js';
-import {sealedEnvelope, inviteCard, andList} from '/envelope.js';
+import {andList} from '/andlist.js';
+import {sealedEnvelope, inviteCard} from '/envelope.js';
 import {replyKey, personBlock, familyBlock, missingNote} from '/questionfields.js';
 import {openSheet, fillDeck} from '/sheets.js';
 const token = location.pathname.split('/').filter(Boolean).pop();
