@@ -41,12 +41,16 @@ export async function uploadTheme(files) {
   }
   const {result} = await api('POST', '/api/do/theme', form);
   await refreshThemes([result[0]]);
+  if (!state.model.usable.includes(result[0])) {
+    state.model.usable.push(result[0]);
+  }
   return result[0];
 }
 
 export async function removeTheme(id) {
   await write([{delete: id}]);
   forgetThemes([id]);
+  state.model.usable = state.model.usable.filter(x => x !== id);
 }
 
 const gatherHosts ='(select GROUP.managed_by (= kind "event") (not (blank theme)))';
@@ -85,7 +89,7 @@ export async function loadModel() {
   const people = rowsOf(a.hostPeople, 'PERSON');
   const rows = rowsOf(a.hostRows, 'EFFECTIVE_MEMBER');
   const pageRows = rowsOf(a.pageWords, 'INVITE_PAGE');
-  await loadThemes([...rowsOf(a.usable, 'THEME').map(t => t.id), ...[...hosting, ...invited].flatMap(lookThemes)]);
+  await loadThemes([...hosting, ...invited].flatMap(lookThemes));
   for (const inv of [...hosting, ...invited]) {
     const ids = new Set(rows.filter(r => r.group === inv.managers).map(r => r.person));
     inv.hostNames = people.filter(p => ids.has(p.id)).map(p => p.name_show);
@@ -94,7 +98,8 @@ export async function loadModel() {
   }
   state.model = {
     user: {id: person.id, name, email: email ? email.address : '', initial: (name || '?')[0].toUpperCase(), photoUrl: photo ? `/api/blob/${photo.id}/thumbnail` : ''},
-    hosting, invited, misc: (rowsOf(a.misc, 'GROUP')[0] || {}).id || '', gatherAdmin: rowsOf(a.gatherAdmin, 'APP').length > 0,
+    hosting, invited, usable: rowsOf(a.usable, 'THEME').map(t => t.id),
+    misc: (rowsOf(a.misc, 'GROUP')[0] || {}).id || '', gatherAdmin: rowsOf(a.gatherAdmin, 'APP').length > 0,
     everyone: (rowsOf(a.everyone, 'GROUP')[0] || {}).id || '',
     classrooms: rowsOf(a.classrooms, 'GROUP').map(c => ({id: c.id, name: c.name, color: c.color || '', gradeband: (rowsOf(a.gradebands, 'GROUP').find(b => b.id === c.parent) || {}).name || ''})),
   };

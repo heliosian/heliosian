@@ -2,7 +2,7 @@ import {el, button, svg, toast} from '/elements.js';
 import {openModal, closeLayers} from '/modal.js';
 import {field, text, textarea, whenPickers} from '/form.js';
 import {navigate} from '/router.js';
-import {themes, lookTheme, themed, wrapped, sealMark, fontChoices, kickerWords} from '/themes.js';
+import {themes, lookTheme, themed, wrapped, sealMark, fontChoices, kickerWords, loadThemes} from '/themes.js';
 import {writeWithAI, writeGuestWords} from '/aiwrite.js';
 import {createInvite, editInvite, asEvent, dayWords, hourWords, setDesignPicture, clearDesignPicture, uploadTheme, removeTheme, me, state} from './state.js';
 import {offerUpdate, hostsRow, menuButton} from '/invites.js';
@@ -69,7 +69,25 @@ function plainTheme() {
 }
 
 function usableThemes() {
-  return themes().filter(t => !t.addedBy || t.addedBy === me().id);
+  const have = new Map();
+  for (const t of themes()) {
+    if (!t.addedBy || t.addedBy === me().id) {
+      have.set(t.id, t);
+    }
+  }
+  const out = [];
+  for (const id of state.model.usable) {
+    const t = have.get(id);
+    if (!t) {
+      continue;
+    }
+    out.push(t);
+    have.delete(id);
+  }
+  for (const t of have.values()) {
+    out.push(t);
+  }
+  return out;
 }
 
 function isPlain(id) {
@@ -635,7 +653,36 @@ function endControls(inv) {
   return wrap;
 }
 
-export function openEditor(inv) {
+let openSeq = 0;
+let catalogLoad = null;
+
+function loadCatalog() {
+  if (!catalogLoad) {
+    // This page's catalog. A theme deleted in another session stays until reload.
+    catalogLoad = loadThemes(state.model.usable).finally(() => {
+      catalogLoad = null;
+    });
+  }
+  return catalogLoad;
+}
+
+export function discardEditorOpen() {
+  openSeq++;
+}
+
+export async function openEditor(inv) {
+  const seq = ++openSeq;
+  try {
+    await loadCatalog();
+  } catch (err) {
+    if (seq === openSeq) {
+      toast(err.message);
+    }
+    return;
+  }
+  if (seq !== openSeq) {
+    return;
+  }
   if (!inv && !defaultTheme()) {
     toast('Gather has no themes yet, so there is nothing to draw an invitation in. A Gather admin needs to add one.');
     return;

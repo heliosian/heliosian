@@ -8,6 +8,7 @@ import {invitePage} from './pages/invite.js';
 import {setGuestHost} from '/guesthost.js';
 import {imageTools} from '/images.js';
 import {sidebarIn} from '/themes.js';
+import {discardEditorOpen} from './editor.js';
 
 const dayFormat = new Intl.DateTimeFormat('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
 
@@ -38,9 +39,12 @@ startApp({
     g: parts => (parts[1] ? invitePage(parts[1], parts[2] || '', parts[3] || '') : notFound('That invitation')),
   },
   missing: 'is not on Helios Gather.',
-  prepare: () => {
+  prepare: entered => {
     sidebarIn(null);
     clearSearch();
+    if (entered) {
+      discardEditorOpen();
+    }
   },
   show: showPage,
 });
