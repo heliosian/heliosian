@@ -41,7 +41,7 @@ While the search box holds words the widgets step aside and every section is dra
 
 A card opens its link. The foot of the page is the leaves along the bottom edge. On phones the sidebar becomes a drawer behind the toolbar's hamburger - the same column, campsite and all, slid in from the left and closed by a section link, the backdrop or Escape - and the grids go to one column.
 
-The art lives in `web/home/brand/`: `hero-art.png` and `hero-art-dark.png` (the landscape strip for each mode, cut from `asset-sources/decorative/heliosian_top` both cropped to one box around the painting so the two modes lay out alike, drawn at the right of the hero across most of its width under 70px of the hero's own sky, its left edge faded into that sky by a mask on `.hero-art`, the welcome laid over the sky), `footer-leaves.png` (the wave and leaves), and `sidebar-camp.png` (the campsite, transparent).
+The art lives in `web/home/brand/`: `hero-art.png` and `hero-art-dark.png` (the landscape strip for each mode, cut from `asset-sources/decorative/heliosian_top` both cropped to one box around the painting so the two modes lay out alike, drawn at the right of the hero across most of its width under 70px of the hero's own sky, its left edge faded into that sky by a mask on `.hero-art`, the welcome laid over the sky), `foot-scene.png` (the lakeside scene along the page's foot), and `sidebar-camp.png` and `sidebar-camp-dark.png` (the campsite, transparent, by day and in dark mode).
 
 ## Editing
 

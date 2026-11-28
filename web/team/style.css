@@ -1191,10 +1191,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .resources-main .side-link:hover { background: var(--hollow, #fbfdfd); }
 
-/* The event's own sign-up box: who is on it, Join top right, and the two
-   switches while editing. */
-/* The volunteers section sits on the page like Opportunities & Needs does: a
-   swooshed heading with the actions beside it, no box. */
 /* My Family's Roles: the household's sign-ups as a list card, a face and
    name over what they are on, Edit at the right. */
 .fam-box { margin: 18px 0 8px; }
@@ -1364,7 +1360,6 @@ a.card-chip.is-link:hover { filter: brightness(0.92); text-decoration: underline
 
 .vol-spots small { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
 
-/* The directory picker inside the sign-up modal. */
 /* A segmented switch: every choice visible, the chosen one filled. */
 .segmented {
   display: inline-flex;

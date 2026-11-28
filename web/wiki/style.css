@@ -226,7 +226,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .wiki-parent { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--field); color: var(--ink); font: inherit; font-weight: 400; }
 
-/* The editor: the title, the text, and Save. */
 /* The editor, laid out as the page is: what goes in the page on the left, its side cards on the right. */
 .wiki-editor { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 28px; align-items: start; }
 

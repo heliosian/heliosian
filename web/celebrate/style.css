@@ -162,9 +162,7 @@ button { font: inherit; }
 
 .content-col { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 
-/* The page scrolls inside main, and the leaves in main's bottom-right corner
-   stay put behind it (a background on a scrolling box is pinned to the box,
-   not its content); the page's bottom padding keeps the last row clear. */
+/* The page scrolls inside main; the page's bottom padding keeps the last row clear. */
 main {
   flex: 1;
   min-height: 0;
@@ -818,7 +816,6 @@ main {
 
 .buy-note { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
 
-/* A person's window, as HCA-Team opens one from a volunteer's face. */
 /* The Ticket tab of a host's window. */
 .ticket-facts { display: flex; flex-direction: column; gap: 4px; font-size: 14px; margin-bottom: 6px; }
 
@@ -968,7 +965,6 @@ body.is-admin main { background-image: none; }
 
 
 @media (max-width: 900px) {
-  /* The tab bar covers main's bottom edge on a phone, so the leaves go. */
   main { background-image: none; }
   .tabbar .nav-count { display: none; }
   .page-title { font-size: 28px; }

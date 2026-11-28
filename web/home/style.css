@@ -350,10 +350,6 @@ html[data-theme="quan"] .sidebar { background-image: url('/brand/sidebar-camp.pn
 
 .rail-rsvp .button:not(.button-secondary):hover { background: var(--wash, #eef6f5); }
 
-/* The bird on its branch perches at the rail's foot, off the left edge a
-   little, outside the rail's own padding. */
-
-
 /* Top bar - the shared one (toolbar.css). The page scrolls as a whole here,
    unlike the apps whose main scrolls inside a fixed shell, so the bar sticks
    to keep search and the account in reach the way they are there. */
@@ -797,7 +793,6 @@ main {
 
 .wg-party-pic.is-mark img { object-fit: contain; padding: 10px; }
 
-/* The foot's way across sits at its left, without a rule. */
 /* Every widget ends the same way, its foot at the card's bottom so the
    feet of a row line up: one quiet line under a hairline - Show N more
    and Show less as plain words with their chevrons at the left, See all
@@ -897,8 +892,6 @@ main {
 
 .category.is-compact .category-head { margin-bottom: 12px; }
 
-/* The saved calendar Upcoming Events is read under: a quiet dropdown
-   beside the heading, and Make default beside that for one that is not. */
 /* The saved calendar Upcoming Events is read under: a quiet dropdown
    beside the heading, and Make default beside that for one that is not. */
 .category-calendar { position: relative; display: inline-flex; align-items: center; gap: 10px; margin: 0 0 10px 4px; }
@@ -1192,7 +1185,6 @@ a.event-people:hover .event-person { text-decoration: underline; }
 /* Tiles - the "tiles" style: a picture beside the initial, the title and a
    line about it. */
 
-/* Tiles run along a line and wrap, each as wide as its words. */
 /* The tiles in equal columns, as many as fit at 300px and up, so a long
    description no longer sets its own tile's width and the rows line up;
    the description is cut with an ellipsis at the column's edge. */
@@ -1775,7 +1767,7 @@ a.event-people:hover .event-person { text-decoration: underline; }
 
   /* The shared toolbar is pinned on top (toolbar.css) and the page starts
      under it. The rail becomes a drawer behind the toolbar's hamburger: the
-     same column - lockup, section links, bird - slid in from the left
+     same column - lockup, section links, campsite - slid in from the left
      over a backdrop. */
   .topbar { position: fixed; }
   .shell { padding-top: calc(48px + var(--safe-top)); }

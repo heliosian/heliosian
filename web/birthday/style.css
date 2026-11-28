@@ -29,8 +29,8 @@ button { font: inherit; }
    its own, so the toolbar stays put while the page moves. */
 .app-shell { display: flex; flex: 1; min-height: 0; }
 
-/* The rail: the pale teal wash Celebrate's has. It is the viewport's height
-   and never scrolls; the nav scrolls inside it on a short screen. */
+/* The rail is the viewport's height and never scrolls; the nav scrolls
+   inside it on a short screen. */
 .sidebar {
   width: 280px;
   flex-shrink: 0;

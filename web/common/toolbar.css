@@ -1,10 +1,9 @@
 /* The top toolbar every Heliosian app shares: one height, a pale wash of the brand teal, the
    app's own search on the left, and at the right the signed-in person's hero
-   photo and the switch to the other apps. Each app's style.css supplies the
-   palette (--brand, --line, --ink, --muted, --input) and whatever it hangs off
-   the bar (Who's alert badges, the user menus); this file supplies the
-   geometry and the treatment, so every app's bar reads as one product. Linked
-   ahead of style.css so an app can still override a rule on purpose. */
+   photo and the switch to the other apps. The colors come from the shared
+   palette (palette.css); this file supplies the geometry and the treatment,
+   so every app's bar reads as one product. Linked ahead of style.css so an
+   app can still override a rule on purpose. */
 
 /* The badges, the switch's list and the key hint all set their own display,
    which would outrank the browser's [hidden] rule and keep them on screen no
@@ -176,10 +175,6 @@
   stroke-linejoin: round;
 }
 
-/* Each badge sits in a wrap the card it drops down hangs off: the count's
-   card is Who?'s new-year checklist there and a line across to it elsewhere,
-   the triangle's says what the mismatch is. Both open on hover (alertMenu
-   in alerts.js) as a pale yellow card with a gold bar. */
 /* The badges - RSVP's calendar, the approvals' hourglass, the late birthdays' cake, the directory's
    bell, and the privacy triangle, which has no count - as one family: a dark teal disc with the icon in white
    and the count on a dot at its top right, ringed in the bar's own color -

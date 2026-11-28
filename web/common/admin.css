@@ -1,8 +1,7 @@
 /* Admin Tools, drawn by admin.js in every app: a teal header with the
    app's tile, "Admin", the signed-in address and a close button; a white
-   rail of grouped tabs on the left; cards on the right. Each app's own
-   stylesheet supplies --brand, --line, --ink, --muted, --input and
-   --alert; this file supplies the shapes. */
+   rail of grouped tabs on the left; cards on the right. The colors come
+   from the shared palette (palette.css); this file supplies the shapes. */
 
 .admin-denied { padding: 28px; }
 .admin, .admin * { box-sizing: border-box; }

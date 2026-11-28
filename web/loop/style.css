@@ -338,11 +338,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .alias-address { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 
-/* A rule read: a tinted band with the kind's label and mark, the sentence
-   and how many people it touches, green for an include, red for an
-   exclude. */
-/* A rule open for changes: the same tint as its band, on a border of the same. */
-/* The rule read out under its controls. */
 /* The editor's actions stay in reach wherever the page is scrolled: a bar
    stuck to the foot of the scrolling main, on a white ground under a
    hairline, running the page's width and cancelling the page's padding. */

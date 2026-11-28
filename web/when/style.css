@@ -154,9 +154,6 @@ button { font: inherit; }
 
 .nav-sub-remove:hover { color: #b3261e; }
 
-/* Add Event, under the day card. */
-
-
 /* The viewer's feeds, small under Calendar. */
 .app-nav a.nav-sub { min-height: 36px; margin-left: 22px; padding: 0 10px; gap: 8px; font-size: 14px; font-weight: 500; color: rgba(255, 255, 255, 0.75); }
 
@@ -340,11 +337,6 @@ button { font: inherit; }
 .mini-dot.dt-no-aftercare { background: var(--no-aftercare); }
 
 .mini-day.is-on .mini-dot { background: #fff; }
-
-/* The day card wears the bird on its branch at the top right, with the
-   sun behind, its words clear of the art. */
-/* The star on an event the viewer hosts, before its title in the rail's
-   RSVPs and in the lists. */
 
 .sidebar .rsvp-rail { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.14); }
 
@@ -664,8 +656,6 @@ summary.plan-fold-head { cursor: pointer; }
 
 .filter-chip:hover { border-color: var(--green-2); }
 
-/* A chip that is on is filled teal with white words; one that is off is a
-   plain white outline with muted words, so the two read apart at a glance. */
 /* A chip that is on is the buttons' green, with dark words. */
 .filter-chip.is-on { background: var(--green-2); border-color: var(--green-2); color: var(--brand-deep); font-weight: 600; }
 
