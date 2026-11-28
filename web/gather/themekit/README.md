@@ -10,15 +10,15 @@ This kit holds everything needed to make one:
 | --- | --- |
 | `README.md` | This file: the format, the rules, and a prompt for an AI. |
 | `standard.json` | Every setting a theme has, with the value it gets when the theme leaves it out. |
-| `my-theme/theme.json` | A starting point. Rename the folder and edit the file. |
+| `my-theme/theme.json` | A starting point: a bare starter, or the theme you downloaded with the kit and its pictures. Rename the folder and edit the file. |
 | `examples/` | Gather's own themes, each in its own folder with its pictures. |
 | `preview.html` | Open it in a browser and choose a theme's folder. It draws the envelope and card the way Gather does and lists anything Gather would refuse. |
 
 ## Making a theme
 
-1. Copy `my-theme` and edit its `theme.json`, or hand this whole kit to an AI with the prompt at the end of this file.
+1. Copy `my-theme` and edit its `theme.json`, or hand this whole kit to an AI with the prompt at the end of this file. To start from the theme an invitation already uses, open its editor in Gather, go to **Theme** and click **Download theme**: the kit comes with that theme and its pictures in `my-theme/`.
 2. Open `preview.html` in Chrome, Edge, Firefox or Safari, click **Choose a theme folder**, and pick the theme's folder. Fix whatever it lists, then choose the folder again to check.
-3. In Gather, open an invitation's editor, go to **Theme**, pick **Upload a theme**, and drop in the theme's folder, a zip of it, or its `theme.json` with its pictures. Gather finds the theme file and the pictures it names, and leaves out everything else.
+3. In Gather, open an invitation's editor, go to **Theme**, click **Replace theme** (or pick **Upload a theme** under **Change theme**), and drop in the theme's folder, a zip of it, or its `theme.json` with its pictures. Gather finds the theme file and the pictures it names, leaves out everything else, and draws the invitation in it.
 
 Only your own invitations can use a theme you upload. Uploading again with the same `key` replaces it, and every invitation in it changes with it.
 

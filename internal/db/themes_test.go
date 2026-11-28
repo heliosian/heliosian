@@ -580,6 +580,48 @@ func TestTheThemeKitHoldsAPreviewAndTheSitesThemes(t *testing.T) {
 	}
 }
 
+func TestADownloadedThemeIsTheKitsStartingPoint(t *testing.T) {
+	s := sample(t)
+	t.Chdir("../..")
+	bucket := blob.NewMemoryBucket()
+	if err := bucket.FillFrom("sampledata/bucket"); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	NewInvitationArt(NewPictures(s, bucket)).RegisterThemes(mux)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/open/theme-kit.zip?theme="+areaTheme, nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Disposition"), `filename="area-theme-kit.zip"`) {
+		t.Fatalf("theme download: %d %s", rec.Code, rec.Header().Get("Content-Disposition"))
+	}
+	z, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{}
+	for _, f := range z.File {
+		r, _ := f.Open()
+		files[strings.TrimPrefix(f.Name, "gather-theme-kit/")], _ = io.ReadAll(r)
+	}
+	for _, want := range []string{"README.md", "standard.json", "preview.html", "my-theme/aliens.jpg", "examples/skating/theme.json"} {
+		if _, ok := files[want]; !ok {
+			t.Errorf("the download has no %s", want)
+		}
+	}
+	d, err := storedDesign(string(files["my-theme/theme.json"]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d["key"] != "area" {
+		t.Errorf("my-theme holds %v, not the theme asked for", d["key"])
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/open/theme-kit.zip?theme=nope", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("a theme that doesn't exist downloads with %d", rec.Code)
+	}
+}
+
 func TestTheOpenThemesResolveTheirPictures(t *testing.T) {
 	s := sample(t)
 	mux := http.NewServeMux()

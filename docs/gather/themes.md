@@ -24,7 +24,7 @@ Gather's admins manage every theme, the site's own and every host's private ones
 
 ## The theme kit
 
-`GET /open/theme-kit.zip` (`themeKit` in `internal/db/themekit.go`), served on Gather's host and Celebrate's alike (`RegisterThemes`), builds the kit a theme is made from, which the upload popup links to: the README, the standard, a starter in `my-theme/`, every site theme but `plain` in `examples/` with its pictures, and `preview.html`. The preview works opened from disk: the kit inlines `envelope.css`, the standard, the check's lists, and `elements.js`, `andlist.js`, `themes.js` and `envelope.js` bundled into one script (`bundledModules`, which takes only `import {…} from '…';` lines), so it draws the envelope and card with Gather's own code. Its check is the upload's, written again in JavaScript in `web/gather/themekit/preview.html`; the Go check decides.
+`GET /open/theme-kit.zip` (`themeKit` in `internal/db/themekit.go`), served on Gather's host and Celebrate's alike (`RegisterThemes`), builds the kit a theme is made from, which the upload popup links to: the README, the standard, a starter in `my-theme/`, every site theme but `plain` in `examples/` with its pictures, and `preview.html`. With `?theme=` and a `THEME` id, `my-theme/` holds that theme as a package (its `key`, `name`, `blurb`, design and pictures) in place of the starter: the editor's Theme page links to it as Download theme for the theme the invitation is drawn in, and its Replace theme opens the upload popup, whose upload the invitation then takes as its theme. The invitation's own changes from the pages under Theme stay in `GROUP.design` and aren't in the download. The preview works opened from disk: the kit inlines `envelope.css`, the standard, the check's lists, and `elements.js`, `andlist.js`, `themes.js` and `envelope.js` bundled into one script (`bundledModules`, which takes only `import {…} from '…';` lines), so it draws the envelope and card with Gather's own code. Its check is the upload's, written again in JavaScript in `web/gather/themekit/preview.html`; the Go check decides.
 
 ## Sample themes
 
@@ -34,6 +34,6 @@ The sample data's site themes are the packages in `sampledata/themes/<key>/`, ea
 
 A theme is checked by eye in the kit's preview, or in the app the way `docs/screenshots.md` takes a capture. A sample invitation, Theo Turns Eight, is hosted by Maya Lindqvist, so signed in as her, the editor switches its design and the capture shows the card in it, the `n` in `nth-child` being the theme's place in the picker after Create Your Own and Upload a theme:
 
-    go run ./tools/startserver --email maya.lindqvist@example.org --capture https://gather.heliosiandev.com:8080/g/theo-turns-eight --out local/screenshots/theme.png --wait ".env-seal" --click ".env-seal|.invite-edit|.editor-pages-link:nth-child(3)|.theme-head .button|.theme-tile:nth-child(n)|.modal-actions button[type=submit]" --settle 3s
+    go run ./tools/startserver --email maya.lindqvist@example.org --capture https://gather.heliosiandev.com:8080/g/theo-turns-eight --out local/screenshots/theme.png --wait ".env-seal" --click ".env-seal|.invite-edit|.editor-pages-link:nth-child(3)|.theme-head .button:last-child|.theme-tile:nth-child(n)|.modal-actions button[type=submit]" --settle 3s
 
 The sealed envelope is the same command without `--click`.

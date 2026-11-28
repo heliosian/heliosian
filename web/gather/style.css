@@ -387,6 +387,8 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .theme-head-words { flex: 1; display: flex; flex-direction: column; }
 
+.theme-head-tools { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+
 .theme-head-label { color: var(--muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
 
 .theme-head-name { font-size: 18px; font-weight: 700; }

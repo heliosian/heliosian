@@ -3,6 +3,7 @@ package db
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"strings"
 
 	"heliosian/internal/serve"
+	"heliosian/internal/store"
 )
 
 const themeKitDir = "web/gather/themekit/"
@@ -96,16 +98,58 @@ func themePreview() ([]byte, error) {
 	return []byte(out), nil
 }
 
+func (a *InvitationArt) themePackage(ctx context.Context, m *Model, row store.Row, folder string, files map[string][]byte) error {
+	design, err := storedDesign(row["design"])
+	if err != nil {
+		return err
+	}
+	pkg := map[string]any{"key": row["key"], "name": row["name"], "blurb": row["blurb"]}
+	for k, v := range design {
+		pkg[k] = v
+	}
+	raw, err := prettyJSON(pkg)
+	if err != nil {
+		return err
+	}
+	files[folder+"theme.json"] = raw
+	for _, pic := range m.Table("THEME_PICTURE").Referencing("theme", row["id"]) {
+		data, _, err := m.contentBytes(ctx, a.pics.bucket, pic["picture"])
+		if err != nil {
+			return err
+		}
+		files[folder+pic["name"]] = data
+	}
+	return nil
+}
+
 func (a *InvitationArt) themeKit(w http.ResponseWriter, r *http.Request) {
 	m := a.pics.s.Model()
 	files := map[string][]byte{"standard.json": themeBaseJSON}
-	for name, from := range map[string]string{"README.md": "README.md", "my-theme/theme.json": "starter.json"} {
-		raw, err := os.ReadFile(themeKitDir + from)
+	readme, err := os.ReadFile(themeKitDir + "README.md")
+	if err != nil {
+		serve.Error(w, r, err)
+		return
+	}
+	files["README.md"] = readme
+	filename := "gather-theme-kit.zip"
+	if id := r.URL.Query().Get("theme"); id != "" {
+		row, ok := m.Table("THEME").Get(id)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		if err := a.themePackage(r.Context(), m, row, "my-theme/", files); err != nil {
+			serve.Error(w, r, err)
+			return
+		}
+		filename = row["key"] + "-theme-kit.zip"
+	} else {
+		starter, err := os.ReadFile(themeKitDir + "starter.json")
 		if err != nil {
 			serve.Error(w, r, err)
 			return
 		}
-		files[name] = raw
+		files["my-theme/theme.json"] = starter
 	}
 	preview, err := themePreview()
 	if err != nil {
@@ -117,29 +161,9 @@ func (a *InvitationArt) themeKit(w http.ResponseWriter, r *http.Request) {
 		if row["added_by"] != "" || row["key"] == "plain" {
 			continue
 		}
-		design, err := storedDesign(row["design"])
-		if err != nil {
+		if err := a.themePackage(r.Context(), m, row, "examples/"+row["key"]+"/", files); err != nil {
 			serve.Error(w, r, err)
 			return
-		}
-		pkg := map[string]any{"key": row["key"], "name": row["name"], "blurb": row["blurb"]}
-		for k, v := range design {
-			pkg[k] = v
-		}
-		raw, err := prettyJSON(pkg)
-		if err != nil {
-			serve.Error(w, r, err)
-			return
-		}
-		folder := "examples/" + row["key"] + "/"
-		files[folder+"theme.json"] = raw
-		for _, pic := range m.Table("THEME_PICTURE").Referencing("theme", row["id"]) {
-			data, _, err := m.contentBytes(r.Context(), a.pics.bucket, pic["picture"])
-			if err != nil {
-				serve.Error(w, r, err)
-				return
-			}
-			files[folder+pic["name"]] = data
 		}
 	}
 	var buf bytes.Buffer
@@ -157,7 +181,7 @@ func (a *InvitationArt) themeKit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="gather-theme-kit.zip"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(buf.Bytes())
 }

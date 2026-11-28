@@ -749,12 +749,18 @@ export async function openEditor(inv) {
     const head = el('div', 'theme-head');
     const words = el('div', 'theme-head-words');
     words.append(el('span', 'theme-head-label', 'Theme'), el('span', 'theme-head-name', isPlain(chosen.theme) ? 'Your own' : t.name));
-    head.append(words, button('Change theme', 'edit', 'button button-secondary', () => {
+    const tools = el('div', 'theme-head-tools');
+    const download = el('a', 'button button-secondary');
+    download.href = `/open/theme-kit.zip?theme=${encodeURIComponent(chosen.theme)}`;
+    download.download = '';
+    download.append(svg('download'), el('span', '', 'Download theme'));
+    tools.append(download, button('Replace theme', 'upload', 'button button-secondary', () => upload.click()), button('Change theme', 'edit', 'button button-secondary', () => {
       themeChosen = false;
       paintTheme();
     }));
+    head.append(words, tools);
     const preview = themeScene({...sample(), look: lookNow(), name: title()});
-    themeArea.replaceChildren(head, el('p', 'theme-hint', 'Change its card, background, colors, fonts and envelope from the pages under Theme.'), preview);
+    themeArea.replaceChildren(head, el('p', 'theme-hint', 'Change its card, background, colors, fonts and envelope from the pages under Theme, or download the theme with the kit for making one, edit it by hand or with AI, and replace it with your version.'), preview);
   }
   pages = sidePages([
     {label: 'Details', icon: 'list', fields: [field('Above the title', kicker, 'The small line over the title on the card. Leave it blank for the theme’s own.'), field('Title', name, '', true), field('Subtitle', subtitle, 'A line under the title on the card. Leave it blank for none.'), when, field('Place', place, 'The name of the place, if it has one.'), field('Address', location, 'Where guests go. Maps and calendars use it.'), field('Summary', summaryWithAI(summary, () => {
