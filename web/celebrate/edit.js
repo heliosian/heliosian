@@ -276,8 +276,9 @@ export function openBuy(p) {
   }
 
   let done = null;
-  openModal(waiting ? `Join the waitlist for ${p.title}` : `Tickets for ${p.title}`, fields, {
-    saveLabel: waiting ? 'Join Waitlist' : 'Get Tickets',
+  const adding = editor && (p.availability !== 'available' || p.salesClosed);
+  openModal(adding ? `Add attendees to ${p.title}` : `Tickets for ${p.title}`, fields, {
+    saveLabel: adding ? 'Add Attendee' : 'Get Tickets',
     submit: async () => {
       const payer = bills.find(b => b.email === purchaser);
       if (!payer) {
@@ -340,7 +341,7 @@ export function openWaitlist(p) {
   const asker = have ? have.addedBy || have.name : me().name;
   fields.push(el('p', 'buy-note', `If the hosts give you places, the tickets are billed to ${asker}.`));
   openModal(have ? `Your place on the waitlist for ${p.title}` : `Join the waitlist for ${p.title}`, fields, {
-    saveLabel: have ? 'Update' : 'Join Waitlist',
+    saveLabel: have ? 'Update' : 'Join the Waitlist',
     submit: () => {
       const edits = waitlistEdits(p, have, Math.max(1, Number(quantity.value) || 1), note.value.trim());
       return edits.length ? write(edits) : null;
@@ -968,7 +969,7 @@ export function openParty(p) {
       field('Category', category, 'For the filter on the parties page.'),
     ]});
   }
-  const intro = adding && !curates ? [el('p', 'form-lead', 'Thank you for hosting! Fill this in and the celebration committee will review it and open it for tickets.')] : [];
+  const intro = adding && !curates ? [el('p', 'form-lead', 'Thank you for hosting! The celebration committee will review your party before it is listed.')] : [];
   const fields = () => ({
     title: title.value, subtitle: subtitle.value, description: description.value, hostIds: hostIds.value(),
     start: start.value(), end: end.value(), location: place.value, address: address.value, prettyId: pretty.value,
@@ -1069,7 +1070,7 @@ function ticketFields(p, saleSwitches) {
   };
   const counts = el('div', 'tix-counts');
   counts.append(
-    field(iconLabel('ticket', 'Tickets available'), capacity, 'Total number of tickets you can sell.'),
+    field(iconLabel('ticket', 'Ticket capacity'), capacity, 'Total number of tickets you can sell.'),
     field(iconLabel('people', 'Minimum to hold the party'), minimum, 'The party goes ahead only with at least this many tickets sold.'),
   );
 
@@ -1331,7 +1332,7 @@ export function openCelebration(c) {
   const address = text(c.row.address_override || '', {maxLength: 200});
   const description = textarea(c.description, 4);
   const hosting = checkbox('Takes parties', c.adding === 'approval', 'Anyone may host a party under it, which waits for an admin’s approval, until its date has passed. Off, only admins add parties.');
-  const onSale = checkbox('Tickets are on sale', !c.salesClosed, 'Families may buy places and join waitlists at its parties. Off, its parties say tickets go on sale soon, and only their hosts and admins add anyone.');
+  const onSale = checkbox('Tickets are on sale', !c.salesClosed, 'Turn this off to close ticket sales and waitlist requests for families. Party hosts and admins can still add attendees.');
   const image = imagePicker(c.image, c.imageUrl, {dropzone: true, query: () => title.value, label: 'Banner image', hint: 'The background of the banner across the top of the parties page.'});
   const own = el('div', 'celebration-own');
   own.append(

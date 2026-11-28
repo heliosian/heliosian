@@ -3,6 +3,7 @@ import {parseWhen} from '/datecard.js';
 import {el, link, svg, button, badge} from '/elements.js';
 import {card} from '/cardgrid.js';
 import {openBuy} from './edit.js';
+import {offSaleWords, ticketAvailability} from '/calendar.js';
 
 export function statusBadges(p) {
   const out = [];
@@ -16,11 +17,15 @@ export function statusBadges(p) {
 }
 
 export function availabilityBadge(p) {
-  return el('span', 'avail avail-' + p.availability, availabilityLabel(p));
+  const availability = ticketAvailability(p.availability, p.salesClosed);
+  return el('span', 'avail avail-' + availability, availabilityLabel(availability));
 }
 
 export function spotsNote(p) {
   if (p.availability === 'available') {
+    if (p.salesClosed) {
+      return offSaleWords;
+    }
     if (p.capacity > 0 && (p.remaining <= 10 || p.remaining < p.capacity * 0.4)) {
       return `${p.remaining} ticket${p.remaining === 1 ? '' : 's'} left`;
     }
@@ -48,14 +53,11 @@ function dateStamp(p) {
 }
 
 function footButton(p, mine) {
-  if (p.salesClosed && !p.can.edit && (p.availability === 'available' || p.availability === 'waitlist')) {
-    return link(partyPath(p), 'button button-secondary button-small', 'On sale soon');
-  }
   if (p.availability === 'available' && p.can.buy) {
-    return button('Get Tickets', null, 'button button-small', () => openBuy(p));
+    return button(p.salesClosed ? 'Add Attendee' : 'Get Tickets', null, 'button button-small', () => openBuy(p));
   }
   if (p.availability === 'waitlist' && !mine.length && p.can['join-waitlist']) {
-    return button('Join Waitlist', null, 'button button-small', () => openBuy(p));
+    return button('Join the Waitlist', null, 'button button-small', () => openBuy(p));
   }
   return link(partyPath(p), 'button button-secondary button-small', 'Learn More');
 }

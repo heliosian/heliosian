@@ -24,7 +24,7 @@ function hostRow(p) {
   counts.push(`${money(p.raised)} raised`);
   body.append(el('div', 'row-text', counts.join(' · ')));
   if (p.status === 'Pending') {
-    body.append(el('div', 'row-pending', 'Waiting for approval - an admin will open it for tickets.'));
+    body.append(el('div', 'row-pending', 'Waiting for an admin to approve this party.'));
   }
   row.append(body);
   const actions = el('div', 'row-actions');

@@ -1178,7 +1178,6 @@ main { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: 
 
 .rsvp-lead { font-size: 15px; color: var(--lift-ink, #3b5a4b); margin-top: 4px; }
 
-.rsvp-note { font-size: 13px; color: var(--soft-ink, #5b7a6b); margin-top: 2px; }
 
 .rsvp-side { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
 

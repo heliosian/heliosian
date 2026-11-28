@@ -1,4 +1,4 @@
-import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId, shownCelebration, shownInvitation, shownLook, celebrationPath, guestsPath} from './state.js';
+import {state, me, anyAllowance, pendingParties, hostedParties, parties, household, familyMember, myPath, myTickets, ticketFor, canHost, familyShown, celebration, currentCelebration, category, categoriesOf, matches, partyPath, partiesPath, invitationPath, invitationPageId, shownCelebration, shownInvitation, shownLook, celebrationPath, guestsPath} from './state.js';
 import {el, svg, link, button} from '/elements.js';
 import {initShell, appSymbol} from '/shell.js';
 import {initResults, showResults, closeResults, resultDay} from '/searchmenu.js';
@@ -25,7 +25,11 @@ function navItems() {
 }
 
 export function shownTabs(onList) {
-  return listTabs.map(t => ({...t, count: parties().filter(p => inTab(p, t.key)).length})).filter(t => t.count || (onList && state.tab === t.key));
+  const salesClosed = currentCelebration()?.salesClosed;
+  return listTabs.map(t => ({
+    ...t, label: salesClosed && t.key === 'available' ? 'Room Left' : t.label,
+    count: parties().filter(p => inTab(p, t.key)).length,
+  })).filter(t => t.count || (onList && state.tab === t.key));
 }
 
 export function themedPage(className = '') {

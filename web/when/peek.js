@@ -1,7 +1,7 @@
 import {today, dayLabel, eventTint, timeLine, answerOf, answer} from './state.js';
 import {peopleLine} from './dom.js';
 import {el, link, svg, button} from '/elements.js';
-import {roomDots, planCards} from './events.js';
+import {roomDots, planCards, partyActionWords} from './events.js';
 import {answerIcon} from '/inviteparts.js';
 
 let peek = null;
@@ -84,15 +84,13 @@ function fillEventPeek(node, date, e) {
     }
   };
   if (e.source === 'celebrate') {
-    const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
-    if (held) {
-      buttons.append(button(word === 'yes' ? 'Invite sent' : 'Add to my calendar', word === 'yes' ? 'check' : 'calendar', 'button button-small' + (word === 'yes' ? ' button-secondary' : ''), () => say('yes')));
-    } else {
-      const add = el('a', 'button button-small' + (e.availability === 'available' ? '' : ' button-secondary'));
-      add.href = e.link;
-      add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
-      buttons.append(add);
+    if (e.mineWords) {
+      node.append(el('div', 'day-peek-words', e.mineWords));
     }
+    const add = el('a', 'button button-small' + (e.ticketStatus === 'available' ? '' : ' button-secondary'));
+    add.href = e.link;
+    add.append(svg('ticket'), el('span', '', partyActionWords(e)));
+    buttons.append(add);
     node.append(buttons);
     return;
   }

@@ -1,18 +1,16 @@
 import {rowsOf} from '/rail.js';
-import {availabilityOf} from '/calendar.js';
+import {availabilityOf, partySalesClosed, ticketAvailability, linkedCall} from '/calendar.js';
 import {andList} from '/andlist.js';
 
 const upcoming = '(= kind "party") (not (in status "closed" "pending")) (not (blank visible_to)) (not (blank start)) (or (>= start today) (>= end today))';
 
 export const partyQueries = {
-  parties: `(from GROUP (where ${upcoming}) (order start asc) (columns name slug start end status join capacity waitlist visible_to celebrate_href))`,
+  parties: `(from GROUP (where ${upcoming}) (order start asc) (columns name slug start end status join capacity waitlist visible_to celebrate_href parent))`,
   partyTickets: `(from MEMBER (where (= member "yes") (or (in group (select GROUP.id ${upcoming})) (in group (select GROUP.waitlist ${upcoming})))) (columns group person guest_of added_by))`,
   partyViewer: '(from PERSON (where (= id @viewer)) (columns name_short))',
   partyHousehold: '(from PERSON (where (in id (household @viewer))) (columns name_short))',
   partyPhotos: `(from PHOTO (where ready (in group (select GROUP.id ${upcoming}))) (order order asc) (columns group))`,
 };
-
-const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out'};
 
 function mineWords(mine, who) {
   const names = andList(who) === 'You' ? '' : andList(who);
@@ -34,7 +32,7 @@ function mineWords(mine, who) {
   return '';
 }
 
-export function partiesWidget(data) {
+export function partiesWidget(data, groups) {
   const now = new Date();
   const viewer = data.partyViewer.result[0];
   const first = {};
@@ -57,13 +55,14 @@ export function partiesWidget(data) {
   return rowsOf(data.parties, 'GROUP').map(g => {
     const tickets = members[g.id] || [];
     const availability = availabilityOf(g, tickets.length, now);
+    const ticketStatus = ticketAvailability(availability, partySalesClosed(g, groups));
     const going = circle(tickets);
     const waiting = circle(members[g.waitlist] || []);
     const mine = going.length ? 'going' : waiting.length ? 'waitlisted' : '';
     return {
       id: g.id, title: g.name, link: g.celebrate_href, start: g.start.slice(0, 10), startAt: g.start, endAt: g.end || g.start,
       image: picture[g.id] ? `/api/blob/${picture[g.id]}/image` : '', imageApp: 'celebrate',
-      availability, mine, call: mineWords(mine, mine === 'going' ? going : waiting) || callWords[availability] || '',
+      availability, mine, call: mineWords(mine, mine === 'going' ? going : waiting) || linkedCall(ticketStatus),
     };
   });
 }

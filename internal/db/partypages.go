@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	partiesAbout  = "Fun(d)raiser parties for the Helios community. New parties are on the way."
+	partiesAbout  = "Fun(d)raiser parties for the Helios community."
 	partiesListed = 3
 	partiesShell  = "web/celebrate/index.html"
 )
@@ -193,8 +193,8 @@ func (p *PartyPages) upcomingHead(m *Model, origin string) string {
 func (p *PartyPages) shareUpcoming(w http.ResponseWriter, r *http.Request) {
 	m := p.s.Model()
 	parties := m.upcomingParties(time.Now().In(School))
-	card := sharecard.Card{Title: "New parties are on the way", Subtitle: "Tickets go on sale soon."}
-	words := []string{}
+	card := sharecard.Card{Title: "Community Fun(d)raiser Parties"}
+	words := []string{card.Title}
 	if len(parties) > 0 {
 		next := parties[0]
 		day, hours := whenLines(next)

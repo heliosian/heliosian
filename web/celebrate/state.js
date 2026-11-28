@@ -1,7 +1,7 @@
 import {googleCalendarLink, parseWhen} from '/datecard.js';
 import {api} from '/api.js';
 import {queries, rowsOf} from '/rail.js';
-import {availabilityOf} from '/calendar.js';
+import {availabilityOf, offSaleWords} from '/calendar.js';
 import {directory, emailOf, photoOf, isStudent, isParent, isStaff, gradeOf, relativesOf} from '/directory.js';
 import {chipsOf, withoutChips, plain} from '/markdown.js';
 import {invitationColumns, gatherInvitation, inviteOf, lookThemes, pageOf} from '/invitation.js';
@@ -524,8 +524,8 @@ export function priceLine(p) {
   return `${money(p.price)} per ${p.unit.toLowerCase()}`;
 }
 
-export function availabilityLabel(p) {
-  switch (p.availability) {
+export function availabilityLabel(availability) {
+  switch (availability) {
     case 'available':
       return 'Tickets available';
     case 'waitlist':
@@ -535,7 +535,7 @@ export function availabilityLabel(p) {
     case 'past':
       return 'Past';
   }
-  return 'Tickets closed';
+  return offSaleWords;
 }
 
 export function partyCalendarLink(p) {

@@ -93,8 +93,8 @@ function grid(id) {
   if (!items.length) {
     const panel = el('div', 'panel');
     const words = {
-      available: 'No parties have tickets right now - check the waitlist, or see all upcoming parties.',
-      waitlist: 'No party is taking a waitlist right now.',
+      available: currentCelebration()?.salesClosed ? 'No parties have room right now.' : 'No parties have tickets right now - check the waitlist, or see all upcoming parties.',
+      waitlist: 'No upcoming parties have a waitlist.',
       upcoming: 'No parties coming up yet.',
       past: 'No party has happened yet.',
     };

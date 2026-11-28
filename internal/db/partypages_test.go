@@ -50,6 +50,9 @@ func TestPartyPreviewsAndShareCards(t *testing.T) {
 	testkit.Previews(t, pages.PreviewHead, testkit.Preview{URL: "https://celebrate.heliosian.com/my", Want: []string{
 		`og:title" content="Upcoming Parties"`, `og:image" content="https://celebrate.heliosian.com/open/share/upcoming.png"`,
 		`Next up: Taco Night — Saturday, March 6 · 6:00 – 9:00 PM — Montara`}})
+	apply(t, s, []Edit{{Set: tacoNight, Cells: map[string]any{"join": "none"}}})
+	testkit.Previews(t, pages.PreviewHead, testkit.Preview{URL: "https://celebrate.heliosian.com/", Want: []string{
+		`og:description" content="Fun(d)raiser parties for the Helios community."`}})
 }
 
 func TestACelebrationsSiteThemeDressesItsShareCard(t *testing.T) {

@@ -13,8 +13,9 @@ import {openGuestForm} from '/guestpopups.js';
 import {answerIcon} from '/inviteparts.js';
 import {openEditor} from '../eventeditor.js';
 import {andList} from '/andlist.js';
+import {offSaleWords} from '/calendar.js';
 import {personTile} from '/people.js';
-import {audienceChips, blocks} from '../events.js';
+import {audienceChips, blocks, partyActionWords} from '../events.js';
 import {missingAnswers} from '/questionfields.js';
 import {notesPanel} from '/hostnotes.js';
 import {fetchInvites, familyBand, familyAnswered, householdQuestions, comingCard, guestListSection, inviteHostCall, flyerCard, addFlyerLink, hostsRow, rsvpRow, inviteCall, openGuestSettings} from '/invites.js';
@@ -125,8 +126,11 @@ export function eventPage(e) {
   const mineCard = el('div', 'side-card rsvp-compact');
   mineCard.hidden = true;
   const guest = {};
-  if (!e.cancelled) {
-    ask.append(rsvpCard(e, mineCard, guest));
+  const party = isParty(e);
+  const card = e.cancelled ? null : rsvpCard(e, mineCard, guest);
+  if (card) {
+    const section = party ? main : ask;
+    section.append(card);
   }
   main.append(ask);
   cols.append(main);
@@ -142,11 +146,11 @@ export function eventPage(e) {
   }
   cols.append(side);
   page.append(cols);
-  fillInvites(e, ask, answered, {info: when, linkedLine: page.querySelector('.hero-linked-line span'), guest});
+  fillInvites(e, ask, answered, {info: when, linkedLine: page.querySelector('.hero-linked-line span'), guest, ticketCard: party ? card : null});
   return page;
 }
 
-async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
+async function fillInvites(e, ask, answered, {info, linkedLine, guest, ticketCard}) {
   if (e.cancelled || (e.source !== 'sheet' && !e.link && !imported(e))) {
     return;
   }
@@ -174,6 +178,7 @@ async function fillInvites(e, ask, answered, {info, linkedLine, guest}) {
       return;
     }
     ask.closest('.event-page')?.querySelector('.rsvp-compact')?.remove();
+    ticketCard?.querySelector('.rsvp-links')?.remove();
     const self = view.mine.find(r => r.key === me().id && !r.guestOf);
     const done = (self ? Boolean(self.answer) : familyAnswered(view)) && !missingAnswers(asked).length;
     ask.replaceChildren(done && !keep ? '' : familyBand(e, view, refresh, asked));
@@ -354,26 +359,15 @@ function rsvpCard(e, slot, guest) {
     art.append(svg('calcheck'));
     const words = el('div', 'rsvp-words');
     const buttons = el('div', 'rsvp-buttons');
-    let note = '';
     if (isParty(e)) {
-      const held = (e.minePeople || []).some(p => p.note !== 'waitlisted');
-      if (held) {
-        words.append(el('div', 'rsvp-title', word === 'yes' ? 'On your calendar' : 'Your household has tickets'), el('div', 'rsvp-lead', word === 'yes' ? 'The invite is in your email.' : 'Want it on your own calendar?'));
-        buttons.append(button(word === 'yes' ? 'Invite sent' : 'Add to my calendar', word === 'yes' ? 'check' : 'calendar', 'button rsvp-yes' + (word === 'yes' ? ' is-on' : ''), () => say('yes')));
-        note = word === 'yes' ? 'Click again to send it once more.' : 'Add to my calendar emails you a calendar invite.';
-      } else {
-        words.append(el('div', 'rsvp-title', 'No tickets yet'), el('div', 'rsvp-lead', 'Tickets are on the party page.'));
-        const add = el('a', 'button rsvp-yes' + (e.availability === 'available' ? ' is-on' : ' is-off'));
-        add.href = e.link;
-        add.append(svg('ticket'), el('span', '', e.availability === 'available' ? 'Add Ticket' : e.call || 'See the party'));
-        buttons.append(add);
-      }
+      words.append(el('div', 'rsvp-title', e.mineWords || 'No tickets yet'), el('div', 'rsvp-lead', 'See the party page for details.'));
+      const add = el('a', 'button rsvp-yes' + (e.ticketStatus === 'available' ? ' is-on' : ' is-off'));
+      add.href = e.link;
+      add.append(svg('ticket'), el('span', '', partyActionWords(e)));
+      buttons.append(add);
     } else {
       words.append(el('div', 'rsvp-title', word === 'hidden' ? 'Hidden' : 'Are you going?'), el('div', 'rsvp-lead', word === 'hidden' ? 'On the month in gray.' : 'Yes sends you a calendar invite.'));
       buttons.append(...answers());
-    }
-    if (note) {
-      words.append(el('div', 'rsvp-note', note));
     }
     if (!isParty(e)) {
       guestLink(links);
@@ -528,7 +522,7 @@ function sourceCard(e) {
 
 const standing = {
   available: 'Tickets available', waitlist: 'Full, and taking a waitlist', 'sold-out': 'Sold out',
-  closed: 'Tickets are not on sale', past: 'This party has happened',
+  closed: offSaleWords, past: 'This party has happened',
   open: 'Volunteers wanted', full: 'Every spot is taken', done: 'This event is done',
 };
 
@@ -567,5 +561,8 @@ function linkedLineWords(e, kind) {
   if (e.minePeople && e.minePeople.length) {
     return [...new Set(e.minePeople.map(p => p.name))].join(', ');
   }
-  return e.mine ? `${e.mineWords} · ${mineStanding[e.mine][kind]}` : standing[e.availability] || (kind === 'celebrate' ? 'On Helios Celebrate' : 'On HCA-Team');
+  if (e.mine) {
+    return `${e.mineWords} · ${mineStanding[e.mine][kind]}`;
+  }
+  return standing[e.ticketStatus || e.availability] || (kind === 'celebrate' ? 'On Helios Celebrate' : 'On HCA-Team');
 }

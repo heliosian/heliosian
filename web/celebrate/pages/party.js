@@ -1,15 +1,16 @@
-import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets, availabilityLabel} from '../state.js';
+import {state, canApprove, mayTake, whenParts, priceLine, money, partyCalendarLink, partyPath, myTickets} from '../state.js';
 import {el, link, svg, button, toast} from '/elements.js';
 import {render as markdown} from '/markdown.js';
 import {listPath, themedPage} from '../chrome.js';
 import {setTitle} from '/shell.js';
 import {openBuy, openParty, openTickets, openAddTicket, openTicket, openPerson, openReassign, removeTicket, givePlace, setPartyStatus, openContacts, savePartyFields, uploadImage, openImageSearch} from '../edit.js';
-import {statusBadges} from '../cards.js';
+import {availabilityBadge, statusBadges} from '../cards.js';
 import {openPhotoLightbox} from '/crop.js';
 import {detailHero} from '/heroimage.js';
 import {dateCard, parseWhen} from '/datecard.js';
 import {render} from '/router.js';
 import {andList} from '/andlist.js';
+import {offSaleWords, ticketAvailability} from '/calendar.js';
 import {personTile, personCard, peopleRow} from '/people.js';
 import {personRow} from '/personrow.js';
 import {familiesOf, familySwitch, familySaid, familyRow} from '/families.js';
@@ -34,7 +35,7 @@ function hero(p, save) {
 }
 
 function ticketWords(p, mine) {
-  switch (p.availability) {
+  switch (ticketAvailability(p.availability, p.salesClosed)) {
     case 'available':
       return 'Tickets Available!';
     case 'waitlist':
@@ -50,7 +51,7 @@ function ticketWords(p, mine) {
     case 'past':
       return 'This party has happened';
   }
-  return 'Tickets Closed';
+  return offSaleWords;
 }
 
 function ticketBand(p) {
@@ -69,13 +70,11 @@ function ticketBand(p) {
   const selling = p.availability === 'available' || p.availability === 'waitlist';
   const waiting = p.availability === 'waitlist' && mine.some(a => a.status === 'Waitlist');
   if (!mayTake(p)) {
-    if (selling && p.salesClosed) {
-      actions.append(el('span', 'ticket-kid-note', 'Tickets go on sale soon.'));
-    } else if (selling && !mine.length) {
+    if (selling && !p.salesClosed && !mine.length) {
       actions.append(el('span', 'ticket-kid-note', 'Ask a parent to sign in to get tickets.'));
     }
   } else if (selling || p.can.edit) {
-    const label = !selling ? 'Add Attendee'
+    const label = !selling || p.salesClosed ? 'Add Attendee'
       : p.availability !== 'waitlist' ? 'Get Tickets'
       : waiting ? 'Update Waitlist Request' : 'Join the Waitlist';
     actions.append(button(label, 'ticket', 'button', () => openBuy(p)));
@@ -405,8 +404,8 @@ export function partyPage(p) {
   for (const chip of p.chips) {
     marks.append(el('span', 'audience-chip', chip));
   }
-  if (p.availability !== 'available') {
-    marks.append(el('span', 'avail avail-' + p.availability, availabilityLabel(p)));
+  if (p.availability !== 'available' && ticketAvailability(p.availability, p.salesClosed) !== 'closed') {
+    marks.append(availabilityBadge(p));
   }
   for (const b of statusBadges(p)) {
     marks.append(b);

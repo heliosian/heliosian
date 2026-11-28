@@ -139,7 +139,7 @@ func (p *WhenPages) shareCard(w http.ResponseWriter, r *http.Request) {
 	name, whole := m.sharedPicture(g)
 	kicker := m.topCategory(g)
 	day, hours := whenLines(g)
-	button := map[string]string{"event": "RSVP", "party": "Get Tickets", "activity": "Sign Up"}[g["kind"]]
+	button := map[string]string{"event": "RSVP", "party": "See the Party", "activity": "Sign Up"}[g["kind"]]
 	load := func() ([]byte, error) {
 		if name == whenHeader {
 			return os.ReadFile(whenHeader)

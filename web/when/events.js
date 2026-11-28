@@ -1,6 +1,11 @@
 import {timeColumn, whenLine, timeRange, clock, audienceWords, categoryTags, tagName, eventColors, plan, selectedClassrooms, classroomNames} from './state.js';
 import {dayTypeClass} from '/daytype.js';
 import {el, link, svg} from '/elements.js';
+import {linkedCall} from '/calendar.js';
+
+export function partyActionWords(e) {
+  return e.ticketStatus === 'waitlist' && e.hasWaitlistRequest ? 'Update waitlist request' : linkedCall(e.ticketStatus);
+}
 
 export function audienceChips(e) {
   const wrap = el('div', 'chips');

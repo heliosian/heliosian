@@ -47,7 +47,23 @@ export function availabilityOf(g, sold, now) {
   return g.waitlist ? 'waitlist' : 'sold-out';
 }
 
-const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', open: 'Join', full: 'Full'};
+export const offSaleWords = 'Tickets are not on sale';
+
+const callWords = {available: 'Get tickets', waitlist: 'Join the waitlist', 'sold-out': 'Sold out', closed: offSaleWords, past: 'Past party', open: 'Join', full: 'Full'};
+
+export function partySalesClosed(party, groups) {
+  const parent = groups[party.parent];
+  const celebration = parent?.kind === 'category' ? groups[parent.parent] : parent;
+  return celebration?.kind === 'celebration' && celebration.sales_closed === 'Yes';
+}
+
+export function ticketAvailability(availability, salesClosed) {
+  return salesClosed && (availability === 'available' || availability === 'waitlist') ? 'closed' : availability;
+}
+
+export function linkedCall(availability) {
+  return callWords[availability] || '';
+}
 
 function mineWords(e) {
   const names = andList(e.mineWho) === 'You' ? '' : andList(e.mineWho);
@@ -86,13 +102,14 @@ export const calendarQueries = {
   days: '(from GROUP (where (= kind "day")) (columns name start parent))',
   parts: '(from GROUP (where (= kind "day_part")) (columns name start end parent))',
   dayRules: '(from RULE (where (in group (select GROUP.id (= kind "day")))) (columns group target))',
-  tree: '(from GROUP (where (in kind "category" "activity" "celebration" "event")) (columns kind parent slug))',
+  tree: '(from GROUP (where (in kind "category" "activity" "celebration" "event")) (columns kind parent slug sales_closed))',
   events: `(from GROUP @e (where ${eventKinds} (!= status "closed") (not (blank start))) (order start asc) (columns kind name slug start end all_day location place description parent status visible_to listed audience rsvp_yes rsvp_no rsvp_maybe maybe waitlist hidden_for capacity join added_by added path when_href celebrate_href team_href))`,
   audiences: `(from RULE (where (in group (select GROUP.audience ${eventKinds}))) (columns group target))`,
   sources: `(from GROUP_SOURCE (where (in group (select GROUP.id ${eventKinds}))) (columns group calendar_event document name))`,
   photos: `(from PHOTO (where (in group (select GROUP.id (in kind "event" "party" "activity" "category")))) (order order asc) (columns group ready))`,
   places: `(from MEMBER (where (= member "yes") (in group (select GROUP.id (in kind "party" "activity") (not (blank capacity))))) (columns group person))`,
   mine: '(from MEMBER (where (= member "yes") (or (= person @viewer) (in person (household @viewer)))) (columns group person))',
+  myWaitlists: '(from MEMBER (where (= member "yes") (in group (select GROUP.waitlist (= kind "party"))) (or (self_or_household person) (self_or_household guest_of) (self_or_household added_by))) (columns group))',
   hosted: `(from GROUP @g (where (in id (descendants (select GROUP.id (in managed_by (select EFFECTIVE_MEMBER.group (= person @viewer)))))) ${eventKinds} (manages @g)) (columns kind))`,
   adders: `(from PERSON (where (in id (select GROUP.added_by ${eventKinds}))) (columns name_show))`,
   saved: '(from SAVED_SEARCH (where (= person @viewer)) (order order asc) (columns name emoji order default token search condition))',
@@ -149,6 +166,7 @@ export function buildCalendar(a) {
   const sources = by(rowsOf(a.sources, 'GROUP_SOURCE'), 'group');
   const places = by(rowsOf(a.places, 'MEMBER'), 'group');
   const mine = by(rowsOf(a.mine, 'MEMBER'), 'group');
+  const myWaitlists = new Set(rowsOf(a.myWaitlists, 'MEMBER').map(m => m.group));
   const hosted = new Set(a.hosted.result);
   const invitedTo = new Set(rowsOf(a.invites, 'MESSAGE').map(m => m.group));
   const admin = a.whenAdmin.result.length > 0;
@@ -156,6 +174,7 @@ export function buildCalendar(a) {
   const rows = rowsOf(a.events, 'GROUP');
   const under = by(rows.filter(g => g.kind === 'activity'), 'parent');
   const below = id => (under[id] || []).flatMap(c => [c.id, ...below(c.id)]);
+  const now = new Date();
   const events = rows.map(g => {
     const source = g.kind === 'party' ? 'celebrate' : g.kind === 'activity' ? 'team' : (sources[g.id] || []).some(s => s.calendar_event?.startsWith('c_cmoccvs0uksquupa6g68mf2cs0@group.calendar.google.com/')) ? 'counseling' : (sources[g.id] || []).some(s => s.calendar_event) ? 'google' : (sources[g.id] || []).some(s => s.document) ? 'pdf' : 'sheet';
     const rooms = (audiences[g.audience] || []).map(r => classroomName[r.target]).filter(Boolean);
@@ -169,6 +188,7 @@ export function buildCalendar(a) {
     const taken = (places[g.id] || []).length;
     const full = Boolean(g.capacity) && taken >= Number(g.capacity);
     const availability = g.kind === 'party' ? (!full ? 'available' : g.waitlist ? 'waitlist' : 'sold-out') : g.kind === 'activity' ? (g.status === 'done' ? 'done' : g.join === 'none' || full ? 'full' : 'open') : '';
+    const ticketStatus = g.kind === 'party' ? ticketAvailability(availabilityOf(g, taken, now), partySalesClosed(g, tree)) : '';
     const e = {
       id: g.id, address: g.slug || '', path: g.path, whenHref: g.when_href, title: g.name, start: g.start, end: g.end || g.start, allDay: g.all_day === 'Yes', dates: datesBetween(g.start, g.end),
       location: g.location || '', place: g.place || '', where: [g.place, g.location].filter(Boolean).join(', '), description: g.description || '', source, sourceTitle: ((sources[g.id] || [])[0] || {}).name || '', sourceUrl: '',
@@ -176,8 +196,9 @@ export function buildCalendar(a) {
       sharing: g.visible_to === everyone ? (g.listed === 'Yes' || g.kind !== 'event' ? 'Public' : 'Link') : 'Invite Only',
       status: g.status, pending: g.status === 'pending', cancelled: g.status === 'cancelled', declined: false,
       link: g.celebrate_href || g.team_href,
-      linkedId: g.kind === 'event' ? '' : g.id, availability, image: imageOf(g.id), hosts: [], hostNames: [], hosted: hosted.has(g.id),
+      linkedId: g.kind === 'event' ? '' : g.id, availability, ticketStatus, image: imageOf(g.id), hosts: [], hostNames: [], hosted: hosted.has(g.id),
       mine: holders.length ? 'going' : waiting.length ? 'waitlisted' : '', mineWho: (holders.length ? holders : waiting).map(nameOf), minePeople: [],
+      hasWaitlistRequest: myWaitlists.has(g.waitlist),
       going: going.length ? andList(going.map(nameOf)) + (going.length > 1 || going[0] === me.id ? ' are going' : ' is going') : '',
       me: {answer}, invited: invitedTo.has(g.id), invitation: invitedTo.has(g.id), dayType: '', keywords: [], addedBy: g.added_by || '', added: g.added || '',
       myRows, groups: {rsvp_yes: g.rsvp_yes || '', rsvp_no: g.rsvp_no || '', rsvp_maybe: g.maybe === 'Yes' ? g.rsvp_maybe || '' : '', hidden_for: g.hidden_for || '', audience: g.audience || ''},
@@ -191,7 +212,7 @@ export function buildCalendar(a) {
       e.tags.push('waitlisted');
     }
     e.mineWords = mineWords(e);
-    e.call = e.mineWords || callWords[availability] || '';
+    e.call = e.mineWords || linkedCall(ticketStatus || availability);
     return e;
   });
   const wordsOf = search => {

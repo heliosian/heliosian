@@ -323,7 +323,7 @@ export async function loadModel() {
     calendar: cal,
     events: cal.events,
     dayTypes: cal.dayTypes,
-    parties: partiesWidget(data),
+    parties: partiesWidget(data, a.tree.resources.GROUP),
     waiting: upcoming.filter(e => !e.hosted && e.invited && !e.me.answer && !e.cancelled).sort((x, y) => x.start.localeCompare(y.start)).map(e => ({title: e.title, start: e.start, path: e.whenHref})),
     team: teamWidget(data, `${today} 00:00`),
     school: mail.school,
