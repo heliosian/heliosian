@@ -140,6 +140,9 @@ const PolicySource = `
 (define (joins @m)
   (and (blank @m.invited) (or (visible @m.group) (invited_guest @m.group))
        (in @m.group.join "direct" "others") (blank @m.group.price)
+       ; a party, and the waitlist a party names, take members only while that celebration's tickets are on sale
+       (or (!= @m.group.kind "party") (on_sale @m.group))
+       (or (not (party_waitlist @m.group)) (on_sale @m.group.parent))
        (= @m.member "yes")
        (or (and (self_or_household @m.person) (eligible_for @m.group @m.person))
            (and (= @m.group.join "others")

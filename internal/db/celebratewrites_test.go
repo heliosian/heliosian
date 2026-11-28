@@ -281,6 +281,41 @@ func TestNobodyBuysATicketWhileACelebrationsSalesAreClosed(t *testing.T) {
 	}
 }
 
+func TestClosedSalesStopWaitlistsAndFreeParties(t *testing.T) {
+	s, write := celebrateSample(t)
+	made := apply(t, s, []Edit{
+		{Insert: "GROUP", As: "w", Row: map[string]any{"kind": "group", "parent": tacoNight, "name": "Taco Night Waitlist", "status": "open", "listed": true, "join": "direct", "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
+		{Set: tacoNight, Cells: map[string]any{"waitlist": "@w"}},
+		{Insert: "GROUP", As: "f", Row: map[string]any{"kind": "party", "parent": celebration, "name": "Open House", "status": "open", "join": "direct", "listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004", "managed_by": "grp00000000522"}},
+		{Insert: "GROUP", As: "g", Row: map[string]any{"kind": "group", "name": "Open List", "status": "open", "join": "direct", "listed": true, "visible_to": "grp00000000004", "members_visible_to": "grp00000000004"}},
+	})
+	waitlist, free, list := made[0], made[2], made[3]
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"sales_closed": true}}); err != nil {
+		t.Fatalf("a Celebrate admin can't close ticket sales: %v", err)
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": avery, "member": "yes", "added_by": parent}}); err == nil {
+		t.Fatal("someone joined a waitlist while ticket sales were closed")
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": free, "person": parent, "member": "yes", "added_by": parent}}); err == nil {
+		t.Fatal("someone took a free place while ticket sales were closed")
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": list, "person": parent, "member": "yes", "added_by": parent}}); err != nil {
+		t.Fatalf("closing ticket sales stopped someone joining an ordinary list: %v", err)
+	}
+	if _, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": avery, "member": "yes", "added_by": staff}}); err != nil {
+		t.Fatalf("a host can't add someone to a waitlist while ticket sales are closed: %v", err)
+	}
+	if _, err := write(staff, Edit{Insert: "MEMBER", Row: map[string]any{"group": free, "person": parent, "member": "yes", "added_by": staff, "note": "Free ticket from the hosts"}}); err != nil {
+		t.Fatalf("a host can't give a free place while ticket sales are closed: %v", err)
+	}
+	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"sales_closed": false}}); err != nil {
+		t.Fatalf("a Celebrate admin can't open ticket sales: %v", err)
+	}
+	if _, err := write(parent, Edit{Insert: "MEMBER", Row: map[string]any{"group": waitlist, "person": parent, "member": "yes", "added_by": parent}}); err != nil {
+		t.Fatalf("someone couldn't join a waitlist once sales opened: %v", err)
+	}
+}
+
 func TestACelebrationTakesItsDetailsFromItsInvitation(t *testing.T) {
 	s, write := celebrateSample(t)
 	if _, err := write(student, Edit{Set: celebration, Cells: map[string]any{"invitation": "grp00000009041"}}); err != nil {
